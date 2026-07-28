@@ -1099,6 +1099,8 @@ L["CONTRIBUTORS_TITLE"] = "Collaboratori"
 L["ABOUT_PATREON_SUPPORTERS"] = "Sostenitori Patreon"
 L["ABOUT_PATREON_SUPPORTER_1"] = "Melissa CD"
 L["ABOUT_PATREON_SUPPORTER_2"] = "Bedroom"
+L["ABOUT_COMMUNITY_TITLE"] = "Community"
+L["ABOUT_COMMUNITY_HINT"] = "Fai clic su un pulsante per mostrare il collegamento, poi premi Ctrl+C per copiarlo."
 L["THANK_YOU_MSG"] = "Grazie per aver usato Warband Nexus!"
 
 -- Information Dialog - Professions Tab

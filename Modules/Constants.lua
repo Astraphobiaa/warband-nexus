@@ -32,8 +32,32 @@ local Constants = {
         },
     },
     
+    -- COMMUNITY LINKS
+    -- Single source for the About tab. WoW cannot open a URL, so the address is handed to
+    -- Factory:ShowCopyURL instead.
+    LINKS = {
+        DISCORD = "https://discord.gg/warbandnexus",
+        -- Plain page URL, verified live. The old creator-share link carried four utm_* params
+        -- that made the copy box unreadable and told the reader nothing.
+        PATREON = "https://www.patreon.com/warbandnexus",
+    },
+
+    -- Full-colour brand art, separate from the WN_ICON_* set: those are monochrome stroke
+    -- glyphs meant to be vertex-tinted, and tinting a brand logo destroys it. Both files are
+    -- power-of-two, which the client requires -- the original 360x360 donate art was not and
+    -- therefore never drew.
+    COMMUNITY_LOGO = {
+        DISCORD = "Interface\\AddOns\\WarbandNexus\\Media\\discord.tga",
+        PATREON = "Interface\\AddOns\\WarbandNexus\\Media\\patreon.tga",
+    },
+    -- Official platform colours, used for the button labels.
+    COMMUNITY_COLOR = {
+        DISCORD = { 0.345, 0.396, 0.949 },  -- Discord blurple #5865F2
+        PATREON = { 1.000, 0.259, 0.302 },  -- Patreon coral   #FF424D
+    },
+
     -- EXPANSION TARGETING
-    
+
     CURRENT_EXPANSION_INTERFACE = 120007,   -- Midnight 12.0.7 (## Interface in TOC; must match WarbandNexus.toc)
     CURRENT_EXPANSION_NAME = "Midnight",    -- Used for filtering profession content to latest expansion
     

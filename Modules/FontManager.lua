@@ -598,6 +598,11 @@ end
     @param sizeCategory string - Font size category ("header", "title", "subtitle", "body", "small")
     @return boolean - Success/failure
 ]]
+-- Forward declaration: the body lives further down, next to the other ink helpers, but
+-- SafeSetFont below is the earliest caller. Without this the name compiled to a global and
+-- SafeSetFont died with "attempt to call a nil value" the moment anything used it.
+local ResolveInkOutlineOpts
+
 function FontManager:SafeSetFont(fontString, sizeCategory, opts)
     if not fontString or not fontString.SetFont then
         return false
@@ -765,7 +770,8 @@ end
 ---@param fontString FontString|EditBox
 ---@param flagOpts table
 ---@return table
-local function ResolveInkOutlineOpts(fontString, flagOpts)
+-- Assigns the local forward-declared above SafeSetFont; deliberately not `local function`.
+function ResolveInkOutlineOpts(fontString, flagOpts)
     if fontString._colorType == "accent" then
         flagOpts.accentFill = true
         flagOpts.coloredInk = true

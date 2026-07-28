@@ -5,7 +5,6 @@
 # Fix one by moving the helper above its first caller (or forward-
 # declaring it), then rerun with --update-baseline to drop the line.
 # Never add entries by hand to silence a new finding.
-Modules/FontManager.lua|ResolveInkOutlineOpts
 Modules/GearService.lua|MergeGearDataBucket
 Modules/GearService.lua|ShouldUseLegacyGearDataBucket
 Modules/MigrationService.lua|BuildSubsidiaryAliasRenames

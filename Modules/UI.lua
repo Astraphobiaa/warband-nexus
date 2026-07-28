@@ -133,11 +133,6 @@ function ns.UI_RefreshHeaderUtilityIcons(mainFrame)
     if mainFrame.reloadDebugBtn and mainFrame.reloadDebugBtn._wnUtilityIcon then
         apply(mainFrame.reloadDebugBtn._wnUtilityIcon, false)
     end
-    -- Rail community links follow the nav-rail icon language, not the header utility style.
-    if ns.UI_ApplyNavRailLinkChrome then
-        ns.UI_ApplyNavRailLinkChrome(mainFrame.navDiscordBtn, false)
-        ns.UI_ApplyNavRailLinkChrome(mainFrame.navPatreonBtn, false)
-    end
     if mainFrame.statusIcon then
         if ns.UI_IsLightMode and ns.UI_IsLightMode() then
             apply(mainFrame.statusIcon, false)

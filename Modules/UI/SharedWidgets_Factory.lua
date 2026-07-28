@@ -2956,18 +2956,21 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
     end
 end
 
--- WOWHEAD URL COPY POPUP
+-- URL COPY POPUP
+-- The client cannot open a browser, so every link in the addon ends here: one shared,
+-- themed popup holding the address preselected for Ctrl+C.
 
-local wowheadCopyFrame = nil
+local sharedCopyFrame = nil
 
----Show a small popup with a Wowhead URL for the user to copy (Ctrl+C).
-function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
-    if not ns.Utilities or not ns.Utilities.GetWowheadURL then return end
-    local url = ns.Utilities:GetWowheadURL(entityType, id)
-    if not url then return end
+---Show the copy popup for an arbitrary URL.
+---@param url string
+---@param labelText string|nil heading shown before the Ctrl+C hint
+---@param anchorFrame Frame|nil anchor under this frame, otherwise screen centre
+function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
+    if type(url) ~= "string" or url == "" then return end
 
-    if not wowheadCopyFrame then
-        local f = CreateFrame("Frame", "WarbandNexus_WowheadCopy", UIParent, "BackdropTemplate")
+    if not sharedCopyFrame then
+        local f = CreateFrame("Frame", "WarbandNexus_UrlCopy", UIParent, "BackdropTemplate")
         f:SetSize(360, 60)
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
         f:SetFrameStrata("DIALOG")
@@ -3001,11 +3004,7 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
             ns.UI_HookFontStringInk(title)
         end
         title:SetPoint("TOPLEFT", 10, -8)
-        title:SetText(
-            ns.UI_GetSemanticGoldHex() .. ((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead") .. "|r  "
-            .. (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888")
-            .. ((ns.L and ns.L["CTRL_C_LABEL"]) or "Ctrl+C") .. "|r"
-        )
+        -- Text is set per call: the popup is shared across link sources.
         f._title = title
 
         local closeBtn = self:CreateButton(f, 20, 20, true) or CreateFrame("Button", nil, f)
@@ -3035,23 +3034,36 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
         editBox:SetScript("OnChar", function(self) self:SetText(f._url or ""); self:HighlightText() end)
         f._editBox = editBox
 
-        wowheadCopyFrame = f
+        sharedCopyFrame = f
     end
 
-    wowheadCopyFrame._url = url
-    wowheadCopyFrame._editBox:SetText(url)
+    sharedCopyFrame._title:SetText(
+        ns.UI_GetSemanticGoldHex() .. (labelText or "") .. "|r  "
+        .. (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888")
+        .. ((ns.L and ns.L["CTRL_C_LABEL"]) or "Ctrl+C") .. "|r"
+    )
+    sharedCopyFrame._url = url
+    sharedCopyFrame._editBox:SetText(url)
 
     if anchorFrame and anchorFrame.GetCenter then
-        wowheadCopyFrame:ClearAllPoints()
-        wowheadCopyFrame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -4)
+        sharedCopyFrame:ClearAllPoints()
+        sharedCopyFrame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -4)
     else
-        wowheadCopyFrame:ClearAllPoints()
-        wowheadCopyFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+        sharedCopyFrame:ClearAllPoints()
+        sharedCopyFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
     end
 
-    wowheadCopyFrame:Show()
-    wowheadCopyFrame._editBox:SetFocus()
-    wowheadCopyFrame._editBox:HighlightText()
+    sharedCopyFrame:Show()
+    sharedCopyFrame._editBox:SetFocus()
+    sharedCopyFrame._editBox:HighlightText()
+end
+
+---Show a small popup with a Wowhead URL for the user to copy (Ctrl+C).
+function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
+    if not ns.Utilities or not ns.Utilities.GetWowheadURL then return end
+    local url = ns.Utilities:GetWowheadURL(entityType, id)
+    if not url then return end
+    return self:ShowCopyURL(url, (ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead", anchorFrame)
 end
 
 -- Load message
