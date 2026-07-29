@@ -2134,6 +2134,13 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Define charKey for use in buttons (canonical key for DB/service consistency)
     local charKey = GetCharKey(char)
     local isCurrent = IsCharLoggedInSession(char)
+    -- `isFavorite` is the section flag (true only for the Favorites block). Since a favorited
+    -- character now stays in its custom section, the star has to read per-character state or it
+    -- would render grey for every favorite outside that block.
+    local rowIsFavorite = isFavorite
+    if not rowIsFavorite and charKey and ns.CharacterService and ns.CharacterService.IsFavoriteCharacter then
+        rowIsFavorite = ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) and true or false
+    end
     
     -- Set alternating background colors (Factory pattern)
     ns.UI.Factory:ApplyRowBackground(row, index)
@@ -2149,13 +2156,13 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     if not row.favButton then
         -- Helper creates button, attach to row
-        row.favButton = CreateFavoriteButton(row, charKey, isFavorite, CHAR_ROW_COLUMNS.favorite.width, "LEFT", favOffset + (CHAR_ROW_COLUMNS.favorite.spacing / 2), 0, nil)
+        row.favButton = CreateFavoriteButton(row, charKey, rowIsFavorite, CHAR_ROW_COLUMNS.favorite.width, "LEFT", favOffset + (CHAR_ROW_COLUMNS.favorite.spacing / 2), 0, nil)
         row.favButton.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
         -- Note: callback set below
     end
     -- Update state
     row.favButton.charKey = charKey
-    row.favButton:SetChecked(isFavorite)
+    row.favButton:SetChecked(rowIsFavorite)
     
     -- Safely set OnClick (favButton should be a Button type)
     if row.favButton.HasScript and row.favButton:HasScript("OnClick") then
@@ -2163,6 +2170,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             local newStatus = false
             if ns.CharacterService then
                 newStatus = ns.CharacterService:ToggleFavoriteCharacter(WarbandNexus, charKey)
+            end
+            -- Recolour immediately: the row no longer jumps to the Favorites block, so without this
+            -- the star would only catch up on the next full repaint.
+            if btn.SetChecked then
+                btn:SetChecked(newStatus and true or false)
             end
             return newStatus
         end)
@@ -2975,8 +2987,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.lastSeenText:Show()
     end
     
-    -- COLUMN: Custom section assign (folder) â€” tracked non-favorites in regular or custom group lists
-    local showHeaderAssign = (char.isTracked ~= false) and (not isFavorite)
+    -- COLUMN: Custom section assign (folder) - tracked characters in regular or custom group lists.
+    -- Favorites are no longer excluded: they can sit in a section, so they need the assign control
+    -- to move or leave it. The listKey gate already keeps this out of the Favorites block.
+    local showHeaderAssign = (char.isTracked ~= false)
         and (listKey == "regular" or (ns.CharacterService and ns.CharacterService.ParseCustomGroupIdFromListKey(listKey)))
     if showHeaderAssign then
         if not row.headerAssignBtn then
