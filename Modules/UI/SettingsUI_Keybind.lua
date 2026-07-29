@@ -19,20 +19,43 @@ ns.SettingsKeybind.IGNORED_KEYS = {
     LALT = true, RALT = true, UNKNOWN = true,
 }
 
+-- Stripped in the order the capture handler writes them (ALT-CTRL-SHIFT-KEY).
+local KEYBIND_MODIFIER_PREFIXES = { "ALT-", "CTRL-", "SHIFT-" }
+local KEYBIND_SEPARATOR = " - "
+
+--- Readable form of a stored binding: modifier tokens and the base key joined by a spaced
+--- separator. WoW stores the combo with "-" as the separator, so binding CTRL + the "-" key
+--- produces "CTRL--", where the separator and the key itself are indistinguishable and the combo
+--- looks truncated. Splitting on the known prefixes renders that as "CTRL - -".
+--- Formatted from the stored key rather than GetBindingText: an in-game dump showed the API
+--- returns the key unchanged here ("CTRL-C" -> "CTRL-C"), so it added nothing but client-dependent
+--- surprises - passing its documented "KEY_" prefix collapsed the whole combo to "c--".
+---@param key string|nil Stored binding, e.g. "CTRL-C", "CTRL--", "ALT-CTRL-SHIFT-F1"
+---@return string|nil
+function ns.SettingsKeybind.FormatBindingCombo(key)
+    if type(key) ~= "string" or key == "" then
+        return key
+    end
+    local parts = {}
+    local rest = key
+    for i = 1, #KEYBIND_MODIFIER_PREFIXES do
+        local prefix = KEYBIND_MODIFIER_PREFIXES[i]
+        if rest:sub(1, #prefix) == prefix and #rest > #prefix then
+            parts[#parts + 1] = prefix:sub(1, #prefix - 1)
+            rest = rest:sub(#prefix + 1)
+        end
+    end
+    parts[#parts + 1] = rest
+    return table.concat(parts, KEYBIND_SEPARATOR)
+end
+
 function ns.SettingsKeybind.GetToggleBindingDisplayText()
     local key = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
         and WarbandNexus.db.profile.toggleKeybind
     if not key or key == "" then
         return (ns.L and ns.L["KEYBINDING_UNBOUND"]) or "Not set"
     end
-    -- No prefix: verified in-game that GetBindingText("CTRL-C") returns "CTRL-C" while passing
-    -- "KEY_" collapses it to the abbreviated "c--" (KEY_<letter> globals do not exist, and the
-    -- prefixed lookup then loses the base key). Keep the raw key as a fallback.
-    local text = GetBindingText and GetBindingText(key)
-    if type(text) ~= "string" or text == "" then
-        text = key
-    end
-    return text
+    return ns.SettingsKeybind.FormatBindingCombo(key) or key
 end
 
 function ns.SettingsKeybind.IsForbiddenToggleKeybind(key)
