@@ -375,12 +375,17 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     local illusions = C_TransmogCollection.GetIllusions()
     if not illusions then return end
     
-    -- Build current collected set
+    -- Build current collected set keyed by the same ID the scanner persists
+    -- (sourceID). visualID is WeaponEnchantID and is a different namespace; using it
+    -- here left the real store row uncollected and created a ghost visualID row.
     local currentCollected = {}
     for i = 1, #illusions do
         local illusionInfo = illusions[i]
-        if illusionInfo and illusionInfo.visualID and illusionInfo.isCollected then
-            currentCollected[illusionInfo.visualID] = illusionInfo
+        if illusionInfo and illusionInfo.isCollected then
+            local illusionID = illusionInfo.sourceID or illusionInfo.visualID
+            if illusionID then
+                currentCollected[illusionID] = illusionInfo
+            end
         end
     end
     
@@ -392,8 +397,8 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     
     -- Compare and find newly collected illusions
     local newIllusionLearned = false
-    for visualID, illusionInfo in pairs(currentCollected) do
-        if not self._previousIllusionState[visualID] then
+    for illusionID, illusionInfo in pairs(currentCollected) do
+        if not self._previousIllusionState[illusionID] then
             newIllusionLearned = true
             -- NEW ILLUSION COLLECTED!
             local name = illusionInfo.name
@@ -406,26 +411,26 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
                 end
             end
             
-            -- Fallback to visualID
+            -- Fallback to the sourceID-keyed collection row ID.
             if not name or name == "" then
-                name = ((ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion") .. " " .. visualID
+                name = ((ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion") .. " " .. tostring(illusionID)
             end
             
             local icon = illusionInfo.icon or 134400
             
-            -- Remove from uncollected cache if present
-            self:RemoveFromUncollected("illusion", visualID)
+            -- Remove from uncollected cache if present (must match scanner sourceID keys)
+            self:RemoveFromUncollected("illusion", illusionID)
 
             -- Fire notification event
             self:SendMessage(E.COLLECTIBLE_OBTAINED, {
                 type = "illusion",
-                id = visualID,
+                id = illusionID,
                 name = name,
                 icon = icon,
                 obtainedBy = Notify.CollectiblePayloadObtainedBy(),
             })
             
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. visualID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. tostring(illusionID) .. ")")
         end
     end
 
