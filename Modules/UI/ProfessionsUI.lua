@@ -1551,9 +1551,8 @@ function PUI.CategorizeCharacters(characters)
         local charKey = GetCharKey(char)
         if not isTracked then
             tinsert(untracked, char)
-        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then
-            tinsert(favorites, char)
         else
+            -- Section wins over Favorites: a favorited character stays in its section (star only).
             local gid = nil
             if charKey and ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId then
                 gid = ns.CharacterService:GetCharacterCustomSectionId(WarbandNexus, charKey)
@@ -1562,6 +1561,8 @@ function PUI.CategorizeCharacters(characters)
             end
             if gid and groupedById[gid] then
                 tinsert(groupedById[gid], char)
+            elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then
+                tinsert(favorites, char)
             else
                 tinsert(regular, char)
             end
@@ -1575,6 +1576,9 @@ function PUI.CategorizeCharacters(characters)
             local lk = (ns.CharacterService and ns.CharacterService.GetCustomGroupListKey
                 and ns.CharacterService:GetCustomGroupListKey(gid)) or ("group_" .. tostring(gid))
             PUI.SortCharacters(list, lk)
+            if ns.CharacterService and ns.CharacterService.PartitionFavoritesFirst then
+                ns.CharacterService:PartitionFavoritesFirst(WarbandNexus, list, GetCharKey)
+            end
         end
     end
     regular = PUI.SortCharacters(regular, "regular")

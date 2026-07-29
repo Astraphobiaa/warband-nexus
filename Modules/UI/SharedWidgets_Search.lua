@@ -11,6 +11,7 @@ local issecretvalue = issecretvalue
 ns.UI = ns.UI or {}
 ns.UI.Factory = ns.UI.Factory or {}
 
+local E = ns.Constants and ns.Constants.EVENTS
 local COLORS = ns.UI_COLORS
 local UI_SPACING = ns.UI_SPACING
 local UI_LAYOUT = ns.UI_LAYOUT or UI_SPACING
@@ -150,7 +151,9 @@ local function WnBuildCustomHeaderManageBuckets(addon, profile, charactersList, 
     for i = 1, #charactersList do
         local ch = charactersList[i]
         local ck = ns.UI_GetCharKey(ch)
-        if ck and (ch.isTracked ~= false) and not ns.CharacterService:IsFavoriteCharacter(addon, ck) then
+        -- Favorites are eligible: a section membership outranks the Favorites block, so they must
+        -- be listable here too (otherwise a favorited member could never be removed from a section).
+        if ck and (ch.isTracked ~= false) then
             local gid = ns.CharacterService:GetCharacterCustomSectionId(addon, ck)
             if gid == groupId then
                 members[#members + 1] = { char = ch, key = ck }

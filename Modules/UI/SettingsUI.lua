@@ -1881,7 +1881,13 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     RegisterSettingsAccentChrome(keybindBtn)
 
     local keybindBtnText = FontManager:CreateFontString(keybindBtn, "body", "OVERLAY")
-    keybindBtnText:SetPoint("CENTER")
+    -- Bound to the button on both sides: a CENTER-only anchor let long combos ("ALT-CTRL-SHIFT-...")
+    -- spill past the button edges, where the opaque clear button and the label painted over them.
+    local keybindTextPad = UI_SPACING.AFTER_ELEMENT
+    keybindBtnText:SetPoint("LEFT", keybindBtn, "LEFT", keybindTextPad, 0)
+    keybindBtnText:SetPoint("RIGHT", keybindBtn, "RIGHT", -keybindTextPad, 0)
+    keybindBtnText:SetJustifyH("CENTER")
+    keybindBtnText:SetWordWrap(false)
     keybindBtnText:SetText(SettingsKeybind.GetToggleBindingDisplayText())
     ns.UI_SetTextColorRole(keybindBtnText, "Bright")
 
@@ -2018,6 +2024,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     keybindBtn:SetScript("OnEnter", function(self)
         local t = (ns.L and ns.L["KEYBINDING_TOOLTIP"]) or "Click to set a keybinding for toggling Warband Nexus.\nPress ESC to cancel."
+        -- The button label is width-bounded, so long combos read in full here.
+        local bound = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+            and WarbandNexus.db.profile.toggleKeybind
+        if bound and bound ~= "" then
+            t = t .. "\n" .. SettingsKeybind.GetToggleBindingDisplayText()
+        end
         Settings_ShowWrappedTooltip(self, t)
     end)
     keybindBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)

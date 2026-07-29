@@ -882,11 +882,9 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         end
         return false
     else
-        -- Add to favorites
+        -- Add to favorites. The custom section assignment is deliberately kept: favoriting a
+        -- character inside a section highlights it there instead of relocating it to Favorites.
         table.insert(favorites, characterKey)
-        if addon.db and addon.db.profile and addon.db.profile.characterGroupAssignments then
-            ClearBothAssignKeys(addon.db.profile.characterGroupAssignments, characterKey)
-        end
         addon:Print("|cffffd700" .. ((ns.L and ns.L["ADDED_TO_FAVORITES"]) or "Added to favorites:") .. "|r " .. characterKey)
         if addon.SendMessage then
             addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
@@ -1145,14 +1143,12 @@ function CharacterService:RemoveCustomCharacterSection(addon, groupId)
     return true
 end
 
---- Assign a tracked non-favorite character to a custom section (groupId nil = ungrouped / main list).
+--- Assign a tracked character to a custom section (groupId nil = ungrouped / main list).
+--- Favorites are eligible: the section wins over the Favorites block, see ResolveRosterBucket.
 function CharacterService:SetCharacterCustomSection(addon, charKey, groupId)
     if not addon or not addon.db or not addon.db.profile or not charKey or charKey == "" then return false end
     local profile = addon.db.profile
     self:EnsureCustomCharacterSectionsProfile(profile)
-    if ns.CharacterService:IsFavoriteCharacter(addon, charKey) then
-        return false
-    end
     local assign = profile.characterGroupAssignments
     local storeKey = AssignKeyFromCharKey(charKey)
     if not storeKey then return false end
@@ -1186,6 +1182,50 @@ function CharacterService:GetCharacterCustomSectionId(addon, charKey)
     local gid = assign[storeKey]
     if gid then return gid end
     return assign[charKey]
+end
+
+--- Roster bucket for one tracked character. A custom section wins over Favorites: favoriting a
+--- character that sits in a section highlights it there instead of relocating it, so the Favorites
+--- block only holds favorites with no section assignment. Every tab must bucket through this.
+--- Callers must not write `local gid = cond and CharacterService:ResolveRosterBucket(...)` - that
+--- truncates the second return.
+---@param addon table WarbandNexus
+---@param charKey string|nil
+---@return string|nil groupId Custom section to render under; nil = Favorites block or main list
+---@return boolean isFavorite
+function CharacterService:ResolveRosterBucket(addon, charKey)
+    local isFavorite = self:IsFavoriteCharacter(addon, charKey) and true or false
+    local groupId = self:GetCharacterCustomSectionId(addon, charKey)
+    if groupId == "" then groupId = nil end
+    return groupId, isFavorite
+end
+
+--- Lift favorites to the front of a custom section bucket, keeping the caller's sort order inside
+--- each half (stable, no table.sort). Used after a section list is sorted.
+---@param addon table WarbandNexus
+---@param list table Sorted list of character rows, reordered in place
+---@param getCharKeyFn fun(entry: table): string|nil
+---@return table list
+function CharacterService:PartitionFavoritesFirst(addon, list, getCharKeyFn)
+    if not list or #list < 2 or not getCharKeyFn then return list end
+    local favorites, rest = {}, {}
+    for i = 1, #list do
+        local entry = list[i]
+        local charKey = getCharKeyFn(entry)
+        if charKey and self:IsFavoriteCharacter(addon, charKey) then
+            favorites[#favorites + 1] = entry
+        else
+            rest[#rest + 1] = entry
+        end
+    end
+    if #favorites == 0 or #rest == 0 then return list end
+    for i = 1, #favorites do
+        list[i] = favorites[i]
+    end
+    for i = 1, #rest do
+        list[#favorites + i] = rest[i]
+    end
+    return list
 end
 
 -- CHARACTER LIST SORT (shared by Characters / Professions / PvE / Storage)

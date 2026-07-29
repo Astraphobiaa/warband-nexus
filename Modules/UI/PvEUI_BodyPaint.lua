@@ -682,10 +682,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         if peelCurrentChar and (charKey == currentPlayerKey
             or (L.ns.VaultCharKeysMatch and L.ns.VaultCharKeysMatch(charKey, currentPlayerKey))) then
             currentChar = char
-        elseif L.ns.CharacterService and L.ns.CharacterService:IsFavoriteCharacter(self, charKey) then
-            table.insert(favorites, char)
         else
-            table.insert(regular, char)
+            -- `regular` also carries favorites that belong to a custom section; the split below
+            -- routes them to that section (the star is emphasis there, not a move to Favorites).
+            local secId = L.ns.CharacterService and L.ns.CharacterService.GetCharacterCustomSectionId
+                and L.ns.CharacterService:GetCharacterCustomSectionId(self, charKey) or nil
+            if not secId and L.ns.CharacterService and L.ns.CharacterService:IsFavoriteCharacter(self, charKey) then
+                table.insert(favorites, char)
+            else
+                table.insert(regular, char)
+            end
         end
     end
     
@@ -737,7 +743,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         local gL = groupedById[gk0]
         if gL and #gL > 0 then
             local lk0 = (L.ns.CharacterService and L.ns.CharacterService.GetCustomGroupListKey and L.ns.CharacterService:GetCustomGroupListKey(gid0)) or "regular"
-            groupedById[gk0] = sortCharacters(gL, lk0)
+            gL = sortCharacters(gL, lk0)
+            if L.ns.CharacterService and L.ns.CharacterService.PartitionFavoritesFirst then
+                L.ns.CharacterService:PartitionFavoritesFirst(self, gL, GetRowCanonicalPvEKey)
+            end
+            groupedById[gk0] = gL
         end
     end
     regularUngrouped = sortCharacters(regularUngrouped, "regular")
@@ -1078,13 +1088,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     if currentChar then
         local ck0 = GetRowCanonicalPvEKey(currentChar)
         if ck0 and L.ns.CharacterService then
-            local inFav = L.ns.CharacterService.IsFavoriteCharacter and L.ns.CharacterService:IsFavoriteCharacter(self, ck0)
-            local curGid = (not inFav) and L.ns.CharacterService.GetCharacterCustomSectionId
+            -- Section outranks Favorites, so resolve the section first (see ResolveRosterBucket).
+            local curGid = L.ns.CharacterService.GetCharacterCustomSectionId
                 and L.ns.CharacterService:GetCharacterCustomSectionId(self, ck0) or nil
-            if inFav then
-                favoritesDisplay[#favoritesDisplay + 1] = currentChar
-                favoritesDisplay = sortCharacters(favoritesDisplay, "favorites")
-            elseif curGid then
+            local inFav = (not curGid) and L.ns.CharacterService.IsFavoriteCharacter
+                and L.ns.CharacterService:IsFavoriteCharacter(self, ck0)
+            if curGid then
                 local gkMerge = tostring(curGid)
                 local bucket = groupedDisplay[gkMerge]
                 if not bucket then
@@ -1094,7 +1103,14 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 bucket[#bucket + 1] = currentChar
                 local lk0 = (L.ns.CharacterService.GetCustomGroupListKey and L.ns.CharacterService:GetCustomGroupListKey(curGid))
                     or ("group_" .. gkMerge)
-                groupedDisplay[gkMerge] = sortCharacters(bucket, lk0)
+                bucket = sortCharacters(bucket, lk0)
+                if L.ns.CharacterService.PartitionFavoritesFirst then
+                    L.ns.CharacterService:PartitionFavoritesFirst(self, bucket, GetRowCanonicalPvEKey)
+                end
+                groupedDisplay[gkMerge] = bucket
+            elseif inFav then
+                favoritesDisplay[#favoritesDisplay + 1] = currentChar
+                favoritesDisplay = sortCharacters(favoritesDisplay, "favorites")
             else
                 regularDisplay[#regularDisplay + 1] = currentChar
                 regularDisplay = sortCharacters(regularDisplay, "regular")

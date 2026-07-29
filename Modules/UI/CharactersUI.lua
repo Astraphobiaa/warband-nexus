@@ -1472,27 +1472,9 @@ function WarbandNexus:DrawCharacterList(parent)
     local trackedFavorites = {}
     local trackedRegular = {}
     local untracked = {}
-    
-    for i = 1, #characters do
-        local char = characters[i]
-        local charKey = GetCharKey(char)
-        local isTracked = char.isTracked ~= false  -- Default to true if not set
-        
-        -- Separate by tracking status first, then favorites
-        if not isTracked then
-            tinsert(untracked, char)
-        elseif ns.CharacterService then
-            local isFav = (ns.CharacterService.IsFavoriteFromKeySet and ns.CharacterService:IsFavoriteFromKeySet(favoriteKeySet, charKey))
-                or ns.CharacterService:IsFavoriteCharacter(self, charKey)
-            if isFav then
-                tinsert(trackedFavorites, char)
-            else
-                tinsert(trackedRegular, char)
-            end
-        end
-    end
 
-    -- Split non-favorites into custom header buckets + ungrouped (must run after trackedRegular is built).
+    -- Custom header buckets must exist before the split: a section wins over Favorites, so a
+    -- favorited character assigned to a section renders there with its star, not in Favorites.
     local customGroupsOrdered = (ns.CharacterService and ns.CharacterService.BuildOrderedCustomCharacterGroups)
         and ns.CharacterService:BuildOrderedCustomCharacterGroups(self.db.profile, currentSortKey)
         or (self.db.profile.characterCustomGroups or {})
@@ -1501,24 +1483,34 @@ function WarbandNexus:DrawCharacterList(parent)
     for gi = 1, #customGroupsOrdered do
         groupedById[customGroupsOrdered[gi].id] = {}
     end
-    local trackedRegularUngrouped = {}
-    for ri = 1, #trackedRegular do
-        local char = trackedRegular[ri]
-        local ck = GetCharKey(char)
-        local gid = nil
-        if ck and ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId then
-            gid = ns.CharacterService:GetCharacterCustomSectionId(self, ck)
-        elseif ck then
-            gid = assignments[ck]
-        end
-        if gid and groupedById[gid] then
-            tinsert(groupedById[gid], char)
-        else
-            tinsert(trackedRegularUngrouped, char)
+
+    for i = 1, #characters do
+        local char = characters[i]
+        local charKey = GetCharKey(char)
+        local isTracked = char.isTracked ~= false  -- Default to true if not set
+
+        -- Separate by tracking status first, then section, then favorites
+        if not isTracked then
+            tinsert(untracked, char)
+        elseif ns.CharacterService then
+            local isFav = (ns.CharacterService.IsFavoriteFromKeySet and ns.CharacterService:IsFavoriteFromKeySet(favoriteKeySet, charKey))
+                or ns.CharacterService:IsFavoriteCharacter(self, charKey)
+            local gid = nil
+            if charKey and ns.CharacterService.GetCharacterCustomSectionId then
+                gid = ns.CharacterService:GetCharacterCustomSectionId(self, charKey)
+            elseif charKey then
+                gid = assignments[charKey]
+            end
+            if gid and groupedById[gid] then
+                tinsert(groupedById[gid], char)
+            elseif isFav then
+                tinsert(trackedFavorites, char)
+            else
+                tinsert(trackedRegular, char)
+            end
         end
     end
-    trackedRegular = trackedRegularUngrouped
-    
+
     -- Load custom order from profile
     if not self.db.profile.characterOrder then
         self.db.profile.characterOrder = {
@@ -1553,6 +1545,9 @@ function WarbandNexus:DrawCharacterList(parent)
         if list then
             local lk = (ns.CharacterService and ns.CharacterService.GetCustomGroupListKey and ns.CharacterService:GetCustomGroupListKey(gid)) or ("group_" .. tostring(gid))
             sortCharacters(list, lk)
+            if ns.CharacterService and ns.CharacterService.PartitionFavoritesFirst then
+                ns.CharacterService:PartitionFavoritesFirst(self, list, GetCharKey)
+            end
         end
     end
     trackedRegular = sortCharacters(trackedRegular, "regular")
@@ -3255,23 +3250,22 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
                     isFav = (ns.CharacterService.IsFavoriteFromKeySet and ns.CharacterService:IsFavoriteFromKeySet(favoriteKeySet, key))
                         or ns.CharacterService:IsFavoriteCharacter(self, key)
                 end
+                -- Section membership outranks favorite status, matching the roster split above.
+                local gid = (ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId)
+                    and ns.CharacterService:GetCharacterCustomSectionId(self, key)
+                    or (self.db.profile.characterGroupAssignments or {})[key]
+                if gid == "" then gid = nil end
                 local inCategory = false
                 if listKey == "favorites" then
-                    inCategory = isTracked and isFav
+                    inCategory = isTracked and isFav and gid == nil
                 elseif listKey == "regular" then
-                    local gid = (ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId)
-                        and ns.CharacterService:GetCharacterCustomSectionId(self, key)
-                        or (self.db.profile.characterGroupAssignments or {})[key]
-                    inCategory = isTracked and not isFav and (gid == nil or gid == "")
+                    inCategory = isTracked and not isFav and gid == nil
                 elseif listKey == "untracked" then
                     inCategory = not isTracked
                 elseif ns.CharacterService and ns.CharacterService.ParseCustomGroupIdFromListKey then
                     local grpId = ns.CharacterService:ParseCustomGroupIdFromListKey(listKey)
                     if grpId then
-                        local gid = (ns.CharacterService and ns.CharacterService.GetCharacterCustomSectionId)
-                            and ns.CharacterService:GetCharacterCustomSectionId(self, key)
-                            or (self.db.profile.characterGroupAssignments or {})[key]
-                        inCategory = isTracked and not isFav and gid == grpId
+                        inCategory = isTracked and gid == grpId
                     end
                 end
                 if inCategory then

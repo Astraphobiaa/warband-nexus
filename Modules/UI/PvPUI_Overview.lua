@@ -14,6 +14,11 @@ local FontManager = ns.FontManager
 local PUI = ns.ProfessionsUI
 local issecretvalue = issecretvalue
 
+--- Key accessor for overview rows; passed to CharacterService:PartitionFavoritesFirst.
+local function PvPRowCharKey(row)
+    return row and row.charKey or nil
+end
+
 local OVERVIEW_SECTION_GAP = 4
 local OVERVIEW_COL_HDR_H = 48
 local OVERVIEW_COL_HDR_PAD = 2
@@ -360,7 +365,9 @@ local function BuildPvpPaintOrder(WN, profile, overviewRows)
         return list
     end
 
-    local currentRow, favorites, regular = nil, {}, {}
+    -- Section wins over Favorites: a favorited character stays in its section (star only).
+    local currentRow, favorites, regularUngrouped = nil, {}, {}
+    local groupedById = {}
     for i = 1, #overviewRows do
         local row = overviewRows[i]
         local charKey = row.charKey
@@ -369,28 +376,21 @@ local function BuildPvpPaintOrder(WN, profile, overviewRows)
             or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(charKey, currentPlayerKey))
         ) then
             currentRow = row
-        elseif CS:IsFavoriteCharacter(WN, charKey) then
-            favorites[#favorites + 1] = row
         else
-            regular[#regular + 1] = row
+            local gsec = CS:GetCharacterCustomSectionId(WN, charKey)
+            if gsec then
+                local gk = tostring(gsec)
+                groupedById[gk] = groupedById[gk] or {}
+                groupedById[gk][#groupedById[gk] + 1] = row
+            elseif CS:IsFavoriteCharacter(WN, charKey) then
+                favorites[#favorites + 1] = row
+            else
+                regularUngrouped[#regularUngrouped + 1] = row
+            end
         end
     end
 
     favorites = sortRows(favorites, "favorites")
-    local groupedById = {}
-    local regularUngrouped = {}
-    for ri = 1, #regular do
-        local row = regular[ri]
-        local charKey = row.charKey
-        local gsec = CS:GetCharacterCustomSectionId(WN, charKey)
-        if gsec then
-            local gk = tostring(gsec)
-            groupedById[gk] = groupedById[gk] or {}
-            groupedById[gk][#groupedById[gk] + 1] = row
-        else
-            regularUngrouped[#regularUngrouped + 1] = row
-        end
-    end
 
     local sortModeKey = rosterSortKey
     local customGroupsOrdered = CS:BuildOrderedCustomCharacterGroups(profile, sortModeKey) or {}
@@ -400,7 +400,11 @@ local function BuildPvpPaintOrder(WN, profile, overviewRows)
         local gL = groupedById[gk0]
         if gL and #gL > 0 then
             local lk0 = CS:GetCustomGroupListKey(gid0) or "regular"
-            groupedById[gk0] = sortRows(gL, lk0)
+            gL = sortRows(gL, lk0)
+            if CS.PartitionFavoritesFirst then
+                CS:PartitionFavoritesFirst(WN, gL, PvPRowCharKey)
+            end
+            groupedById[gk0] = gL
         end
     end
     regularUngrouped = sortRows(regularUngrouped, "regular")
@@ -416,21 +420,23 @@ local function BuildPvpPaintOrder(WN, profile, overviewRows)
 
     if currentRow then
         local ck0 = currentRow.charKey
-        if CS:IsFavoriteCharacter(WN, ck0) then
+        local curGid = CS:GetCharacterCustomSectionId(WN, ck0)
+        if curGid then
+            local gkMerge = tostring(curGid)
+            local bucket = groupedDisplay[gkMerge] or {}
+            bucket[#bucket + 1] = currentRow
+            local lk0 = CS:GetCustomGroupListKey(curGid) or ("group_" .. gkMerge)
+            bucket = sortRows(bucket, lk0)
+            if CS.PartitionFavoritesFirst then
+                CS:PartitionFavoritesFirst(WN, bucket, PvPRowCharKey)
+            end
+            groupedDisplay[gkMerge] = bucket
+        elseif CS:IsFavoriteCharacter(WN, ck0) then
             favoritesDisplay[#favoritesDisplay + 1] = currentRow
             favoritesDisplay = sortRows(favoritesDisplay, "favorites")
         else
-            local curGid = CS:GetCharacterCustomSectionId(WN, ck0)
-            if curGid then
-                local gkMerge = tostring(curGid)
-                local bucket = groupedDisplay[gkMerge] or {}
-                bucket[#bucket + 1] = currentRow
-                local lk0 = CS:GetCustomGroupListKey(curGid) or ("group_" .. gkMerge)
-                groupedDisplay[gkMerge] = sortRows(bucket, lk0)
-            else
-                regularDisplay[#regularDisplay + 1] = currentRow
-                regularDisplay = sortRows(regularDisplay, "regular")
-            end
+            regularDisplay[#regularDisplay + 1] = currentRow
+            regularDisplay = sortRows(regularDisplay, "regular")
         end
     end
 

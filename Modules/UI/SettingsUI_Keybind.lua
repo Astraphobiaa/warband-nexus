@@ -25,7 +25,14 @@ function ns.SettingsKeybind.GetToggleBindingDisplayText()
     if not key or key == "" then
         return (ns.L and ns.L["KEYBINDING_UNBOUND"]) or "Not set"
     end
-    return (GetBindingText and GetBindingText(key)) or key
+    -- No prefix: verified in-game that GetBindingText("CTRL-C") returns "CTRL-C" while passing
+    -- "KEY_" collapses it to the abbreviated "c--" (KEY_<letter> globals do not exist, and the
+    -- prefixed lookup then loses the base key). Keep the raw key as a fallback.
+    local text = GetBindingText and GetBindingText(key)
+    if type(text) ~= "string" or text == "" then
+        text = key
+    end
+    return text
 end
 
 function ns.SettingsKeybind.IsForbiddenToggleKeybind(key)
