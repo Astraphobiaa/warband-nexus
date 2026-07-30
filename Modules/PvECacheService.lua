@@ -817,7 +817,15 @@ function WarbandNexus:RequestKeystoneRefresh(reason, forceClearSeen)
     if not charKey then return false end
 
     local now = GetTime()
-    local highPriority = reason and KEYSTONE_REFRESH_HIGH_PRIORITY[reason]
+    -- Detection must never be throttled while we currently show NO key for this character: the
+    -- "no key -> just obtained one" transition (e.g. an NPC / Font of Power keystone landing in the
+    -- bags, which fires no CHALLENGE_MODE_* event) has to get through on the first bag tick. Once a
+    -- key is cached, the normal throttle applies again, so this cannot spam.
+    local ksStore = self.db and self.db.global and self.db.global.pveCache
+        and self.db.global.pveCache.mythicPlus and self.db.global.pveCache.mythicPlus.keystones
+    local cachedKs = ksStore and ksStore[charKey]
+    local hasCachedKey = (cachedKs and tonumber(cachedKs.level) and tonumber(cachedKs.level) > 0) or false
+    local highPriority = (reason and KEYSTONE_REFRESH_HIGH_PRIORITY[reason]) or (not hasCachedKey)
     if not highPriority then
         local last = keystoneRefreshLastAt[charKey] or 0
         if (now - last) < KEYSTONE_REFRESH_MIN_INTERVAL then
@@ -837,14 +845,16 @@ function WarbandNexus:RequestKeystoneRefresh(reason, forceClearSeen)
 
     local didChange = self:UpdateCharacterKeystone(charKey)
 
-    if self.InvalidateGetAllCharactersCache then
-        self:InvalidateGetAllCharactersCache()
-    end
-    if self.SavePvECache then
-        self:SavePvECache()
-    end
-
+    -- Only persist / invalidate when the keystone actually changed. With the throttle bypassed for
+    -- keyless characters (above), a no-op re-read on every bag tick must stay cheap; UpdateCharacterKeystone
+    -- already returns false via its dedupe when nothing changed.
     if didChange then
+        if self.InvalidateGetAllCharactersCache then
+            self:InvalidateGetAllCharactersCache()
+        end
+        if self.SavePvECache then
+            self:SavePvECache()
+        end
         if self.SendMessage and Constants and Constants.EVENTS then
             if Constants.EVENTS.CHARACTER_UPDATED then
                 self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "mythicKey" })
@@ -1601,8 +1611,18 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
         if vaultFrameShown or allowClaimTransition == true or trustNoRewardsWhenVaultFresh then
             claimedResetTime = previousResetTime
             claimedAt = time()
-            -- Clear isPostReset since the chest is now claimed
-            if activities then activities.isPostReset = nil end
+            -- The chest is now claimed, so last reset's completed rows are consumed. Drop the stale
+            -- slot data (not just the isPostReset flag): clearing only the flag exposed those pre-reset
+            -- completed rows as current progress whenever the follow-up ProcessGreatVaultActivities
+            -- early-returned (GetActivities not ready yet), pinning the PvE row on "Pending..." until a
+            -- /reload. Empty rows read as no-progress (em-dash); a fresh scan repopulates this week.
+            if activities then
+                activities.raids = {}
+                activities.mythicPlus = {}
+                activities.pvp = {}
+                activities.world = {}
+                activities.isPostReset = nil
+            end
         else
             hasAvailable = true
         end
@@ -2781,6 +2801,37 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     end
 end
 
+---After a Great Vault claim, the live C_WeeklyRewards "available" state trails the server by a few
+---seconds. Re-check on a self-terminating backoff so the Easy Access badge and PvE row clear on their
+---own -- the player never has to open the PvE tab or /reload. Each step re-pokes OnUIInteract and
+---force-refreshes the badge, and it stops the instant the character is no longer counted claimable.
+---Only ever stamps "claimed" once the live API confirms no rewards remain, so it cannot hide a real
+---reward. A per-character generation token means a fresh claim supersedes any in-flight ladder.
+function WarbandNexus:SchedulePostClaimVaultHeal(charKey)
+    charKey = charKey or ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey
+    if not charKey or not C_Timer or not C_Timer.After then return end
+    ns._vaultPostClaimHealGen = ns._vaultPostClaimHealGen or {}
+    local gen = (ns._vaultPostClaimHealGen[charKey] or 0) + 1
+    ns._vaultPostClaimHealGen[charKey] = gen
+    local delays = { 0.2, 0.5, 1.0, 1.8, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0 }
+    local function step(i)
+        if not WarbandNexus or ns._vaultPostClaimHealGen[charKey] ~= gen then return end
+        if WarbandNexus.RefreshVaultClaimState then
+            WarbandNexus:RefreshVaultClaimState(charKey)
+        end
+        NotifyVaultEasyAccessRefresh()
+        local stillClaimable = ns.CharHasClaimableVaultReward and ns.CharHasClaimableVaultReward(charKey)
+        if not stillClaimable or i >= #delays then
+            if ns._vaultPostClaimHealGen[charKey] == gen then
+                ns._vaultPostClaimHealGen[charKey] = nil
+            end
+            return
+        end
+        C_Timer.After(delays[i + 1], function() step(i + 1) end)
+    end
+    C_Timer.After(delays[1], function() step(1) end)
+end
+
 -- WEEKLY REWARDS FRAME HOOKS
 
 ---Hook Blizzard WeeklyRewardsFrame hide so claim/close clears cached Ready state promptly.
@@ -2796,6 +2847,9 @@ function WarbandNexus:EnsureWeeklyRewardsFrameHooks()
         ns._weeklyRewardsInteractCharKey = nil
         if charKey and WarbandNexus.RefreshVaultClaimState then
             WarbandNexus:RefreshVaultClaimState(charKey)
+            if WarbandNexus.SchedulePostClaimVaultHeal then
+                WarbandNexus:SchedulePostClaimVaultHeal(charKey)
+            end
         end
     end)
 end
@@ -2869,15 +2923,7 @@ function WarbandNexus:RegisterPvECacheEvents()
         end)
     end
 
-    local function RefreshVaultRewardsAfterItemChange(delay)
-        C_Timer.After(delay or 0.35, function()
-            if WarbandNexus.RefreshVaultClaimState then
-                local key = ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey
-                WarbandNexus:RefreshVaultClaimState(key)
-            end
-            NotifyVaultEasyAccessRefresh()
-        end)
-    end
+    -- (post-claim vault heal is handled by WarbandNexus:SchedulePostClaimVaultHeal)
     
     -- Mythic+ events
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", function()
@@ -2962,10 +3008,10 @@ function WarbandNexus:RegisterPvECacheEvents()
         -- still reports the pre-claim vault, so the badge kept counting a vault already looted
         -- until the player reopened the Great Vault.
         WarbandNexus:RequestWeeklyVaultRefresh(0.5)
-        -- Keystone API can lag behind the vault UI by a few frames after a key reward.
-        RefreshVaultRewardsAfterItemChange(0.2)
-        RefreshVaultRewardsAfterItemChange(0.6)
-        RefreshVaultRewardsAfterItemChange(1.2)
+        -- The live C_WeeklyRewards "available" state can trail the server by several seconds after a
+        -- claim (and a vault key reward can land a frame or two late). Self-terminating heal ladder so
+        -- the badge + PvE row clear on their own instead of the player opening the PvE tab or /reload.
+        WarbandNexus:SchedulePostClaimVaultHeal(ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey)
     end)
     
     -- Raid lockout events

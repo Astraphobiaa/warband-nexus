@@ -272,6 +272,16 @@ L["CUSTOM_HEADER_DELETE_DIALOG_BODY"] = "Remover a seção |cffffcc00%s|r e desa
 L["CUSTOM_HEADER_MENU_SECTION_HEADERS"] = "Cabeçalhos personalizados"
 L["CUSTOM_HEADER_MENU_NEW"] = "Nova seção personalizada..."
 L["CUSTOM_HEADER_MENU_NONE_YET"] = "Ainda não há seções - use Nova seção acima."
+L["CUSTOM_HEADER_MENU_RENAME_GROUP"] = "Rename a section"
+L["CUSTOM_HEADER_MENU_RENAME_FMT"] = "Rename: %s"
+L["CUSTOM_HEADER_RENAME_DIALOG_TITLE"] = "Rename section"
+L["CUSTOM_HEADER_MOVE_UP"] = "Move section up"
+L["CUSTOM_HEADER_MOVE_DOWN"] = "Move section down"
+L["CHARACTER_MENU_STOP_TRACKING"] = "Stop tracking"
+L["CHARACTER_MENU_START_TRACKING"] = "Start tracking"
+L["CHARACTER_MENU_DELETE"] = "Delete character"
+L["CONFIG_SECTION_GOLD_TOTAL"] = "Section Gold Total"
+L["CONFIG_SECTION_GOLD_TOTAL_DESC"] = "Show the summed gold of each section on its header in the Characters tab. Uses the last amount recorded for each character, so a character you have not played since installing adds nothing."
 L["CUSTOM_HEADER_MENU_DELETE_GROUP"] = "Excluir uma seção"
 L["CUSTOM_HEADER_MENU_DELETE_FMT"] = "Excluir: %s"
 L["CUSTOM_HEADER_GOLD_STAR_TITLE"] = "Destaque de seção dourada"
@@ -280,10 +290,10 @@ L["CUSTOM_HEADER_MENU_IN_HEADER"] = "Nesta seção"
 L["CUSTOM_HEADER_MENU_NO_MEMBERS"] = "Ainda não há personagens."
 L["CUSTOM_HEADER_MENU_REMOVE_FMT"] = "Remover: %s"
 L["CUSTOM_HEADER_MENU_ADD_TO_HEADER"] = "Adicionar personagens"
-L["CUSTOM_HEADER_MENU_NO_CANDIDATES"] = "Nenhum personagem elegível (favoritos ficam em Favoritos)."
+L["CUSTOM_HEADER_MENU_NO_CANDIDATES"] = "Nenhum personagem elegível."
 L["CUSTOM_HEADER_MENU_ADD_FMT"] = "Adicionar: %s"
 L["CUSTOM_HEADER_ROW_ADD_TOOLTIP"] = "Editar esta seção"
-L["CUSTOM_HEADER_ROW_ADD_TOOLTIP_BODY"] = "Pesquise, marque personagens e clique Adicionar selecionados. Na janela de personagens marque a primeira coluna para remover desta seção. Favoritos permanecem em Favoritos. No máximo uma seção personalizada por personagem."
+L["CUSTOM_HEADER_ROW_ADD_TOOLTIP_BODY"] = "Pesquise, marque personagens e clique Adicionar selecionados. Na janela de personagens marque a primeira coluna para remover desta seção. No máximo uma seção personalizada por personagem."
 L["CUSTOM_HEADER_PICKER_FILTER_LABEL"] = "Buscar"
 L["CUSTOM_HEADER_PICKER_EMPTY"] = "Nenhum personagem correspondente."
 L["CUSTOM_HEADER_ADD_SELECTED"] = "Adicionar selecionados"
@@ -1170,18 +1180,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V338"] = [=[v3.3.8 (2026-07-29)
+L["CHANGELOG_V340"] = [=[v3.4.0 (2026-07-31)
+
+Added:
+- Each section header on the Characters tab now shows the total gold of the characters in it, next to the member count. It can be turned off under Settings, General. The total uses the last amount recorded for each character, so a character you have not played since installing adds nothing to it.
+- Custom sections can be renamed. Open the custom sections menu in the title bar and pick Rename.
+- Custom sections can be reordered directly. Up and down arrows on each custom section header move it, which replaces naming a section with a leading letter to force its position.
+- Right-clicking a character row opens a menu to stop or resume tracking that character, or to delete it. Deleting no longer means hunting for the small icon at the end of the row, which made a leftover row from a faction change look permanent.
 
 Updated:
-- Marking a character as a favorite no longer pulls it out of your custom section. The star now highlights the character where it already sits and sorts it to the top of that section, so the Favorites block only holds favorites that are not in a section of their own.
-- The roster picker for a custom section now lists favorited characters as well, so a favorite can be added to or removed from a section like any other character.
+- The custom section control on a character row is now available for favorites as well, so a favorited character can be moved between sections or taken out of one.
 
 Fixed:
-- Fixed the favorites star refusing to release a character. Characters starred before the account moved to its current storage format were saved under an older name, so the star kept adding and removing a second entry while the original one stayed behind and pinned the character to Favorites forever. Existing lists are cleaned up automatically on login.
-- Fixed a character being listed as a member of a custom section in the add window while still showing under Favorites on the Characters tab, and appearing as tracked but neither favorite nor section member on the PvE, PvP and Professions tabs.
-- Fixed a Lua error when clicking the gold star on a custom section header, or confirming Add selected in the roster picker.
-- Fixed key combinations being unreadable in Settings when the bound key is a dash. Combinations are now shown with a spaced separator, so Ctrl plus dash reads as CTRL - -.
-- Fixed long key combinations spilling out of the keybinding button and disappearing behind the clear button. The full combination is now also shown in the button tooltip.
+- Claiming a Great Vault reward now clears it from the Easy Access badge and updates the PvE tab right away, instead of leaving a stale count or a stuck "Pending..." until you reloaded.
+- A Mythic Keystone received from an NPC when you had no key now shows on the PvE and Characters tabs within a few seconds, instead of only after a reload.
+- Fixed the star staying gray when you favorite a character that sits in a custom section. The character was saved as a favorite, but nothing on the row showed it until the list was rebuilt.
+- Fixed the custom section help text still claiming that favorites stay in the Favorites block, which stopped being true once favorites were allowed to live in a section.
 
 CurseForge: Warband Nexus]=]
 

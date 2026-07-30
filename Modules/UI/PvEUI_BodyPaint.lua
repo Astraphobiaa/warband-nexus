@@ -714,7 +714,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         return list
     end
     
-    -- Sort favorites; split non-favorites into custom sections + main list (Characters tab parity)
+    -- Sort favorites; split the rest into custom sections + main list (Characters tab parity)
     favorites = sortCharacters(favorites, "favorites")
     local groupedById = {}
     local regularUngrouped = {}

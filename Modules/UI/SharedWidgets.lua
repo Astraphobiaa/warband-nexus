@@ -3560,11 +3560,10 @@ local function CreateStandardTabTitleCard(headerParent, opts)
     titleFs:SetJustifyH("LEFT")
     ns.UI_SetTextColorRole(titleFs, "Bright")
 
-    local subtitleFs = FontManager:CreateFontString(textStack, UIFontRole("tabTitleCardSubtitle"), "OVERLAY")
+    local subtitleFs = FontManager:CreateFontString(textStack, UIFontRole("tabSubtitle"), "OVERLAY")
     subtitleFs:SetText(opts.subtitleText or "")
-    -- Gold strapline, centred under the title across the card's text column.
-    ns.UI_SetTextColorRole(subtitleFs, "Gold")
-    subtitleFs:SetJustifyH("CENTER")
+    ns.UI_SetTextColorRole(subtitleFs, "Normal")
+    subtitleFs:SetJustifyH("LEFT")
     subtitleFs:SetWordWrap(false)
     subtitleFs:SetNonSpaceWrap(false)
     if subtitleFs.SetMaxLines then subtitleFs:SetMaxLines(1) end

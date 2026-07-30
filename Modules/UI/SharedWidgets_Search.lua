@@ -526,7 +526,7 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
                 end
             end
             if candShown == 0 then
-                addPlaceholderLine((L and L["CUSTOM_HEADER_MENU_NO_CANDIDATES"]) or "No eligible characters (favorites stay in Favorites).", 0, ROSTER_CONTENT_LEFT)
+                addPlaceholderLine((L and L["CUSTOM_HEADER_MENU_NO_CANDIDATES"]) or "No eligible characters.", 0, ROSTER_CONTENT_LEFT)
             end
         end
 
@@ -650,6 +650,51 @@ end
 ---   refreshTab       : string  optional tab payload for WN_UI_MAIN_REFRESH_REQUESTED on toggle
 ---   addBtnSize       : number  optional override for + button size (default 16)
 ---   allowSectionHighlightToggle : boolean (default true). When false, no gold-star control (PvE/Professions: highlight only on Character tab).
+-- Fixed right-edge columns shared by every section header (built-in and custom) so gold / arrows /
+-- add / count line up top-to-bottom. Right to left the order is: [count] [+ add] [down][up arrows]
+-- [gold]. The add button and reorder arrows only appear on custom sections; built-in headers
+-- (Favorites / Character / Untracked) leave those two slots empty but still place count + gold on the
+-- exact same columns, so every header reads as aligned vertical columns. The variable-width gold is
+-- the LEFTMOST column and is right-anchored (grows leftward into the title), so no gold amount can
+-- shove the count / add / arrow columns out of alignment.
+local SECTION_COUNT_RIGHT_INSET = 12    -- member-count badge, rightmost
+local SECTION_ADD_RIGHT_INSET   = 42    -- [+] manage-roster button (left of count)
+local SECTION_ARROW_RIGHT_INSET = 70    -- down-arrow right edge (up-arrow sits to its left)
+-- Gold right edge. Must clear the arrow column (up-arrow left edge ~= ARROW_INSET + 43) with a
+-- comfortable gap so the money's copper coin never crowds the arrows: 130 - 113 = 17px, in line with
+-- the other inter-column gaps.
+local SECTION_GOLD_RIGHT_INSET  = 130   -- gold total right edge (clears the arrow column + gap)
+
+--- Attach / refresh the per-section gold total on a collapsible header, right-aligned to the shared
+--- gold column. Returns the FontString (hidden when the setting is off or there is nothing to show).
+---@param headerFrame Frame
+---@param copper number|nil Summed gold in copper; nil or 0 hides the label
+---@return FontString|nil
+function ns.UI_SetSectionHeaderGoldTotal(headerFrame, copper)
+    if not headerFrame then return nil end
+    local fs = headerFrame._wnSectionGoldTotalFs
+    local addon = _G.WarbandNexus or ns.WarbandNexus
+    local profile = addon and addon.db and addon.db.profile
+    local enabled = not profile or profile.showSectionGoldTotal ~= false
+    local amount = tonumber(copper) or 0
+    if not enabled or amount <= 0 then
+        if fs then fs:Hide() end
+        return fs
+    end
+    if not fs then
+        fs = FontManager:CreateFontString(headerFrame, FontManager:GetFontRole("tabSubtitle"), "OVERLAY")
+        headerFrame._wnSectionGoldTotalFs = fs
+    end
+    fs:SetJustifyH("RIGHT")
+    -- FormatMoney emits its own |cff colours plus coin icons; do not re-colour it.
+    fs:SetText((ns.UI_FormatMoney and ns.UI_FormatMoney(amount, 12)) or tostring(amount))
+    -- Fixed column: identical anchor on every header so the amounts line up top-to-bottom.
+    fs:ClearAllPoints()
+    fs:SetPoint("RIGHT", headerFrame, "RIGHT", -SECTION_GOLD_RIGHT_INSET, 0)
+    fs:Show()
+    return fs
+end
+
 function ns.UI_DecorateCustomHeader(headerFrame, opts)
     if not headerFrame or type(opts) ~= "table" then return end
     local groupId = opts.groupId
@@ -672,7 +717,9 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
     -- Count badge (right edge baseline; siblings re-anchor relative to this).
     local countFs = headerFrame._wnCustomHeaderCount
     if not countFs then
-        countFs = FontManager:CreateFontString(headerFrame, "header", "OVERLAY")
+        -- Same role as the built-in Favorites/Character/Untracked counts, so every section's badge
+        -- is one consistent size.
+        countFs = FontManager:CreateFontString(headerFrame, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
         headerFrame._wnCustomHeaderCount = countFs
     end
     countFs:SetJustifyH("RIGHT")
@@ -711,7 +758,7 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             addBtn:SetScript("OnEnter", function(b)
                 GameTooltip:SetOwner(b, "ANCHOR_LEFT")
                 GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_ROW_ADD_TOOLTIP"]) or "Add characters", 1, 1, 1)
-                GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_ROW_ADD_TOOLTIP_BODY"]) or "Pick tracked characters (non-favorites) to place in this header. Remove them here or via the row note icon.", 0.85, 0.85, 0.9, true)
+                GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_ROW_ADD_TOOLTIP_BODY"]) or "Pick tracked characters to place in this header. Remove them here or via the row note icon.", 0.85, 0.85, 0.9, true)
                 GameTooltip:Show()
             end)
             addBtn:SetScript("OnLeave", GameTooltip_Hide)
@@ -724,6 +771,66 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
         end
     elseif addBtn then
         addBtn:Hide()
+    end
+
+    -- Section gold total (left of the [+] button). Last recorded value per character, not live.
+    local goldFs = ns.UI_SetSectionHeaderGoldTotal and ns.UI_SetSectionHeaderGoldTotal(headerFrame, opts.goldTotal)
+
+    -- Section order arrows. Only meaningful while the tab sort is "manual" — that is the one mode
+    -- BuildOrderedCustomCharacterGroups reads the profile array order in.
+    local upBtn, downBtn = headerFrame._wnCustomHeaderUpBtn, headerFrame._wnCustomHeaderDownBtn
+    if opts.showReorder and ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
+        local arrowSize = 20
+        local secIdx = tonumber(opts.sectionIndex) or 0
+        local secCount = tonumber(opts.sectionCount) or 0
+        local function EnsureArrow(existing, atlas, delta, enabled, tipKey, tipFallback)
+            local btn = existing
+            if not btn then
+                btn = ns.UI.Factory:CreateButton(headerFrame, arrowSize, arrowSize, true)
+                if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(btn) end
+                btn:SetFrameLevel((headerFrame:GetFrameLevel() or 2) + 3)
+                btn:EnableMouse(true)
+            end
+            btn:SetSize(arrowSize, arrowSize)
+            -- Same crisp Blizzard atlas the character-row reorder arrows use (the faint chevron TGAs
+            -- barely showed). Disabled ends desaturate to grey + dim instead of vanishing.
+            btn:SetNormalAtlas(atlas)
+            btn:SetHighlightAtlas(atlas)
+            local nt = btn.GetNormalTexture and btn:GetNormalTexture()
+            if nt then
+                nt:SetDesaturated(not enabled)
+                nt:SetAlpha(enabled and 1 or 0.4)
+            end
+            btn:SetScript("OnEnter", function(b)
+                GameTooltip:SetOwner(b, "ANCHOR_LEFT")
+                GameTooltip:SetText((ns.L and ns.L[tipKey]) or tipFallback, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            btn:SetScript("OnLeave", GameTooltip_Hide)
+            btn:SetScript("OnClick", function()
+                if not enabled then return end
+                if CharacterService and CharacterService.MoveCustomCharacterSection
+                    and CharacterService:MoveCustomCharacterSection(addon, groupId, delta) then
+                    if addon.SendMessage and E then
+                        addon:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = opts.refreshTab, skipCooldown = true })
+                    end
+                end
+            end)
+            btn:Show()
+            return btn
+        end
+        -- Grey out (and no-op) the arrow that would run off the ends of the list.
+        local upEnabled = (secIdx == 0) or (secIdx > 1)
+        local downEnabled = (secCount == 0) or (secIdx < secCount)
+        upBtn = EnsureArrow(upBtn, "housing-floor-arrow-up-default", -1, upEnabled,
+            "CUSTOM_HEADER_MOVE_UP", "Move section up")
+        downBtn = EnsureArrow(downBtn, "housing-floor-arrow-down-default", 1, downEnabled,
+            "CUSTOM_HEADER_MOVE_DOWN", "Move section down")
+        headerFrame._wnCustomHeaderUpBtn = upBtn
+        headerFrame._wnCustomHeaderDownBtn = downBtn
+    else
+        if upBtn then upBtn:Hide() end
+        if downBtn then downBtn:Hide() end
     end
 
     local allowSectionHighlightToggle = opts.allowSectionHighlightToggle ~= false
@@ -795,17 +902,31 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
     end
 
     -- ===== UNIFIED ANCHOR LAYOUT =====
-    -- Right edge:    [add-btn?]  [count]   (count anchored to header right; add-btn left of count)
-    -- Left of title: [chevron]   [icon]    [gold-star]   [title]
-    local headerSide = (UI_SPACING and UI_SPACING.SIDE_MARGIN) or (UI_LAYOUT and UI_LAYOUT.SIDE_MARGIN) or 12
+    -- Fixed right-edge columns, right -> left: [count] [+ add] [down][up arrows] [gold] .... [title]
+    -- Each element type sits at the SAME inset on every header, so count / add / arrows / gold read as
+    -- aligned vertical columns. Every control is anchored to the header's right edge at its own fixed
+    -- inset (never relative to a sibling), so a missing + / arrows on the built-in headers leaves an
+    -- empty slot instead of shifting the neighbours. The variable-width gold is the leftmost column and
+    -- grows leftward into the title (anchored by UI_SetSectionHeaderGoldTotal at SECTION_GOLD_RIGHT_INSET).
     countFs:ClearAllPoints()
+    countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -SECTION_COUNT_RIGHT_INSET, 0)
     if addBtn and addBtn:IsShown() then
-        countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -headerSide, 0)
         addBtn:ClearAllPoints()
-        addBtn:SetPoint("RIGHT", countFs, "LEFT", -6, 0)
-    else
-        countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -headerSide, 0)
+        addBtn:SetPoint("RIGHT", headerFrame, "RIGHT", -SECTION_ADD_RIGHT_INSET, 0)
     end
+    if downBtn and downBtn:IsShown() and upBtn and upBtn:IsShown() then
+        downBtn:ClearAllPoints()
+        downBtn:SetPoint("RIGHT", headerFrame, "RIGHT", -SECTION_ARROW_RIGHT_INSET, 0)
+        upBtn:ClearAllPoints()
+        upBtn:SetPoint("RIGHT", downBtn, "LEFT", -3, 0)
+    end
+    -- Leftmost occupied column governs where the title must stop. Insets grow gold > arrows > add >
+    -- count, so gold is always leftmost when shown, then arrows, then the +, then the bare count.
+    local leftmost = countFs
+    if addBtn and addBtn:IsShown() then leftmost = addBtn end
+    if downBtn and downBtn:IsShown() then leftmost = upBtn end
+    if goldFs and goldFs:IsShown() then leftmost = goldFs end
+    headerFrame._wnCustomHeaderRightAnchor = leftmost
 
     if allowSectionHighlightToggle and goldStar then
         goldStar:ClearAllPoints()
@@ -820,7 +941,7 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
                 headerText:ClearAllPoints()
                 headerText:SetPoint("LEFT", goldStar, "RIGHT", 12, 0)
                 if countFs then
-                    headerText:SetPoint("RIGHT", countFs, "LEFT", -10, 0)
+                    headerText:SetPoint("RIGHT", leftmost, "LEFT", -10, 0)
                 end
                 headerText:SetJustifyH("LEFT")
             end
@@ -829,12 +950,12 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             goldStar:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
             headerText:ClearAllPoints()
             headerText:SetPoint("LEFT", goldStar, "RIGHT", 12, 0)
-            headerText:SetPoint("RIGHT", countFs, "LEFT", -10, 0)
+            headerText:SetPoint("RIGHT", leftmost, "LEFT", -10, 0)
             headerText:SetJustifyH("LEFT")
         elseif addBtn and addBtn:IsShown() then
             goldStar:SetPoint("RIGHT", addBtn, "LEFT", -4, 0)
         else
-            goldStar:SetPoint("RIGHT", countFs, "LEFT", -6, 0)
+            goldStar:SetPoint("RIGHT", leftmost, "LEFT", -6, 0)
         end
     elseif opts.headerText and countFs then
         local ht = opts.headerText
@@ -844,15 +965,15 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             opts.iconFrame:SetPoint("LEFT", opts.expandIcon, "RIGHT", 8, 0)
             ht:ClearAllPoints()
             ht:SetPoint("LEFT", opts.iconFrame, "RIGHT", 12, 0)
-            ht:SetPoint("RIGHT", countFs, "LEFT", -10, 0)
+            ht:SetPoint("RIGHT", leftmost, "LEFT", -10, 0)
             ht:SetJustifyH("LEFT")
         elseif opts.expandIcon then
             ht:ClearAllPoints()
             ht:SetPoint("LEFT", opts.expandIcon, "RIGHT", 12, 0)
-            ht:SetPoint("RIGHT", countFs, "LEFT", -10, 0)
+            ht:SetPoint("RIGHT", leftmost, "LEFT", -10, 0)
             ht:SetJustifyH("LEFT")
         else
-            ht:SetPoint("RIGHT", countFs, "LEFT", -10, 0)
+            ht:SetPoint("RIGHT", leftmost, "LEFT", -10, 0)
         end
     end
 end

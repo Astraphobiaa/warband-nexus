@@ -242,6 +242,8 @@ local defaults = {
         showItemCount = true, -- legacy fallback when showTooltipItemCount is nil
         showTooltipItemCount = true,
         showTooltipItemID = true,
+        --- Characters tab: summed gold per section header (last recorded value per character).
+        showSectionGoldTotal = true,
         recipeCompanionEnabled = true,
         -- To-Do browse filters (Mounts, Pets, Achievements, …)
         plansShowCompleted = false,

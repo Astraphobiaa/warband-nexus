@@ -36,9 +36,9 @@ FontManager.FONT_ROLE = {
     -- Shared tab / title / dialog (all UI from one place)
     tabTitlePrimary = "header",
     tabSubtitle = "subtitle",
-    -- Tab title card strapline only. Its own role so it can run a step larger than the generic
-    -- `tabSubtitle` label without dragging pick-menu section headers up with it.
-    tabTitleCardSubtitle = "title",
+    -- Member-count badge on every section header (Favorites / custom / Character / Untracked).
+    -- One size larger than the old "small" count so the badge reads clearly next to the gold total.
+    sectionHeaderCount = "title",
     sectionCollapsibleTitle = "title",
     popupDialogTitle = "title",
     settingsSectionTitle = "header",

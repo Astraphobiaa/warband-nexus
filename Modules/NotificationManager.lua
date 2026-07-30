@@ -1235,6 +1235,15 @@ function WarbandNexus:ShowModalNotification(config)
                 headerLine:SetShadowOffset(1, -1)
                 NM_ApplyTextShadow(headerLine, 0.8)
             end
+        elseif config.emphasizeAction then
+            -- Single prominent line (vault "unclaimed rewards"): larger + bright; centered below.
+            headerLine = AS.NM_CreateToastFontString(textGroup, "title", "OVERLAY", nil, false)
+            headerLine:SetJustifyH("CENTER")
+            headerLine:SetWordWrap(true)
+            headerLine:SetMaxLines(2)
+            headerLine:SetText(NM_ThemeTextHex("Bright") .. progressStr .. "|r")
+            headerLine:SetShadowOffset(1, -1)
+            NM_ApplyTextShadow(headerLine, 0.85)
         else
             headerLine = AS.NM_CreateToastFontString(textGroup, "small", "OVERLAY", nil, laneUsesProgressLane)
             headerLine:SetJustifyH("LEFT")
@@ -1307,6 +1316,7 @@ function WarbandNexus:ShowModalNotification(config)
                 stackH = stackH,
                 hHeader = hHeader,
                 gapTitle = gapTitle,
+                emphasizeAction = config.emphasizeAction == true,
             })
         end
         
@@ -3430,6 +3440,9 @@ function WarbandNexus:OnVaultRewardAvailable(event, data)
     self:Notify("vault", (ns.L and ns.L["WEEKLY_VAULT_READY"]) or "Weekly Vault Ready!", CATEGORY_ICONS.vault, {
         action = (ns.L and ns.L["UNCLAIMED_REWARDS"]) or "You have unclaimed rewards",
         categoryTitle = "",
+        -- Single-line vault toast: render the message centered, larger and bright instead of the
+        -- faint small-grey default (it read as barely visible).
+        emphasizeAction = true,
     })
 end
 

@@ -107,6 +107,15 @@ local function SetSectionHeaderCount(fs, count, role)
     ns.UI_SetTextColorRole(fs, role or "Muted")
     fs:SetText(FormatNumber(count or 0))
 end
+--- Per-section gold total for the built-in headers (Favorites / Character / Untracked). The anchor
+--- is owned by UI_SetSectionHeaderGoldTotal (shared fixed column), so this must NOT re-anchor —
+--- otherwise these totals would drift off the column the custom headers use.
+local function AttachSectionGoldTotal(headerFrame, _countFs, list)
+    if not headerFrame or not ns.UI_SetSectionHeaderGoldTotal then return end
+    local CS = ns.CharacterService
+    local copper = (CS and CS.SumCharacterListGold) and CS:SumCharacterListGold(list) or 0
+    ns.UI_SetSectionHeaderGoldTotal(headerFrame, copper)
+end
 --- Delete-confirm dialog buttons: Factory + guarded chrome; classic skips custom hover backdrops.
 local function ApplyCharDialogChrome(frame, bg, border)
     if not frame or not ApplyVisuals then return end
@@ -1849,10 +1858,11 @@ function WarbandNexus:DrawCharacterList(parent)
         AnchorSectionHeader(favHeader)
         if favIcon then favIcon:SetSize(24, 24) end
 
-        local favCount = FontManager:CreateFontString(favHeader, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
+        local favCount = FontManager:CreateFontString(favHeader, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
         favCount:SetPoint("RIGHT", favHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         favCount:SetJustifyH("RIGHT")
         SetSectionHeaderCount(favCount, #trackedFavorites, "Normal")
+        AttachSectionGoldTotal(favHeader, favCount, trackedFavorites)
 
         favoritesContent = AcquireSectionContentFrame(favHeader)
         local favoritesHeight = DrawCharactersIntoSection(
@@ -1873,7 +1883,7 @@ function WarbandNexus:DrawCharacterList(parent)
         yOffset = yOffset + SECTION_H + (favoritesExpanded and favoritesHeight or 0) + SECTION_HEADER_GAP
     end
 
-    -- User-defined custom headers (tracked, non-favorite characters)
+    -- User-defined custom headers (any tracked character, favorites included)
     for cgi = 1, #customGroupsOrdered do
         local gMeta = customGroupsOrdered[cgi]
         local gid = gMeta.id
@@ -1938,6 +1948,13 @@ function WarbandNexus:DrawCharacterList(parent)
                     includeAddButton = true,
                     addButtonRoster = characters,
                     refreshTab = nil,
+                    goldTotal = (ns.CharacterService and ns.CharacterService.SumCharacterListGold)
+                        and ns.CharacterService:SumCharacterListGold(gList) or nil,
+                    -- Sections always render in array order now, so the arrows are always shown;
+                    -- cgi is the section's real position and the ends grey out on their own.
+                    showReorder = true,
+                    sectionIndex = cgi,
+                    sectionCount = #customGroupsOrdered,
                 })
             end
 
@@ -1947,7 +1964,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 gList,
                 false,
                 gListKey,
-                (ns.L and ns.L["CUSTOM_HEADER_EMPTY"]) or "No characters in this header. Use the + button (next to Filter) or row note icon on non-favorites to assign."
+                (ns.L and ns.L["CUSTOM_HEADER_EMPTY"]) or "No characters in this header. Use the + button (next to Filter) or the row note icon to assign."
             )
             if grpExpanded then
                 grpContent:Show()
@@ -1961,7 +1978,7 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
 
-    -- Regular characters (ungrouped tracked, non-favorites)
+    -- Regular characters (tracked, no custom section, not favorited)
     if drawRegular then
         local charactersExpanded = self.db.profile.ui.charactersExpanded
         local charactersContent
@@ -1998,10 +2015,11 @@ function WarbandNexus:DrawCharacterList(parent)
         AnchorSectionHeader(charHeader)
         if charIcon then charIcon:SetSize(24, 24) end
 
-        local charCount = FontManager:CreateFontString(charHeader, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
+        local charCount = FontManager:CreateFontString(charHeader, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
         charCount:SetPoint("RIGHT", charHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         charCount:SetJustifyH("RIGHT")
         SetSectionHeaderCount(charCount, #trackedRegular, "Normal")
+        AttachSectionGoldTotal(charHeader, charCount, trackedRegular)
 
         charactersContent = AcquireSectionContentFrame(charHeader)
         local charactersHeight = DrawCharactersIntoSection(
@@ -2068,10 +2086,11 @@ function WarbandNexus:DrawCharacterList(parent)
         AnchorSectionHeader(untrackedHeader)
         if untrackedIcon then untrackedIcon:SetSize(24, 24) end
 
-        local untrackedCount = FontManager:CreateFontString(untrackedHeader, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
+        local untrackedCount = FontManager:CreateFontString(untrackedHeader, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
         untrackedCount:SetPoint("RIGHT", untrackedHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         untrackedCount:SetJustifyH("RIGHT")
         SetSectionHeaderCount(untrackedCount, #untracked, "Muted")
+        AttachSectionGoldTotal(untrackedHeader, untrackedCount, untracked)
 
         untrackedContent = AcquireSectionContentFrame(untrackedHeader)
         local untrackedHeight = DrawCharactersIntoSection(
@@ -2141,6 +2160,19 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if not rowIsFavorite and charKey and ns.CharacterService and ns.CharacterService.IsFavoriteCharacter then
         rowIsFavorite = ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) and true or false
     end
+
+    -- Right-click: tracking toggle + delete. `row.deleteBtn` is built further down, so it is read
+    -- when the menu opens rather than captured here.
+    row:SetScript("OnMouseUp", function(self, button)
+        if button ~= "RightButton" then return end
+        if not ns.UI_ShowCharacterRowContextMenu then return end
+        ns.UI_ShowCharacterRowContextMenu(self, charKey, {
+            charName = char.name,
+            isTracked = char.isTracked ~= false,
+            isCurrent = isCurrent,
+            deleteButton = self.deleteBtn,
+        })
+    end)
     
     -- Set alternating background colors (Factory pattern)
     ns.UI.Factory:ApplyRowBackground(row, index)
@@ -3354,6 +3386,84 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     end
     
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+end
+
+--- Compact rename dialog for one custom section. The new-section dialog carries a full roster
+--- picker, which is far more window than a rename needs.
+---@param groupId string
+---@param currentName string|nil
+function WarbandNexus:OpenRenameCustomSectionDialog(groupId, currentName)
+    if not groupId or groupId == "" then return end
+    local CreateExternalWindow = ns.UI_CreateExternalWindow
+    local FontMgr = ns.FontManager
+    if not CreateExternalWindow or not ns.UI or not ns.UI.Factory or not ns.UI.Factory.CreateEditBox then
+        return
+    end
+    local L = ns.L
+    local dialogW = 420
+    local innerW = dialogW - 40
+    local dialog, contentFrame = CreateExternalWindow({
+        name = "WnRenameCustomSectionDialog",
+        title = (L and L["CUSTOM_HEADER_RENAME_DIALOG_TITLE"]) or "Rename section",
+        icon = "socialqueuing-icon-group",
+        iconIsAtlas = true,
+        width = dialogW,
+        height = 190,
+    })
+    if not dialog or not contentFrame then return end
+
+    local nameLabel = FontMgr:CreateFontString(contentFrame, "tabSubtitle", "OVERLAY")
+    nameLabel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 16, -14)
+    nameLabel:SetWidth(innerW)
+    nameLabel:SetJustifyH("LEFT")
+    ns.UI_SetTextColorRole(nameLabel, "Bright")
+    nameLabel:SetText((L and L["CUSTOM_HEADER_NEW_DIALOG_LABEL"]) or "Section name")
+
+    local editBg = ns.UI.Factory:CreateContainer(contentFrame, innerW, 44, true)
+    editBg:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 0, -8)
+    editBg:SetPoint("TOPRIGHT", nameLabel, "BOTTOMRIGHT", 0, -8)
+    local eb = ns.UI.Factory:CreateEditBox(editBg)
+    eb:SetPoint("TOPLEFT", editBg, "TOPLEFT", 8, -8)
+    eb:SetPoint("BOTTOMRIGHT", editBg, "BOTTOMRIGHT", -8, 8)
+    if eb.SetMaxLetters then eb:SetMaxLetters(32) end
+    if currentName and not (issecretvalue and issecretvalue(currentName)) then
+        eb:SetText(tostring(currentName))
+    end
+    eb:SetAutoFocus(true)
+    if eb.HighlightText then eb:HighlightText() end
+
+    local function Submit()
+        local t = eb:GetText()
+        if issecretvalue and issecretvalue(t) then return end
+        t = (type(t) == "string" and t:match("^%s*(.-)%s*$")) or ""
+        if t == "" then return end
+        if ns.CharacterService and ns.CharacterService.RenameCustomCharacterSection then
+            ns.CharacterService:RenameCustomCharacterSection(WarbandNexus, groupId, t)
+        end
+        if dialog.Close then dialog:Close() else dialog:Hide() end
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+    end
+    eb:SetScript("OnEnterPressed", Submit)
+    eb:SetScript("OnEscapePressed", function()
+        if dialog.Close then dialog:Close() else dialog:Hide() end
+    end)
+
+    local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, innerW, 40)
+    btnContainer:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 16)
+    local saveBtn = CreateCharacterDeleteDialogButton(btnContainer,
+        (L and L["SAVE"]) or _G.SAVE or "Save", 160, false)
+    if saveBtn then
+        saveBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
+        saveBtn:SetScript("OnClick", Submit)
+    end
+    local cancelBtn = CreateCharacterDeleteDialogButton(btnContainer,
+        (L and L["CANCEL"]) or _G.CANCEL or "Cancel", 160, false)
+    if cancelBtn then
+        cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
+        cancelBtn:SetScript("OnClick", function()
+            if dialog.Close then dialog:Close() else dialog:Hide() end
+        end)
+    end
 end
 
 function WarbandNexus:OpenCustomCharacterHeaderDialog()

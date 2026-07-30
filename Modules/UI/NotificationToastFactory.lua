@@ -102,9 +102,14 @@ function NotificationToastFactory:ApplyCompactTextLayout(params)
         textGroup:SetPoint("LEFT", contentFrame, "LEFT", textLeftPad, 0)
         textGroup:SetPoint("CENTER", contentFrame, "CENTER", 0, 0)
         if headerLine then
-            headerLine:SetJustifyH("LEFT")
+            -- emphasizeAction (vault): center the single line across the text area; else left as before.
+            headerLine:SetJustifyH(params.emphasizeAction and "CENTER" or "LEFT")
             headerLine:SetWidth(textUseW)
-            headerLine:SetPoint("TOPLEFT", textGroup, "TOPLEFT", 0, 0)
+            if params.emphasizeAction then
+                headerLine:SetPoint("CENTER", textGroup, "CENTER", 0, 0)
+            else
+                headerLine:SetPoint("TOPLEFT", textGroup, "TOPLEFT", 0, 0)
+            end
         end
         return
     end

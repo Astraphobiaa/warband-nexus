@@ -1,14 +1,19 @@
-## v3.3.8 (2026-07-29)
+## v3.4.0 (2026-07-31)
+
+### Added
+
+- Each section header on the Characters tab now shows the total gold of the characters in it, next to the member count. It can be turned off under Settings, General. The total uses the last amount recorded for each character, so a character you have not played since installing adds nothing to it.
+- Custom sections can be renamed. Open the custom sections menu in the title bar and pick Rename.
+- Custom sections can be reordered directly. Up and down arrows on each custom section header move it, which replaces naming a section with a leading letter to force its position.
+- Right-clicking a character row opens a menu to stop or resume tracking that character, or to delete it. Deleting no longer means hunting for the small icon at the end of the row, which made a leftover row from a faction change look permanent.
 
 ### Updated
 
-- Marking a character as a favorite no longer pulls it out of your custom section. The star now highlights the character where it already sits and sorts it to the top of that section, so the Favorites block only holds favorites that are not in a section of their own.
-- The roster picker for a custom section now lists favorited characters as well, so a favorite can be added to or removed from a section like any other character.
+- The custom section control on a character row is now available for favorites as well, so a favorited character can be moved between sections or taken out of one.
 
 ### Fixed
 
-- Fixed the favorites star refusing to release a character. Characters starred before the account moved to its current storage format were saved under an older name, so the star kept adding and removing a second entry while the original one stayed behind and pinned the character to Favorites forever. Existing lists are cleaned up automatically on login.
-- Fixed a character being listed as a member of a custom section in the add window while still showing under Favorites on the Characters tab, and appearing as tracked but neither favorite nor section member on the PvE, PvP and Professions tabs.
-- Fixed a Lua error when clicking the gold star on a custom section header, or confirming Add selected in the roster picker.
-- Fixed key combinations being unreadable in Settings when the bound key is a dash. Combinations are now shown with a spaced separator, so Ctrl plus dash reads as CTRL - -.
-- Fixed long key combinations spilling out of the keybinding button and disappearing behind the clear button. The full combination is now also shown in the button tooltip.
+- Claiming a Great Vault reward now clears it from the Easy Access badge and updates the PvE tab right away, instead of leaving a stale count or a stuck "Pending..." until you reloaded.
+- A Mythic Keystone received from an NPC when you had no key now shows on the PvE and Characters tabs within a few seconds, instead of only after a reload.
+- Fixed the star staying gray when you favorite a character that sits in a custom section. The character was saved as a favorite, but nothing on the row showed it until the list was rebuilt.
+- Fixed the custom section help text still claiming that favorites stay in the Favorites block, which stopped being true once favorites were allowed to live in a section.

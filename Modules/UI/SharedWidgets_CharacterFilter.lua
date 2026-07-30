@@ -665,7 +665,57 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
     menu:Show()
 end
 
---- Popup: move character to / from a custom section (tracked non-favorites).
+--- Right-click menu on a character row: tracking toggle + delete.
+--- Both actions already exist as row icons; the menu makes them findable, which is the actual
+--- complaint (a stale row left behind by a faction change looks unremovable).
+---@param anchorFrame Frame Row that was right-clicked
+---@param charKey string
+---@param opts table { charName?, isTracked?, isCurrent?, deleteButton?, onDone? }
+function ns.UI_ShowCharacterRowContextMenu(anchorFrame, charKey, opts)
+    if not anchorFrame or not charKey or not ns.CharacterService then return end
+    opts = opts or {}
+    local L = ns.L
+    local addon = _G.WarbandNexus or ns.WarbandNexus
+    if not addon then return end
+    local rows = {}
+
+    local name = opts.charName
+    if name and issecretvalue and issecretvalue(name) then name = nil end
+    rows[#rows + 1] = { isHeader = true, label = name or ((L and L["UNKNOWN"]) or "Unknown") }
+
+    local isTracked = opts.isTracked ~= false
+    rows[#rows + 1] = {
+        label = isTracked
+            and ((L and L["CHARACTER_MENU_STOP_TRACKING"]) or "Stop tracking")
+            or ((L and L["CHARACTER_MENU_START_TRACKING"]) or "Start tracking"),
+        noRadio = true,
+        onPick = function()
+            if ns.CharacterService.ConfirmCharacterTracking then
+                ns.CharacterService:ConfirmCharacterTracking(addon, charKey, not isTracked)
+            end
+            if addon.SendMessage and ns.Constants then
+                addon:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+            end
+        end,
+    }
+
+    -- Reuse the row's own delete button so the confirm dialog stays in one place.
+    local delBtn = opts.deleteButton
+    if not opts.isCurrent and delBtn and delBtn.Click then
+        rows[#rows + 1] = {
+            label = (L and L["CHARACTER_MENU_DELETE"]) or "Delete character",
+            noRadio = true,
+            onPick = function()
+                local function open() delBtn:Click() end
+                if C_Timer and C_Timer.After then C_Timer.After(0, open) else open() end
+            end,
+        }
+    end
+
+    WnShowLabeledPickMenu(anchorFrame, rows, opts.onDone)
+end
+
+--- Popup: move character to / from a custom section (any tracked character, favorites included).
 function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onDone)
     if not anchorFrame or not charKey or not profile or not ns.CharacterService then return end
     ns.CharacterService:EnsureCustomCharacterSectionsProfile(profile)
@@ -732,6 +782,23 @@ function ns.UI_ShowCharacterSectionsToolbarMenu(anchorFrame, profile)
             disabled = true,
         }
     else
+        rows[#rows + 1] = { isHeader = true, label = (L and L["CUSTOM_HEADER_MENU_RENAME_GROUP"]) or "Rename a section" }
+        for i = 1, #groups do
+            local g = groups[i]
+            rows[#rows + 1] = {
+                label = string.format((L and L["CUSTOM_HEADER_MENU_RENAME_FMT"]) or "Rename: %s", g.name or g.id),
+                noRadio = true,
+                onPick = function()
+                    -- Defer a tick so the pick menu and its click catcher finish hiding first.
+                    local function open()
+                        if addon and addon.OpenRenameCustomSectionDialog then
+                            addon:OpenRenameCustomSectionDialog(g.id, g.name)
+                        end
+                    end
+                    if C_Timer and C_Timer.After then C_Timer.After(0, open) else open() end
+                end,
+            }
+        end
         rows[#rows + 1] = { isHeader = true, label = (L and L["CUSTOM_HEADER_MENU_DELETE_GROUP"]) or "Delete a section" }
         for i = 1, #groups do
             local g = groups[i]

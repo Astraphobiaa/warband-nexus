@@ -894,8 +894,8 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
 end
 
 -- CUSTOM CHARACTER SECTIONS (profile: user-defined headers / buckets)
--- Tracked, non-favorite characters may be assigned to one custom section.
--- Favorites always render in the Favorites block; assignments for favorited keys are ignored.
+-- Any tracked character may be assigned to one custom section, favorites included.
+-- The section outranks the Favorites block; see ResolveRosterBucket.
 
 local CUSTOM_GROUP_LIST_KEY_PREFIX = "group_"
 
@@ -999,40 +999,17 @@ function CharacterService:SetFavoriteCustomSectionGroupId(addon, groupId)
     return self:ToggleFavoriteCustomHeaderHighlight(addon, groupId) ~= nil
 end
 
---- Ordered custom groups: highlighted sections first, then others. Within each bucket: manual = profile array order, else alphabetical by display name.
+--- Ordered custom groups. Sections always render in profile array order — the exact order the
+--- header up/down arrows edit — regardless of the tab sort key (which orders characters *within* a
+--- section, not the sections themselves). This keeps the arrows predictable in every sort mode.
+--- The gold-star highlight is now purely cosmetic (bar styling); it no longer floats a section up.
 function CharacterService:BuildOrderedCustomCharacterGroups(profile, sortKey)
     if not profile then return {} end
     self:EnsureCustomCharacterSectionsProfile(profile)
     local raw = profile.characterCustomGroups or {}
-    if #raw == 0 then return raw end
-    sortKey = (type(sortKey) == "string" and sortKey ~= "") and sortKey or "default"
-    local decorated = {}
-    for i = 1, #raw do
-        decorated[#decorated + 1] = { g = raw[i], idx = i }
-    end
-    local function labelLower(g)
-        local n = g and (g.name or g.id)
-        if not n or (issecretvalue and issecretvalue(n)) then return "" end
-        return string.lower(tostring(n))
-    end
-    table.sort(decorated, function(a, b)
-        local fa = self:IsProfileCustomSectionHighlighted(profile, a.g.id)
-        local fb = self:IsProfileCustomSectionHighlighted(profile, b.g.id)
-        if fa ~= fb then
-            return fa
-        end
-        if sortKey == "manual" then
-            return a.idx < b.idx
-        end
-        local la, lb = labelLower(a.g), labelLower(b.g)
-        if la ~= lb then
-            return la < lb
-        end
-        return tostring(a.g.id) < tostring(b.g.id)
-    end)
     local out = {}
-    for i = 1, #decorated do
-        out[i] = decorated[i].g
+    for i = 1, #raw do
+        out[i] = raw[i]
     end
     return out
 end
@@ -1182,6 +1159,57 @@ function CharacterService:GetCharacterCustomSectionId(addon, charKey)
     local gid = assign[storeKey]
     if gid then return gid end
     return assign[charKey]
+end
+
+--- Move a custom section one slot up (delta -1) or down (delta +1) in the profile order.
+--- `BuildOrderedCustomCharacterGroups` only honours this array order while the tab sort is
+--- "manual", which is why the header arrows are drawn in that mode only.
+---@param addon table WarbandNexus
+---@param groupId string
+---@param delta number -1 or 1
+---@return boolean moved
+function CharacterService:MoveCustomCharacterSection(addon, groupId, delta)
+    if not addon or not addon.db or not addon.db.profile or not groupId or groupId == "" then return false end
+    delta = tonumber(delta)
+    if delta ~= 1 and delta ~= -1 then return false end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local groups = profile.characterCustomGroups
+    local from
+    for i = 1, #groups do
+        if groups[i].id == groupId then from = i break end
+    end
+    if not from then return false end
+    local to = from + delta
+    if to < 1 or to > #groups then return false end
+    groups[from], groups[to] = groups[to], groups[from]
+    if addon.SendMessage then
+        addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
+    end
+    return true
+end
+
+--- Summed money (in copper) across a character list; used for the per-section header total.
+--- Money is stored split as gold/silver/copper to dodge the 32-bit SavedVariables ceiling, so this
+--- must resolve each row through GetCharTotalCopper (gold*10000 + silver*100 + copper) rather than
+--- read the `gold` field, which holds only the gold-unit part. Values are the last recorded amount
+--- per character, not live: a character not played since install contributes nothing.
+---@param list table Character rows
+---@return number copper
+function CharacterService:SumCharacterListGold(list)
+    if type(list) ~= "table" then return 0 end
+    local U = ns.Utilities
+    local total = 0
+    for i = 1, #list do
+        local char = list[i]
+        if type(char) == "table" then
+            local copper = (U and U.GetCharTotalCopper) and U:GetCharTotalCopper(char) or 0
+            if type(copper) == "number" and copper > 0 then
+                total = total + copper
+            end
+        end
+    end
+    return total
 end
 
 --- Roster bucket for one tracked character. A custom section wins over Favorites: favoriting a

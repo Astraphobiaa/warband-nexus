@@ -1785,6 +1785,16 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             get = function() return WarbandNexus.db.profile.showTooltipItemID ~= false end,
             set = function(value) WarbandNexus.db.profile.showTooltipItemID = value end,
         },
+        {
+            key = "showSectionGoldTotal",
+            label = (ns.L and ns.L["CONFIG_SECTION_GOLD_TOTAL"]) or "Section Gold Total",
+            tooltip = (ns.L and ns.L["CONFIG_SECTION_GOLD_TOTAL_DESC"]) or "Show the summed gold of each section on its header in the Characters tab. Uses the last amount recorded for each character, so a character you have not played since installing adds nothing.",
+            get = function() return WarbandNexus.db.profile.showSectionGoldTotal ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.showSectionGoldTotal = value
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+            end,
+        },
     }
 
     local generalContentW = GetSettingsSectionContentWidth(effectiveWidth)

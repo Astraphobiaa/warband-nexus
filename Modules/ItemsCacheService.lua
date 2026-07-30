@@ -1536,7 +1536,16 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     if not bagIDs or type(bagIDs) ~= "table" then
         return
     end
-    
+
+    -- A Mythic Keystone received from an NPC / Font of Power (when the player holds no key) drops
+    -- straight into the bags and fires no CHALLENGE_MODE_* event, so the key never appeared in the
+    -- PvE / Character tabs until a /reload. Drive a keystone re-read off the bag change. ItemsCache
+    -- is the single owner of BAG_UPDATE, and RequestKeystoneRefresh is throttled (3s), warmup-guarded
+    -- and deduped, so calling it on each bag batch is cheap and safe.
+    if self.RequestKeystoneRefresh then
+        self:RequestKeystoneRefresh("BAG_UPDATE")
+    end
+
     -- Process each bag that was updated, track if any actually changed
     local changedBags = {}
     for bagID in pairs(bagIDs) do
