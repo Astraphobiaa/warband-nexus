@@ -363,7 +363,9 @@ local function NM_PlayToastEntranceEffects(toastHost, toastWidth, toastHeight)
         return true
     end
     if tier == "celebration" then
+        -- Achievement / collectible earned: warm radial sun burst + sheen sweep together.
         toastHost._toastFxSheenPeak = 0.34
+        NM_PlayToastSunGlow(toastHost, w, h)
         NM_PlayToastSweepShine(toastHost, w, h)
         return true
     end

@@ -483,9 +483,21 @@ local function IsBlizzardWidgetTooltip(tooltip)
     if widgetSetID ~= nil and widgetSetID ~= 0 then return true end
     local widgetContainer = tooltip.widgetContainer
     if widgetContainer then
-        local shown = widgetContainer.shownWidgetCount
+        -- Blizzard's UIWidgetContainerMixin tracks the live count as `numWidgetsShowing`
+        -- (verified vs Blizzard_UIWidgetManager). The old `shownWidgetCount` field never
+        -- existed, so this net was silently dead and let widget tooltips slip through.
+        local shown = widgetContainer.numWidgetsShowing
         if issecretvalue and issecretvalue(shown) then return true end
         if type(shown) == "number" and shown > 0 then return true end
+        -- Belt-and-suspenders: a *shown* widget container re-runs its secret-number grid
+        -- Layout on hide (GridLayoutFrameMixin:ShouldUpdateLayout early-outs unless IsShown).
+        -- If our AddLine/Show drives that layout under our taint, CacheLayoutSettings stores
+        -- a WarbandNexus-tainted oldGridSettings, and Blizzard's next POI-hide compare of
+        -- oldGridSettings.stride vs the secret stride hard-errors. Treat shown = hands-off.
+        if type(widgetContainer.IsShown) == "function" then
+            local okShown, isShown = pcall(widgetContainer.IsShown, widgetContainer)
+            if okShown and isShown then return true end
+        end
     end
     return false
 end
@@ -519,7 +531,7 @@ local function RefreshGameTooltipLayout(tooltip)
     if tooltip.IsShown and not tooltip:IsShown() then return end
     -- Re-check right before Show(): a widget set can mount between inject()'s guard and this
     -- deferred call. Show() re-runs Blizzard's widget layout, and doing that under our taint
-    -- poisons fields (e.g. shownWidgetCount) that secure code re-reads on hide.
+    -- poisons fields (e.g. numWidgetsShowing / oldGridSettings) secure code re-reads on hide.
     if IsBlizzardWidgetTooltip(tooltip) then return end
     -- Injection tokens prevent duplicate AddLine if Show retriggers post-call.
     tooltip:Show()
@@ -852,7 +864,7 @@ end
 local function RefreshGameTooltipItemCountsOnShift(tooltip)
     if not tooltip or not tooltip.IsShown or not tooltip:IsShown() then return end
     -- Widget-carrying tooltip (map POI / vignette / quest pin): never rebuild it from our
-    -- execution. A tainted re-layout writes widget fields (shownWidgetCount, widget frame
+    -- execution. A tainted re-layout writes widget fields (numWidgetsShowing, widget frame
     -- geometry) that Blizzard re-reads on hide and compares against secret numbers —
     -- delayed LayoutFrame "compare a secret number value" blowup.
     if IsBlizzardWidgetTooltip(tooltip) then return end

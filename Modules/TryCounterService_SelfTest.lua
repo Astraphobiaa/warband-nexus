@@ -245,6 +245,7 @@ function WarbandNexus:RunTryCounterSelfTest()
     requireFn("ShouldSkipLateLootOpenedRoute")
     requireFn("NotifyLootTryOutcomeCommitted")
     requireFn("CancelEncounterLootlessMissFallback")
+    requireFn("ConsumePendingStatReseed")
 
     local evList = TC.TRYCOUNTER_EVENTS or {}
     local hasMountEv, hasPetEv, hasLootEv = false, false, false
@@ -404,6 +405,42 @@ function WarbandNexus:RunTryCounterSelfTest()
             Fns.ProcessMissedDrops({ drop }, { 15176 }, { sync = true })
             if WN:GetTryCount("mount", 1) ~= old then
                 error("loot miss must not increment stat-only raid drops")
+            end
+        end)
+    end)
+    probe("ConsumePendingStatReseed consumes a pending mark once", function()
+        withRestoredState(function()
+            if Fns.ConsumePendingStatReseed("mount", 424242) then
+                error("no mark set -> must return false")
+            end
+            Fns.MarkDropReseeded("mount", 424242)
+            if not Fns.ConsumePendingStatReseed("mount", 424242) then
+                error("pending mark -> must return true")
+            end
+            if Fns.ConsumePendingStatReseed("mount", 424242) then
+                error("mark must be consumed (second call must be false)")
+            end
+        end)
+    end)
+    probe("ProcessMissedDrops: pending stat reseed cancels the duplicate loot +1 in raid", function()
+        withRestoredState(function()
+            if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                Fns.SetTryCounterSelfTestSlotOutcomeEnv({
+                    instance = { instanceType = "raid", difficulty = 16 },
+                })
+            end
+            -- ENCOUNTER_END stat sync already counted this kill's attempt.
+            Fns.MarkDropReseeded("mount", 2)
+            -- Loot opens from a source without statisticIds (Sylvanas chest object row): the manual
+            -- miss must consume the fresh mark and add NO second +1 (the reported double-count).
+            local drop = { type = "mount", itemID = 2, name = "TC Reseed Reconcile" }
+            local old = WN:GetTryCount("mount", 2) or 0
+            Fns.ProcessMissedDrops({ drop }, nil, { sync = true })
+            if (WN:GetTryCount("mount", 2) or 0) ~= old then
+                error("fresh stat reseed must suppress the duplicate loot +1")
+            end
+            if Fns.IsDropAlreadyCounted("mount", 2) then
+                error("reconciled reseed mark must be consumed")
             end
         end)
     end)

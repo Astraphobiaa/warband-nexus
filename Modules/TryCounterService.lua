@@ -2930,6 +2930,22 @@ function Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
     return preResetCount - 1
 end
 
+-- Instance loot-miss reconciliation, paired to the kill itself (no timer). The ENCOUNTER_END
+-- statistics sync sets a reseed mark once per kill that owns this attempt's count. If the collectible
+-- is NOT in the loot, consume that pending mark exactly once so the loot pipeline never adds a second
+-- manual +1 for the same kill — no matter how long after the kill the chest is opened. This is the
+-- Sylvanas Mythic double-count: the boss stat counts at kill, then the separate chest GameObject
+-- (whose objectDropDB row lacks the boss statisticIds, so ShouldUseStatisticsOnlyMiss cannot see the
+-- backing) counts again on open. Consume-once: the next kill re-sets its own mark, so repeat farms
+-- keep counting; the caller gates this to instances so open-world farms never reach it.
+function Fns.ConsumePendingStatReseed(tcType, tryKey)
+    if not tcType or not tryKey then return false end
+    local mk = tcType .. "\0" .. tostring(tryKey)
+    if dropDelayedReseeded[mk] ~= true then return false end
+    dropDelayedReseeded[mk] = nil
+    return true
+end
+
 function Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
     if not tcType or not tryKey then return end
     local now = GetTime()
@@ -3269,6 +3285,24 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
     end
     if #filtered == 0 then return end
     drops = filtered
+
+    -- Raid/dungeon: the ENCOUNTER_END statistics sync already owns each attempt (it counted this kill
+    -- and set the reseed mark). Consume any pending mark here so a later loot-open — no matter how long
+    -- after the kill — never adds a second manual +1. This is the Sylvanas Mythic case: the boss stat
+    -- counts at kill, then the separate chest GameObject counts again on open. Paired to the kill, not a
+    -- timer. Instance-only: open-world farms are never raid/dungeon, so their per-corpse counting stays.
+    if Fns.IsRaidOrDungeonInstance() then
+        local kept = {}
+        for i = 1, #drops do
+            local d = drops[i]
+            local tcType, tryKey = Fns.GetTryCountTypeAndKey(d)
+            if not (tryKey and Fns.ConsumePendingStatReseed(tcType, tryKey)) then
+                kept[#kept + 1] = d
+            end
+        end
+        if #kept == 0 then return end
+        drops = kept
+    end
 
     local attemptTimes = options and tonumber(options.attemptTimes) or 1
     if attemptTimes < 1 then attemptTimes = 1 end
