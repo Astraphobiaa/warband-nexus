@@ -319,6 +319,19 @@ function WarbandNexus:InitializePlanTracking()
             WarbandNexus:_DeferVaultPlanCheckFromPvE()
         end
     end)
+    -- The live rewards API can hydrate from false to true while the persisted PvE signature is
+    -- already true, so WEEKLY_REWARDS_UPDATE does not always produce PVE_UPDATED. Use the separate
+    -- event sink and the same debounce to refresh cached To-Do cards after the server response.
+    WarbandNexus.RegisterEvent(PlansManagerEvents, "WEEKLY_REWARDS_UPDATE", function()
+        if WarbandNexus._DeferVaultPlanCheckFromPvE then
+            WarbandNexus:_DeferVaultPlanCheckFromPvE()
+        end
+    end)
+    -- Registration is intentionally late in startup; catch up if the initial server response
+    -- arrived before this listener was installed.
+    if self._DeferVaultPlanCheckFromPvE then
+        self:_DeferVaultPlanCheckFromPvE()
+    end
     -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed)
     self:RegisterEvent("ENCOUNTER_END", "OnPvEUpdateCheckPlans")
     
