@@ -939,21 +939,37 @@ end
 -- so ScanBag can reuse them instead of re-querying every slot.
 local cachedSlotData = {}  -- [bagID] = { [slot] = itemInfo, numSlots = n }
 
+---True when a container slot's itemID/hyperlink is a Midnight secret value.
+---Secret slots must not participate in hash/scan persistence: skipping them looks like an
+---empty bag and would wipe SavedVariables inventory on the next BAG_UPDATE.
+local function ContainerSlotIsSecret(itemInfo)
+    if not itemInfo or not issecretvalue then return false end
+    local id, hl = itemInfo.itemID, itemInfo.hyperlink
+    if id ~= nil and issecretvalue(id) then return true end
+    if hl ~= nil and issecretvalue(hl) then return true end
+    return false
+end
+
 ---Generate hash for a bag to detect real changes.
 ---Also caches raw slot data for ScanBag to reuse (avoids double API calls).
 ---Hash includes: item count + item links (ignores durability, charges, cooldowns)
+---@return string hash
+---@return boolean hadSecretSlots
 local function GenerateItemHash(bagID)
     local items = {}
     local n = 0
+    local hadSecretSlots = false
     local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
     local slotCache = { numSlots = numSlots }
     
     for slot = 1, numSlots do
         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
         slotCache[slot] = itemInfo  -- Cache for ScanBag (nil entries are fine)
-        if itemInfo and itemInfo.hyperlink then
-            local hl = itemInfo.hyperlink
-            if not (issecretvalue and issecretvalue(hl)) then
+        if itemInfo then
+            if ContainerSlotIsSecret(itemInfo) then
+                hadSecretSlots = true
+            elseif itemInfo.hyperlink then
+                local hl = itemInfo.hyperlink
                 -- Hash includes: hyperlink + stack count
                 -- Does NOT include: durability, charges, cooldowns
                 n = n + 1
@@ -963,12 +979,21 @@ local function GenerateItemHash(bagID)
     end
     
     cachedSlotData[bagID] = slotCache
-    return table.concat(items, "|")
+    return table.concat(items, "|"), hadSecretSlots
 end
 
 ---Check if bag contents actually changed (not just durability/charges)
 local function HasBagChanged(bagID)
-    local newHash = GenerateItemHash(bagID)
+    local newHash, hadSecretSlots = GenerateItemHash(bagID)
+    -- Secret-blinded reads omit occupied slots from the hash. Updating bagHashCache / ScanBag
+    -- from that view would persist an empty or partial bag over the real inventory. Keep the
+    -- last good hash and skip the update until itemIDs/hyperlinks are readable again.
+    if hadSecretSlots then
+        cachedSlotData[bagID] = nil
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.NoteHashCheck then BP.NoteHashCheck(false) end
+        return false
+    end
     local oldHash = bagHashCache[bagID]
     
     if newHash ~= oldHash then
@@ -987,7 +1012,11 @@ end
 
 --- Seed hash cache after a full bag scan so the next BAG_UPDATE bucket does not look like a change.
 local function SeedBagHashForBag(bagID)
-    local hash = GenerateItemHash(bagID)
+    local hash, hadSecretSlots = GenerateItemHash(bagID)
+    cachedSlotData[bagID] = nil
+    if hadSecretSlots then
+        return
+    end
     bagHashCache[bagID] = hash
 end
 
@@ -1056,78 +1085,64 @@ end
 ---Reuses cached slot data from GenerateItemHash when available (single pass).
 ---Only stores: itemID, stackCount, quality, isBound, positional fields.
 ---Metadata (name, link, icon, classID) is resolved on-demand when reading.
+---@return table items
+---@return boolean hadSecretSlots true when at least one occupied slot was unreadable
 local function ScanBag(bagID)
     local items = {}
     local n = 0  -- Manual count avoids #items overhead per insert
+    local hadSecretSlots = false
     local slotCache = cachedSlotData[bagID]
     local numSlots
     
+    local function appendReadableSlot(slot, itemInfo)
+        if not itemInfo then return end
+        if ContainerSlotIsSecret(itemInfo) then
+            hadSecretSlots = true
+            return
+        end
+        if not itemInfo.hyperlink then return end
+        local hl = itemInfo.hyperlink
+        local itemID = ResolveContainerSlotItemID(itemInfo, hl)
+        if itemID and issecretvalue and issecretvalue(itemID) then
+            hadSecretSlots = true
+            return
+        end
+        if not itemID then return end
+        n = n + 1
+        local snapIlvl = ShouldCaptureSlotItemLevel()
+            and CaptureContainerSlotItemLevel(bagID, slot, itemID, hl) or 0
+        local isKs = type(hl) == "string" and hl:find("|Hkeystone:", 1, true) ~= nil
+        items[n] = {
+            actualBagID = bagID,
+            bagID = bagID,
+            slotIndex = slot,
+            slot = slot,
+            itemID = itemID,
+            itemLink = hl,
+            stackCount = itemInfo.stackCount or 1,
+            quality = itemInfo.quality,
+            isBound = itemInfo.isBound or false,
+            itemLevel = (snapIlvl > 0) and snapIlvl or nil,
+            isKeystone = isKs or nil,
+        }
+    end
+
     if slotCache then
         -- Fast path: reuse cached data from GenerateItemHash (no API calls)
         numSlots = slotCache.numSlots or 0
         for slot = 1, numSlots do
-            local itemInfo = slotCache[slot]
-            if itemInfo and itemInfo.hyperlink then
-                local hl = itemInfo.hyperlink
-                if not (issecretvalue and issecretvalue(hl)) then
-                    local itemID = ResolveContainerSlotItemID(itemInfo, hl)
-                    if itemID then
-                        n = n + 1
-                        local snapIlvl = ShouldCaptureSlotItemLevel()
-                            and CaptureContainerSlotItemLevel(bagID, slot, itemID, hl) or 0
-                        local isKs = hl:find("|Hkeystone:", 1, true) ~= nil
-                        items[n] = {
-                            actualBagID = bagID,
-                            bagID = bagID,
-                            slotIndex = slot,
-                            slot = slot,
-                            itemID = itemID,
-                            itemLink = hl,
-                            stackCount = itemInfo.stackCount or 1,
-                            quality = itemInfo.quality,
-                            isBound = itemInfo.isBound or false,
-                            itemLevel = (snapIlvl > 0) and snapIlvl or nil,
-                            isKeystone = isKs or nil,
-                        }
-                    end
-                end
-            end
+            appendReadableSlot(slot, slotCache[slot])
         end
         cachedSlotData[bagID] = nil  -- Consumed; free memory
     else
         -- Fallback: no cached data (bank bags, deferred updates, etc.)
         numSlots = C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-            if itemInfo and itemInfo.hyperlink then
-                local hl = itemInfo.hyperlink
-                if not (issecretvalue and issecretvalue(hl)) then
-                    local itemID = ResolveContainerSlotItemID(itemInfo, hl)
-                    if itemID then
-                        n = n + 1
-                        local snapIlvl = ShouldCaptureSlotItemLevel()
-                            and CaptureContainerSlotItemLevel(bagID, slot, itemID, hl) or 0
-                        local isKs = hl:find("|Hkeystone:", 1, true) ~= nil
-                        items[n] = {
-                            actualBagID = bagID,
-                            bagID = bagID,
-                            slotIndex = slot,
-                            slot = slot,
-                            itemID = itemID,
-                            itemLink = hl,
-                            stackCount = itemInfo.stackCount or 1,
-                            quality = itemInfo.quality,
-                            isBound = itemInfo.isBound or false,
-                            itemLevel = (snapIlvl > 0) and snapIlvl or nil,
-                            isKeystone = isKs or nil,
-                        }
-                    end
-                end
-            end
+            appendReadableSlot(slot, C_Container.GetContainerItemInfo(bagID, slot))
         end
     end
     
-    return items
+    return items, hadSecretSlots
 end
 
 ---Replace one bag's rows in-place (keeps decompressedItemCache table reference).
@@ -1197,11 +1212,22 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     RecordStressPhase("acquire")
 
     local oldBagItems = {}
-    local newBagItems = ScanBag(bagID)
+    local newBagItems, hadSecretSlots = ScanBag(bagID)
     if perfCtx and BP.MarkPhase then
         BP.MarkPhase(perfCtx, "scan")
     end
     RecordStressPhase("scan")
+
+    -- Defense in depth: HasBagChanged should already skip secret bags, but direct callers
+    -- (manual refresh paths) must not replace a complete bag with a secret-blinded scan.
+    if hadSecretSlots then
+        if perfCtx then
+            if BP.FinishBagUpdate then BP.FinishBagUpdate(perfCtx) end
+            if BP.ClearActiveCtx then BP.ClearActiveCtx() end
+        end
+        DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r Skip bag " .. tostring(bagID) .. " update: secret container values")
+        return allItems
+    end
 
     local _, slotCount = ReplaceBagInItemArray(allItems, bagID, newBagItems, oldBagItems)
     if perfCtx and BP.MarkPhase then
@@ -1268,7 +1294,11 @@ function WarbandNexus:UpdateSingleWarbandBag(bagID)
     local warbandData = self:GetWarbandBankData()
     local allItems = warbandData.items or {}
     
-    local newBagItems = ScanBag(bagID)
+    local newBagItems, hadSecretSlots = ScanBag(bagID)
+    if hadSecretSlots then
+        DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r Skip warband bag " .. tostring(bagID) .. " update: secret container values")
+        return
+    end
     
     for i = 1, #newBagItems do
         newBagItems[i].tabIndex = tabIndex
@@ -1292,15 +1322,24 @@ function WarbandNexus:ScanInventoryBags(charKey)
     
     local allItems = {}
     local totalSlots = 0
+    local hadSecretSlots = false
     
     -- Scan ALL inventory bags
     for ii = 1, #INVENTORY_BAGS do
         local bagID = INVENTORY_BAGS[ii]
         totalSlots = totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
-        local bagItems = ScanBag(bagID)
+        local bagItems, bagSecrets = ScanBag(bagID)
+        if bagSecrets then hadSecretSlots = true end
         for i = 1, #bagItems do
             allItems[#allItems + 1] = bagItems[i]
         end
+    end
+
+    if hadSecretSlots then
+        -- Login/reload inside an addon-restricted map can secret every bag slot. Persisting that
+        -- partial scan would replace a complete itemStorage.bags snapshot with near-empty data.
+        DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r Skip inventory full scan persist: secret container values")
+        return allItems
     end
     
     -- Save to DB (compressed)
@@ -1333,14 +1372,21 @@ function WarbandNexus:ScanBankBags(charKey)
     end
     
     local allItems = {}
+    local hadSecretSlots = false
     
     -- Scan ALL bank bags (NO FLAG CHECK - just scan)
     for ii = 1, #BANK_BAGS do
         local bagID = BANK_BAGS[ii]
-        local bagItems = ScanBag(bagID)
+        local bagItems, bagSecrets = ScanBag(bagID)
+        if bagSecrets then hadSecretSlots = true end
         for i = 1, #bagItems do
             allItems[#allItems + 1] = bagItems[i]
         end
+    end
+
+    if hadSecretSlots then
+        DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r Skip bank full scan persist: secret container values")
+        return allItems
     end
     
     -- Save to DB (compressed)
@@ -1358,17 +1404,24 @@ function WarbandNexus:ScanWarbandBank()
     end
     
     local allItems = {}
+    local hadSecretSlots = false
     
     -- Scan ALL warband bank tabs (NO FLAG CHECK - just scan)
     for ii = 1, #WARBAND_BAGS do
         local bagID = WARBAND_BAGS[ii]
-        local bagItems = ScanBag(bagID)
+        local bagItems, bagSecrets = ScanBag(bagID)
+        if bagSecrets then hadSecretSlots = true end
         for i = 1, #bagItems do
             local item = bagItems[i]
             -- Add tab index for warband bank (1-5)
             item.tabIndex = ii
             allItems[#allItems + 1] = item
         end
+    end
+
+    if hadSecretSlots then
+        DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r Skip warband bank full scan persist: secret container values")
+        return allItems
     end
     
     -- Save to global (compressed, warband bank is account-wide)
@@ -1653,7 +1706,10 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
     end
 
     local function appendScannedBag(target, bagID, tabIndex)
-        local bagItems = ScanBag(bagID)
+        local bagItems, hadSecretSlots = ScanBag(bagID)
+        if hadSecretSlots then
+            return bagItems, true
+        end
         for i = 1, #bagItems do
             local item = bagItems[i]
             if tabIndex then
@@ -1661,7 +1717,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             end
             target[#target + 1] = item
         end
-        return bagItems
+        return bagItems, false
     end
 
     local function commitStagedBankScan()
@@ -1697,7 +1753,11 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "all", charKey = CanonicalItemsMessageKey(charKey) })
             return
         end
-        appendScannedBag(stagedWarband, WARBAND_BAGS[wbIdx], wbIdx)
+        local _, secret = appendScannedBag(stagedWarband, WARBAND_BAGS[wbIdx], wbIdx)
+        if secret then
+            finishBankScan(true)
+            return
+        end
         wbIdx = wbIdx + 1
         C_Timer.After(0, runWarband)
     end
@@ -1711,7 +1771,11 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             C_Timer.After(0, runWarband)
             return
         end
-        appendScannedBag(stagedBank, BANK_BAGS[bankIdx])
+        local _, secret = appendScannedBag(stagedBank, BANK_BAGS[bankIdx])
+        if secret then
+            finishBankScan(true)
+            return
+        end
         bankIdx = bankIdx + 1
         C_Timer.After(0, runBank)
     end
@@ -1726,7 +1790,11 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             return
         end
         local bagID = INVENTORY_BAGS[invIdx]
-        local bagItems = appendScannedBag(stagedBags, bagID)
+        local bagItems, secret = appendScannedBag(stagedBags, bagID)
+        if secret then
+            finishBankScan(true)
+            return
+        end
         totalInventorySlots = totalInventorySlots + (C_Container.GetContainerNumSlots(bagID) or 0)
         if bagID >= 0 and bagID <= 4 then
             PublishBagSnapshotForCollection(bagID, bagItems)
