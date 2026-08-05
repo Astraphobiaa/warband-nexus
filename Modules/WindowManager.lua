@@ -344,6 +344,84 @@ function WindowManager:InstallDragHandler(dragFrame, moveFrame, onDragStop)
     end)
 end
 
+-- POSITION PERSISTENCE (per-window, keyed by a stable name)
+--
+-- Central store so any dialog/popup keeps its last dragged position instead of
+-- re-centering on every open. Floating companions and the main window keep their
+-- own dedicated persistence (db.global.*Tracker / db.profile.windowPosition); this
+-- covers the shared WindowFactory dialogs and standalone popups keyed by name.
+-- Coordinate convention mirrors the proven main-window path (UI.lua
+-- SaveWindowGeometry / RestoreWindowPosition): store GetLeft/GetTop and re-anchor
+-- with TOPLEFT -> UIParent BOTTOMLEFT so a single anchor family survives drag.
+
+local function GetWindowPositionStore()
+    local W = rawget(_G, "WarbandNexus")
+    local profile = W and W.db and W.db.profile
+    if not profile then return nil end
+    if not profile.windowPositions then
+        profile.windowPositions = {}
+    end
+    return profile.windowPositions
+end
+
+--[[
+    Persist a window's current on-screen position under a stable key.
+    @param frame Frame  - The window frame (must be shown / laid out)
+    @param key   string - Stable identifier (usually the frame's global name)
+]]
+function WindowManager:SavePosition(frame, key)
+    if not frame or not key or not frame.GetLeft then return end
+    local left = frame:GetLeft()
+    local top = frame:GetTop()
+    if left == nil or top == nil then return end
+    local store = GetWindowPositionStore()
+    if not store then return end
+    local slot = store[key]
+    if not slot then
+        slot = {}
+        store[key] = slot
+    end
+    slot.point = "TOPLEFT"
+    slot.relativePoint = "BOTTOMLEFT"
+    slot.x = left
+    slot.y = top
+end
+
+--[[
+    Restore a window's saved position (on-screen clamped).
+    @param frame Frame  - The window frame
+    @param key   string - Stable identifier used by SavePosition
+    @return boolean - true if a saved position was applied, false otherwise
+]]
+function WindowManager:RestorePosition(frame, key)
+    if not frame or not key then return false end
+    local store = GetWindowPositionStore()
+    if not store then return false end
+    local pos = store[key]
+    if not pos or not pos.x or not pos.y then return false end
+
+    -- Clamp into the visible area so an off-screen save can't strand the window.
+    local frameScale = frame:GetEffectiveScale() or 1
+    local parentScale = UIParent:GetEffectiveScale() or 1
+    if frameScale <= 0 then frameScale = 1 end
+    if parentScale <= 0 then parentScale = 1 end
+
+    local screenW = UIParent:GetWidth() or 0
+    local screenH = UIParent:GetHeight() or 0
+    local screenWInFrame = (screenW * parentScale) / frameScale
+    local screenHInFrame = (screenH * parentScale) / frameScale
+
+    local frameW = frame:GetWidth() or 0
+    local frameH = frame:GetHeight() or 0
+
+    local x = math.max(0, math.min(pos.x, screenWInFrame - frameW * 0.25))
+    local y = math.max(frameH * 0.25, math.min(pos.y, screenHInFrame))
+
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+    return true
+end
+
 -- ESC BINDING (ToggleGameMenu) — works without frame keyboard focus
 --
 -- NEVER assign _G.ToggleGameMenu = function() ... prev() end from addon code: that taints the

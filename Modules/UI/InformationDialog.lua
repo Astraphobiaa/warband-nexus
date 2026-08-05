@@ -519,21 +519,33 @@ function WarbandNexus:ShowInfoDialog()
         dialog = CreateFrame("Frame", "WarbandNexusInfoDialog", UIParent)
         dialog:SetSize(650, 650)
     end
-    dialog:SetPoint("CENTER")
+    local infoPosKey = "WarbandNexusInfoDialog"
+    if not (ns.WindowManager and ns.WindowManager.RestorePosition
+            and ns.WindowManager:RestorePosition(dialog, infoPosKey)) then
+        dialog:SetPoint("CENTER")
+    end
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
 
+    local function SaveInfoDialogPosition()
+        if ns.WindowManager and ns.WindowManager.SavePosition then
+            ns.WindowManager:SavePosition(dialog, infoPosKey)
+        end
+    end
     if ns.WindowManager then
         ns.WindowManager:ApplyStrata(dialog, ns.WindowManager.PRIORITY.POPUP)
         ns.WindowManager:Register(dialog, ns.WindowManager.PRIORITY.POPUP)
         ns.WindowManager:InstallESCHandler(dialog)
-        ns.WindowManager:InstallDragHandler(dialog, dialog)
+        ns.WindowManager:InstallDragHandler(dialog, dialog, SaveInfoDialogPosition)
     else
         dialog:SetFrameStrata("FULLSCREEN_DIALOG")
         dialog:SetFrameLevel(200)
         dialog:RegisterForDrag("LeftButton")
         dialog:SetScript("OnDragStart", dialog.StartMoving)
-        dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+        dialog:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            SaveInfoDialogPosition()
+        end)
     end
     self.infoDialog = dialog
 

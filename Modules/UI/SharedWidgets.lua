@@ -4338,7 +4338,16 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
     if not tryCountPopupFrame then
         local f = CreateFrame("Frame", "WNTryCountPopup", UIParent, "BackdropTemplate")
         f:SetSize(300, 160)
-        f:SetPoint("CENTER")
+        local tryPosKey = "WNTryCountPopup"
+        local function SaveTryCountPosition()
+            if ns.WindowManager and ns.WindowManager.SavePosition then
+                ns.WindowManager:SavePosition(f, tryPosKey)
+            end
+        end
+        if not (ns.WindowManager and ns.WindowManager.RestorePosition
+                and ns.WindowManager:RestorePosition(f, tryPosKey)) then
+            f:SetPoint("CENTER")
+        end
         f:EnableMouse(true)
         f:SetMovable(true)
 
@@ -4346,13 +4355,16 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
             ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
             ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
             ns.WindowManager:InstallESCHandler(f)
-            ns.WindowManager:InstallDragHandler(f, f)
+            ns.WindowManager:InstallDragHandler(f, f, SaveTryCountPosition)
         else
             f:SetFrameStrata("FULLSCREEN_DIALOG")
             f:SetFrameLevel(200)
             f:RegisterForDrag("LeftButton")
             f:SetScript("OnDragStart", f.StartMoving)
-            f:SetScript("OnDragStop", f.StopMovingOrSizing)
+            f:SetScript("OnDragStop", function(self)
+                self:StopMovingOrSizing()
+                SaveTryCountPosition()
+            end)
         end
 
         ApplyVisuals(f, { 0.04, 0.04, 0.06, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9 })

@@ -121,7 +121,12 @@ local function CreateExternalWindow(config)
     -- Dialog shell (Factory container; borders from ApplyVisuals below)
     dialog = Factory:CreateContainer(UIParent, width, height, false, globalName)
     if not dialog then return nil end
-    dialog:SetPoint("CENTER")
+    -- Remember the last dragged spot instead of always re-centering.
+    local posKey = globalName
+    if not (ns.WindowManager and ns.WindowManager.RestorePosition
+            and ns.WindowManager:RestorePosition(dialog, posKey)) then
+        dialog:SetPoint("CENTER")
+    end
 
     -- WindowManager: standardized strata/level
     if ns.WindowManager then
@@ -179,8 +184,13 @@ local function CreateExternalWindow(config)
     
     -- Make header draggable (scale-correct)
     header:EnableMouse(true)
+    local function SaveDialogPosition()
+        if ns.WindowManager and ns.WindowManager.SavePosition then
+            ns.WindowManager:SavePosition(dialog, posKey)
+        end
+    end
     if ns.WindowManager and ns.WindowManager.InstallDragHandler then
-        ns.WindowManager:InstallDragHandler(header, dialog)
+        ns.WindowManager:InstallDragHandler(header, dialog, SaveDialogPosition)
     else
         header:SetMovable(true)
         header:RegisterForDrag("LeftButton")
@@ -189,6 +199,7 @@ local function CreateExternalWindow(config)
         end)
         header:SetScript("OnDragStop", function()
             dialog:StopMovingOrSizing()
+            SaveDialogPosition()
         end)
     end
     

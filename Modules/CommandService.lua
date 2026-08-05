@@ -171,6 +171,12 @@ function CommandService:HandleSlashCommand(addon, input)
             else
                 addon:Print("|cffff6600[WN]|r Reminder diagnostics not available.")
             end
+        elseif sub == "test" or sub == "testfire" or sub == "fire" then
+            if addon.TestFireCalendarReminders then
+                addon:TestFireCalendarReminders()
+            else
+                addon:Print("|cffff6600[WN]|r Reminder test not available.")
+            end
         elseif sub == "syncwq" or sub == "syncquestcatalog" or sub == "sync" then
             if not addon.ScanMidnightQuests then
                 addon:Print("|cffff6600[WN]|r Midnight quest scan not available.")
@@ -210,6 +216,7 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print(string.format("|cff00ccff[WN]|r Saved %d world quests to reminder catalog (account-wide). Reopen Set Alert to refresh.", n))
         else
             addon:Print("|cff00ccff/wn reminder status|r — Show every enabled alert and whether it would fire right now.")
+            addon:Print("|cff00ccff/wn reminder test|r — Force every enabled daily/weekly reset alert to toast once (verify without waiting for reset).")
             addon:Print("|cff00ccff/wn reminder syncwq|r — Scan Midnight maps and save all seen world quests to the maintained catalog.")
         end
         return

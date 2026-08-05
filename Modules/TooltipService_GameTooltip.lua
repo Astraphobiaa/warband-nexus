@@ -936,8 +936,20 @@ local function InstallGameTooltipInjectionClearHooks()
             ClearTooltipInjectionTokens(service)
         end)
     end
-    if GameTooltip then hookHide(GameTooltip) end
+    -- ItemRefTooltip never mounts POI/event widget sets, so hooking its Hide is taint-safe.
     if ItemRefTooltip then hookHide(ItemRefTooltip) end
+    -- GameTooltip: do NOT hook Hide. An insecure closure on GameTooltip:Hide taints the
+    -- OnHide -> GameTooltip_ClearWidgetSet -> UpdateWidgetLayout path, which then hard-errors on
+    -- a secret-number compare (Blizzard_SharedXML/LayoutFrame.lua:491) whenever a widget-carrying
+    -- tooltip (e.g. an Area POI pin) hides. A guard inside the callback cannot help: the error
+    -- fires inside Hide()'s own OnHide before any post-hook runs. Clear our weak-table injection
+    -- state from OnTooltipCleared instead -- it is pure Lua and never touches the widget grid
+    -- layout, so it stays off the tainted secret-compare path. (issue #69)
+    if GameTooltip and GameTooltip.HookScript then
+        GameTooltip:HookScript("OnTooltipCleared", function(service)
+            ClearTooltipInjectionTokens(service)
+        end)
+    end
 end
 
 local function AppendWNItemCountLines(tooltip, itemID)

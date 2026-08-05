@@ -102,7 +102,10 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     StaticPopupDialogs["WARBANDNEXUS_ADD_CHARACTER"] = nil
 
     local dialog = ShellContainer(UIParent, 480, 210, false, "WarbandNexusTrackingDialog")
-    dialog:SetPoint("CENTER")
+    if not (ns.WindowManager and ns.WindowManager.RestorePosition and dialog.GetName
+            and ns.WindowManager:RestorePosition(dialog, dialog:GetName())) then
+        dialog:SetPoint("CENTER")
+    end
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:SetFrameLevel(500)
 
@@ -119,7 +122,12 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     dialog:EnableMouse(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
-    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+    dialog:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        if ns.WindowManager and ns.WindowManager.SavePosition and self.GetName and self:GetName() then
+            ns.WindowManager:SavePosition(self, self:GetName())
+        end
+    end)
 
     local titleText = ns.FontManager:CreateFontString(dialog, "header", "OVERLAY")
     titleText:SetPoint("TOP", 0, -20)
@@ -319,7 +327,10 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
 
     if not dialog or not contentFrame then
         dialog = ShellContainer(UIParent, 320, 140, false, "WarbandNexusTrackingChangeDialog")
-        dialog:SetPoint("CENTER")
+        if not (ns.WindowManager and ns.WindowManager.RestorePosition and dialog.GetName
+                and ns.WindowManager:RestorePosition(dialog, dialog:GetName())) then
+            dialog:SetPoint("CENTER")
+        end
         dialog:SetFrameStrata("FULLSCREEN_DIALOG")
         dialog:SetFrameLevel(500)
         if ns.UI_ApplyVisuals then
@@ -334,7 +345,12 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     dialog:EnableMouse(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
-    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+    dialog:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        if ns.WindowManager and ns.WindowManager.SavePosition and self.GetName and self:GetName() then
+            ns.WindowManager:SavePosition(self, self:GetName())
+        end
+    end)
 
     local questionText = ns.FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     questionText:SetPoint("TOP", contentFrame, "TOP", 0, -8)

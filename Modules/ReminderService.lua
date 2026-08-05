@@ -880,18 +880,29 @@ end
 
 ---@param opts table|nil repeatLocationNotify: bypass active-reminder dedupe + max list cap so zone/instance can toast every entry; throttle still gated separately via reminderSettings.
 ---@param opts.fromLocation boolean zone/instance triggers; suppressed during login burst if calendar already activated for this plan.
+--- @return boolean fired True when the reminder passed all gates and was activated (badge + messages
+--- + toast attempt). False on every early-out (no plan, location suppressed, deduped, per-login cap).
+--- Callers advance their reset-boundary anchor ONLY when this returns true, so a suppressed cycle is
+--- retried on the next login/check instead of being silently consumed.
 local function ActivateReminder(plan, triggerLabel, opts)
     opts = opts or {}
-    if not plan or not plan.reminder then return end
+    if not plan or not plan.reminder then return false end
 
     local fromLocation = opts.fromLocation == true
     if fromLocation and LoginBurstSuppressLocationReminder(plan) then
-        return
+        return false
     end
 
     plan.reminder.activeReminders = plan.reminder.activeReminders or {}
 
     local repeatLoc = opts.repeatLocationNotify == true
+    -- Calendar reminders (daily/weekly/monthly/days-before) are throttled by their own reset-boundary
+    -- anchor (MarkReminderShown / lastDailyLoginReminderAt) which already limits them to once per
+    -- boundary. The activeReminders list is only the horn-badge dedupe and is never cleared during
+    -- normal play, so without this bypass a calendar label toasts once per plan lifetime and then is
+    -- permanently deduped -- the "reset reminder never shows again" bug. Re-toast on each new boundary
+    -- while still keeping a single badge entry (the isDup path below does not re-append).
+    local repeatCalendar = opts.repeatCalendarNotify == true
 
     local isDup = false
     for i = 1, #plan.reminder.activeReminders do
@@ -901,14 +912,14 @@ local function ActivateReminder(plan, triggerLabel, opts)
         end
     end
 
-    if isDup and not repeatLoc then
-        return
+    if isDup and not repeatLoc and not repeatCalendar then
+        return false
     end
 
     if not isDup then
         if #plan.reminder.activeReminders >= MAX_REMINDERS_PER_LOGIN then
             if not repeatLoc then
-                return
+                return false
             end
         else
             plan.reminder.activeReminders[#plan.reminder.activeReminders + 1] = triggerLabel
@@ -941,6 +952,8 @@ local function ActivateReminder(plan, triggerLabel, opts)
             end
         end
     end
+
+    return true
 end
 
 -- THROTTLE CHECK
@@ -1041,12 +1054,16 @@ local function CheckDailyLoginReminders()
                         end
                     end
                     if shouldFire then
-                        if useBlizzardDaily then
-                            plan.reminder.lastDailyLoginReminderAt = time()
-                        else
-                            MarkReminderShown(plan, triggerKey)
+                        -- Advance the anchor only after a real activation, so a suppressed cycle
+                        -- (notifications off / per-login cap) retries on the next login instead of
+                        -- being silently consumed.
+                        if ActivateReminder(plan, triggerLabel, { repeatCalendarNotify = true }) then
+                            if useBlizzardDaily then
+                                plan.reminder.lastDailyLoginReminderAt = time()
+                            else
+                                MarkReminderShown(plan, triggerKey)
+                            end
                         end
-                        ActivateReminder(plan, triggerLabel)
                     end
                 end
             end
@@ -1078,8 +1095,9 @@ local function CheckMonthlyLoginReminders()
                 CleanStaleReminderKeys(plan)
                 if not plan.completed then
                     if CanShowReminder(plan, triggerKey) then
-                        MarkReminderShown(plan, triggerKey)
-                        ActivateReminder(plan, triggerLabel)
+                        if ActivateReminder(plan, triggerLabel, { repeatCalendarNotify = true }) then
+                            MarkReminderShown(plan, triggerKey)
+                        end
                     end
                 end
             end
@@ -1117,8 +1135,9 @@ local function CheckWeeklyResetReminders()
                     if not lastWeeklyShown or lastWeeklyShown == 0 then
                         plan.reminder.lastShown["weekly_reset"] = time()
                     elseif WarbandNexus:HasWeeklyResetOccurredSince(lastWeeklyShown) then
-                        MarkReminderShown(plan, "weekly_reset")
-                        ActivateReminder(plan, triggerLabel)
+                        if ActivateReminder(plan, triggerLabel, { repeatCalendarNotify = true }) then
+                            MarkReminderShown(plan, "weekly_reset")
+                        end
                     end
                 end
             end
@@ -1171,12 +1190,13 @@ local function CheckDaysBeforeResetReminders()
                         if daysUntilReset <= dayThreshold then
                             local triggerKey = "days_" .. dayThreshold .. "_" .. tostring(date("%Y%m%d"))
                             if CanShowReminder(plan, triggerKey) then
-                                MarkReminderShown(plan, triggerKey)
                                 local label = string.format(
                                     (L and L["REMINDER_DAYS_BEFORE"]) or "%d days before reset",
                                     daysUntilReset
                                 )
-                                ActivateReminder(plan, label)
+                                if ActivateReminder(plan, label, { repeatCalendarNotify = true }) then
+                                    MarkReminderShown(plan, triggerKey)
+                                end
                             end
                             break
                         end
@@ -2181,6 +2201,40 @@ function WarbandNexus:PrintReminderDiagnostics()
     if shown == 0 then
         self:Print("  no plan has an enabled reminder.")
     end
+end
+
+--- Debug (/wn reminder test): force every enabled, incomplete plan's daily/weekly reset alert to
+--- toast once, bypassing the reset-boundary anchor. Exercises the exact calendar-reminder toast path
+--- (including the activeReminders dedupe bypass) so the fix can be verified without waiting for a
+--- real reset. Notifications must be on for a toast to appear (see /wn reminder status gate line).
+function WarbandNexus:TestFireCalendarReminders()
+    if not self.db or not self.db.global then
+        self:Print("|cffff6600[WN Reminder]|r no database.")
+        return
+    end
+    local L = ns.L
+    local weeklyLabel = (L and L["REMINDER_WEEKLY_RESET"]) or "Weekly Reset"
+    local dailyLabel = (L and L["REMINDER_DAILY_LOGIN"]) or "Daily Login"
+    local fired = 0
+    local function processPlans(planList)
+        if not planList then return end
+        for i = 1, #planList do
+            local plan = planList[i]
+            if plan then EnsureReminderField(plan) end
+            local r = plan and plan.reminder
+            if r and r.enabled and not plan.completed then
+                if r.onWeeklyReset and ActivateReminder(plan, weeklyLabel, { repeatCalendarNotify = true }) then
+                    fired = fired + 1
+                end
+                if r.onDailyLogin and ActivateReminder(plan, dailyLabel, { repeatCalendarNotify = true }) then
+                    fired = fired + 1
+                end
+            end
+        end
+    end
+    processPlans(self.db.global.plans)
+    processPlans(self.db.global.customPlans)
+    self:Print(string.format("|cff00ccff[WN Reminder]|r test fired %d daily/weekly alert(s). If you see no toast, run '/wn reminder status' and check the toasts: enabled/showPlanReminderToast gate.", fired))
 end
 
 ns.ReminderServiceBridge = {

@@ -89,7 +89,16 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local f = H.Container(UIParent, dialogW, dialogH, false, "WarbandNexus_ReminderDialog")
         f:SetSize(dialogW, dialogH)
-        f:SetPoint("CENTER")
+        local reminderPosKey = "WarbandNexus_ReminderDialog"
+        local function SaveReminderPosition()
+            if ns.WindowManager and ns.WindowManager.SavePosition then
+                ns.WindowManager:SavePosition(f, reminderPosKey)
+            end
+        end
+        if not (ns.WindowManager and ns.WindowManager.RestorePosition
+                and ns.WindowManager:RestorePosition(f, reminderPosKey)) then
+            f:SetPoint("CENTER")
+        end
         f:EnableMouse(true)
         f:SetMovable(true)
 
@@ -102,7 +111,10 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             f:SetFrameLevel(200)
             f:RegisterForDrag("LeftButton")
             f:SetScript("OnDragStart", f.StartMoving)
-            f:SetScript("OnDragStop", f.StopMovingOrSizing)
+            f:SetScript("OnDragStop", function(self)
+                self:StopMovingOrSizing()
+                SaveReminderPosition()
+            end)
         end
 
         if ApplyVisuals then
@@ -164,7 +176,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         header:EnableMouse(true)
         if ns.WindowManager and ns.WindowManager.InstallDragHandler then
-            ns.WindowManager:InstallDragHandler(header, f)
+            ns.WindowManager:InstallDragHandler(header, f, SaveReminderPosition)
         end
 
         local planRow = H.Container(f, 1, 1, false)
