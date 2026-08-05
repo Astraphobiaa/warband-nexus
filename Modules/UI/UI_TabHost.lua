@@ -472,7 +472,11 @@ local function PopulateContentBody(self, forceRepaint)
             -- is recomputed lazily, so force it current or a data-driven refresh clamps a still-valid offset
             -- to a stale (too-small) range and snaps the tab back to the top.
             if sc.UpdateScrollChildRect then
+                -- UpdateScrollChildRect synchronously fires OnScrollRangeChanged. Prevent the
+                -- external scrollbar handler from re-anchoring while WoW resolves this rect.
+                sc._wnInScrollChildRect = true
                 sc:UpdateScrollChildRect()
+                sc._wnInScrollChildRect = nil
             end
             local maxV = sc:GetVerticalScrollRange() or 0
             local cur = sc:GetVerticalScroll() or 0
