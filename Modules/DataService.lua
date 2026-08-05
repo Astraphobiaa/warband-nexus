@@ -2161,7 +2161,7 @@ end
 
 -- BANK ITEMS HELPERS FOR ITEMS TAB
 
---- True when a weekly reset occurred since lastScanTime (EU Tue 07:00 / US Tue 15:00 UTC fallback).
+--- True when a weekly reset occurred since lastScanTime (EU Wed 04:00 / US Tue 15:00 UTC fallback).
 function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
     if not lastScanTime then return true end
     
@@ -2177,8 +2177,16 @@ function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
             return lastScanTime < lastResetTime
         end
     end
+
+    if C_DateAndTime and C_DateAndTime.GetWeeklyResetStartTime then
+        local ok, lastReset = pcall(C_DateAndTime.GetWeeklyResetStartTime)
+        lastReset = ok and tonumber(lastReset) or nil
+        if lastReset and lastReset > 0 then
+            return lastScanTime < lastReset
+        end
+    end
     
-    -- Same helper as PlansManager:GetWeeklyResetTime fallback (uses global time(table), not os.time)
+    -- Same helper as PlansManager:GetWeeklyResetTime fallback (UTC epoch math, not os.time)
     if self.GetWeeklyResetTime then
         local nextReset = self:GetWeeklyResetTime()
         if nextReset and nextReset > 0 then
@@ -2186,23 +2194,19 @@ function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
         end
     end
     
-    local now = time()
+    local now = (GetServerTime and GetServerTime()) or time()
     local region = GetCurrentRegion() -- 1=US, 2=KR, 3=EU, 4=TW, 5=CN
-    local resetDay = 3
-    local resetHour = (region == 3) and 7 or 15  -- EU: 07:00 UTC, US: 15:00 UTC
+    -- date("!*t") wday: 1=Sun … 3=Tue, 4=Wed. EU weekly reset is Wednesday 04:00 UTC.
+    local resetDay = (region == 3) and 4 or 3
+    local resetHour = (region == 3) and 4 or 15  -- EU: 04:00 UTC, US: 15:00 UTC
     
     local function getLastResetTime(timestamp)
-        local d = date("*t", timestamp)
+        local d = date("!*t", timestamp)
+        local secondsIntoUtcDay = (d.hour * 3600) + (d.min * 60) + d.sec
+        local utcMidnight = timestamp - secondsIntoUtcDay
         local daysSinceReset = (d.wday - resetDay + 7) % 7
-        local resetTs = time({
-            year = d.year,
-            month = d.month,
-            day = d.day - daysSinceReset,
-            hour = resetHour,
-            min = 0,
-            sec = 0,
-        })
-        if d.wday == resetDay and d.hour < resetHour then
+        local resetTs = utcMidnight - (daysSinceReset * 86400) + (resetHour * 3600)
+        if daysSinceReset == 0 and secondsIntoUtcDay < (resetHour * 3600) then
             resetTs = resetTs - weekSecs
         end
         return resetTs
