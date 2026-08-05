@@ -470,8 +470,17 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
     if #trackable == 0 then return false end
 
     local encForKey = Fns.GetEncounterIDForNpcID(npcID)
-    V.lastTryCountSourceKey = encForKey and ("encounter_" .. tostring(encForKey)) or ("npc_" .. tostring(npcID))
+    -- Canonical chat key is encounter_<id> or npc_<id>. ENCOUNTER_END lootless fallbacks may arm
+    -- under fallback_target_<id> when the encounter is unmapped; key equality alone cannot cancel
+    -- that timer, so always go through NotifyLootTryOutcomeCommitted after attributing this kill.
+    local sourceKey = encForKey and ("encounter_" .. tostring(encForKey)) or ("npc_" .. tostring(npcID))
+    V.lastTryCountSourceKey = sourceKey
     V.lastTryCountSourceTime = now
+    if Fns.NotifyLootTryOutcomeCommitted then
+        Fns.NotifyLootTryOutcomeCommitted(sourceKey, npcID)
+    elseif Fns.CancelEncounterLootlessMissFallback then
+        Fns.CancelEncounterLootlessMissFallback()
+    end
 
     local foundDrop = nil
     local missed = {}
