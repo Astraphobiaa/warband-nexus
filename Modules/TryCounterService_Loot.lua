@@ -14,6 +14,9 @@ local V = RT and RT.vars
 
 assert(Fns and RT and V, 'TryCounterService_Loot: load TryCounterService.lua first')
 
+-- Owned by TryCounterService.lua (separate chunk); shared through the Runtime table.
+local pendingPreResetCounts = RT.pendingPreResetCounts
+
 local issecretvalue = issecretvalue
 local GetTime = GetTime
 local GetInstanceInfo = GetInstanceInfo
@@ -564,7 +567,7 @@ function Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops, baseline
                 if drop.type == "item" then
                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                     local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)
-                    SendTryCounterCollectibleObtained(WarbandNexus, {
+                    RT.SendTryCounterCollectibleObtained(WarbandNexus, {
                         type = "item",
                         id = drop.itemID,
                         name = itemName or drop.name or "Unknown",
@@ -592,7 +595,7 @@ function Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops, baseline
                 Fns.TryChat(Fns.BuildObtainedChat("TRYCOUNTER_OBTAINED", "Obtained %s!", itemLink, currentCount))
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                 local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)
-                SendTryCounterCollectibleObtained(WarbandNexus, {
+                RT.SendTryCounterCollectibleObtained(WarbandNexus, {
                     type = drop.type,
                     id = (drop.type == "item") and drop.itemID or tryKey,
                     name = itemName or drop.name or "Unknown",
@@ -660,7 +663,8 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self, lootRouteSource)
     local recentKillDiff = killData.difficultyID
     if issecretvalue and recentKillDiff and issecretvalue(recentKillDiff) then recentKillDiff = nil end
     local encounterDiffID = Fns.ResolveEncounterDifficultyForLootGating(true, recentKillDiff, diff)
-    local trackable = tryCounterSelfTestBossTrackable and tryCounterSelfTestBossTrackable[bestRule.bossNpcID]
+    local selfTestTrackable = RT.tryCounterSelfTest and RT.tryCounterSelfTest.bossTrackable
+    local trackable = selfTestTrackable and selfTestTrackable[bestRule.bossNpcID]
         or Fns.FilterDropsByDifficulty(drops, encounterDiffID)
     if #trackable == 0 then return false end
 

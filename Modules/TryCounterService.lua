@@ -55,6 +55,8 @@ local GUID_PARSE_CACHE_MAX = TC.GUID_PARSE_CACHE_MAX or 512
 -- Lua 5.1 resolves upvalues by lexical position, so it must be declared before those callers
 -- or it falls back to a nil global (crash on fishing loot).
 local fishingCtx
+-- Same trap: the GUID parse caches are assigned below but trimmed from here.
+local guidNpcIDCache, guidObjectIDCache
 
 local function TrimGuidParseCachesIfOversized()
     local function trim(cache)
@@ -136,8 +138,8 @@ local sourceItemToAllMountKeys = {}
 local mountJournalResolvedSourceCache = {}
 -- GUID parse cache: GUID string -> parsed NPC/object ID (or false = "not applicable").
 -- Avoids repeated { strsplit("-", guid) } table allocation on hot paths.
-local guidNpcIDCache = {}
-local guidObjectIDCache = {}
+guidNpcIDCache = {}
+guidObjectIDCache = {}
 
 -- Forward declarations for state variables used in OnEvent closure (declared after it)
 local npcDropDB
@@ -2404,6 +2406,41 @@ function Fns.DoesDifficultyMatch(difficultyID, requiredDifficulty)
     return MatchSingleDifficulty(label, requiredDifficulty)
 end
 
+--- Chat segment for a drop's difficulty requirement ([WN-Drops] lines).
+--- Array form lists every accepted difficulty and greens only the one the player is currently in;
+--- the others are gray ("drops there too, you are just not in it"). Red is reserved for a single
+--- gate the player fails, amber for "current difficulty unknown".
+---@param reqDiff string|table|nil
+---@param encDiff number|nil
+---@return string
+function Fns.FormatDropDifficultySegment(reqDiff, encDiff)
+    if not reqDiff then return "|cff888888\226\128\148|r" end
+    local label = nil
+    if encDiff and not (issecretvalue and issecretvalue(encDiff)) then
+        label = Fns.ResolveDifficultyLabel(encDiff)
+    end
+    if type(reqDiff) == "table" then
+        local parts = {}
+        for i = 1, #reqDiff do
+            local d = reqDiff[i]
+            if type(d) == "string" then
+                -- Exact label compare, not DoesDifficultyMatch: "Heroic" is a threshold that also
+                -- matches Mythic, which would green both entries while standing in Mythic.
+                local color = "|cffffaa00"
+                if label then
+                    color = (label == d) and "|cff00ff00" or "|cff888888"
+                end
+                parts[#parts + 1] = color .. d .. "|r"
+            end
+        end
+        if #parts == 0 then return "|cff888888\226\128\148|r" end
+        return "(" .. table.concat(parts, "/") .. ")"
+    end
+    if not label then return "(|cffffaa00" .. reqDiff .. "|r)" end
+    local color = Fns.DoesDifficultyMatch(encDiff, reqDiff) and "|cff00ff00" or "|cffff6666"
+    return "(" .. color .. reqDiff .. "|r)"
+end
+
 function Fns.ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
     -- Priority 0: ENCOUNTER_START cache (captured at pull, typically non-secret in Midnight 12.0).
     -- This beats GetInstanceInfo because it persists through the brief secret-value window that
@@ -3139,10 +3176,12 @@ end
 function Fns.SetTryCounterSelfTestSlotOutcomeEnv(env)
     if not env then
         RT.tryCounterSelfTest.slotInstance = nil
+        RT.tryCounterSelfTest.bossTrackable = nil
         tryCounterSelfTestBossTrackable = nil
         return
     end
     RT.tryCounterSelfTest.slotInstance = env.instance
+    RT.tryCounterSelfTest.bossTrackable = env.bossTrackable
     tryCounterSelfTestBossTrackable = env.bossTrackable
 end
 
@@ -5040,21 +5079,14 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
                         end
                     end
 
-                    -- Third segment: (req) colored green/red/amber; gray em dash when DB has no difficulty gate.
-                    local diffSegment
+                    -- Third segment: accepted difficulties, current one greened; em dash when ungated.
                     local reqDiff = entry.diffMap and entry.diffMap[drop.itemID]
-                    if reqDiff then
-                        if encDiff and not (issecretvalue and issecretvalue(encDiff)) then
-                            local color = Fns.DoesDifficultyMatch(encDiff, reqDiff) and "|cff00ff00" or "|cffff6666"
-                            diffSegment = "(" .. color .. reqDiff .. "|r)"
-                        else
-                            diffSegment = "(|cffffaa00" .. reqDiff .. "|r)"
-                        end
-                    else
-                        diffSegment = "|cff888888—|r"
-                    end
+                    local diffSegment = Fns.FormatDropDifficultySegment(reqDiff, encDiff)
 
-                        Fns.TryChat("|cff9370DB[WN-Drops]|r " .. itemLink .. " - " .. diffSegment .. " - " .. status)
+                        -- Drop the " - " separators around the bare em dash, or a gate-less drop reads
+                        -- "[Item] - — - (4 attempts)" -- three dash glyphs in a row.
+                        local sep = reqDiff and " - " or " "
+                        Fns.TryChat("|cff9370DB[WN-Drops]|r " .. itemLink .. sep .. diffSegment .. sep .. status)
                         printed = printed + 1
                     end
                 end

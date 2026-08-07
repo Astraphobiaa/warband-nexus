@@ -1745,7 +1745,7 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
             end)
         end
         M.UpdateToyListVisibleRange()
-        M.ScheduleCollectionsVisibleSync(browseSubKey, M.UpdateToyListVisibleRange)
+        M.ScheduleCollectionsVisibleSync("toys", M.UpdateToyListVisibleRange)
         M.CollectionsEndListChromeDefer()
         M.CollectionsSubTabTrace("PopulateToyList_done", { flatRows = flatList and #flatList or 0 })
         if type(onListReady) == "function" then
@@ -1912,6 +1912,9 @@ function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCat
         rowHeightScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.155,
         searchActive = searchActive,
         searchText = searchSnap,
+        -- Only branches that actually hold visible (filtered) achievements. Mirroring every empty
+        -- Blizzard journal category produced a wall of "(0)" headers that open onto nothing.
+        hideEmptyCategories = true,
         drawGen = drawGen,
         collectionsSubTabGen = M.state._collectionsSubTabGen,
         onListReady = onListReady,

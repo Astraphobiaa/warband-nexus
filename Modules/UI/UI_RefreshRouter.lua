@@ -132,14 +132,14 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                     runGearStorageRecRefreshNow()
                 end
             end
+            local recEnabled = WarbandNexus.IsGearStorageRecommendationsEnabled
+                and WarbandNexus:IsGearStorageRecommendationsEnabled()
             local function redrawStorageRecAfterEquipChange()
                 -- Unequip-to-bag / new loot: persisted itemStorage can lag; live scan needs a full Find.
                 if recEnabled then
                     ScheduleGearTabInventoryNarrowRefresh()
                 end
             end
-            local recEnabled = WarbandNexus.IsGearStorageRecommendationsEnabled
-                and WarbandNexus:IsGearStorageRecommendationsEnabled()
             local function trySlotRefresh(pl)
                 if WarbandNexus.TryRefreshGearEquipSlotsOnly and WarbandNexus:TryRefreshGearEquipSlotsOnly(pl) then
                     if recEnabled then
@@ -238,17 +238,24 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Plans / To-Do: add/remove/complete need immediate redraw (skip POPULATE_COOLDOWN).
     -- try_count_set / statistic reseeds can storm during farms — coalesce via debounce + 800ms cooldown.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PLANS_UPDATED, function(_, payload)
-        if not HiddenOrMissing() and f.currentTab == "plans" then
-            local action = payload and payload.action
-            local tryCountBurst = action == "try_count_set" or action == "statistics_reseeded"
-                or action == "statistics_seeded"
-            local plansCoalesce = tryCountBurst or action == "reminder_changed"
-            if plansCoalesce then
-                SchedulePopulateContent()
-            else
-                SchedulePopulateContent(true)
-            end
+        if HiddenOrMissing() or f.currentTab ~= "plans" then return end
+        local action = payload and payload.action
+        local tryCountBurst = action == "try_count_set" or action == "statistics_reseeded"
+            or action == "statistics_seeded"
+        local plansCoalesce = tryCountBurst or action == "reminder_changed"
+        if plansCoalesce then
+            SchedulePopulateContent()
+            return
         end
+        -- Single-plan deltas (added / removed / progress_changed) repaint only what the plan touches.
+        -- This used to full-repopulate the tab (~1-2s on the Achievements tree); the earlier attempt at
+        -- an incremental path left stale section layout behind, which the flat browse model fixed --
+        -- sections now reflow from their own layout model, so the delta path is safe.
+        local planID = payload and payload.planID
+        if planID ~= nil and ns.PlansUI_ApplyPlanDelta and ns.PlansUI_ApplyPlanDelta(planID, action) then
+            return
+        end
+        SchedulePopulateContent(true)
     end)
     
     -- Collection scan complete: collections needs immediate paint; plans browse coalesces (avoid redraw loop).
@@ -649,20 +656,16 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                 if WarbandNexus.ShouldSkipGearStorageNarrowInvalidateForRapidRescan
                     and WarbandNexus:ShouldSkipGearStorageNarrowInvalidateForRapidRescan(gearCanon) then
                     ns._gearStorageAllowEquipSigInvBypass = true
-                    if WarbandNexus.RefreshGearStorageCacheEquipSigForCanon then
-                        WarbandNexus:RefreshGearStorageCacheEquipSigForCanon(gearCanon)
-                    end
-                    if WarbandNexus.TryGearStorageRedrawOnly then
-                        WarbandNexus:TryGearStorageRedrawOnly()
-                    end
+                    local quickOk = WarbandNexus.TryGearStorageRedrawOnly
+                        and WarbandNexus:TryGearStorageRedrawOnly()
                     ns._gearStorageAllowEquipSigInvBypass = false
+                    -- Redraw misses when equipment moved since the cached scan; rescan instead of
+                    -- returning with a stale panel (this branch used to return unconditionally).
+                    if not quickOk then ThrottledScheduleGearAsyncRepaint() end
                     return
                 end
-                -- Prefer committed stash findings + fresh equip sig; full Invalidate only when redraw misses.
+                -- Prefer committed stash findings; full Invalidate only when the redraw misses.
                 ns._gearStorageAllowEquipSigInvBypass = true
-                if WarbandNexus.RefreshGearStorageCacheEquipSigForCanon then
-                    WarbandNexus:RefreshGearStorageCacheEquipSigForCanon(gearCanon)
-                end
                 local redrawOk = WarbandNexus.TryGearStorageRedrawOnly
                     and WarbandNexus:TryGearStorageRedrawOnly()
                 ns._gearStorageAllowEquipSigInvBypass = false

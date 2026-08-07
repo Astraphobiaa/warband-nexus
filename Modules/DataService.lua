@@ -381,7 +381,7 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
     -- Update lastSeen timestamp
     charData.lastSeen = time()
     
-    local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
+    local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or tableKey
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
     end

@@ -44,6 +44,8 @@ local function SendTryCounterCollectibleObtained(self, payload, sourceItemID)
         self:SendMessage(E.COLLECTIBLE_OBTAINED, payload)
     end
 end
+-- TryCounterService_Loot.lua loads before this file, so it resolves us through Runtime at call time.
+RT.SendTryCounterCollectibleObtained = SendTryCounterCollectibleObtained
 
 -- EVENT HANDLERS
 

@@ -199,6 +199,8 @@ local function TryDismissGearContentVeil(mf, gen)
     DismissGearContentVeil(mf, gen)
 end
 
+local GetSelectedCharKey  -- defined below; declared here so the resolver reads the upvalue, not a nil global
+
 --- Live selection can be nil for a frame (GUID migration, dropdown refresh). Defer must not treat that as
 --- "selection != pending" or applyStorageScanUI would skip with nil ~= capCanon and strand "Scanning…".
 ---@return string|nil
@@ -524,7 +526,7 @@ local GEAR_PAPERDOLL_REFRESH_SLOT_IDS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13
 
 local selectedCharKey = nil  -- nil = auto-select current player
 
-local function GetSelectedCharKey()
+function GetSelectedCharKey()
     if selectedCharKey then return selectedCharKey end
     local U = ns.Utilities
     if not U then return nil end
@@ -1551,36 +1553,50 @@ local function BuildStorageRecommendationRows(findings, gearData)
     local equippedSlots = gearData and gearData.slots or {}
     local seenItemLink = {}
 
-    for slotID, candidates in pairs(findings) do
-        local best = candidates and candidates[1]
-        if best then
-            local currentDisplay = (equippedSlots[slotID] and equippedSlots[slotID].itemLevel) or 0
-            local target = best.itemLevel or 0
-            -- Do not re-filter with live `currentDisplay` only: it can be newer than the scan snapshot
-            -- (equip/scan race), which drops every row while findings still lists valid scan-time upgrades.
-            local scanBase = tonumber(best.equippedIlvlAtFind) or currentDisplay
-            if target > scanBase then
-                local linkKey = best.itemLink or ("id:" .. tostring(best.itemID or 0))
-                if seenItemLink[linkKey] then
-                    -- Same item already shown (e.g. trinket for slot 13 and 14) — show once
-                else
-                    seenItemLink[linkKey] = true
-                    local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
-                    rows[#rows + 1] = {
-                        slotID = slotID,
-                        slotName = (slotDef and slotDef.label) or GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
-                        currentIlvl = currentDisplay,
-                        targetIlvl = target,
-                        itemLink = best.itemLink,
-                        itemID = best.itemID,
-                        source = best.source or "",
-                        sourceType = best.sourceType or "",
-                        sourceClassFile = best.sourceClassFile,
-                        delta = target - scanBase,
-                        requiredLevel = best.requiredLevel,
-                    }
+    -- Paired slots (rings 11/12, trinkets 13/14, weapons 16/17) share one candidate pool, so taking
+    -- candidates[1] per slot made both slots pick the same bag item and the second row was dropped
+    -- outright -- two empty trinket slots showed a single recommendation. Give each slot the best
+    -- candidate no other slot has claimed, walking slots in a fixed order (pairs() left the winner
+    -- of a pair up to hash order). Keep this in step with DrawPaperDollCard's full-rebuild copy.
+    local slotIDs = {}
+    for slotID in pairs(findings) do slotIDs[#slotIDs + 1] = slotID end
+    table.sort(slotIDs)
+
+    for si = 1, #slotIDs do
+        local slotID = slotIDs[si]
+        local candidates = findings[slotID]
+        local currentDisplay = (equippedSlots[slotID] and equippedSlots[slotID].itemLevel) or 0
+        local best, linkKey, target, scanBase
+        for ci = 1, (candidates and #candidates or 0) do
+            local cand = candidates[ci]
+            local key = cand.itemLink or ("id:" .. tostring(cand.itemID or 0))
+            if not seenItemLink[key] then
+                local t = cand.itemLevel or 0
+                -- Do not re-filter with live `currentDisplay` only: it can be newer than the scan snapshot
+                -- (equip/scan race), which drops every row while findings still lists valid scan-time upgrades.
+                local base = tonumber(cand.equippedIlvlAtFind) or currentDisplay
+                if t > base then
+                    best, linkKey, target, scanBase = cand, key, t, base
+                    break
                 end
             end
+        end
+        if best then
+            seenItemLink[linkKey] = true
+            local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
+            rows[#rows + 1] = {
+                slotID = slotID,
+                slotName = (slotDef and slotDef.label) or GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
+                currentIlvl = currentDisplay,
+                targetIlvl = target,
+                itemLink = best.itemLink,
+                itemID = best.itemID,
+                source = best.source or "",
+                sourceType = best.sourceType or "",
+                sourceClassFile = best.sourceClassFile,
+                delta = target - scanBase,
+                requiredLevel = best.requiredLevel,
+            }
         end
     end
 
@@ -2153,8 +2169,6 @@ function WarbandNexus:TryRedrawGearStorageRecAfterEquipChange(expectedCanonKey, 
     if not mf or mf.currentTab ~= "gear" then return false end
     if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return false end
     if not mf._gearStorageRecHost or mf._gearStorageRecHost.drawGen ~= expectedDrawGen then return false end
-    if not self.RefreshGearStorageCacheEquipSigForCanon then return false end
-    if not self:RefreshGearStorageCacheEquipSigForCanon(expectedCanonKey) then return false end
     if not self.RedrawGearStorageRecommendationsOnly then return false end
     return self:RedrawGearStorageRecommendationsOnly(expectedCanonKey, expectedDrawGen, false) == true
 end

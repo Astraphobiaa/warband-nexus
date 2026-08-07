@@ -429,6 +429,7 @@ end
 local PLAN_CARD_BODY_LEFT = 10
 local PLAN_CARD_BODY_RIGHT_INSET = 30
 local PLAN_CARD_CONTENT_TOP = 60
+ns.PLAN_CARD_CONTENT_TOP = PLAN_CARD_CONTENT_TOP  -- shared with PlanCardFactory_Expanded.lua (separate chunk)
 local PLAN_CARD_BOTTOM_RESERVE = 38
 local ACHIEVEMENT_CARD_MIN_HEIGHT = 96
 
@@ -2788,7 +2789,14 @@ function PlanCardFactory.CreateAddButton(parent, options)
         end
         if plannedState then
             addBtn:EnableMouse(true)
-            addBtn:RegisterForClicks()
+            -- Planned is interactive only when the caller wires onClick (To-Do toggle). Without it the
+            -- button is a badge and must not swallow clicks; clearing clicks unconditionally used to
+            -- kill the handler too, so the To-Do toggle never fired.
+            if options.onClick then
+                addBtn:RegisterForClicks("LeftButtonUp")
+            else
+                addBtn:RegisterForClicks()
+            end
             local plannedTip = (ns.L and ns.L["PLANNED"]) or "On your To-Do list"
             addBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")

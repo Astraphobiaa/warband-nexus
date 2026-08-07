@@ -356,12 +356,22 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     
     -- Pooled rows (PvE / Storage) refresh visualOpts each paint; click must read latest callbacks.
     header._wnCollVisualOpts = visualOpts
+    -- Expand state + callback live on the frame so virtualized lists can rebind a pooled header to a
+    -- different section (ns.UI_RebindCollapsibleHeader). Nil fields keep the original closure behaviour.
+    header._wnCollExpanded = isExpanded and true or false
+    header._wnCollExpandIcon = expandIcon
+    header._wnCollChevLeft = chevLeft
 
     -- Click handler: optional animatedContent body resizes instantly; then onToggle / callbacks.
     header:SetScript("OnClick", function()
-        isExpanded = not isExpanded
-        ns.UI_CollapseExpandSetState(expandIcon, isExpanded)
+        local expandedNow = header._wnCollExpanded
+        if expandedNow == nil then expandedNow = isExpanded end
+        expandedNow = not expandedNow
+        isExpanded = expandedNow
+        header._wnCollExpanded = expandedNow
+        ns.UI_CollapseExpandSetState(expandIcon, expandedNow)
 
+        local onToggleFn = header._wnCollOnToggle or onToggle
         local vo = header._wnCollVisualOpts or visualOpts
         local persistToggleFn = vo and vo.persistToggle
         if persistToggleFn then
@@ -388,7 +398,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
             local toggleBeforeCollapse = vo and vo.applyToggleBeforeCollapseAnimate == true
             if not isExpanded then
                 if toggleBeforeCollapse then
-                    onToggle(isExpanded)
+                    onToggleFn(isExpanded, header)
                 end
                 if vo and vo.hideBodyBeforeCollapseAnimate then
                     animContent:Hide()
@@ -397,7 +407,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
                 animContent:SetHeight(drawEnd)
                 if sectionOnUpdate then sectionOnUpdate(drawEnd) end
                 if not toggleBeforeCollapse then
-                    onToggle(isExpanded)
+                    onToggleFn(isExpanded, header)
                 end
                 callSectionOnComplete(isExpanded)
             else
@@ -408,11 +418,11 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
                 if deferToggleUntilComplete then
                     animContent:SetHeight(target)
                     if sectionOnUpdate then sectionOnUpdate(target) end
-                    onToggle(isExpanded)
+                    onToggleFn(isExpanded, header)
                     callSectionOnComplete(isExpanded)
                 else
                     -- onToggle first so callers can populate _wnSectionFullH / row heights before we read target.
-                    onToggle(isExpanded)
+                    onToggleFn(isExpanded, header)
                     local fullH2 = animContent._wnSectionFullH
                     if not fullH2 or fullH2 <= 0 then
                         fullH2 = animContent:GetHeight()
@@ -427,7 +437,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
                 end
             end
         else
-            onToggle(isExpanded)
+            onToggleFn(isExpanded, header)
         end
     end)
     
@@ -444,7 +454,30 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     return header, expandIcon, categoryIcon, headerText
 end
 
+--- Rebind a pooled collapsible header to another section (flat virtualized lists: achievement browse).
+--- Touches label / expand state / indent / toggle callback only — chrome and fonts are reused as-is.
+--- `onToggle` is invoked as `onToggle(isExpanded, header)`; read `header` for the section identity.
+local function RebindCollapsibleHeader(header, text, isExpanded, onToggle, indentLevel)
+    if not header then return end
+    local expanded = isExpanded and true or false
+    header._wnCollExpanded = expanded
+    header._wnCollOnToggle = onToggle
+    local expandIcon = header._wnCollExpandIcon
+    if expandIcon then
+        ns.UI_CollapseExpandSetState(expandIcon, expanded)
+        local indent = (indentLevel or 0) * ((UI_LAYOUT and UI_LAYOUT.BASE_INDENT) or 15)
+        expandIcon:ClearAllPoints()
+        expandIcon:SetPoint("LEFT", (header._wnCollChevLeft or 12) + indent, 0)
+    end
+    local headerText = header._wnCollHeaderText
+    if headerText then
+        headerText:SetText(text or "")
+    end
+end
+
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
+ns.UI_RebindCollapsibleHeader = RebindCollapsibleHeader
 ns.UI_BuildCollapsibleSectionOpts = BuildCollapsibleSectionOpts
 
-assert(ns.UI_CreateCollapsibleHeader and ns.UI_BuildCollapsibleSectionOpts, "SharedWidgets_Collapsible: exports missing")
+assert(ns.UI_CreateCollapsibleHeader and ns.UI_RebindCollapsibleHeader and ns.UI_BuildCollapsibleSectionOpts,
+    "SharedWidgets_Collapsible: exports missing")

@@ -1203,7 +1203,8 @@ function WarbandNexus:ShowModalNotification(config)
         local useTwoLineCard = headerSafe and headerSafe ~= ""
         local categoryFirstLayout = useTwoLineCard
         local titleLine, headerLine
-        local textGroup = NMToastLayer(contentFrameCompact, textUseW, stackH)
+        -- Sized by the SetPoint pair below and the explicit SetSize once textUseW/stackH exist.
+        local textGroup = NMToastLayer(contentFrameCompact)
         textGroup:SetFrameLevel(1)
         textGroup:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", 0, 0)
         textGroup:SetPoint("BOTTOMRIGHT", contentFrameCompact, "BOTTOMRIGHT", 0, 0)
@@ -1798,7 +1799,7 @@ function WarbandNexus:CheckNotificationsOnLogin()
     if notifs.showUpdateNotes and self:IsNewVersion() then
         QueueNotification({
             type = "update",
-            data = CHANGELOG
+            data = ns.CHANGELOG
         })
     end
     

@@ -2601,7 +2601,7 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
                         addToCategory(catKey, {
                             id = d.id,
                             name = name,
-                            icon = d.icon or DEFAULT_ICON_TOY,
+                            icon = d.icon or M.DEFAULT_ICON_TOY,
                             source = d.source or "",
                             sourceTypeIndex = sourceTypeIndex,
                             description = d.description or "",

@@ -52,6 +52,7 @@ local CompareCharNameLower = B.CompareCharNameLower
 local ShowItemsSearchEmptyState = B.ShowItemsSearchEmptyState
 local ShowItemsResultsEmptyState = B.ShowItemsResultsEmptyState
 local SafeLower = B.SafeLower
+local SearchStateManager = B.SearchStateManager
 local StorageSectionLayout = B.StorageSectionLayout
 local BuildCollapsibleSectionOpts = B.BuildCollapsibleSectionOpts
 local CreateCollapsibleHeader = B.CreateCollapsibleHeader
@@ -858,7 +859,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             if personalBody._wnStorageMajorBodyBuilt then
                 return
             end
-        yOffset = yOffset + HEADER_SPACING
         local hasAnyPersonalItems = false
 
         -- Direct DB access (DB-First pattern) (tracked only)

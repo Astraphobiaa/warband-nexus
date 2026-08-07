@@ -727,7 +727,6 @@ local M = {
     ParseDescriptionProgressTarget = ParseDescriptionProgressTarget,
     ResolveCriteriaQuantities = ResolveCriteriaQuantities,
     FormatAchievementProgressParenthetical = FormatAchievementProgressParenthetical,
-    GetAchievementTaskLabel = GetAchievementTaskLabel,
     FormatAchievementTodoSummaryLine = FormatAchievementTodoSummaryLine,
     BuildAchievementTodoSummaryLines = BuildAchievementTodoSummaryLines,
     BuildAchievementTodoSummaryFields = BuildAchievementTodoSummaryFields,

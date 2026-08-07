@@ -37,6 +37,7 @@ local RestoreWindowPosition = B.RestoreWindowPosition
 local SaveWindowGeometry = B.SaveWindowGeometry
 local ScheduleRecycleBinPoolDrain = B.ScheduleRecycleBinPoolDrain
 local ScrollMainNavEnsureTabVisible = B.ScrollMainNavEnsureTabVisible
+local MAIN_TAB_STRIP_EDGE_INSET = B.MAIN_TAB_STRIP_EDGE_INSET
 local ShouldSkipRedundantShellPopulate = B.ShouldSkipRedundantShellPopulate
 local StartCustomDrag = B.StartCustomDrag
 local StartCustomResize = B.StartCustomResize
@@ -620,7 +621,7 @@ function ns.UIShell.CreateMainWindow(self)
         railFooterSep:SetPoint("TOPRIGHT", navRailFooter, "TOPRIGHT", -railPad, 0)
         local sepDiv = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
         railFooterSep:SetColorTexture(sepDiv[1], sepDiv[2], sepDiv[3], sepDiv[4] or 1)
-        if isClassicShell and railFooterSep.Hide then
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and railFooterSep.Hide then
             railFooterSep:Hide()
         end
         f._wnNavRailFooterSep = railFooterSep
@@ -1537,6 +1538,9 @@ function ns.UIShell.CreateMainWindow(self)
         return untilT and GetTime() < untilT
     end
 
+    -- Assigned below; declared here so this closure captures the upvalue, not a nil global.
+    local SchedulePopulateContent
+
     local function TryRunGearTabInventoryNarrowRefresh()
         if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
         if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
@@ -1683,7 +1687,7 @@ function ns.UIShell.CreateMainWindow(self)
         if mlab then P:Stop(mlab) end
     end
 
-    local function SchedulePopulateContent(skipCooldown, opts)
+    function SchedulePopulateContent(skipCooldown, opts)
         if not f or not f:IsShown() then return end
         if skipCooldown then
             shellRefresh.pendingPopulateSkipCooldown = true

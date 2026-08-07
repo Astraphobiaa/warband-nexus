@@ -119,6 +119,8 @@ local function HideAllItemsEmptyStateCards(scrollChild)
     end
 end
 
+local ShowItemsResultsEmptyState  -- defined below; declared here so the fallback path below is not a nil global
+
 --- Unified search-no-results card (query-aware description).
 local function ShowItemsSearchEmptyState(parent, searchText, baseYOffset)
     if ns.UI_ShowSearchEmptyStateCard then
@@ -128,7 +130,7 @@ local function ShowItemsSearchEmptyState(parent, searchText, baseYOffset)
 end
 
 --- Empty card inside resultsContainer (full width, same top gap as list headers).
-local function ShowItemsResultsEmptyState(parent, tabName, baseYOffset)
+function ShowItemsResultsEmptyState(parent, tabName, baseYOffset)
     if parent and parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
@@ -1862,6 +1864,8 @@ end
 
 -- ITEMS RESULTS RENDERING (Separated for search refresh)
 
+local ApplyItemRowInteriorLayout  -- defined below; declared here so layoutRowFn captures the upvalue
+
 function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
     if (currentItemsSubTab == "warband" and ItemsWarbandUsesStorageTree())
         or (currentItemsSubTab == "guild" and ItemsGuildUsesStorageTree()) then
@@ -2123,7 +2127,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     return yOffset + GetLayout().minBottomSpacing
 end -- DrawItemsResults
 
-local function ApplyItemRowInteriorLayout(row)
+function ApplyItemRowInteriorLayout(row)
     if not row then return end
     if row.SetHeight then
         row:SetHeight(ITEMS_VIRTUAL_ROW_HEIGHT)
@@ -2294,6 +2298,7 @@ ns.ItemsUI._bind = {
     ShowItemsSearchEmptyState = ShowItemsSearchEmptyState,
     ShowItemsResultsEmptyState = ShowItemsResultsEmptyState,
     SafeLower = SafeLower,
+    SearchStateManager = SearchStateManager,
     StorageSectionLayout = StorageSectionLayout,
     BuildCollapsibleSectionOpts = BuildCollapsibleSectionOpts,
     CreateCollapsibleHeader = CreateCollapsibleHeader,

@@ -12,7 +12,6 @@ local C_PetJournal = C_PetJournal
 local C_ToyBox = C_ToyBox
 local Notify = ns.CollectionNotify
 local CSListeners = RT.CSListeners
-local InvalidateCollectionCountsCache = RT.InvalidateCollectionCountsCache
 local WipeUncollectedResultsCacheAndMergedAchievements = RT.WipeUncollectedResultsCacheAndMergedAchievements
 
 -- REAL-TIME EVENT HANDLERS (NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED)
@@ -581,6 +580,8 @@ local function InvalidateCollectionCountsCache(_, arg)
         ns._mountIDToSourceIndex = nil
     end
 end
+-- CollectionService.lua builds RT before this chunk loads, so it can only reach us through RT.
+RT.InvalidateCollectionCountsCache = InvalidateCollectionCountsCache
 
 -- Single WN_COLLECTIBLE_OBTAINED handler
 -- (AceEvent table is keyed by self). Order: uncollected prune -> API/uncollected caches -> recent ring -> UI broadcast.

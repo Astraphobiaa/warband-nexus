@@ -279,7 +279,7 @@ function WarbandNexus:BuildCollectionCache(opts)
                 end
             end
             onOwnedCacheBuildDone()
-            SeedNotifiedFromOwned()
+            RT.SeedNotifiedFromOwned()
         end)
         if not ok then
             DebugPrint("|cffff4444[WN CollectionService ERROR]|r Toy batch failed: " .. tostring(err))

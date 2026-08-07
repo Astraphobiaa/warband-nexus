@@ -359,7 +359,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         resetOrderBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
         local resetOrderLbl = FontManager:CreateFontString(resetOrderBtn, "small", "OVERLAY")
         resetOrderLbl:SetPoint("CENTER", 0, 0)
-        local hexOrder = (UI_GetAccentHexColor and UI_GetAccentHexColor()) or "aaaaee"
+        local hexOrder = (ns.UI_GetAccentHexColor and ns.UI_GetAccentHexColor()) or "aaaaee"
         resetOrderLbl:SetText("|cff" .. hexOrder .. (GetLocalizedText("RESET_COLUMN_ORDER", "Reset Order")) .. "|r")
         if resetOrderLbl.EnableMouse then resetOrderLbl:EnableMouse(false) end
         resetOrderBtn:SetScript("OnClick", function()
@@ -380,7 +380,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         resetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
         local resetLbl = FontManager:CreateFontString(resetBtn, "small", "OVERLAY")
         resetLbl:SetPoint("CENTER", 0, 0)
-        local hex = (UI_GetAccentHexColor and UI_GetAccentHexColor()) or "aaaaee"
+        local hex = (ns.UI_GetAccentHexColor and ns.UI_GetAccentHexColor()) or "aaaaee"
         resetLbl:SetText("|cff" .. hex .. (GetLocalizedText("SHOW_ALL", "Show All")) .. "|r")
         if resetLbl.EnableMouse then resetLbl:EnableMouse(false) end
         resetBtn:SetScript("OnClick", function()

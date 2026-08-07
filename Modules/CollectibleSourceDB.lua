@@ -948,10 +948,19 @@ ns.CollectibleSourceDB = {
           statisticIds = { 14404 },
           dropDifficulty = "Mythic",
         },
-        { sourceType = "instance_boss", npcID = 180863,  -- So'leah (Tazavesh Mythic)
+        { sourceType = "instance_boss", npcID = 180863,  -- So'leah (Tazavesh, the Veiled Market)
+          -- Tazavesh was a Mythic-only megadungeon in Shadowlands, but since it entered the M+ rotation
+          -- it also runs on Heroic ("In Heroic and Mythic+ modes, Tazavesh is split into two instances"
+          -- -- warcraft.wiki.gg). The old "Mythic" gate made FilterDropsByDifficulty drop every Heroic
+          -- kill. Array form lists both so the [WN-Drops] line can show them and green the one you are
+          -- in; M+ resolves to the "Mythic" label via isChallengeMode.
+          dropDifficulty = { "Heroic", "Mythic" },
+          -- 15177 "Tazavesh, the Veiled Market" -- a single completion counter; the game does not split
+          -- this dungeon per difficulty the way it does Kel'Thuzad/Sylvanas, which is itself evidence the
+          -- drop is not Mythic-gated. The previous 15168 was a Sanctum of Domination statistic (verified
+          -- in-game: GetStatistic(15168) = "--", 15177 = run count), so the seed was always empty.
           drops = _cartelGlider,
-          statisticIds = { 15168 },
-          dropDifficulty = "Mythic",
+          statisticIds = { 15177 },
         },
         { sourceType = "encounter", encounterID = 2442, npcIDs = { 180863 } },             -- So'leah
         { sourceType = "encounter", encounterID = 2429, npcIDs = { 178738 } },             -- The Nine

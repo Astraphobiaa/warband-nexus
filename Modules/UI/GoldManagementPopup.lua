@@ -281,6 +281,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     yOffset = yOffset + 28  -- Increased spacing between title and input
     
     -- Input box for gold amount
+    local Factory = ns.UI and ns.UI.Factory
     local inputBox = (Factory and Factory.CreateEditBox and Factory:CreateEditBox(contentFrame))
         or CreateFrame("EditBox", nil, contentFrame)
     inputBox:SetSize(140, 32)
@@ -385,8 +386,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     
     local SUMMARY_PAD = 10
     local SUMMARY_ROW_GAP = 6
-    local Factory = ns.UI and ns.UI.Factory
-    
+
     local summaryCard = CreateCard(contentFrame, 1)
     summaryCard:SetPoint("TOPLEFT", PADDING, -yOffset)
     summaryCard:SetPoint("TOPRIGHT", -PADDING, -yOffset)

@@ -429,6 +429,9 @@ function MigrationService:MigrateNormalizeCharacterKeyPrefsV1(db)
     end
 end
 
+-- Defined far below; forward-declared so RunGuidSubsidiaryRemap does not read them as nil globals.
+local BuildSubsidiaryOrphanRenames, BuildSubsidiaryAliasRenames
+
 --- Force subsidiary orphan/alias remap (slash `/wn guidmigrate`). Does not wipe roster rows.
 ---@param db table AceDB root
 ---@return number renameCount Keys remapped in the last alias pass
@@ -1422,7 +1425,7 @@ local function ForEachPveCharKeyedTable(pveCache, fn)
 end
 
 --- Build oldKey -> canonical subsidiary key renames from roster + orphan subsidiary indices.
-local function BuildSubsidiaryAliasRenames(db)
+function BuildSubsidiaryAliasRenames(db)
     local renames = {}
     local Utilities = ns.Utilities
     local issecretvalue = issecretvalue
@@ -1735,7 +1738,7 @@ local function CollectSubsidiaryKeys(db, into)
 end
 
 --- Build orphan subsidiary renames (legacy Name-Realm buckets + unowned subsidiary keys).
-local function BuildSubsidiaryOrphanRenames(db)
+function BuildSubsidiaryOrphanRenames(db)
     local renames = {}
     local Utilities = ns.Utilities
     local chars = db.global.characters

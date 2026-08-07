@@ -444,11 +444,12 @@ function ns.UI_ApplyFloatingWindowHeaderChrome(header)
         ns.UI_ApplyClassicInteriorFlatFill(header, { 0, 0, 0, 0 })
         return
     end
-    if not ApplyVisuals then return end
+    -- ns.UI_ApplyVisuals lands when SharedWidgets.lua loads (after this file) -- resolve at call time.
+    if not ns.UI_ApplyVisuals then return end
     if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(header) then return end
     local bg = ThemeAPI.GetFloatingWindowHeaderBackdrop()
     local border = ThemeAPI.GetFloatingWindowHeaderBorder()
-    ApplyVisuals(header, bg, border)
+    ns.UI_ApplyVisuals(header, bg, border)
 end
 
 --- Footer hairline above version strip.
@@ -1352,9 +1353,9 @@ function ThemeAPI.ApplySearchBoxChrome(frame, opts)
             bg = { 0, 0, 0, 0 },
         })
         frame._bgAlpha = 0
-    elseif ApplyVisuals then
+    elseif ns.UI_ApplyVisuals then
         local bg, border = ThemeAPI.GetSearchBoxChromeColors()
-        ApplyVisuals(frame, bg, border)
+        ns.UI_ApplyVisuals(frame, bg, border)
         frame._borderType = "accent"
         frame._bgType = "searchChrome"
         frame._borderAlpha = border[4]
@@ -1459,11 +1460,13 @@ function ThemeAPI.SyncSemanticColorAliases()
     COLORS.chromeBorder = COLORS.border
     local even = COLORS.surfaceRowEven
     local odd = COLORS.surfaceRowOdd
-    if even and UI_SPACING and UI_SPACING.ROW_COLOR_EVEN then
-        for i = 1, 4 do UI_SPACING.ROW_COLOR_EVEN[i] = even[i] end
+    -- SharedWidgets_Layout.lua assigns ns.UI_SPACING after this file loads -- resolve at call time.
+    local spacing = ns.UI_SPACING
+    if even and spacing and spacing.ROW_COLOR_EVEN then
+        for i = 1, 4 do spacing.ROW_COLOR_EVEN[i] = even[i] end
     end
-    if odd and UI_SPACING and UI_SPACING.ROW_COLOR_ODD then
-        for i = 1, 4 do UI_SPACING.ROW_COLOR_ODD[i] = odd[i] end
+    if odd and spacing and spacing.ROW_COLOR_ODD then
+        for i = 1, 4 do spacing.ROW_COLOR_ODD[i] = odd[i] end
     end
 end
 

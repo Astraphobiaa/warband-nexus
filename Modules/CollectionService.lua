@@ -862,7 +862,7 @@ ns.CollectionServiceRT = {
     time = time,
     deferredStoreSaveTimer = nil,
     CSListeners = CSListeners,
-    InvalidateCollectionCountsCache = InvalidateCollectionCountsCache,
+    -- InvalidateCollectionCountsCache is owned by CollectionService_Events.lua and written back onto RT there.
     WipeUncollectedResultsCacheAndMergedAchievements = WipeUncollectedResultsCacheAndMergedAchievements,
     CanHydrateOwnedCacheFromStore = CanHydrateOwnedCacheFromStore,
     HydrateOwnedCacheFromStore = HydrateOwnedCacheFromStore,
@@ -2069,6 +2069,8 @@ local function SeedNotifiedFromOwned()
     db._seeded = true
     DebugPrintf("|cff00ccff[WN CollectionService]|r Seeded notifiedCollectibles: %d entries from owned cache", count)
 end
+-- Defined after the RT table constructor above, so CollectionService_Store.lua gets it here.
+ns.CollectionServiceRT.SeedNotifiedFromOwned = SeedNotifiedFromOwned
 
 -- REAL-TIME CACHE BUILDING (Fast O(1) Lookup)
 
@@ -2106,7 +2108,9 @@ function WarbandNexus:RequestCollectionDataRefreshForce()
         wipeMap(dbStore.toy)
     end
     self:InvalidateCollectionCache(nil)
-    InvalidateCollectionCountsCache(nil, nil)
+    if ns.CollectionServiceRT.InvalidateCollectionCountsCache then
+        ns.CollectionServiceRT.InvalidateCollectionCountsCache(nil, nil)
+    end
     if ns.ScheduleEnsureCollectionDataDeferred then
         ns.ScheduleEnsureCollectionDataDeferred()
     elseif self.EnsureCollectionData then
@@ -2149,7 +2153,9 @@ function WarbandNexus:DebugForceCollectionRebuild(full)
         end
     end
     self:InvalidateCollectionCache(nil)
-    InvalidateCollectionCountsCache(nil, nil)
+    if ns.CollectionServiceRT.InvalidateCollectionCountsCache then
+        ns.CollectionServiceRT.InvalidateCollectionCountsCache(nil, nil)
+    end
     CollectionUserPrint(self, "|cff00ccff[WN Collection]|r Debug rebuild started (mount/pet/toy" ..
         (full and " + achievements/titles/illusions" or "") ..
         "). Use |cff00ccff/wn profiler on|r then open Collections.|r")

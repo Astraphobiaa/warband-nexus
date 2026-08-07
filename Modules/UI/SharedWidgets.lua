@@ -945,8 +945,9 @@ local function RefreshColors()
         end
     end
 
-    if RefreshAccentStripes then
-        RefreshAccentStripes()
+    -- Defined below this chunk position; reach it through ns so this is not a nil global.
+    if ns.UI_RefreshAccentStripes then
+        ns.UI_RefreshAccentStripes()
     end
     
     -- Notify NotificationManager about color change
@@ -1608,7 +1609,6 @@ local function ApplyBorderlessSurface(frame, bgColor, opts)
     end
 end
 
-ns.UI_ResolveSurfaceTierColor = ResolveSurfaceTierColor
 ns.UI_ApplyBorderlessSurface = ApplyBorderlessSurface
 ns.UI_HideFrameBorderQuartet = HideFrameBorderQuartet
 
@@ -1629,6 +1629,7 @@ local function ResolveSurfaceTierColor(tier)
     end
     return C.bg or { 0.065, 0.065, 0.082, 0.98 }
 end
+ns.UI_ResolveSurfaceTierColor = ResolveSurfaceTierColor
 
 --- Root shell only (`WarbandNexusFrame`): full-bleed color fill — no `BackdropTemplate` / backdrop insets (avoids side gutters).
 local function ApplyMainWindowShellFill(frame, bgColor, borderColor)

@@ -317,6 +317,7 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     local currentValue = reputation.currentValue or 0
     local maxValue = reputation.maxValue or 1
     local isParagon = reputation.hasParagon or false
+    local rewardPending = (reputation.paragon and reputation.paragon.hasRewardPending) or false
     local baseReputationMaxed = ComputeBaseReputationMaxed(reputation)
 
     local standingID = reputation.standingID or 4

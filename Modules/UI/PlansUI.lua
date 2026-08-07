@@ -443,18 +443,31 @@ local function TeardownPlansAchievementBrowse(host)
                 rowPool = {}
                 host._plansAchBrowseRowPool = rowPool
             end
+            local headerPool = st._achHeaderPool
             for vi = 1, #visible do
                 local v = visible[vi]
                 if v and v.frame then
                     v.frame:Hide()
                     v.frame:ClearAllPoints()
-                    rowPool[#rowPool + 1] = v.frame
+                    -- Section headers live in their own pool; mixing them into the row pool would hand a
+                    -- collapsible header back to acquireRow as an achievement row.
+                    if v.isHeader then
+                        if not headerPool then
+                            headerPool = {}
+                            st._achHeaderPool = headerPool
+                        end
+                        headerPool[#headerPool + 1] = v.frame
+                    else
+                        rowPool[#rowPool + 1] = v.frame
+                    end
                 end
             end
             st._achVisibleRowFrames = {}
         end
         DetachOwnedPlansInnerScroll(st, nil)
-        host._plansAchBrowseState = nil
+        -- State (flat list, header pool, row pool, scroll child) is KEPT: DrawAchievementsTable reuses
+        -- it, so a return to the browse costs a rebind instead of rebuilding the whole category tree.
+        -- The gen bumps above already stop any in-flight repaint from touching it.
     end
     if host.plansAchBrowseRoot then
         host.plansAchBrowseRoot:Hide()
@@ -537,9 +550,9 @@ local function ReleasePlansScrollBody(parent)
     end
     parent._plansCardLayoutManager = nil
     parent._plansBrowseLayoutManager = nil
-    parent.plansAchBrowseRoot = nil
-    parent._plansAchBrowseState = nil
-    parent._plansAchBrowseRowPool = nil
+    -- plansAchBrowseRoot / _plansAchBrowseState / _plansAchBrowseRowPool are persistent (see
+    -- TeardownPlansAchievementBrowse): dropping them here forced a full category-tree rebuild on
+    -- every populate, which is what froze the tab for 1-2s on a single plan add/remove.
     ns._plansAchPopulateGen = (ns._plansAchPopulateGen or 0) + 1
     ns._plansBrowsePaintGen = (ns._plansBrowsePaintGen or 0) + 1
 end
@@ -606,8 +619,6 @@ function WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, toCat)
     parent:SetHeight(math.max((yOffset or 0) + 20, 1))
     if ns.UI_EnsureMainScrollLayout then
         ns.UI_EnsureMainScrollLayout()
-    elseif mf.scroll and UpdateScrollLayout then
-        UpdateScrollLayout(mf)
     end
     if perfOn and ns.EmitPartialTabRefreshPerf then
         local bodyMs = debugprofilestop()
@@ -619,6 +630,65 @@ end
 ns.RefreshPlansCategoryBodyOnly = function()
     if WarbandNexus and WarbandNexus.RefreshPlansCategoryBodyOnly then
         return WarbandNexus:RefreshPlansCategoryBodyOnly()
+    end
+    return false
+end
+
+--- Rebuild the To-Do List virtual model in place: no tab teardown, no chrome redraw. Cards are cached
+--- per plan id and only the ones marked dirty are rebuilt, so a membership change costs a reflow.
+function ns.PlansUI_RefreshActiveList()
+    local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return false end
+    local parent = mf.scrollChild
+    -- Requires a previous paint: the persistent host owns the card cache this path relies on.
+    if not parent or not parent._wnPlansActiveHost then return false end
+    local width = mf._plansContentWidth
+        or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
+        or (parent:GetWidth() or 600)
+    local yOffset = mf._plansScrollBodyStartY
+        or ((ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8)
+    local endY = WarbandNexus:DrawActivePlans(parent, yOffset, width, "active")
+    parent:SetHeight(math.max((endY or 0) + 20, 1))
+    if ns.UI_EnsureMainScrollLayout then
+        ns.UI_EnsureMainScrollLayout()
+    end
+    return true
+end
+
+--- Incremental WN_PLANS_UPDATED handling: repaint what the changed plan actually touches.
+--- Returns true when the delta was absorbed; false means the caller must repopulate the tab.
+function ns.PlansUI_ApplyPlanDelta(planID, action)
+    local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return false end
+    if planID ~= nil then
+        ns._plansDirtyCardIds = ns._plansDirtyCardIds or {}
+        ns._plansDirtyCardIds[planID] = true
+    end
+
+    ResolvePlansCategoryFromSession()
+    if currentCategory == "active" then
+        return ns.PlansUI_RefreshActiveList()
+    end
+    if currentCategory == "daily_tasks" then
+        -- Weekly Progress cards are not virtualized; let the caller repopulate.
+        return false
+    end
+
+    -- Browse categories: add/remove only flips one row's planned badge — unless a planned-dependent
+    -- filter is on, in which case list membership changed and the model must be rebuilt.
+    local profile = WarbandNexus.db and WarbandNexus.db.profile
+    if ProfileBool(profile, "plansShowPlanned", false) or ProfileBool(profile, "plansShowCompleted", false) then
+        return false
+    end
+    if currentCategory == "achievement" then
+        -- Nothing to repaint: the achievement row that owns the click updates its own To-Do badge in
+        -- place (applyAchRowPlanSlots). Re-windowing the list here would release and re-acquire every
+        -- visible row for a one-badge change, which reads as a full-list flash.
+        return mf.scrollChild and mf.scrollChild._plansAchBrowseState ~= nil
+    end
+    if ns.UI_UpdateBrowseGridVisibleRange and ns._wnBrowseGridState and ns._wnBrowseGridState.active then
+        ns.UI_UpdateBrowseGridVisibleRange(true)
+        return true
     end
     return false
 end
@@ -2461,7 +2531,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 onExpandPopulate = achievementOnExpandPopulate,
             }
 
-            local row = CreateExpandableRow(host, listCardWidth, collapsedH, rowData, isExpanded, function(expanded)
+            -- Declared before the constructor call so the toggle closure captures the row upvalue.
+            local row
+            row = CreateExpandableRow(host, listCardWidth, collapsedH, rowData, isExpanded, function(expanded)
                 expandedPlans[plan.id] = expanded
                 if onExpandReflow then
                     onExpandReflow(row, row and row.GetHeight and row:GetHeight() or collapsedH)
@@ -2596,20 +2668,36 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     host:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -(yOffset or 0))
     host:Show()
 
-    -- Bump a card epoch on plan/collection data changes so cached cards rebuild with fresh data. Pure UI
-    -- toggles (Show Completed) do NOT bump it → cards are reused across toggles.
+    -- Cache invalidation is scoped to what actually changed:
+    --   • WN_PLANS_UPDATED / WN_PLAN_COMPLETED carrying a planID → mark THAT plan dirty.
+    --   • Bulk changes (no planID) and collection scans → bump the epoch (every card rebuilds).
+    -- A single add/remove used to bump the epoch and throw away every cached card, so one changed plan
+    -- cost a full rebuild of the visible set. Pure UI toggles (Show Completed) invalidate nothing.
     if not ns._plansActiveEpochHooked and WarbandNexus.RegisterMessage and E then
         ns._plansActiveEpochHooked = true
         ns._plansActiveCardEpoch = ns._plansActiveCardEpoch or 1
+        ns._plansDirtyCardIds = ns._plansDirtyCardIds or {}
         local listeners = {}
         ns._plansActiveEpochListeners = listeners
         local function bumpEpoch() ns._plansActiveCardEpoch = (ns._plansActiveCardEpoch or 1) + 1 end
-        local evs = { E.PLANS_UPDATED, E.PLAN_COMPLETED, E.COLLECTION_UPDATED, E.COLLECTION_SCAN_COMPLETE }
-        for ei = 1, #evs do
-            if evs[ei] then WarbandNexus.RegisterMessage(listeners, evs[ei], bumpEpoch) end
+        local function onPlanScopedChange(_, payload)
+            local pid = payload and payload.planID
+            if pid ~= nil then
+                ns._plansDirtyCardIds[pid] = true
+            else
+                bumpEpoch()
+            end
+        end
+        if E.PLANS_UPDATED then WarbandNexus.RegisterMessage(listeners, E.PLANS_UPDATED, onPlanScopedChange) end
+        if E.PLAN_COMPLETED then WarbandNexus.RegisterMessage(listeners, E.PLAN_COMPLETED, onPlanScopedChange) end
+        local bulkEvs = { E.COLLECTION_UPDATED, E.COLLECTION_SCAN_COMPLETE }
+        for ei = 1, #bulkEvs do
+            if bulkEvs[ei] then WarbandNexus.RegisterMessage(listeners, bulkEvs[ei], bumpEpoch) end
         end
     end
     local epoch = ns._plansActiveCardEpoch or 1
+    local dirtyCardIds = ns._plansDirtyCardIds or {}
+    ns._plansDirtyCardIds = dirtyCardIds
 
     local cardCache = host._wnActiveCardCache
     if not cardCache then cardCache = {}; host._wnActiveCardCache = cardCache end
@@ -2627,6 +2715,17 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 heightByPlanId[pid] = nil
             end
         end
+        for pid in pairs(dirtyCardIds) do
+            if not present[pid] then dirtyCardIds[pid] = nil end
+        end
+    end
+
+    --- A cached card is reusable only if it predates no invalidation for its own plan.
+    local function cardIsStale(card, planId)
+        if not card then return true end
+        if card._epoch ~= epoch then return true end
+        if dirtyCardIds[planId] then return true end
+        return false
     end
 
     local function planCardHeight(plan)
@@ -2645,34 +2744,46 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     st.host = host
     st.yOffset = yOffset or 0
 
+    -- Column flow, not fixed rows. Each column keeps its own Y cursor, so expanding a card pushes
+    -- only the cards below it in that same column. The previous shared row height (max of the pair)
+    -- coupled the columns: a tall expanded card left a void under its short neighbour and shoved the
+    -- other column down with it. Column assignment stays index-based (odd -> left, even -> right) so
+    -- card order remains predictable; only the vertical coupling is removed.
     local function buildRows()
         local rows = {}
+        local colY = { 0, 0 }
+        local colX = { gridPadH, gridPadH + colStride }
+        local maxBottom = 0
         local i = 1
-        local y = 0
         while i <= #plans do
             local plan = plans[i]
             if plan.type == "weekly_vault" or plan.type == "daily_quests" then
+                -- Full-width card spans both columns, so it is a barrier: flush both cursors to it.
+                local y = math.max(colY[1], colY[2])
                 local h = planCardHeight(plan)
                 rows[#rows + 1] = { y = y, height = h, slots = { { idx = i, plan = plan, x = gridPadH, full = true } } }
-                y = y + h + cardSpacing
+                local below = y + h + cardSpacing
+                colY[1], colY[2] = below, below
+                if y + h > maxBottom then maxBottom = y + h end
                 i = i + 1
             else
-                local slots = { { idx = i, plan = plan, x = gridPadH, full = false } }
-                local h = planCardHeight(plan)
-                local p2 = plans[i + 1]
-                if p2 and p2.type ~= "weekly_vault" and p2.type ~= "daily_quests" then
-                    slots[2] = { idx = i + 1, plan = p2, x = gridPadH + colStride, full = false }
-                    h = math.max(h, planCardHeight(p2))
-                    i = i + 2
-                else
+                local placed = 0
+                for c = 1, 2 do
+                    local p = plans[i]
+                    if not p or p.type == "weekly_vault" or p.type == "daily_quests" then break end
+                    local y = colY[c]
+                    local h = planCardHeight(p)
+                    rows[#rows + 1] = { y = y, height = h, slots = { { idx = i, plan = p, x = colX[c], full = false } } }
+                    colY[c] = y + h + cardSpacing
+                    if y + h > maxBottom then maxBottom = y + h end
                     i = i + 1
+                    placed = placed + 1
                 end
-                rows[#rows + 1] = { y = y, height = h, slots = slots }
-                y = y + h + cardSpacing
+                if placed == 0 then break end
             end
         end
         st.rows = rows
-        local totalH = (#rows > 0) and (rows[#rows].y + rows[#rows].height + 10) or 20
+        local totalH = (#rows > 0) and (maxBottom + 10) or 20
         st.totalH = totalH
         host:SetHeight(math.max(totalH, 1))
         if parent.SetHeight then parent:SetHeight(math.max((st.yOffset) + totalH + 20, 1)) end
@@ -2681,12 +2792,13 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     local function buildSlotCard(slot, rowY)
         local plan = slot.plan
         local card = cardCache[plan.id]
-        if card and card._epoch ~= epoch then
+        if card and cardIsStale(card, plan.id) then
             card:Hide(); card:ClearAllPoints()
             cardCache[plan.id] = nil
             card = nil
         end
         if not card then
+            dirtyCardIds[plan.id] = nil
             card = renderActivePlanCard(slot.idx, host, slot.x, rowY, function(_, currentH)
                 if plan.type ~= "weekly_vault" and plan.type ~= "daily_quests" and currentH and currentH > 0 then
                     heightByPlanId[plan.id] = currentH
@@ -2736,7 +2848,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     local slot = row.slots[s]
                     visibleIds[slot.plan.id] = true
                     local existing = cardCache[slot.plan.id]
-                    local needCreate = (not existing) or (existing._epoch ~= epoch)
+                    local needCreate = cardIsStale(existing, slot.plan.id)
                     if needCreate and created >= ACTIVE_CREATE_CHUNK then
                         moreToCreate = true
                     else

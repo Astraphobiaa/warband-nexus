@@ -119,9 +119,8 @@ function WarbandNexus:NotifyGearStorageEquipChanged(canonKey)
         WarbandNexus:GearStorageTrace("Equip refresh deferred (scan in flight) canon=" .. tostring(canonKey))
         return
     end
-    if self.RefreshGearStorageCacheEquipSigForCanon then
-        self:RefreshGearStorageCacheEquipSigForCanon(canonKey)
-    end
+    -- No cache mutation here on purpose: the equipped signature changed, so the cached findings
+    -- no longer describe the current equipment. The next redraw's equipSig check misses and rescans.
 end
 
 --- Bag / item-info invalidation: defer while yielded Find runs for the same character.
@@ -149,18 +148,12 @@ function WarbandNexus:ProcessDeferredGearStorageUpdates(canonKey)
         -- GET_ITEM_INFO can queue invalidate mid-yield; after commit the cache is still strict-valid.
         if self.ShouldSkipGearStorageNarrowInvalidateForRapidRescan
             and self:ShouldSkipGearStorageNarrowInvalidateForRapidRescan(want) then
-            if self.RefreshGearStorageCacheEquipSigForCanon then
-                self:RefreshGearStorageCacheEquipSigForCanon(want)
-            end
             return "equip_redraw"
         end
         self:InvalidateGearStorageFindingsCacheImmediate(want)
         return "rescan"
     end
     if deferEquip and norm(deferEquip) == want then
-        if self.RefreshGearStorageCacheEquipSigForCanon then
-            self:RefreshGearStorageCacheEquipSigForCanon(want)
-        end
         return "equip_redraw"
     end
     return nil
@@ -1387,6 +1380,9 @@ function WarbandNexus:ResolveGearRosterRow(charKey)
     return ResolveGearRosterRow(charKey)
 end
 
+-- Defined just below but called from PromoteLegacyGearDataBucket (Lua 5.1 has no hoisting).
+local ShouldUseLegacyGearDataBucket, MergeGearDataBucket
+
 local function PromoteLegacyGearDataBucket(db, canonKey, legacyKey)
     if not db or not canonKey or not legacyKey or canonKey == legacyKey or not db[legacyKey] then
         return nil
@@ -1405,7 +1401,7 @@ local function PromoteLegacyGearDataBucket(db, canonKey, legacyKey)
     return db[canonKey]
 end
 
-local function ShouldUseLegacyGearDataBucket(current, legacy)
+function ShouldUseLegacyGearDataBucket(current, legacy)
     local currentSlots = CountGearDataPayloadSlots(current)
     local legacySlots = CountGearDataPayloadSlots(legacy)
     if legacySlots ~= currentSlots then
@@ -1447,7 +1443,7 @@ local function MergeGearDataWatermarks(target, donor)
     end
 end
 
-local function MergeGearDataBucket(current, legacy)
+function MergeGearDataBucket(current, legacy)
     if type(legacy) ~= "table" then return current end
     if type(current) ~= "table" then return legacy end
 
@@ -2732,7 +2728,9 @@ function WarbandNexus:GearUpgradeDebugReport()
     end
     local function currencyName(cid)
         if cid == 0 then return "Gold" end
-        return UPGRADE_CURRENCY_NAMES[cid] or ("Currency " .. tostring(cid))
+        -- UPGRADE_CURRENCY_NAMES is declared below this chunk position; read it from Constants.
+        local names = (Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.DISPLAY_NAMES) or {}
+        return names[cid] or ("Currency " .. tostring(cid))
     end
     self:Print("|cff00ccff[WN GearUpgradeDebug]|r Current char: " .. tostring(currentKey))
     self:Print("|cff888888Your currency:|r")
@@ -3040,6 +3038,7 @@ ns.GearService._storageFindDeps = {
     GetEquipLoc = GetEquipLoc,
     GetItemQuality = GetItemQuality,
     GetRawItemBindType = GetRawItemBindType,
+    ITEM_BIND_ON_USE = ITEM_BIND_ON_USE,
     CategoryFromRawBind = CategoryFromRawBind,
     GetItemMinLevelFromItemInfo = GetItemMinLevelFromItemInfo,
     IsArmorCompatible = IsArmorCompatible,

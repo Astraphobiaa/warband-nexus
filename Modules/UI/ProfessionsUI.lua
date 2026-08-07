@@ -981,7 +981,7 @@ end
 
 function PUI.BuildProfCompactHeaderLabel(col, displayText)
     local mutedMarkup = PUI.TextRoleMarkup("Muted")
-    if type(displayText) ~= "string" or displayText == "" then return "", mutedHex end
+    if type(displayText) ~= "string" or displayText == "" then return "", mutedMarkup end
     local shortByCol = {
         profName = (ns.L and ns.L["GROUP_PROFESSION"]) or "Profession",
         equipment = (ns.L and ns.L["EQUIPMENT"]) or "Equip",

@@ -668,6 +668,9 @@ end
 local postCombatUIFrame = nil
 local postCombatUITimer = nil
 
+-- Assigned in ShowMainWindow; declared here because FlushPostCombatUI below reads it.
+local mainFrame = nil
+
 local function FlushPostCombatUI()
     if mainFrame and mainFrame:IsShown() and WarbandNexus.RefreshUI then
         WarbandNexus:RefreshUI()
@@ -904,6 +907,9 @@ local function NormalizeFramePosition(frame)
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
 end
 
+-- Both are defined below but called from the resize/reset helpers above them.
+local StopCustomResize, UpdateScrollLayout
+
 --- Scale-aware BOTTOMRIGHT resize: keeps TOPLEFT anchor stable (avoids StartSizing cursor jump on scaled frames).
 local function StartCustomResize(frame)
     if not frame or (InCombatLockdown and InCombatLockdown()) then return end
@@ -954,7 +960,7 @@ local function StartCustomResize(frame)
     end)
 end
 
-local function StopCustomResize(frame)
+function StopCustomResize(frame)
     if not frame then return end
     frame._resizeActive = false
     frame._resizeCommitPending = true
@@ -1070,7 +1076,7 @@ local function GetScrollViewportWidth(frame)
 end
 
 -- Update scrollChild and frozen column header widths in one call.
-local function UpdateScrollLayout(frame)
+function UpdateScrollLayout(frame)
     if not frame or not frame.scrollChild or not frame.scroll then return end
     if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(frame) then
         return
@@ -1146,8 +1152,6 @@ function WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
         LC:ForceMainFrameMetrics(mf, "display_changed")
     end
 end
-
-local mainFrame = nil
 
 --- True when `owner` belongs to Warband Nexus UI (GameTooltip placement hook; View-layer only).
 function ns.IsWarbandNexusUIFrame(owner)
@@ -1689,7 +1693,9 @@ function WarbandNexus:ShowMainWindow(requestedTabKey)
                 end
                 -- Only rebuild content if fonts actually needed fixing
                 if anyFixed then
-                    UpdateTabButtonStates(mainFrame)
+                    if ns.UI_UpdateMainFrameTabButtonStates then
+                        ns.UI_UpdateMainFrameTabButtonStates(mainFrame)
+                    end
                     self:PopulateContent()
                 end
             end
@@ -2102,6 +2108,7 @@ ns.UIShell._bind = {
     IsTabModuleEnabled = IsTabModuleEnabled,
     IsTabPerfMonitorEnabled = IsTabPerfMonitorEnabled,
     MAIN_TAB_ORDER = MAIN_TAB_ORDER,
+    MAIN_TAB_STRIP_EDGE_INSET = MAIN_TAB_STRIP_EDGE_INSET,
     SHELL_TAB_SWITCH_POPULATE_QUIET = SHELL_TAB_SWITCH_POPULATE_QUIET,
     MarkShellPopulateCompleted = MarkShellPopulateCompleted,
     NormalizeFramePosition = NormalizeFramePosition,

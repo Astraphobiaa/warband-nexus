@@ -163,9 +163,9 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     parent._plansCardLayoutManager = nil
     if ns.UI_HideAllPlansEmptyStateCards then
         ns.UI_HideAllPlansEmptyStateCards(parent)
-    elseif HideEmptyStateCard then
-        HideEmptyStateCard(parent, "plans")
-        HideEmptyStateCard(parent, "plans_browse")
+    elseif ns.UI_HideEmptyStateCard then
+        ns.UI_HideEmptyStateCard(parent, "plans")
+        ns.UI_HideEmptyStateCard(parent, "plans_browse")
     end
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -386,7 +386,16 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             rootFrame = CreateFrame("Frame", nil, parent)
             rootFrame:SetSize(rw, rh)
         end
+        -- Persistent host (same contract as the To-Do List host and the browse grid): hidden in place
+        -- within Plans, parked/re-adopted across main-tab switches. Rebuilding this tree per populate
+        -- was the multi-second To-Do browse freeze.
+        rootFrame._wnPlansBrowseKeep = true
+        rootFrame._wnKeepOnTabSwitch = true
         parent.plansAchBrowseRoot = rootFrame
+    end
+    -- Re-adopt after a main-tab switch parked the host on the recycle bin (kept-host contract).
+    if rootFrame:GetParent() ~= parent then
+        rootFrame:SetParent(parent)
     end
     if not parent._plansAchBrowseState then
         parent._plansAchBrowseState = {}
@@ -457,17 +466,16 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
 
     local scrollFrame = st.achievementListScrollFrame
 
-    local flatListOpts = { rowHeightScale = achRowScale }
-    if searchActive then
-        flatListOpts.searchActive = true
-    end
-    if hideEmptyAchCategories then
-        flatListOpts.hideEmptyCategories = true
-    end
-    local _, totalPrev = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, flatListOpts)
-    rootFrame:SetHeight(math.max(1, totalPrev))
-    if parent.SetHeight then
-        parent:SetHeight(math.max(1, (yOffset or 0) + totalPrev + innerPad))
+    -- Host height follows the list model — on the first paint and on every collapse/expand rebuild.
+    local function applyAchBrowseContentHeight(totalH)
+        local h = math.max(1, totalH or 1)
+        rootFrame:SetHeight(h)
+        if parent.SetHeight then
+            parent:SetHeight(math.max(1, (yOffset or 0) + h + innerPad))
+        end
+        if ns.UI_EnsureMainScrollLayout then
+            ns.UI_EnsureMainScrollLayout()
+        end
     end
 
     local rowPool = parent._plansAchBrowseRowPool
@@ -481,12 +489,6 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         f:Hide()
         f:ClearAllPoints()
         rowPool[#rowPool + 1] = f
-    end
-
-    local function refreshVisible()
-        if st._achListRefreshVisible then
-            st._achListRefreshVisible()
-        end
     end
 
     local Factory = ns.UI.Factory
@@ -575,7 +577,9 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                             end
                         end
                         ach.isPlanned = false
-                        refreshVisible()
+                        -- Only this row's To-Do badge changed. Re-windowing the whole list here
+                        -- released and re-acquired every visible row — that was the add/remove flash.
+                        applyAchRowPlanSlots()
                     elseif not col and WarbandNexus.AddPlan then
                         WarbandNexus:AddPlan({
                             type = PLAN_TYPES.ACHIEVEMENT,
@@ -586,7 +590,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                             source = ach.source,
                         })
                         ach.isPlanned = true
-                        refreshVisible()
+                        applyAchRowPlanSlots()
                     end
                 end or nil,
                 onTrackClick = (not col) and function()
@@ -668,6 +672,12 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         drawGen = popGen,
         plansCategoryGen = catBodyGen,
         chromeHostFrame = rootFrame,
+        onContentHeight = applyAchBrowseContentHeight,
+        -- Durable collapse store. `collapsedHeaders` is a per-draw view over `expandedGroups`; writing
+        -- the durable value here (not via the metatable) is what makes a section survive a repopulate.
+        persistCollapsed = function(key, collapsed)
+            expandedGroups[key] = (not collapsed)
+        end,
         onListReady = function()
             if searchActive and mainScrollAch and mainScrollAch.SetVerticalScroll then
                 mainScrollAch:SetVerticalScroll(0)
@@ -678,10 +688,9 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             if ns.UI_EnsureMainScrollLayout then
                 ns.UI_EnsureMainScrollLayout()
             end
-            if st._achUseOuterScroll and mf and ns.UI_SyncMainTabScrollChrome and mf.scrollChild then
-                local endY = (yOffset or 0) + (st._achFlatListTotalHeight or totalPrev or 1) + innerPad
-                ns.UI_SyncMainTabScrollChrome(mf, mf.scrollChild, endY)
-            end
+            -- Outer-scroll chrome sync intentionally not called here: this block never executed (it
+            -- read a nil `mf`), and enabling it corrupted section positions on collapse/expand.
+            -- Re-introduce deliberately, with its own testing, not as a side effect of a nil fix.
         end,
     }
 
@@ -689,21 +698,11 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     if Factory.UpdateScrollBarVisibility and scrollFrame and not st._achUseOuterScroll then
         Factory:UpdateScrollBarVisibility(scrollFrame)
     end
-    local totalHNow = st._achFlatListTotalHeight or totalPrev or 1
-    rootFrame:SetHeight(math.max(1, totalHNow))
-    if parent.SetHeight then
-        parent:SetHeight(math.max(1, (yOffset or 0) + totalHNow + innerPad))
-    end
-    if ns.UI_EnsureMainScrollLayout then
-        ns.UI_EnsureMainScrollLayout()
-    end
-    if st._achUseOuterScroll and mf and ns.UI_SyncMainTabScrollChrome and mf.scrollChild then
-        ns.UI_SyncMainTabScrollChrome(mf, mf.scrollChild, (yOffset or 0) + totalHNow + innerPad)
-    end
+    local totalHNow = st._achFlatListTotalHeight or 1
+    applyAchBrowseContentHeight(totalHNow)
+    -- See note above: outer-scroll chrome sync stays disabled until it is verified on its own.
 
-    local totalH = totalHNow
-    rootFrame:SetHeight(math.max(1, totalH))
-    return (yOffset or 0) + totalH + innerPad
+    return (yOffset or 0) + totalHNow + innerPad
 end
 
 -- BROWSER RESULTS RENDERING (Separated for search refresh)
@@ -860,7 +859,69 @@ local function AnchorBrowseAction(row, control)
     end
 end
 
---- Pixels from the outer scroll content top down to `listFrame` top, walking the TOP→TOP anchor chain.
+---- Plan field that carries the browse item's identity, per category. Mirrors the AddPlan payload built
+--- in RenderPlansBrowseUnifiedRow — keep the two in sync or Planned toggles stop finding their plan.
+local BROWSE_PLAN_ID_FIELDS = {
+    mount = { "mountID" },
+    pet = { "speciesID" },
+    toy = { "itemID" },
+    -- Browse writes illusionID; plans created from Collections can key on sourceID instead.
+    illusion = { "illusionID", "sourceID" },
+    title = { "titleID" },
+    achievement = { "achievementID" },
+}
+
+--- Live planned lookup (O(1) plan cache) per browse category. `item.isPlanned` is only computed when
+--- the result set is built, so any rebind after an add/remove would otherwise paint a stale badge.
+local function IsBrowseItemPlanned(category, itemID)
+    if itemID == nil then return false end
+    local WN = WarbandNexus
+    if category == "mount" then
+        return WN.IsMountPlanned and WN:IsMountPlanned(itemID) or false
+    elseif category == "pet" then
+        return WN.IsPetPlanned and WN:IsPetPlanned(itemID) or false
+    elseif category == "toy" then
+        return WN.IsItemPlanned and WN:IsItemPlanned(PLAN_TYPES.TOY, itemID) or false
+    elseif category == "illusion" then
+        return WN.IsIllusionPlanned and WN:IsIllusionPlanned(itemID) or false
+    elseif category == "title" then
+        return WN.IsTitlePlanned and WN:IsTitlePlanned(itemID) or false
+    elseif category == "achievement" then
+        return WN.IsAchievementPlanned and WN:IsAchievementPlanned(itemID) or false
+    end
+    return false
+end
+
+--- Remove the plan this browse card created. Returns true when a plan was actually removed.
+local function RemoveBrowseItemPlan(category, itemID)
+    local fields = BROWSE_PLAN_ID_FIELDS[category]
+    if not fields or itemID == nil then return false end
+    local plans = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.plans
+    if not plans then return false end
+    for i = 1, #plans do
+        local p = plans[i]
+        if p and p.id and p.type == category then
+            for f = 1, #fields do
+                if p[fields[f]] == itemID then
+                    return WarbandNexus:RemovePlan(p.id) and true or false
+                end
+            end
+        end
+    end
+    return false
+end
+
+--- Repaint one browse card in place after its planned state flipped. Buttons, border and the title's
+--- right inset all depend on `isPlanned`, so a button swap alone would leave the header inset stale.
+--- Everything the renderer needs lives on `row._browseCtx`, refreshed on every rebind.
+local function RerenderBrowseCard(addon, row)
+    local ctx = row and row._browseCtx
+    if not ctx or not ctx.item then return end
+    addon:RenderPlansBrowseUnifiedRow(ctx.host, row, ctx.item, ctx.category, ctx.gridIndex,
+        ctx.cardWidth, ctx.todoHeaderH, ctx.PCM, ctx.browseExpanded, ctx.browserTryTypes)
+end
+
+-- Pixels from the outer scroll content top down to `listFrame` top, walking the TOP→TOP anchor chain.
 --- Works before layout settles (uses anchor offsets, not GetTop). Mirrors AchievementBrowseVirtualList.
 local function ListTopOffsetDownFromScrollContent(listFrame, scrollContent)
     if not listFrame or not scrollContent then return nil end
@@ -1085,6 +1146,9 @@ end
 function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gridIndex, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
     if not item or not host then return card end
     local PCF = ns.UI_PlanCardFactory
+    -- Planned state is live on every rebind: scroll, a plan added from another surface, or the card's
+    -- own Add/Planned toggle all land here, and each must paint the current truth.
+    item.isPlanned = IsBrowseItemPlanned(category, item.id)
     local isCompletedCard = (item.isCollected == true)
     if isCompletedCard and item.isPlanned and item.id then
         ClearPlanReminderForBrowseItem(self, category, item.id)
@@ -1234,7 +1298,12 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
     if row._browseAddBtn then row._browseAddBtn:Hide() end
     if row._browsePlannedBtn then row._browsePlannedBtn:Hide() end
     row.headerFrame:SetScript("OnMouseDown", nil)
-    row._browseCtx = { item = item, category = category }
+    -- Cached action buttons read this on click, so it must carry everything a re-render needs.
+    row._browseCtx = {
+        item = item, category = category, host = host, gridIndex = gridIndex,
+        cardWidth = cardWidth, todoHeaderH = todoHeaderH, PCM = PCM,
+        browseExpanded = browseExpanded, browserTryTypes = browserTryTypes,
+    }
 
     local function EnsurePlannedBtn()
         local btn = row._browsePlannedBtn
@@ -1242,7 +1311,26 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
             btn = PCF.CreateAddButton(row.headerFrame, {
                 buttonType = "card", iconOnly = true, plannedState = true,
                 width = ACTION_SIZE, height = ACTION_SIZE,
+                -- Planned is a toggle, not a badge: clicking it removes the plan this card created.
+                onClick = function()
+                    local ctx = row._browseCtx
+                    if not ctx or not ctx.item then return end
+                    local it, cat = ctx.item, ctx.category
+                    if not RemoveBrowseItemPlan(cat, it.id) then return end
+                    RerenderBrowseCard(self, row)
+                end,
             })
+            if btn then
+                local removeTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_REMOVE"]) or "Click to remove from your To-Do list."
+                btn:SetScript("OnEnter", function(bf)
+                    GameTooltip:SetOwner(bf, "ANCHOR_LEFT")
+                    local tr, tg, tb = 1, 1, 1
+                    if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+                    GameTooltip:SetText(removeTip, tr, tg, tb)
+                    GameTooltip:Show()
+                end)
+                btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            end
             row._browsePlannedBtn = btn
         end
         return btn
@@ -1274,14 +1362,7 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
                         rewardText = it.rewardText,
                         type = cat,
                     })
-                    if ApplyVisuals
-                        and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode())
-                        and not (row._wnBlizzardChrome or row._wnClassicCard) then
-                        ApplyVisuals(row, COLORS.bgCard, GetCompletedBorderColor())
-                    end
-                    btn:Hide()
-                    local pb = EnsurePlannedBtn()
-                    if pb then pb:Show(); AnchorBrowseAction(row, pb) end
+                    RerenderBrowseCard(self, row)
                 end,
             })
             row._browseAddBtn = addBtn

@@ -1,6 +1,10 @@
---[[
-    Shared achievement category browser: flat list + nested collapsible headers + virtual rows.
-    Same behavior as Collections ▸ Achievements; used by Plans ▸ To-Do browse achievement category.
+﻿--[[
+    Shared achievement category browser: ONE flat absolute-Y layout model, headers and rows both
+    virtualized against it. Used by Collections ▸ Achievements and Plans ▸ To-Do browse.
+
+    Layout contract: `UI_AchievementBrowse_BuildFlatList` owns every position. A collapsed category
+    contributes its header and nothing else — no nested wrap/body frames, no frame measurement, no
+    second height model to drift against on collapse/expand.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -12,8 +16,10 @@ local tonumber = tonumber
 local COLORS = ns.UI_COLORS
 local Factory = ns.UI.Factory
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
+local RebindCollapsibleHeader = ns.UI_RebindCollapsibleHeader
 local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
+assert(CreateCollapsibleHeader and RebindCollapsibleHeader,
+    "AchievementBrowseVirtualList: SharedWidgets_Collapsible must load first (WarbandNexus.toc)")
 
 local function GetLayout()
     return ns.UI_LAYOUT or {}
@@ -32,8 +38,6 @@ local COLLAPSE_HEADER_HEIGHT_ACH = LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT or 36
 local BASE_INDENT = LAYOUT.BASE_INDENT or 15
 local SECTION_SPACING = LAYOUT.SECTION_SPACING or LAYOUT.betweenSections or 8
 local MINI_SPACING = LAYOUT.MINI_SPACING or LAYOUT.miniSpacing or 4
-local ACHIEVEMENT_HEADER_CHUNK = (ns.CollectionsUI and ns.CollectionsUI.COLLECTIONS_HEADER_CHUNK) or 4
-local ACHIEVEMENT_HEADER_CHUNK_DEFERRED = (ns.CollectionsUI and ns.CollectionsUI.COLLECTIONS_HEADER_CHUNK_DEFERRED) or 99999
 
 local function BeginAchievementBrowseDeferredChrome(opts)
     local cui = ns.CollectionsUI
@@ -50,24 +54,13 @@ local function EndAchievementBrowseDeferredChrome()
     end
 end
 
---- Measure root section wraps on the achievement list scroll child (respects collapsed nested bodies).
-local function SyncAchievementBrowseScrollChildHeight(state)
+--- Apply the flat model's content height to the scroll child + chrome. No frame measurement: the
+--- layout model owns the height, so this never disagrees with where rows were actually placed
+--- (the old GetChildren() sweep was both O(n^2) and a second, drifting source of truth).
+local function ApplyAchievementBrowseContentHeight(state, totalH)
     local scrollChild = state and state.achievementListScrollChild
-    if not scrollChild or not scrollChild.GetTop then return end
-    local scTop = scrollChild:GetTop()
-    if not scTop then return end
-    local maxExtent = 0
-    local n = scrollChild:GetNumChildren() or 0
-    for i = 1, n do
-        local c = select(i, scrollChild:GetChildren())
-        if c and c.IsShown and c:IsShown() then
-            local bot = c:GetBottom()
-            if bot then
-                maxExtent = math.max(maxExtent, scTop - bot)
-            end
-        end
-    end
-    local contentH = math.max(maxExtent + PADDING, 1)
+    if not scrollChild then return end
+    local contentH = math.max((totalH or 1), 1)
     scrollChild:SetHeight(contentH)
     state._achFlatListTotalHeight = contentH
     local scrollFrame = state.achievementListScrollFrame
@@ -237,9 +230,10 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         return false
     end
 
-    -- Flat Y must match ChainSectionFrameBelow: only SECTION_SPACING between consecutive *rendered*
-    -- subsection wraps. The old loop added spacing after every child index (including empty API slots),
-    -- inflating yOffset / relY vs real frames — nested headers and rows overlapped the next category.
+    -- Single layout model: `yOffset` here is the ONLY source of truth for every frame's position.
+    -- A collapsed category contributes its header and nothing else — its rows and child subtrees are
+    -- absent from the list rather than hidden behind a nested body frame. That removes the second
+    -- (frame-measured) height model that used to drift against this one on every collapse/expand.
     local function AppendCategorySubtree(catID, headerIndentPx)
         local cat = categoryData[catID]
         if not cat then return end
@@ -251,6 +245,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         flat[#flat + 1] = {
             type = "header",
             key = catKey,
+            categoryID = catID,
             label = titleColor .. (cat.name or "") .. "|r " .. countColor .. "(" .. FormatNumber(totalAchievements) .. ")|r",
             rightStr = countColor .. FormatNumber(totalAchievements) .. "|r",
             itemCount = totalAchievements,
@@ -259,7 +254,9 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
             height = COLLAPSE_HEADER_HEIGHT_ACH,
             indent = headerIndentPx,
         }
-        yOffset = yOffset + COLLAPSE_HEADER_HEIGHT_ACH + MINI_SPACING
+        yOffset = yOffset + COLLAPSE_HEADER_HEIGHT_ACH
+        if not catExpanded then return end
+        yOffset = yOffset + MINI_SPACING
 
         local achievements = cat.achievements or {}
         local rowIndent = headerIndentPx + BASE_INDENT
@@ -315,9 +312,9 @@ end
 
 --[[
     opts.state — table with achievement browse fields (same shape as collectionsState):
-      achievementListScrollFrame, achievementListScrollChild, _achFlatList, _achSectionBodies,
+      achievementListScrollFrame, achievementListScrollChild, _achFlatList, _achHeaderPool,
       _achVisibleRowFrames, _achListWidth, _achListSelectedID, _achListOnSelect, _achListContentFrame,
-      _achListCollapsedHeaders, _achListRefreshVisible (set by this populate)
+      _achListCollapsedHeaders, _achListRefreshVisible, _achListRebuild (set by this populate)
     Plans To-Do only (optional): _achUseOuterScroll, _achOuterScrollFrame, _achOuterScrollChild (tab scrollChild),
       _achOuterScrollActive — virtual rows use main tab ScrollFrame (single scrollbar). Hook uses ns._plansAchOuterVirtualState.
     opts.scrollChild, listWidth, categoryData, rootCategories, collapsedHeaders
@@ -325,11 +322,93 @@ end
     opts.acquireRow(scrollChild, listWidth, item, selectedID, onSelect, redraw, cf) -> frame
     opts.releaseRowFrame(frame)
     opts.scheduleVisibleSync(function(refreshFn)) — optional; Collections passes ScheduleCollectionsVisibleSync
-    opts.drawGen — optional generation token; stored on state._achPopulateGen for pump abort
+    opts.onContentHeight(totalH) — optional; fired on populate AND on every collapse/expand rebuild so the
+      host frame (Plans rootFrame / tab scrollChild) can follow the model height.
+    opts.drawGen — optional generation token; stored on state._achPopulateGen
     opts.collectionsSubTabGen — optional; Collections sub-tab switch abort
     opts.plansCategoryGen — optional; Plans To-Do browse category switch abort
     opts.rowHeightScale — optional number passed to BuildFlatList (Plans & Collections achievements use `ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE`).
 ]]
+
+-- Headers are virtual items in the same flat model as rows, so only the ones inside the viewport exist
+-- as frames. A collapsed tree costs a handful of frames instead of one wrap + header + body per
+-- category — that eager build was the multi-second To-Do browse repopulate.
+local function AcquireAchievementHeader(state, scrollChild, item, listWidth, onToggle)
+    local pool = state._achHeaderPool
+    if not pool then
+        pool = {}
+        state._achHeaderPool = pool
+    end
+    -- Indent is carried by the frame anchor + width, NOT by the header's internal indentLevel:
+    -- applying both double-indented every nested category.
+    local indentPx = item.indent or 0
+    local header = pool[#pool]
+    if header then
+        pool[#pool] = nil
+        if header:GetParent() ~= scrollChild then
+            header:SetParent(scrollChild)
+        end
+        RebindCollapsibleHeader(header, item.label, not item.isCollapsed, onToggle, 0)
+    else
+        header = CreateCollapsibleHeader(scrollChild, item.label, item.key, not item.isCollapsed, onToggle,
+            "UI-Achievement-Shield-NoPoints", true, 0, nil, nil)
+        if not header then return nil end
+        header._wnAchPooledHeader = true
+        header._wnCollOnToggle = onToggle
+    end
+    header._wnAchSectionKey = item.key
+    header:ClearAllPoints()
+    header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", indentPx, -(item.yOffset or 0))
+    header:SetWidth(math.max(1, listWidth - indentPx))
+    header:SetHeight(item.height or COLLAPSE_HEADER_HEIGHT_ACH)
+    header:Show()
+    return header
+end
+
+local function ReleaseAchievementHeader(state, header)
+    if not header then return end
+    header:Hide()
+    header:ClearAllPoints()
+    local pool = state._achHeaderPool
+    if not pool then
+        pool = {}
+        state._achHeaderPool = pool
+    end
+    pool[#pool + 1] = header
+end
+
+--- Recycle every frame the list currently shows (headers to the header pool, rows to the caller's pool).
+local function ReleaseAchievementVisibleFrames(state, releaseRowFrame)
+    local visible = state._achVisibleRowFrames
+    if not visible then return end
+    local entryPool = state._achVisEntryPool
+    if not entryPool then
+        entryPool = {}
+        state._achVisEntryPool = entryPool
+    end
+    for i = 1, #visible do
+        local v = visible[i]
+        if v then
+            local frame = v.frame
+            if frame then
+                if v.isHeader then
+                    ReleaseAchievementHeader(state, frame)
+                else
+                    frame:Hide()
+                    frame:ClearAllPoints()
+                    releaseRowFrame(frame)
+                end
+            end
+            v.frame = nil
+            v.isHeader = nil
+            entryPool[#entryPool + 1] = v
+        end
+    end
+    wipe(visible)
+end
+
+ns.UI_AchievementBrowse_ReleaseVisibleFrames = ReleaseAchievementVisibleFrames
+
 function ns.UI_AchievementBrowse_Populate(opts)
     if not opts or not opts.scrollChild or not Factory then return end
     if _populateAchievementBrowseBusy then
@@ -344,10 +423,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
     local categoryData = opts.categoryData or {}
     local rootCategories = opts.rootCategories or {}
     local collapsedHeaders = opts.collapsedHeaders or {}
-    local selectedAchievementID = opts.selectedAchievementID
-    local onSelectAchievement = opts.onSelectAchievement
-    local cf = opts.contentFrameForRefresh
-    local redraw = opts.redrawFn or function() end
     local acquireRow = opts.acquireRow
     local releaseRowFrame = opts.releaseRowFrame
     local scheduleVisibleSync = opts.scheduleVisibleSync
@@ -360,30 +435,27 @@ function ns.UI_AchievementBrowse_Populate(opts)
     end
 
     local deferListChrome = BeginAchievementBrowseDeferredChrome(opts)
-    local headerChunkSize = deferListChrome and ACHIEVEMENT_HEADER_CHUNK_DEFERRED or ACHIEVEMENT_HEADER_CHUNK
 
     scrollChild:SetWidth(listWidth)
 
-    local visible = state._achVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                releaseRowFrame(v.frame)
-            end
-        end
-        state._achVisibleRowFrames = {}
-    end
+    ReleaseAchievementVisibleFrames(state, releaseRowFrame)
 
+    -- Purge leftovers from an earlier draw. Pooled headers stay parented here (recycled in place, so the
+    -- list never pays a reparent storm); anything still shown is an orphan from a caller that dropped
+    -- `_achVisibleRowFrames` and must go back to the pool rather than linger at a stale position.
     local nch = PackVariadicInto(_achChildEnumScratch, scrollChild:GetChildren())
     for i = 1, nch do
         local c = _achChildEnumScratch[i]
-        c:Hide()
-        c:ClearAllPoints()
-        local bin = ns.UI_RecycleBin
-        if bin then c:SetParent(bin) else c:SetParent(nil) end
+        if c._wnAchPooledHeader then
+            if c:IsShown() then
+                ReleaseAchievementHeader(state, c)
+            end
+        else
+            c:Hide()
+            c:ClearAllPoints()
+            local bin = ns.UI_RecycleBin
+            if bin then c:SetParent(bin) else c:SetParent(nil) end
+        end
     end
     local nrg = PackVariadicInto(_achRegionEnumScratch, scrollChild:GetRegions())
     for i = 1, nrg do
@@ -403,135 +475,20 @@ function ns.UI_AchievementBrowse_Populate(opts)
             listBuildOpts.hideEmptyCategories = true
         end
     end
-    local flatList = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
-    do
-        local cui = ns.CollectionsUI
-        if cui and cui.CollectionsSubTabTrace then
-            cui.CollectionsSubTabTrace("PopulateAchievementList_start", {
-                deferChrome = deferListChrome,
-                headersChunk = headerChunkSize,
-                flatItems = #flatList,
-            })
-        end
-    end
 
-    if ns.UI_HideEmptyStateCard then
-        ns.UI_HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
-        ns.UI_HideEmptyStateCard(scrollChild, "collections_achievements")
-    end
-    local searchTextRaw = opts.searchText or (state and state.searchText) or ""
-    if not (ns.UI_FlatListHasDataRows and ns.UI_FlatListHasDataRows(flatList)) then
-        if opts.searchActive and ns.UI_TryShowSearchEmptyInContainer and ns.UI_TryShowSearchEmptyInContainer(scrollChild, searchTextRaw, 0) then
-            state._achFlatList = flatList
-            state._achFlatListTotalHeight = math.max(200, (scrollChild:GetParent() and scrollChild:GetParent():GetHeight()) or 200)
-            scrollChild:SetHeight(state._achFlatListTotalHeight)
-            EndAchievementBrowseDeferredChrome()
-            _populateAchievementBrowseBusy = false
-            InvokeAchievementBrowseListReady(opts)
-            DrainAchievementBrowsePopulateQueue()
-            return
-        end
-        if ns.UI_ShowTabEmptyStateCard then
-            ns.UI_ShowTabEmptyStateCard(scrollChild, "collections_achievements", 0, { fillParent = true })
-            state._achFlatList = flatList
-            state._achFlatListTotalHeight = math.max(200, (scrollChild:GetParent() and scrollChild:GetParent():GetHeight()) or 200)
-            scrollChild:SetHeight(state._achFlatListTotalHeight)
-            EndAchievementBrowseDeferredChrome()
-            _populateAchievementBrowseBusy = false
-            InvokeAchievementBrowseListReady(opts)
-            DrainAchievementBrowsePopulateQueue()
-            return
-        end
-    end
+    local onContentHeight = opts.onContentHeight
 
-    state._achRowHeightUsed = ROW_HEIGHT
-    for _fi = 1, #flatList do
-        local _it = flatList[_fi]
-        if _it.type == "row" and _it.height then
-            state._achRowHeightUsed = _it.height
-            break
+    --- Single rebuild path: model -> content height -> host height. Used by the first paint and by
+    --- every collapse/expand. There is no second (frame-measured) height model to drift against.
+    local function rebuildAchievementList()
+        local flat, totalH = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
+        state._achFlatList = flat
+        ApplyAchievementBrowseContentHeight(state, totalH)
+        if type(onContentHeight) == "function" then
+            onContentHeight(totalH)
         end
+        return flat, totalH
     end
-
-    state._achSectionBodies = {}
-    local achSectionContentH = {}
-    local achHeaderMeta = {}
-    for fi = 1, #flatList do
-        local fit = flatList[fi]
-        if fit.type == "header" then
-            local sk = fit.key
-            local sh = 0
-            for fj = fi + 1, #flatList do
-                local r = flatList[fj]
-                if r.type == "header" then break end
-                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
-            end
-            achSectionContentH[sk] = sh
-        end
-    end
-    do
-        local stack = {}
-        local function FinalizeTop()
-            local top = stack[#stack]
-            if not top then return end
-            achSectionContentH[top.key] = math.max(0, (top.maxBottomY or top.contentTopY) - top.contentTopY)
-            stack[#stack] = nil
-        end
-        for fi = 1, #flatList do
-            local fit = flatList[fi]
-            local yTop = fit.yOffset or 0
-            local yBottom = yTop + (fit.height or (fit.type == "header" and COLLAPSE_HEADER_HEIGHT_ACH or ROW_HEIGHT))
-
-            if fit.type == "header" then
-                local indent = fit.indent or 0
-                while #stack > 0 and ((stack[#stack].indent or 0) >= indent) do
-                    FinalizeTop()
-                end
-                for si = 1, #stack do
-                    local s = stack[si]
-                    if yBottom > (s.maxBottomY or s.contentTopY) then
-                        s.maxBottomY = yBottom
-                    end
-                end
-                local parent = stack[#stack]
-                local contentTopY = yTop + (fit.height or COLLAPSE_HEADER_HEIGHT_ACH)
-                local categoryID = tonumber((fit.key or ""):match("^achievement_cat_(%-?%d+)$"))
-                achHeaderMeta[fit.key] = {
-                    parentKey = parent and parent.key or nil,
-                    parentIndent = parent and parent.indent or 0,
-                    relY = parent and (yTop - (parent.contentTopY or 0)) or 0,
-                    categoryID = categoryID,
-                }
-                stack[#stack + 1] = {
-                    key = fit.key,
-                    indent = indent,
-                    contentTopY = contentTopY,
-                    maxBottomY = contentTopY,
-                }
-            elseif fit.type == "row" and #stack > 0 then
-                for si = 1, #stack do
-                    local s = stack[si]
-                    if yBottom > (s.maxBottomY or s.contentTopY) then
-                        s.maxBottomY = yBottom
-                    end
-                end
-                local owner = stack[#stack]
-                fit._collSectionKey = owner.key
-                fit._collRelY = yTop - (owner.contentTopY or 0)
-                fit.groupKey = owner.key
-                fit.localY = fit._collRelY
-            end
-        end
-        while #stack > 0 do
-            FinalizeTop()
-        end
-    end
-
-    local achBaseIndent = BASE_INDENT
-    local achSiblingTailByParent = {}
-    local achSectionWraps = {}
-    local achHeaderKeys = {}
-    local COLLAPSE_H_COLL = LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT or 36
 
     local function refreshVisibleInternal()
         ns.UI_AchievementBrowse_UpdateVisibleRange({
@@ -539,6 +496,24 @@ function ns.UI_AchievementBrowse_Populate(opts)
             acquireRow = acquireRow,
             releaseRowFrame = releaseRowFrame,
         })
+    end
+
+    --- Section toggle: flip the model flag, rebuild O(n), re-window. No reflow pass, no measurement.
+    --- `rawset` on purpose: Plans wraps `collapsedHeaders` in a metatable whose `__newindex` mirrors the
+    --- durable store, and `__newindex` only fires while the key is absent — a plain write silently
+    --- stopped persisting after the first toggle, so sections snapped back on the next repopulate.
+    --- The durable write goes through `opts.persistCollapsed` instead, on every toggle.
+    local persistCollapsed = opts.persistCollapsed
+    local function onHeaderToggle(isExpanded, header)
+        local key = header and header._wnAchSectionKey
+        if not key then return end
+        local collapsed = (isExpanded ~= true)
+        rawset(collapsedHeaders, key, collapsed)
+        if type(persistCollapsed) == "function" then
+            persistCollapsed(key, collapsed)
+        end
+        rebuildAchievementList()
+        refreshVisibleInternal()
     end
 
     local function ensureAchievementBrowseScrollHooks()
@@ -564,80 +539,19 @@ function ns.UI_AchievementBrowse_Populate(opts)
         end
     end
 
-    local function CountAchievementTree(catID)
-        local cat = categoryData and categoryData[catID]
-        if not cat then return 0 end
-        local total = #(cat.achievements or {})
-        local children = cat.children or {}
-        for i = 1, #children do
-            total = total + CountAchievementTree(children[i])
-        end
-        return total
-    end
+    -- Bind list state before the first window pass (UpdateVisibleRange reads all of it).
+    state._achSectionBodies = nil
+    state._achListWidth = listWidth
+    state._achListSelectedID = opts.selectedAchievementID
+    state._achListOnSelect = opts.onSelectAchievement
+    state._achListCollapsedHeaders = collapsedHeaders
+    state._achListContentFrame = opts.contentFrameForRefresh
+    state._achListRedrawFn = opts.redrawFn or function() end
+    state._achHeaderToggleFn = onHeaderToggle
+    state._achListRebuild = rebuildAchievementList
 
-    local rowHAcc = state._achRowHeightUsed or ROW_HEIGHT
-    local function ComputeAchievementContentHeight(catID, activeAnimKey, activeAnimBodyH)
-        local cat = categoryData and categoryData[catID]
-        if not cat then return 0 end
-        local bodyH = MINI_SPACING + (#(cat.achievements or {}) * rowHAcc)
-        local children = cat.children or {}
-        if #children > 0 and #(cat.achievements or {}) > 0 then
-            bodyH = bodyH + SECTION_SPACING
-        end
-        local firstEmittedChild = true
-        for childIdx = 1, #children do
-            local childID = children[childIdx]
-            local childCount = CountAchievementTree(childID)
-            if childCount > 0 then
-                if not firstEmittedChild then
-                    bodyH = bodyH + SECTION_SPACING
-                end
-                firstEmittedChild = false
-                local childKey = "achievement_cat_" .. childID
-                bodyH = bodyH + COLLAPSE_H_COLL
-                local childExpanded = (collapsedHeaders[childKey] == false) or (activeAnimKey and childKey == activeAnimKey and activeAnimBodyH ~= nil)
-                if childExpanded then
-                    local childBodyH
-                    if activeAnimKey and childKey == activeAnimKey and activeAnimBodyH then
-                        childBodyH = math.max(0.1, activeAnimBodyH)
-                    else
-                        local body = state._achSectionBodies and state._achSectionBodies[childKey]
-                        if body and body:IsShown() then
-                            childBodyH = body:GetHeight()
-                        else
-                            childBodyH = ComputeAchievementContentHeight(childID, activeAnimKey, activeAnimBodyH)
-                        end
-                    end
-                    bodyH = bodyH + math.max(0.1, childBodyH or 0)
-                end
-            end
-        end
-        return math.max(0.1, bodyH)
-    end
-
-    local function ReflowAchievementSectionHeights(activeAnimKey, activeAnimBodyH)
-        for i = 1, #achHeaderKeys do
-            local key = achHeaderKeys[i]
-            local meta = achHeaderMeta[key]
-            local catID = meta and meta.categoryID
-            local body = state._achSectionBodies and state._achSectionBodies[key]
-            local wrap = achSectionWraps[key]
-            if catID and body then
-                local fullH = ComputeAchievementContentHeight(catID, activeAnimKey, activeAnimBodyH)
-                body._wnSectionFullH = fullH
-                if key ~= activeAnimKey and collapsedHeaders[key] == false then
-                    body:SetHeight(fullH)
-                end
-                if wrap then
-                    wrap:SetHeight(COLLAPSE_H_COLL + math.max(0.1, body:GetHeight() or 0.1))
-                end
-            end
-        end
-    end
-
-    local drawGen = opts.drawGen
-    if drawGen then
-        state._achPopulateGen = drawGen
+    if opts.drawGen then
+        state._achPopulateGen = opts.drawGen
     end
     if opts.collectionsSubTabGen then
         state._collectionsSubTabGen = opts.collectionsSubTabGen
@@ -646,185 +560,67 @@ function ns.UI_AchievementBrowse_Populate(opts)
         state._plansCategoryGen = opts.plansCategoryGen
     end
 
-    -- Bind flat list before header pump (virtual rows paint once in finishAchievementBrowsePopulate;
-    -- same as Mounts/Pets/Toys Populate*List — no mid-pump visible-range refresh).
-    state._achFlatList = flatList
-    state._achListWidth = listWidth
-    state._achListSelectedID = selectedAchievementID
-    state._achListOnSelect = onSelectAchievement
-    state._achListCollapsedHeaders = collapsedHeaders
-    state._achListContentFrame = cf
-    state._achListRedrawFn = redraw
+    local flatList = rebuildAchievementList()
+
+    do
+        local cui = ns.CollectionsUI
+        if cui and cui.CollectionsSubTabTrace then
+            cui.CollectionsSubTabTrace("PopulateAchievementList_start", {
+                deferChrome = deferListChrome,
+                flatItems = #flatList,
+            })
+        end
+    end
+
+    if ns.UI_HideEmptyStateCard then
+        ns.UI_HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+        ns.UI_HideEmptyStateCard(scrollChild, "collections_achievements")
+    end
+    -- Empty means "no categories at all". A fully collapsed tree still has headers, so it must not
+    -- fall into the empty state (the flat model omits collapsed content by design).
+    local searchTextRaw = opts.searchText or (state and state.searchText) or ""
+    if #flatList == 0 then
+        local shown = false
+        if opts.searchActive and ns.UI_TryShowSearchEmptyInContainer then
+            shown = ns.UI_TryShowSearchEmptyInContainer(scrollChild, searchTextRaw, 0) and true or false
+        end
+        if not shown and ns.UI_ShowTabEmptyStateCard then
+            ns.UI_ShowTabEmptyStateCard(scrollChild, "collections_achievements", 0, { fillParent = true })
+            shown = true
+        end
+        if shown then
+            local emptyH = math.max(200, (scrollChild:GetParent() and scrollChild:GetParent():GetHeight()) or 200)
+            ApplyAchievementBrowseContentHeight(state, emptyH)
+            if type(onContentHeight) == "function" then
+                onContentHeight(emptyH)
+            end
+            EndAchievementBrowseDeferredChrome()
+            _populateAchievementBrowseBusy = false
+            InvokeAchievementBrowseListReady(opts)
+            DrainAchievementBrowsePopulateQueue()
+            return
+        end
+    end
+
     ensureAchievementBrowseScrollHooks()
-
-    local function finishAchievementBrowsePopulate()
-        ReflowAchievementSectionHeights()
-        SyncAchievementBrowseScrollChildHeight(state)
-        ensureAchievementBrowseScrollHooks()
-        refreshVisibleInternal()
-        if type(scheduleVisibleSync) == "function" then
-            scheduleVisibleSync(refreshVisibleInternal)
-        end
-        EndAchievementBrowseDeferredChrome()
-        do
-            local cui = ns.CollectionsUI
-            if cui and cui.CollectionsSubTabTrace then
-                cui.CollectionsSubTabTrace("PopulateAchievementList_done", { flatItems = state._achFlatList and #state._achFlatList or 0 })
-            end
-        end
-        InvokeAchievementBrowseListReady(opts)
-        _populateAchievementBrowseBusy = false
-        DrainAchievementBrowsePopulateQueue()
+    refreshVisibleInternal()
+    if type(scheduleVisibleSync) == "function" then
+        scheduleVisibleSync(refreshVisibleInternal)
     end
-
-    local function abortAchievementBrowsePopulate()
-        EndAchievementBrowseDeferredChrome()
-        _populateAchievementBrowseBusy = false
-        InvokeAchievementBrowseListReady(opts)
-        DrainAchievementBrowsePopulateQueue()
+    EndAchievementBrowseDeferredChrome()
+    do
+        local cui = ns.CollectionsUI
+        if cui and cui.CollectionsSubTabTrace then
+            cui.CollectionsSubTabTrace("PopulateAchievementList_done", { flatItems = state._achFlatList and #state._achFlatList or 0 })
+        end
     end
-
-    local flatHeaderIdx = 1
-    local function hasRemainingAchievementHeaders()
-        for hi = flatHeaderIdx, #flatList do
-            if flatList[hi].type == "header" then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function pumpAchievementHeaders()
-        if state._achPopulateGen == -1 or state._plansCategoryGen == -1 then
-            abortAchievementBrowsePopulate()
-            return
-        end
-        if drawGen and state._achPopulateGen and state._achPopulateGen ~= drawGen then
-            abortAchievementBrowsePopulate()
-            return
-        end
-        if drawGen and state._collectionsSubTabGen and opts.collectionsSubTabGen and state._collectionsSubTabGen ~= opts.collectionsSubTabGen then
-            abortAchievementBrowsePopulate()
-            return
-        end
-        if drawGen and opts.plansCategoryGen and state._plansCategoryGen and state._plansCategoryGen ~= opts.plansCategoryGen then
-            abortAchievementBrowsePopulate()
-            return
-        end
-
-        local built = 0
-        while flatHeaderIdx <= #flatList and built < headerChunkSize do
-            while flatHeaderIdx <= #flatList and flatList[flatHeaderIdx].type ~= "header" do
-                flatHeaderIdx = flatHeaderIdx + 1
-            end
-            if flatHeaderIdx > #flatList then
-                break
-            end
-            local it = flatList[flatHeaderIdx]
-            flatHeaderIdx = flatHeaderIdx + 1
-            local key = it.key
-            local indentPx = it.indent or 0
-            local indentLevel = (indentPx > 0 and math.floor(indentPx / achBaseIndent)) or 0
-            local meta = achHeaderMeta[key]
-            local parentKey = meta and meta.parentKey or nil
-            local parentBody = (parentKey and state._achSectionBodies and state._achSectionBodies[parentKey]) or nil
-            local parentToken = parentKey or "__root__"
-            local prevSiblingWrap = achSiblingTailByParent[parentToken]
-
-            local wrapW = math.max(1, listWidth - indentPx)
-            local sectionWrap = Factory:CreateContainer(parentBody or scrollChild, wrapW, COLLAPSE_H_COLL + 0.1, false)
-            sectionWrap:ClearAllPoints()
-            if sectionWrap.SetClipsChildren then
-                sectionWrap:SetClipsChildren(true)
-            end
-            if parentBody then
-                local leftOffset = math.max(0, indentPx - (meta.parentIndent or 0))
-                local fallbackY = math.max(0, meta.relY or 0)
-                ChainSectionFrameBelow(parentBody, sectionWrap, prevSiblingWrap, leftOffset, prevSiblingWrap and SECTION_SPACING or nil, prevSiblingWrap and nil or fallbackY)
-            else
-                ChainSectionFrameBelow(scrollChild, sectionWrap, prevSiblingWrap, indentPx, prevSiblingWrap and SECTION_SPACING or nil, prevSiblingWrap and nil or 0)
-            end
-
-            local sectionBody
-            local catIDForH = meta and meta.categoryID
-            local secH = achSectionContentH[key] or 0
-            if secH <= 0 and catIDForH then
-                secH = ComputeAchievementContentHeight(catIDForH, nil, nil)
-            elseif secH <= 0 then
-                secH = ((it.itemCount or 0) * rowHAcc) or 0
-            end
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if isExpanded then
-                    refreshVisibleInternal()
-                end
-            end, "UI-Achievement-Shield-NoPoints", true, indentLevel, nil, ns.UI_BuildCollapsibleSectionOpts({
-                wrapFrame = sectionWrap,
-                bodyGetter = function() return sectionBody end,
-                headerHeight = COLLAPSE_H_COLL,
-                hideOnCollapse = true,
-                applyToggleBeforeCollapseAnimate = true,
-                persistFn = function(exp)
-                    if exp then
-                        collapsedHeaders[key] = false
-                    end
-                end,
-                onUpdate = function(drawH)
-                    ReflowAchievementSectionHeights(key, drawH)
-                    SyncAchievementBrowseScrollChildHeight(state)
-                end,
-                updateVisibleFn = function()
-                    refreshVisibleInternal()
-                end,
-                onComplete = function(exp)
-                    if not exp then
-                        collapsedHeaders[key] = true
-                    end
-                    ReflowAchievementSectionHeights()
-                    SyncAchievementBrowseScrollChildHeight(state)
-                    refreshVisibleInternal()
-                end,
-            }))
-            if ns.UI_AnchorSectionHeaderInWrap then
-                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, wrapW)
-            else
-                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-                header:SetWidth(wrapW)
-            end
-            header:SetHeight(it.height)
-
-            sectionBody = Factory:CreateContainer(sectionWrap, wrapW, 0.1, false)
-            sectionBody:ClearAllPoints()
-            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnSectionFullH = secH
-            if not it.isCollapsed then
-                sectionBody:Show()
-                sectionBody:SetHeight(math.max(0.1, secH))
-            else
-                sectionBody:Hide()
-                sectionBody:SetHeight(0.1)
-            end
-            sectionWrap:SetHeight(COLLAPSE_H_COLL + sectionBody:GetHeight())
-            state._achSectionBodies[key] = sectionBody
-            achSectionWraps[key] = sectionWrap
-            achHeaderKeys[#achHeaderKeys + 1] = key
-            achSiblingTailByParent[parentToken] = sectionWrap
-            built = built + 1
-        end
-
-        if hasRemainingAchievementHeaders() then
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, pumpAchievementHeaders)
-            else
-                pumpAchievementHeaders()
-            end
-            return
-        end
-        finishAchievementBrowsePopulate()
-    end
-
-    pumpAchievementHeaders()
+    InvokeAchievementBrowseListReady(opts)
+    _populateAchievementBrowseBusy = false
+    DrainAchievementBrowsePopulateQueue()
 end
+
+--- Overscan so a scroll delta never exposes an unbuilt header/row edge.
+local ACH_WINDOW_OVERSCAN = ROW_HEIGHT * 3
 
 function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
     local state = opts and opts.state
@@ -843,10 +639,12 @@ function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
     end
     if not scrollFrame then return end
 
-    local scrollTop = scrollFrame:GetVerticalScroll()
-    local visibleHeight = scrollFrame:GetHeight()
-    local bottom = scrollTop + visibleHeight
+    local scrollTop = scrollFrame:GetVerticalScroll() or 0
+    local visibleHeight = scrollFrame:GetHeight() or 0
+    local windowTop = scrollTop - ACH_WINDOW_OVERSCAN
+    local windowBottom = scrollTop + visibleHeight + ACH_WINDOW_OVERSCAN
 
+    -- Plans To-Do rides the main tab ScrollFrame: shift model Y into that scroll content's space.
     local listTopInContent = 0
     if useOuter then
         local scrollContent = scrollFrame.GetScrollChild and scrollFrame:GetScrollChild()
@@ -864,8 +662,8 @@ function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
             end
         end
     end
-    -- Entry tables + the outer list are reused across refreshes (this runs per scroll
-    -- delta) — release frames, recycle entries into the pool, wipe in place.
+
+    -- Entry tables + the outer list are reused across refreshes (this runs per scroll delta).
     local visible = state._achVisibleRowFrames
     local entryPool = state._achVisEntryPool
     if not entryPool then
@@ -873,70 +671,42 @@ function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
         state._achVisEntryPool = entryPool
     end
     if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v then
-                if v.frame then
-                    v.frame:Hide()
-                    v.frame:ClearAllPoints()
-                    releaseRowFrame(v.frame)
-                end
-                v.frame = nil
-                entryPool[#entryPool + 1] = v
-            end
-        end
-        table.wipe(visible)
+        ReleaseAchievementVisibleFrames(state, releaseRowFrame)
     else
         visible = {}
         state._achVisibleRowFrames = visible
     end
 
     local cf = state._achListContentFrame
-    local selectedID = state._achListSelectedID or (state.selectedAchievementID)
+    local selectedID = state._achListSelectedID or state.selectedAchievementID
     local onSelect = state._achListOnSelect
     local listWidth = state._achListWidth or scrollChild:GetWidth()
     local redrawFn = state._achListRedrawFn
+    local onHeaderToggle = state._achHeaderToggleFn
 
     for i = 1, #flatList do
         local it = flatList[i]
-        if it.type == "row" then
-            local rowTop = it.yOffset or 0
-            local rowHeight = it.height or ROW_HEIGHT
-            local rowBottom = rowTop + rowHeight
-            if it._collSectionKey and state._achSectionBodies then
-                local body = state._achSectionBodies[it._collSectionKey]
-                if not body or not body:IsShown() then
-                    rowTop, rowBottom = nil, nil
-                else
-                    local scTop = scrollChild:GetTop()
-                    local bodyTop = body:GetTop()
-                    if scTop and bodyTop then
-                        local relY = it._collRelY or 0
-                        rowTop = (scTop - bodyTop) + relY
-                        rowBottom = rowTop + rowHeight
-                    end
-                end
+        local top = (it.yOffset or 0) + listTopInContent
+        local bottomEdge = top + (it.height or ROW_HEIGHT)
+        if bottomEdge > windowTop and top < windowBottom then
+            local frame, isHeader
+            if it.type == "row" then
+                frame = acquireRow(scrollChild, listWidth, it, selectedID, onSelect, redrawFn, cf)
+            elseif it.type == "header" and onHeaderToggle then
+                frame = AcquireAchievementHeader(state, scrollChild, it, listWidth, onHeaderToggle)
+                isHeader = true
             end
-            if rowTop and rowBottom then
-                if useOuter then
-                    rowTop = rowTop + listTopInContent
-                    rowBottom = rowBottom + listTopInContent
+            if frame then
+                local entry = entryPool[#entryPool]
+                if entry then
+                    entryPool[#entryPool] = nil
+                else
+                    entry = {}
                 end
-                if rowBottom > scrollTop and rowTop < bottom then
-                local frame = acquireRow(scrollChild, listWidth, it, selectedID, onSelect, redrawFn, cf)
-                if frame then
-                    local entry
-                    if #entryPool > 0 then
-                        entry = entryPool[#entryPool]
-                        entryPool[#entryPool] = nil
-                    else
-                        entry = {}
-                    end
-                    entry.frame = frame
-                    entry.flatIndex = i
-                    visible[#visible + 1] = entry
-                end
-                end
+                entry.frame = frame
+                entry.isHeader = isHeader
+                entry.flatIndex = i
+                visible[#visible + 1] = entry
             end
         end
     end

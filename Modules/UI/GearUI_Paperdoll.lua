@@ -820,7 +820,7 @@ function PD.SetupGearSlotEnchantQualityTexture(tex, tierIdx, pixelSize)
     if not tex then return false end
     local tier = tonumber(tierIdx) or 1
     if tier < 1 then tier = 1 end
-    local sz = tonumber(pixelSize) or GEAR_ENCHANT_QUALITY_SZ
+    local sz = tonumber(pixelSize) or 18  -- matches GEAR_ENCHANT_QUALITY_SZ in GearUI.lua (separate chunk)
     if sz < 10 then sz = 10 end
     if ApplyProfessionCraftingQualityAtlasToTexture and ApplyProfessionCraftingQualityAtlasToTexture(tex, tier, sz) then
         return true
@@ -2911,6 +2911,7 @@ function PD.EnforceGearTopRowNoOverlap(card, layout, mf)
 end
 
 function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings, storageScanPending)
+    local gearChrome = ns.GearUI_Chrome
     local rowStep = SLOT_SIZE + SLOT_GAP
     -- Content height: section + slot columns + gap + weapon row (Main/Off Hand) + bottom pad so card border is below weapons
     local contentTop = 8
@@ -3050,36 +3051,53 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     local rowH = 34
     -- Storage row data before the panel shell so overflow math matches the deferred row paint pass.
     local storageRows = {}
+    -- Read again below by the viewport-layout table, which sits outside this `if recEnabled` block.
+    local storagePanel, sbCol
     if recEnabled then
     do
             local equippedSlots = gearData and gearData.slots or {}
             local seenItemLink = {}
             if storageFindings then
-                for slotID, candidates in pairs(storageFindings) do
-                    local best = candidates and candidates[1]
-                    if best then
-                        local currentDisplay = (equippedSlots[slotID] and equippedSlots[slotID].itemLevel) or 0
-                        local target = best.itemLevel or 0
-                        local scanBase = tonumber(best.equippedIlvlAtFind) or currentDisplay
-                        if target > scanBase then
-                            local linkKey = best.itemLink or ("id:" .. tostring(best.itemID or 0))
-                            if not seenItemLink[linkKey] then
-                                seenItemLink[linkKey] = true
-                                local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
-                                storageRows[#storageRows + 1] = {
-                                    slotID = slotID,
-                                    slotName = (slotDef and slotDef.label) or PD.GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
-                                    currentIlvl = currentDisplay,
-                                    targetIlvl = target,
-                                    itemLink = best.itemLink,
-                                    itemID = best.itemID,
-                                    source = best.source or "",
-                                    sourceType = best.sourceType or "",
-                                    sourceClassFile = best.sourceClassFile,
-                                    delta = target - scanBase,
-                                }
+                -- Paired slots (rings 11/12, trinkets 13/14, weapons 16/17) share one candidate pool.
+                -- Taking candidates[1] per slot made both slots resolve to the same bag item and the
+                -- duplicate row was dropped outright, so two empty trinket slots showed a single
+                -- recommendation. Assign each slot the best candidate not already claimed, and walk
+                -- slots in a fixed order -- pairs() left the winner of a pair up to hash order.
+                local slotIDs = {}
+                for slotID in pairs(storageFindings) do slotIDs[#slotIDs + 1] = slotID end
+                table.sort(slotIDs)
+                for si = 1, #slotIDs do
+                    local slotID = slotIDs[si]
+                    local candidates = storageFindings[slotID]
+                    local currentDisplay = (equippedSlots[slotID] and equippedSlots[slotID].itemLevel) or 0
+                    local best, linkKey, target, scanBase
+                    for ci = 1, (candidates and #candidates or 0) do
+                        local cand = candidates[ci]
+                        local key = cand.itemLink or ("id:" .. tostring(cand.itemID or 0))
+                        if not seenItemLink[key] then
+                            local t = cand.itemLevel or 0
+                            local base = tonumber(cand.equippedIlvlAtFind) or currentDisplay
+                            if t > base then
+                                best, linkKey, target, scanBase = cand, key, t, base
+                                break
                             end
                         end
+                    end
+                    if best then
+                        seenItemLink[linkKey] = true
+                        local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
+                        storageRows[#storageRows + 1] = {
+                            slotID = slotID,
+                            slotName = (slotDef and slotDef.label) or PD.GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
+                            currentIlvl = currentDisplay,
+                            targetIlvl = target,
+                            itemLink = best.itemLink,
+                            itemID = best.itemID,
+                            source = best.source or "",
+                            sourceType = best.sourceType or "",
+                            sourceClassFile = best.sourceClassFile,
+                            delta = target - scanBase,
+                        }
                     end
                 end
             end
@@ -3091,7 +3109,7 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
         -- ── RIGHT COLUMN: Gear upgrade recommendations (full height, aligned with paperdoll) ──
         local storageParent = gearHosts.rightColHost or card
-        local storagePanel = PD.CreateGearSubpanel(storageParent, storageW, contentBandH, accent, classicGear and { borderless = true } or nil)
+        storagePanel = PD.CreateGearSubpanel(storageParent, storageW, contentBandH, accent, classicGear and { borderless = true } or nil)
         storagePanel:ClearAllPoints()
         storagePanel:SetPoint("TOPLEFT", storageParent, "TOPLEFT", 0, 0)
         storagePanel:SetPoint("BOTTOMRIGHT", storageParent, "BOTTOMRIGHT", 0, 0)
@@ -3160,7 +3178,6 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
         local viewportH = storagePanelH - storageHeaderH - storagePad - 10
         scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
-        local sbCol
         local storageHdrScroll = (#storageRows > 0) and ns.GearUI_STORAGE_REC_TABLE_HDR or 0
         local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
         if scroll then
@@ -3489,12 +3506,10 @@ function PD.SyncGearStorageRecHostFromLayout(mf, layout)
     if not mf or not layout then return end
     local host = mf._gearStorageRecHost
     if not host then return end
-    if layout.storagePanel and layout.storagePanel.GetWidth then
-        local measuredW = layout.storagePanel:GetWidth()
-        if measuredW and measuredW > 0 then
-            layout.storageW = measuredW
-        end
-    end
+    -- Do NOT overwrite layout.storageW from the panel frame here. ComputeGearViewportColumns already
+    -- set it, and the column math (contentW = storageW - pad*2 - lane) assumes that value. Measuring
+    -- the panel at this point can return a width from before it is re-anchored, which pushes the
+    -- Recommend/Location columns outside the scroll viewport -- they render but are clipped away.
     if not layout.storageW then return end
     host.storageW = layout.storageW
     host.storagePad = layout.storagePad or host.storagePad

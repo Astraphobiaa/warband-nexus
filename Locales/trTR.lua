@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Turkish (trTR)
 
     WoW has no Turkish game client, so AceLocale would never auto-select this locale.
@@ -2205,22 +2205,22 @@ L["SOURCE_TYPE_PVP"] = "PvP"
 L["DIFFICULTY_NORMAL"] = "Normal"
 L["DIFFICULTY_HEROIC"] = "Heroic"
 L["DIFFICULTY_MYTHIC"] = "Mythic"
-L["CHANGELOG_V342"] = [=[v3.4.2 (2026-08-06)
-
-Added:
-- Windows and dialogs now remember their last position instead of re-centering every time you open them.
-
-Fixed:
-- Daily and weekly reset reminders fire again on your first login after each reset (they had stopped showing after the first time).
-- Editing a plan's alert no longer sets off a burst of zone and location reminder toasts.
-- Fixed weekly-reset data loss: cleared Great Vault progress (including on EU realms), inventory or collectible data wiped when the game briefly hid your bags, and stale Great Vault cards left in the To-Do list.
-- Fixed a Gear tab error caused by older item upgrade-track data.
-- Fixed the try counter double-counting some boss kills and missing fishing attempts with fast auto-loot.
-- Fixed weapon illusions still showing as uncollected right after you obtained them.
-- Fixed guild bank tab contents being truncated when logging out during a scan.
-- Fixed two rare Lua errors: one when moving the mouse off world map point-of-interest pins, and one when the main window refreshed its list.
+L["CHANGELOG_V343"] = [=[v3.4.3 (2026-08-07)
 
 Updated:
-- Updated Simplified Chinese (zhCN) translations. (Thanks nanjuekaien1)
+- To-Do and Collections achievement browsing is now built one screenful at a time: opening the category tree, scrolling it and expanding or collapsing sections stay smooth instead of freezing the game for a second or two.
+- Adding or removing a plan updates just that entry instead of redrawing the whole tab.
+- Achievement categories with no matching results are no longer listed.
+
+Fixed:
+- Fixed collapsing an achievement category not being remembered: it reopened the next time the list was rebuilt.
+- Fixed achievement rows drawing on top of category headers after expanding or collapsing a section, and nested categories being indented twice.
+- Fixed the To-Do marker on mounts, pets, toys, illusions and titles only adding: clicking it again now removes the entry from your list.
+- Fixed the Collections tab showing the game's "Warband Collections" label instead of its own name.
+- Fixed the Gear tab keeping a bag item as a recommendation after you re-equipped it, and paired slots (two rings, trinkets or weapons) sharing a single recommendation row instead of getting one each.
+- Fixed the Gear tab's Recommend and Location columns being clipped out of view at some window widths.
+- Fixed the Tazavesh mount drop being tracked on Mythic only when it also drops on Heroic, and its attempt counter reading the wrong statistic.
+- Fixed the What's New window failing to open on login.
+- Fixed a batch of Lua errors caused by load-order problems across Gear, To-Do, collections, character migrations and the try counter.
 
 CurseForge: Warband Nexus]=]

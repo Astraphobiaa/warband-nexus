@@ -406,8 +406,8 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             end
         end
         
-        if ApplyStandardCardElevatedChrome then
-            ApplyStandardCardElevatedChrome(popup)
+        if ns.UI_ApplyStandardCardElevatedChrome then
+            ns.UI_ApplyStandardCardElevatedChrome(popup)
         elseif ApplyVisuals then
             ApplyVisuals(popup, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
         end

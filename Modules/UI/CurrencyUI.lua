@@ -128,21 +128,6 @@ local function ResolveSessionCharacterKey(charLookup, characters)
     return nil, nil
 end
 
----Warband transferable row: session amount / warband total (session part may use cap colors).
-local function FormatWarbandAmountSplit(sessionAmount, totalQuantity, maxQuantity)
-    local bright = ThemeTextHex("Bright")
-    local muted = ThemeTextHex("Muted")
-    local session = sessionAmount or 0
-    local total = totalQuantity or 0
-    local suffix = muted .. " / " .. bright .. FormatNumber(total) .. "|r"
-    if maxQuantity and maxQuantity > 0 then
-        local isCapped = session >= maxQuantity
-        local color = isCapped and SemanticColorHex(COLORS.red) or SemanticColorHex(COLORS.green)
-        return color .. FormatNumber(session) .. "|r" .. suffix
-    end
-    return bright .. FormatNumber(session) .. "|r" .. suffix
-end
-
 -- HEADER HIERARCHY
 -- CurrencyCacheService v2.0 stores a proper tree in db.headers using the
 -- Blizzard API collapse/expand technique.  No client-side inference needed.
@@ -163,6 +148,8 @@ local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
+local ShowTooltip = ns.UI_ShowTooltip
+local HideTooltip = ns.UI_HideTooltip
 
 local COLORS = ns.UI_COLORS
 
@@ -178,6 +165,22 @@ end
 local function SemanticColorHex(color)
     if not color then return ThemeTextHex("Bright") end
     return format("|cff%02x%02x%02x", (color[1] or 1) * 255, (color[2] or 1) * 255, (color[3] or 1) * 255)
+end
+
+---Warband transferable row: session amount / warband total (session part may use cap colors).
+--- Defined after ThemeTextHex/SemanticColorHex/COLORS/FormatNumber -- it reads all four.
+local function FormatWarbandAmountSplit(sessionAmount, totalQuantity, maxQuantity)
+    local bright = ThemeTextHex("Bright")
+    local muted = ThemeTextHex("Muted")
+    local session = sessionAmount or 0
+    local total = totalQuantity or 0
+    local suffix = muted .. " / " .. bright .. FormatNumber(total) .. "|r"
+    if maxQuantity and maxQuantity > 0 then
+        local isCapped = session >= maxQuantity
+        local color = isCapped and SemanticColorHex(COLORS.red) or SemanticColorHex(COLORS.green)
+        return color .. FormatNumber(session) .. "|r" .. suffix
+    end
+    return bright .. FormatNumber(session) .. "|r" .. suffix
 end
 
 local function FormatParenBadge(innerColoredText)

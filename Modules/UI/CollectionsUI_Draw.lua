@@ -439,7 +439,7 @@ function M.DrawMountsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
-                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent, drawGen, function()
+                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, M.DrawMountsContent, drawGen, function()
                                 if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
                                 end
@@ -478,7 +478,7 @@ function M.DrawMountsContent(contentFrame)
             if M.state.mountListScrollBarContainer then M.state.mountListScrollBarContainer:Show() end
             if M.state.viewerContainer then M.state.viewerContainer:Show() end
             M.RecordCollectionsSubTabBrowseSnapshot("mounts")
-            M.PopulateMountList(sch, listW, M.state._lastGroupedMountData, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent, drawGen, function()
+            M.PopulateMountList(sch, listW, M.state._lastGroupedMountData, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, M.DrawMountsContent, drawGen, function()
                 if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
                     Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
                 end
@@ -514,7 +514,7 @@ function M.DrawMountsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
-                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent, drawGen, function()
+                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, M.DrawMountsContent, drawGen, function()
                                 if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
                                 end
@@ -821,7 +821,7 @@ function M.DrawPetsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
-                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent, drawGen, function()
+                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, M.DrawPetsContent, drawGen, function()
                                 if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
                                 end
@@ -859,7 +859,7 @@ function M.DrawPetsContent(contentFrame)
             if M.state.petListScrollBarContainer then M.state.petListScrollBarContainer:Show() end
             if M.state.viewerContainer then M.state.viewerContainer:Show() end
             M.RecordCollectionsSubTabBrowseSnapshot("pets")
-            M.PopulatePetList(sch, listW, M.state._lastGroupedPetData, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent, drawGen, function()
+            M.PopulatePetList(sch, listW, M.state._lastGroupedPetData, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, M.DrawPetsContent, drawGen, function()
                 if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
                     Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
                 end
@@ -895,7 +895,7 @@ function M.DrawPetsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
-                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent, drawGen, function()
+                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, M.DrawPetsContent, drawGen, function()
                                 if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
                                 end
@@ -1372,7 +1372,7 @@ function M.DrawToysContent(contentFrame)
             local grouped = M.GetFilteredToysGrouped(M.state.searchText or "", M.state.showCollected, M.state.showUncollected)
             if M.state._toysDrawGen == drawGen and M.state.currentSubTab == "toys" and sch and sch:GetParent() and contentFrame:IsVisible() then
                 M.state._lastGroupedToyData = grouped
-                M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
+                M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, M.DrawToysContent, drawGen, function()
                     if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
                         Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
                     end
@@ -1403,7 +1403,7 @@ function M.DrawToysContent(contentFrame)
             if M.state.toyListContainer then M.state.toyListContainer:Show() end
             if M.state.toyListScrollBarContainer then M.state.toyListScrollBarContainer:Show() end
             M.RecordCollectionsSubTabBrowseSnapshot("toys")
-            M.PopulateToyList(sch, listW, M.state._lastGroupedToyData, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
+            M.PopulateToyList(sch, listW, M.state._lastGroupedToyData, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, M.DrawToysContent, drawGen, function()
                 if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
                     Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
                 end
@@ -1423,7 +1423,7 @@ function M.DrawToysContent(contentFrame)
         local grouped = M.GetFilteredToysGrouped(M.state.searchText or "", M.state.showCollected, M.state.showUncollected)
         M.RecordCollectionsSubTabBrowseSnapshot("toys")
         M.state._lastGroupedToyData = grouped
-        M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
+        M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, M.DrawToysContent, drawGen, function()
             if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
                 Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
             end
@@ -1712,7 +1712,7 @@ function M.DrawAchievementsContent(contentFrame)
             selAchID,
             onSelectAchievement,
             contentFrame,
-            DrawAchievementsContent,
+            M.DrawAchievementsContent,
             popGen,
             function()
                 if M.state.currentSubTab ~= "achievements" or M.state._achPopulateGen ~= popGen then

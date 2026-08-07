@@ -3415,6 +3415,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         dlg:Show()
     end
 
+    -- Assigned below; declared here so this checkbox's OnClick captures the upvalue.
+    local closePositionGhosts
+
     unifiedLayoutCheck = CreateThemedCheckbox(notifSection.content)
     unifiedLayoutCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
     local unifiedLayoutLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
@@ -3467,7 +3470,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         ApplyNotificationOffsetsToDb(anchorPoint, offsetX, offsetY)
     end
 
-    local function closePositionGhosts()
+    function closePositionGhosts()
         CloseNotificationCoordDialog()
         WarbandNexus._notifGhostLane = nil
         if WarbandNexus._positionGhostHolder then WarbandNexus._positionGhostHolder:Hide() WarbandNexus._positionGhostHolder = nil end

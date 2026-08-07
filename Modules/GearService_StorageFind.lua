@@ -36,6 +36,9 @@ local GetEffectiveIlvl = D("GetEffectiveIlvl")
 local GetEquipLoc = D("GetEquipLoc")
 local GetItemQuality = D("GetItemQuality")
 local GetRawItemBindType = D("GetRawItemBindType")
+-- Numeric Enum.ItemBind.OnUse. Without this the bare name resolves to Blizzard's
+-- ITEM_BIND_ON_USE display string, so the numeric compares below never matched.
+local ITEM_BIND_ON_USE = D("ITEM_BIND_ON_USE")
 local CategoryFromRawBind = D("CategoryFromRawBind")
 local GetItemMinLevelFromItemInfo = D("GetItemMinLevelFromItemInfo")
 local IsArmorCompatible = D("IsArmorCompatible")
@@ -197,6 +200,22 @@ local function ResolveEquippedIlvlForComparison(charKey, slotID, equippedMap)
     return 0
 end
 
+--- Companion to ResolveEquippedIlvlForComparison for the itemID half of the cache signature.
+--- The persisted gearData snapshot lags PLAYER_EQUIPMENT_CHANGED, so a signature built from it
+--- cannot see an equip change and the findings cache never invalidates (re-equipped trinkets kept
+--- showing as recommendations). Same-ilvl swaps are invisible to the ilvl half alone.
+local function ResolveEquippedItemIDForComparison(charKey, slotID, slotData)
+    if IsViewingLivePlayerGear(charKey) and GetInventoryItemID then
+        local liveID = GetInventoryItemID("player", slotID)
+        if issecretvalue and liveID ~= nil and issecretvalue(liveID) then return 0 end
+        return tonumber(liveID) or 0
+    end
+    if slotData and slotData.itemID then
+        return tonumber(slotData.itemID) or 0
+    end
+    return 0
+end
+
 local function BuildEquippedIlvlMap(charKey)
     local map = {}
     local slotList = GEAR_SLOTS
@@ -279,10 +298,7 @@ local function BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
         local sid = GEAR_STORAGE_SIG_SLOTS[i]
         local sd = sl and sl[sid]
         local ilv = (equippedMap and equippedMap[sid]) or 0
-        local iid = 0
-        if sd and sd.itemID then
-            iid = tonumber(sd.itemID) or 0
-        end
+        local iid = ResolveEquippedItemIDForComparison(selectedCharKey, sid, sd)
         parts[i] = tostring(ilv) .. ":" .. tostring(iid)
     end
     return table.concat(parts, ";")
@@ -497,23 +513,14 @@ function WarbandNexus:GetGearStorageFindingsCommitted(selectedCharKey)
     return nil, false
 end
 
---- Equip-only change (ring/trinket swap): bag findings unchanged — update equipSig so UI can redraw without FindGearStorageUpgrades.
----@param selectedCharKey string
----@return boolean ok
-function WarbandNexus:RefreshGearStorageCacheEquipSigForCanon(selectedCharKey)
-    if not selectedCharKey then return false end
-    local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k)
-        return ns.Utilities:GetCanonicalCharacterKey(k)
-    end or function(k) return k end
-    local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
-    local c = ns.GearService.storageFindingsCache
-    if c.canonKey ~= canonKey or not c.findings then
-        return false
-    end
-    local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
-    c.equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
-    return true
-end
+-- REMOVED: RefreshGearStorageCacheEquipSigForCanon.
+-- It re-stamped the cache's equipSig onto findings computed for the PREVIOUS equipment,
+-- on the premise that an equip-only change leaves bag findings valid. That premise is false:
+-- findings are "bag items that beat what is equipped", so changing equipment changes the
+-- verdicts, and unequip/equip also moves the item between bag and slot. Rewriting a cache
+-- key to match current state without recomputing the value makes every downstream equipSig
+-- check pass on stale data (re-equipped trinkets kept showing as recommendations).
+-- Callers now let the live equipSig comparison below miss naturally and fall back to a rescan.
 
 --- Like GetGearStorageFindingsIfCached but matches canon + equipSig only; invEpoch must match
 --- unless `ns._gearStorageAllowEquipSigInvBypass` is true (GearUI arms this for one redraw tick
@@ -538,8 +545,14 @@ function WarbandNexus:GetGearStorageFindingsIfEquipSigMatch(selectedCharKey)
     if c.invEpoch == invEpoch then
         return c.findings, true
     end
+    -- The bypass exists for post-scan item-info bumps only. Honour it while the scan that
+    -- committed these findings is still inside the narrow-rescan cooldown; a real bag edit
+    -- arriving later also bumps invEpoch and must not be swallowed by a stale global flag.
     if ns._gearStorageAllowEquipSigInvBypass then
-        return c.findings, true
+        local tDone = ns._gearStorageLastYieldCompleteAt and ns._gearStorageLastYieldCompleteAt[canonKey]
+        if not tDone or (GetTime() - tDone) < GEAR_STORAGE_NARROW_RESCAN_COOLDOWN then
+            return c.findings, true
+        end
     end
     return nil, false
 end
@@ -922,6 +935,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     -- in the partner slot, recommending it for the other slot would either be a
     -- false positive (same instance) or a unique-equip conflict (most trinkets and
     -- legendary-style rings carry the unique flag).
+    local selectedIsLoggedInPlayer = IsViewingLivePlayerGear(selectedCharKey)
+
     local equippedItemIDBySlot = {}
     do
         local pairedSlots = { 11, 12, 13, 14 }
@@ -998,8 +1013,6 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     if not currentKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
         currentKey = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     end
-    local selectedIsLoggedInPlayer = IsViewingLivePlayerGear(selectedCharKey)
-
     local mainStat, mainStatSource = ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLoggedInPlayer)
 
     dbg(string.format(

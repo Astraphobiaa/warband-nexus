@@ -1655,8 +1655,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             local inlineX = gridInlineStartX
             local colValuesByKey = {}
 
-            local mutedC = COLORS.textMuted or { 0.53, 0.53, 0.53, 1 }
-            local brightC = COLORS.textBright or { 1, 1, 1, 1 }
+            local mutedC = L.COLORS.textMuted or { 0.53, 0.53, 0.53, 1 }
+            local brightC = L.COLORS.textBright or { 1, 1, 1, 1 }
             local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
             local DIM_COLOR = { mutedC[1], mutedC[2], mutedC[3] }
             local NORMAL_COLOR = { brightC[1], brightC[2], brightC[3] }

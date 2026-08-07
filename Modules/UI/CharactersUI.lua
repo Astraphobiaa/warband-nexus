@@ -1748,7 +1748,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 sectionYOffset = totalHeight
                 contentFrame:SetHeight(math.max(0.1, totalHeight))
                 if scrollChildForOff and VLM.RefreshContainerTopOffsetCache then
-                    VLM.RefreshContainerTopOffsetCache(contentFrame, scrollChildForOff, contentTopOff)
+                    VLM.RefreshContainerTopOffsetCache(contentFrame, scrollChildForOff, nil)
                 end
             else
                 local yAcc = 0

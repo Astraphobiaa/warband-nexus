@@ -711,10 +711,11 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
             cardFrame._isSourceExpanded = false
         end
         
+        local contentTop = ns.PLAN_CARD_CONTENT_TOP or 60
         if cardFrame._isSourceExpanded then
-            factory:CreateSourceInfo(cardFrame, plan, -PLAN_CARD_CONTENT_TOP)
+            factory:CreateSourceInfo(cardFrame, plan, -contentTop)
         else
-            factory:CreateSourceInfo(cardFrame, plan, -PLAN_CARD_CONTENT_TOP)
+            factory:CreateSourceInfo(cardFrame, plan, -contentTop)
         end
         
         factory:ReflowSourcePlanCard(cardFrame)
