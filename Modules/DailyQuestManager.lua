@@ -547,6 +547,14 @@ local function GetTimeLeft(questID)
     return (ok and type(value) == "number") and value or 0
 end
 
+-- GetTimeLeft only knows about task quests; an accepted log contract (Prey hunt, Special
+-- Assignment) has no C_TaskQuest timer, so "no timer" must not be read as "expired".
+local function IsQuestInLog(questID)
+    if not questID or not C_QuestLog or not C_QuestLog.GetLogIndexForQuestID then return false end
+    local ok, logIndex = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
+    return ok and type(logIndex) == "number" and logIndex > 0
+end
+
 local function GetQuestTitle(questID, fallbackInfo)
     local title
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then
@@ -728,7 +736,7 @@ function WarbandNexus:ScanMidnightQuests()
         -- Hardcoded quests use IsQuestFlaggedCompleted which auto-resets on weekly server reset
         -- C_TaskQuest.GetQuestTimeLeftMinutes returns 0 for hardcoded quests (not task quests)
         if not known and (category == "weeklyQuests" or category == "events") then
-            if not isComplete and (not timeLeft or timeLeft <= 0) then
+            if not isComplete and (not timeLeft or timeLeft <= 0) and not IsQuestInLog(questID) then
                 return
             end
         end
@@ -764,6 +772,7 @@ function WarbandNexus:ScanMidnightQuests()
             mapID        = mapID or 0,
             timeLeft     = timeLeft,
             objective    = GetObjectiveText(questID),
+            objectives   = GetAllObjectiveDetails(questID),
             icon         = questIcon,
             description  = questDesc,
             isDaily      = isDaily,
@@ -870,6 +879,7 @@ function WarbandNexus:ScanMidnightQuests()
                     mapID        = checkMapID,
                     timeLeft     = 0,
                     objective    = objectiveText,
+                    objectives   = GetAllObjectiveDetails(lockQuestID),
                     icon         = "Interface\\Icons\\Achievement_General",
                     description  = objectiveText ~= "" and objectiveText or "Complete World Quests to unlock.",
                     isLocked     = true,

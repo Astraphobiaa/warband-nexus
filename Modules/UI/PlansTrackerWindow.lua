@@ -2611,11 +2611,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
             activeDropdownMenu:Hide()
             activeDropdownMenu = nil
         end
-        -- Unregister message handler (uses PlansTrackerEvents as 'self' key)
-        if frame._plansUpdatedHandler then
-            WarbandNexus.UnregisterMessage(PlansTrackerEvents, E.PLANS_UPDATED)
-            frame._plansUpdatedHandler = nil
-        end
+        -- Keep the WN_PLANS_UPDATED subscription alive across hide/show. CreatePlansTrackerWindow
+        -- early-returns for an existing frame and never re-registers, so dropping it here killed
+        -- live refresh for the rest of the session after the first WindowManager combat hide.
+        -- The handler already no-ops while hidden (frame:IsShown() guard).
         -- Clear expanded achievements
         wipe(expandedAchievements)
     end)
