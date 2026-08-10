@@ -243,6 +243,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         local tryCountBurst = action == "try_count_set" or action == "statistics_reseeded"
             or action == "statistics_seeded"
         local plansCoalesce = tryCountBurst or action == "reminder_changed"
+            or action == "criteria_update"
         if plansCoalesce then
             SchedulePopulateContent()
             return
@@ -605,6 +606,50 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             end
         end
     end)
+
+    -- Achievement To-Do cards read criteria straight from the API at paint time and nothing
+    -- persists them, so a completed step produced no WN_* message: the cached card (and the
+    -- session-cached criteria text) stayed put until /reload. Coalesce the CRITERIA_UPDATE burst
+    -- (Blizzard fires it several times per change), always drop the caches, and repaint only when
+    -- a To-Do surface is actually on screen.
+    if not UIEvents._criteriaFrame then
+        -- Intentionally raw: `CRITERIA_UPDATE` coalesce host — no visuals (WN_FACTORY inventory).
+        local critFrame = CreateFrame("Frame")
+        UIEvents._criteriaFrame = critFrame
+        critFrame:RegisterEvent("CRITERIA_UPDATE")
+        -- A criterion can be another achievement (meta rows); earning it may not tick CRITERIA_UPDATE.
+        critFrame:RegisterEvent("ACHIEVEMENT_EARNED")
+        critFrame:SetScript("OnEvent", function()
+            if UIEvents._criteriaHandler then
+                UIEvents._criteriaHandler()
+            end
+        end)
+    end
+    do
+        local CRITERIA_COALESCE_SEC = 1.0
+        local function anyAchievementTodoVisible()
+            local tracker = _G.WarbandNexus_PlansTracker
+            if tracker and tracker:IsShown() then return true end
+            return not HiddenOrMissing() and f.currentTab == "plans"
+        end
+        UIEvents._criteriaHandler = function()
+            local pc = WarbandNexus.planCache
+            if not pc or type(pc.achievementIDs) ~= "table" or not next(pc.achievementIDs) then return end
+            if UIEvents._criteriaTimer then
+                UIEvents._criteriaTimer:Cancel()
+            end
+            UIEvents._criteriaTimer = C_Timer.NewTimer(CRITERIA_COALESCE_SEC, function()
+                UIEvents._criteriaTimer = nil
+                -- Invalidate unconditionally: a step completed with the window closed must not
+                -- survive as a cached card when the user opens the To-Do later.
+                if ns.UI_MarkPlansAchievementCardsDirty then
+                    ns.UI_MarkPlansAchievementCardsDirty()
+                end
+                if not anyAchievementTodoVisible() then return end
+                WarbandNexus:SendMessage(Constants.EVENTS.PLANS_UPDATED, { action = "criteria_update" })
+            end)
+        end
+    end
 
     -- Blizzard fires GET_ITEM_INFO_RECEIVED whenever a cold-cache hyperlink finishes
     -- async resolution. ResolveStorageItemIlvl bails out (returns 0) on cold links,

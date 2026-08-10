@@ -257,6 +257,26 @@ local function EnsurePlansAchievementExpandCache(achievementID)
 end
 ns.UI_EnsurePlansAchievementExpandCache = EnsurePlansAchievementExpandCache
 
+--- Drop cached criteria text/items so the next paint re-reads live progress (CRITERIA_UPDATE).
+--- Without this the entry stayed for the whole session and only /reload showed completed steps.
+function ns.UI_InvalidatePlansAchievementExpandCache(achievementID)
+    local cache = ns._plansAchievementExpandCache
+    if type(cache) ~= "table" then return end
+    if type(achievementID) == "number" then
+        cache[achievementID] = nil
+    else
+        wipe(cache)
+    end
+end
+
+--- Criteria ticked: both the cached criteria text and the cached cards have to go, whether or not
+--- a To-Do surface is on screen right now — otherwise opening the window later paints progress
+--- captured before the step was completed.
+function ns.UI_MarkPlansAchievementCardsDirty()
+    ns.UI_InvalidatePlansAchievementExpandCache()
+    ns._plansActiveCardEpoch = (ns._plansActiveCardEpoch or 1) + 1
+end
+
 --- After expand/collapse, grow scrollChild so SetClipsChildren on the grid does not clip tall cards.
 local function ReflowPlansCardLayout(layoutManager)
     if not layoutManager then return end
