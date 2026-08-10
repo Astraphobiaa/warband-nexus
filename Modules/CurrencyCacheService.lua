@@ -2310,6 +2310,15 @@ local function AccountCurrencyEntryMatchesRosterRow(apiChar, charData, charKey)
     return false
 end
 
+--- True only for currencies the server actually reports per account character.
+--- Everything else is character-based: its stored amount belongs to the character that scanned it
+--- and the account sync must never write (or zero) another character's row for it.
+local function AccountSyncOwnsCurrency(currencyID)
+    local metadata = ResolveCurrencyMetadata(currencyID)
+    if not metadata then return false end
+    return (metadata.isAccountTransferable == true) or (metadata.isAccountWide == true)
+end
+
 ---Actually performs the update using the fetched data (called from Event).
 function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
     specificCurrencyID = specificCurrencyID or CurrencyCache.pendingSyncCurrencyID
@@ -2359,16 +2368,23 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
     -- Collect the currencies to sync
     local currenciesToSync = {}
     if specificCurrencyID then
+        if not AccountSyncOwnsCurrency(specificCurrencyID) then
+            return
+        end
         currenciesToSync[1] = specificCurrencyID
     else
         -- If no specific ID, sync all known currencies from the DB
         -- (To optimize, we gather a unique list of all currency IDs known to any character)
+        -- Character-based currencies are filtered out here: the account API has nothing to say
+        -- about them, so touching their rows could only ever corrupt another character's data.
         local uniqueIDs = {}
         for charKey, charCurrencies in pairs(db.currencies) do
             for cID, _ in pairs(charCurrencies) do
                 if not uniqueIDs[cID] then
                     uniqueIDs[cID] = true
-                    table.insert(currenciesToSync, cID)
+                    if AccountSyncOwnsCurrency(cID) then
+                        table.insert(currenciesToSync, cID)
+                    end
                 end
             end
         end
@@ -2450,13 +2466,17 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                     or (currentPlayerKey and charKey == currentPlayerKey)
                     or (currentPlayerCanon and rowCanon and currentPlayerCanon == rowCanon)
                 
+                -- ABSENCE IS NOT ZERO. FetchCurrencyDataFromAccountCharacters only carries rows the
+                -- server sent for this currency (Warband-transferable ones, and only for characters it
+                -- has data on). Defaulting to 0 here overwrote every alt's stored amount with 0 on each
+                -- ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED, so non-transferable currencies (Coffer Key
+                -- Shards, weekly caps) only ever showed the logged-in character.
+                local matchedQuantity = nil
                 if not isCurrentPlayer then
-                    local newQuantity = 0
-
                     for k = 1, #apiChars do
                         local apiChar = apiChars[k]
                         if AccountCurrencyEntryMatchesRosterRow(apiChar, charData, charKey) then
-                            newQuantity = apiChar.quantity
+                            matchedQuantity = apiChar.quantity
                             if apiChar.guid and not charData.guid
                                 and not (issecretvalue and issecretvalue(apiChar.guid)) then
                                 charData.guid = apiChar.guid
@@ -2464,6 +2484,11 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                             break
                         end
                     end
+                end
+
+                -- No API row for this character: keep whatever they persisted themselves.
+                if not isCurrentPlayer and matchedQuantity ~= nil then
+                    local newQuantity = matchedQuantity
                     local metadata = ResolveCurrencyMetadata(currencyID)
                     local useTotal = metadata and metadata.useTotalEarnedForMaxQty or false
                     local okNi, apiNi = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
