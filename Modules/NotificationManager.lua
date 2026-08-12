@@ -1000,6 +1000,83 @@ local function NM_EnsureTravelersLogProgressIcon(payload)
     return payload
 end
 
+---Left-click target for a toast: Blizzard achievement UI, or the Traveler's Log tab of the
+---Adventure Guide. Both panels are load-on-demand, so the addon must be pulled in first —
+---OpenAchievementFrameToAchievement / EncounterJournal simply do not exist until then.
+local function NM_OpenToastTarget(toast)
+    if not toast then return end
+    NotifyDebug("toast click: achievementID=%s openTarget=%s combat=%s",
+        tostring(toast.achievementID), tostring(toast.openTarget), tostring(InCombatLockdown()))
+    if InCombatLockdown() then return end
+
+    local achievementID = toast.achievementID
+    if achievementID then
+        if not Utilities:CheckAddOnLoaded("Blizzard_AchievementUI") then
+            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+        end
+        local frame = _G.AchievementFrame
+        if not frame then
+            NotifyDebug("AchievementFrame missing after LoadAddOn")
+            return
+        end
+        -- Selecting alone does not raise the panel — Blizzard always shows it first.
+        if not frame:IsShown() then
+            if type(AchievementFrame_ToggleAchievementFrame) == "function" then
+                pcall(AchievementFrame_ToggleAchievementFrame)
+            elseif type(ShowUIPanel) == "function" then
+                pcall(ShowUIPanel, frame)
+            end
+        end
+        -- OpenAchievementFrameToAchievement no longer exists in FrameXML; mirror
+        -- AchievementFrame_SelectSearchItem (statistics use a different entry point).
+        local okInfo, isStatistic = pcall(function()
+            return select(15, GetAchievementInfo(achievementID))
+        end)
+        if not okInfo or (issecretvalue and isStatistic ~= nil and issecretvalue(isStatistic)) then
+            isStatistic = nil
+        end
+        if isStatistic and type(AchievementFrame_ViewStatisticByAchievementID) == "function" then
+            local ok, err = pcall(AchievementFrame_ViewStatisticByAchievementID, achievementID)
+            if not ok then NotifyDebug("ViewStatisticByAchievementID failed: %s", tostring(err)) end
+        elseif type(AchievementFrame_SelectAchievement) == "function" then
+            local ok, err = pcall(AchievementFrame_SelectAchievement, achievementID, true)
+            if not ok then NotifyDebug("SelectAchievement failed: %s", tostring(err)) end
+        elseif type(OpenAchievementFrameToAchievement) == "function" then
+            pcall(OpenAchievementFrameToAchievement, achievementID)  -- legacy clients
+        else
+            NotifyDebug("no achievement open path available")
+        end
+        return
+    end
+
+    if toast.openTarget ~= "travelersLog" then return end
+    -- Tab is hidden when the log is unavailable (Blizzard gates it the same way).
+    if C_PlayerInfo and C_PlayerInfo.IsTravelersLogAvailable then
+        local okAvail, available = pcall(C_PlayerInfo.IsTravelersLogAvailable)
+        if okAvail and available == false then return end
+    end
+    if not Utilities:CheckAddOnLoaded("Blizzard_EncounterJournal") then
+        Utilities:SafeLoadAddOn("Blizzard_EncounterJournal")
+    end
+    local ej = _G.EncounterJournal
+    if not ej then
+        NotifyDebug("EncounterJournal missing after LoadAddOn")
+        return
+    end
+    if not ej:IsShown() and type(ShowUIPanel) == "function" then
+        local okShow, errShow = pcall(ShowUIPanel, ej)
+        if not okShow then NotifyDebug("ShowUIPanel failed: %s", tostring(errShow)) end
+    end
+    -- Same path Blizzard's own EncounterJournal_OpenTo* helpers use.
+    local tab = ej.MonthlyActivitiesTab
+    if tab and tab.GetID and type(EJ_ContentTab_Select) == "function" then
+        local okTab, errTab = pcall(EJ_ContentTab_Select, tab:GetID())
+        if not okTab then NotifyDebug("EJ_ContentTab_Select failed: %s", tostring(errTab)) end
+    else
+        NotifyDebug("MonthlyActivitiesTab or EJ_ContentTab_Select unavailable")
+    end
+end
+
 
 ---Show an achievement-style notification with all visual effects (WoW AlertFrame style)
 ---Addon-created toast frames are not secure; showing them during combat is safe (no taint).
@@ -1094,6 +1171,7 @@ function WarbandNexus:ShowModalNotification(config)
         compactPopup:SetSize(popupWidthCompact, COMPACT_HEIGHT)
         compactPopup.currentYOffset = yOffset
         compactPopup.achievementID = config.achievementID
+        compactPopup.openTarget = config.openTarget
         compactPopup._toastLane = toastLane
         compactPopup._anchorPoint = point
         compactPopup._baseX = baseX
@@ -1336,10 +1414,11 @@ function WarbandNexus:ShowModalNotification(config)
             PlaySound(config.soundID or defaultSound)
         end
         
+        -- Left-click: open the related Blizzard panel + dismiss | Right-click: dismiss only
         compactPopup:SetScript("OnMouseDown", function(self, button)
             if self.isClosing or self._removed then return end
-            if button == "LeftButton" and self.achievementID and not InCombatLockdown() and OpenAchievementFrameToAchievement then
-                pcall(OpenAchievementFrameToAchievement, self.achievementID)
+            if button == "LeftButton" then
+                NM_OpenToastTarget(self)
             end
             AS.RequestDismissToast(self)
         end)
@@ -1645,14 +1724,11 @@ function WarbandNexus:ShowModalNotification(config)
         NM_ApplyTextShadow(legacySub, 0.6)
     end
     
-    -- Left-click: open achievement UI + dismiss | Right-click: dismiss only
+    -- Left-click: open the related Blizzard panel + dismiss | Right-click: dismiss only
     popup:SetScript("OnMouseDown", function(self, button)
         if self.isClosing or self._removed then return end
-        if button == "LeftButton" and self.achievementID and not InCombatLockdown() then
-            local achID = self.achievementID
-            if OpenAchievementFrameToAchievement then
-                pcall(OpenAchievementFrameToAchievement, achID)
-            end
+        if button == "LeftButton" then
+            NM_OpenToastTarget(self)
         end
         AS.RequestDismissToast(self)
     end)
@@ -1689,6 +1765,7 @@ function WarbandNexus:ShowModalNotification(config)
     popup._toastLane = toastLane
     popup._alertHeight = AS.ALERT_HEIGHT
     popup.achievementID = config.achievementID
+    popup.openTarget = config.openTarget
 
     table.insert(self.activeAlerts, popup)
     popup.isEntering = true
@@ -2787,6 +2864,7 @@ function WarbandNexus:ShowGenericProgressNotification(payload)
         titleColor = ToastChrome.CriteriaAccent(),
         playSound = true,
         autoDismiss = 3,
+        openTarget = "travelersLog",  -- no achievementID on this lane; click opens the log tab
     }
     if payload.iconAtlas and payload.iconAtlas ~= "" then
         config.iconAtlas = payload.iconAtlas

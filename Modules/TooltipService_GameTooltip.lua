@@ -525,10 +525,27 @@ local function WillTooltipUseWidgets(tooltip, data)
         or tooltipType == T.Object
 end
 
+--- 12.1: tooltips reached from secure code (paragon reward EmbeddedItemTooltip, quest reward
+--- item tooltips) are forbidden objects for us — even :IsShown() hard-errors under our taint.
+--- Returns isShown, or nil when the frame is untouchable (caller must bail).
+local function GetTooltipShownSafe(tooltip)
+    if not tooltip or type(tooltip.IsShown) ~= "function" then return false end
+    if tooltip.IsEmbedded then return nil end
+    -- 12.1 replaced CanAccessObject with FrameScriptObject:CanBeAccessedInContext (false while
+    -- our execution is tainted and the object is forbidden). pcall stays as the fallback net.
+    if type(tooltip.CanBeAccessedInContext) == "function" then
+        local okCtx, canAccess = pcall(tooltip.CanBeAccessedInContext, tooltip)
+        if not okCtx or canAccess == false then return nil end
+    end
+    local ok, isShown = pcall(tooltip.IsShown, tooltip)
+    if not ok then return nil end
+    return isShown and true or false
+end
+
 --- Resize NineSlice after lines added post-Show (deferred widget-check path only).
 local function RefreshGameTooltipLayout(tooltip)
     if not tooltip or not tooltip.Show then return end
-    if tooltip.IsShown and not tooltip:IsShown() then return end
+    if not GetTooltipShownSafe(tooltip) then return end
     -- Re-check right before Show(): a widget set can mount between inject()'s guard and this
     -- deferred call. Show() re-runs Blizzard's widget layout, and doing that under our taint
     -- poisons fields (e.g. numWidgetsShowing / oldGridSettings) secure code re-reads on hide.
@@ -542,10 +559,11 @@ end
 --- Widget map/quest tooltips defer one frame so IsBlizzardWidgetTooltip can skip AddLine.
 local function RunGameTooltipInjection(tooltip, data, fn)
     if not tooltip or type(fn) ~= "function" then return end
+    if tooltip.IsEmbedded then return end
     if IsBlizzardWidgetTooltip(tooltip) then return end
 
     local function inject(deferred)
-        if tooltip.IsShown and not tooltip:IsShown() then return end
+        if not GetTooltipShownSafe(tooltip) then return end
         if IsBlizzardWidgetTooltip(tooltip) then return end
         pcall(fn)
         if deferred then
@@ -862,7 +880,7 @@ function GT.PaintWNItemCountToFrame(frame, itemID, isShift)
 end
 
 local function RefreshGameTooltipItemCountsOnShift(tooltip)
-    if not tooltip or not tooltip.IsShown or not tooltip:IsShown() then return end
+    if not GetTooltipShownSafe(tooltip) then return end
     -- Widget-carrying tooltip (map POI / vignette / quest pin): never rebuild it from our
     -- execution. A tainted re-layout writes widget fields (numWidgetsShowing, widget frame
     -- geometry) that Blizzard re-reads on hide and compares against secret numbers —
@@ -905,7 +923,7 @@ local function EnsureItemCountShiftWatcher()
         local tooltips = { GameTooltip, ItemRefTooltip }
         for ti = 1, #tooltips do
             local tooltip = tooltips[ti]
-            if tooltip and tooltip.IsShown and tooltip:IsShown() then
+            if GetTooltipShownSafe(tooltip) then
                 local shiftState = itemCountShiftStateByTooltip[tooltip]
                 if shiftState and shiftState.lastShift ~= shiftDown then
                     shiftState.lastShift = shiftDown

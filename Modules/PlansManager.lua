@@ -775,10 +775,11 @@ function WarbandNexus:GetPlanDisplaySource(plan)
         end
     end
     -- Pet: resolve from journal so My Plans matches Pets tab.
-    if plan.type == "pet" and plan.speciesID and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
-        local ok, name, icon, petType, creatureID, sourceText, description, isWild, canBattle, tradeable, unique, obtainable = pcall(C_PetJournal.GetPetInfoBySpeciesID, plan.speciesID)
-        if ok and sourceText and type(sourceText) == "string" and sourceText ~= "" then
-            if issecretvalue and issecretvalue(sourceText) then return "" end
+    if plan.type == "pet" and plan.speciesID and ns.Utilities then
+        -- 12.1 struct API via Utilities (secret/type guards inside).
+        local petInfo = ns.Utilities:GetPetSpeciesInfo(plan.speciesID)
+        local sourceText = petInfo and petInfo.sourceText
+        if sourceText and sourceText ~= "" then
             return sourceText
         end
     end

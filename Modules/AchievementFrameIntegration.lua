@@ -628,6 +628,12 @@ InstallAchievementJournalHooks = function()
         hooksecurefunc("ToggleAchievementFrame", OnAchievementFrameOpened)
         HOOKED.__ToggleAchievementFrame = true
     end
+    -- Current FrameXML entry point (OpenAchievementFrameToAchievement was removed).
+    if not HOOKED.__AchievementFrame_ToggleAchievementFrame
+        and type(AchievementFrame_ToggleAchievementFrame) == "function" then
+        hooksecurefunc("AchievementFrame_ToggleAchievementFrame", OnAchievementFrameOpened)
+        HOOKED.__AchievementFrame_ToggleAchievementFrame = true
+    end
     if not HOOKED.__AchievementFrame_LoadUI and type(AchievementFrame_LoadUI) == "function" then
         hooksecurefunc("AchievementFrame_LoadUI", function()
             C_Timer.After(WN_FRAME_OPEN_HOOK_DEFER_SEC, InstallAchievementJournalHooks)

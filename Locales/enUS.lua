@@ -1179,12 +1179,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V344"] = [=[v3.4.4 (2026-08-10)
+L["CHANGELOG_V350"] = [=[v3.5.0 (2026-08-12)
+
+Added:
+- Try counters for the new patch 12.1 drops: Topaz Skyfang and Ruby Writhe from Coiled Isle rares, Primeval Skyfriend from Ula'tek in The Venomous Abyss, The Writhing Brood from Zul'jan in Altar of Fangs, and the Hexflame Reaver mount, Pale Hexscale pet and Preyhunter's Masquerade toy from Ral'kala.
+- Clicking an achievement notification now opens that achievement in Blizzard's achievement panel, and clicking a Traveler's Log progress notification opens the Traveler's Log.
+
+Updated:
+- Updated the addon for Midnight patch 12.1 "Curse of Ula'tek".
+- Updated battle pet lookups to the new 12.1 pet data, so pet names, sources and the unobtainable filter stay correct.
 
 Fixed:
-- Fixed To-Do quest steps not ticking off while you play: objective progress only showed up after a reload.
-- Fixed achievement To-Do cards keeping stale progress after you completed a step, until you reloaded the game.
-- Fixed currency amounts for your other characters being reset to zero for currencies that do not transfer across your Warband, such as Coffer Key Shards and weekly capped currencies, so only the character you were logged in on showed a total.
+- Fixed a Lua error when hovering paragon reputation rewards and other quest reward tooltips.
 
 CurseForge: Warband Nexus]=]
 

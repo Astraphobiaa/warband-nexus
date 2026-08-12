@@ -2884,15 +2884,16 @@ COLLECTION_CONFIGS = {
             -- speciesID is now passed directly from iterator (not an index)
             if not speciesID then return nil end
             
-            -- 12.0.5: GetPetInfoBySpeciesID returns 12 values; #11 is 'obtainable' boolean
-            local speciesName, icon, petType, companionID, source, description, isWild, canBattle, isTradeable, isUnique, obtainable, creatureDisplayID_extra = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+            -- 12.1 struct API (positional list changed in 12.0.5); secret/type guards inside.
+            local petInfo = Utilities:GetPetSpeciesInfo(speciesID)
+            local speciesName = petInfo and petInfo.name
             if not speciesName then return nil end
-            -- Guard secret values (Midnight 12.0+)
-            if issecretvalue and speciesName and issecretvalue(speciesName) then return nil end
-            
+            local icon, petType, companionID = petInfo.icon, petInfo.petType, petInfo.creatureID
+            local source, description = petInfo.sourceText, petInfo.description
+            local creatureDisplayID_extra = petInfo.displayID
+
             -- Filter out unobtainable pets (NPC-only, dev/test, tamer pets, cut content)
-            -- obtainable == false means this pet species cannot be collected by players
-            if obtainable == false then return nil end
+            if not petInfo.obtainable then return nil end
             
             -- Check if player owns this species
             local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
@@ -2918,7 +2919,7 @@ COLLECTION_CONFIGS = {
                 collected = owned,
                 petType = petType,
                 creatureDisplayID = creatureDisplayID,
-                obtainable = obtainable,
+                obtainable = petInfo.obtainable,
             }
         end,
         shouldInclude = function(data)
@@ -3960,15 +3961,15 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             end
         end
     elseif collectionType == "pet" then
-        if not C_PetJournal or not C_PetJournal.GetPetInfoBySpeciesID then return nil end
-        -- 12.0.5: GetPetInfoBySpeciesID returns 12 values; #11 is 'obtainable' boolean
-        local name, icon, _, _, source, description, _, _, _, _, obtainable = C_PetJournal.GetPetInfoBySpeciesID(id)
+        if not C_PetJournal then return nil end
+        -- 12.1 struct API (positional list changed in 12.0.5); secret/type guards inside.
+        local petInfo = Utilities:GetPetSpeciesInfo(id)
+        local name = petInfo and petInfo.name
         if name then
-            -- Guard secret values (Midnight 12.0+)
-            if issecretvalue and name and issecretvalue(name) then return nil end
             -- Filter unobtainable pets (pure API)
-            if obtainable == false then return nil end
-            icon = validIcon(icon)
+            if not petInfo.obtainable then return nil end
+            local source, description = petInfo.sourceText, petInfo.description
+            local icon = validIcon(petInfo.icon)
             if not icon then usedFallbackIcon = true end
             local creatureDisplayID = nil
             if C_PetJournal.GetNumDisplays and C_PetJournal.GetDisplayIDByIndex then
@@ -3982,7 +3983,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             local sourceTypeIndex = (collectionStore.pet and collectionStore.pet[id] and collectionStore.pet[id].sourceTypeIndex)
                 or (ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[id])
                 or nil
-            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", sourceTypeIndex = sourceTypeIndex, description = description or "", creatureDisplayID = creatureDisplayID, isCollected = isCollected, obtainable = obtainable }
+            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", sourceTypeIndex = sourceTypeIndex, description = description or "", creatureDisplayID = creatureDisplayID, isCollected = isCollected, obtainable = petInfo.obtainable }
         end
     elseif collectionType == "toy" then
         local info = self:GetToySourceInfo(id)

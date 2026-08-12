@@ -191,6 +191,13 @@ local _voidstormRareMounts = {
     { type = "mount", itemID = 260635, name = "Sanguine Harrower" },
 }
 
+-- MIDNIGHT 12.1 "The Coiled Isle" - 2 mounts from any zone rare
+-- SourceText (Mount DB2 12.1.0): "Drop: The Coiled Isle Rare Creatures" for both.
+local _coiledIsleRareMounts = {
+    { type = "mount", itemID = 276549, name = "Topaz Skyfang", mountID = 3051 },
+    { type = "mount", itemID = 276803, name = "Ruby Writhe", mountID = 3061 },
+}
+
 -- MIDNIGHT 12.0 Fishing mount chain:
 -- Nether-Warped Egg -> Nether-Warped Drake (mount; item 260916 = "Lost Nether Drake" in-game).
 -- Drop source: direct fishing loot (bobber/pool) in ALL main Midnight zones.
@@ -221,10 +228,23 @@ local _netherWarpedEgg = {
 -- - Prowling Shredclaw (257447) - Exalted vendor (Slayer's Duellum)
 -- - Frenzied Shredclaw (257448) - Exalted vendor (Slayer's Duellum)
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
+--
+-- MIDNIGHT 12.1 mounts NOT tracked (no drop/try count — vendor, renown, achievement, PvP, quest):
+-- - Indigo Coiled Horror (3060) / Violet-Backed Skyfang (3054) - Jan'sari the Watchful, Renown 17 / 19
+-- - Sea-Dwelling Isle Serpent (3019) - Second Mate Sluggs vendor (Coiled Isle)
+-- - Caustic Venomfang - Skull of Er'inye vendor (Vaults of Atal'Utek)
+-- - Corroded Soul Crusher - Telemancer Astrandis vendor (Silvermoon City)
+-- - Auriferous Venomfang (3023) - "Treasures of the Coiled Isle" achievement
+-- - Venomous Coiler ("Assault the Vault"), Emerald Skyfang ("Pro Poison Patroller")
+-- - Crimson Venomfang - "Glory of the Venomous Raider" meta-achievement
+-- - Breath of Blight / Breath of Ruin - M+ Season 2 achievements
+-- - Venomous Gladiator's Goredrake, Vicious Lightbloom Boar (H/A) - PvP Season 2
+-- - Spirit of Tok'jara - "The Innocent Essence" quest chain (guaranteed)
+-- - Preyhunter's Fury - Construct V'anore (Silvermoon City, Prey system)
 
 ns.CollectibleSourceDB = {
-    version = "12.0.37",
-    lastUpdated = "2026-05-04",
+    version = "12.1.0",
+    lastUpdated = "2026-08-12",
     sourceSchemaVersion = 1,
     sourceTypes = {
         "instance_boss", -- npcID + drops
@@ -634,6 +654,10 @@ ns.CollectibleSourceDB = {
         { sourceType = "zone_drop", mapIDs = { 2405, 2541 }, raresOnly = true, hostileOnly = true,
           drops = _voidstormRareMounts,  -- Voidstorm, Arcantina
         },
+        -- MIDNIGHT 12.1 - The Coiled Isle (Topaz Skyfang, Ruby Writhe)
+        { sourceType = "zone_drop", mapIDs = { 2512, 2509 }, raresOnly = true, hostileOnly = true,
+          drops = _coiledIsleRareMounts,  -- The Coiled Isle, Vaults of Atal'Utek (UiMap DB2 12.1.0)
+        },
 
         -- NPCs / Instance Bosses / World Rares
 
@@ -992,10 +1016,43 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter", encounterID = 3074, npcIDs = { 231865 } },             -- Degentrius (Magisters' Terrace)
         { sourceType = "encounter", encounterID = 3183, npcIDs = { 214650 } },             -- Midnight Falls (March on Quel'Danas)
 
+        -- MIDNIGHT 12.1 (Curse of Ula'tek) — Season 2 boss mount drops.
+        -- IDs from wago.tools DB2 12.1.0: Mount, ItemSparse, Creature, JournalEncounter, Achievement.
+        -- npcIDs verified in-game (12.1 instance creature rows are absent from client Creature.db2,
+        -- so these came from /dump UnitGUID("target") on the live bosses).
+        { sourceType = "instance_boss", npcID = 268956,  -- Ula'tek (The Venomous Abyss, final boss)
+          drops = { { type = "mount", itemID = 275658, name = "Primeval Skyfriend", mountID = 3030, repeatable = false } },
+          statisticIds = { 63569 },  -- Ula'tek kills (Mythic The Venomous Abyss); DB2 12.1.0
+          dropDifficulty = "Mythic",  -- Mount SourceText: "Location: Ula'tek (Mythic)"
+          difficultyIDs = { 16 },     -- Mythic raid only
+        },
+        { sourceType = "encounter", encounterID = 3492, npcIDs = { 268956 } },             -- Ula'tek (The Venomous Abyss)
+        { sourceType = "instance_boss", npcID = 259447,  -- Zul'jan (Altar of Fangs, final boss)
+          -- Item 279208 teaches the same mount but is not the boss drop; only 276804 is tracked.
+          drops = { { type = "mount", itemID = 276804, name = "The Writhing Brood", mountID = 3058, repeatable = false } },
+          statisticIds = { 62287 },  -- Zul'jan kills (Mythic Altar of Fangs); DB2 12.1.0
+          dropDifficulty = "Mythic",  -- Mythic-only drop (62285 Normal / 62286 Heroic stats exist but do not drop)
+          difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
+        },
+        { sourceType = "encounter", encounterID = 3458, npcIDs = { 259447 } },             -- Zul'jan (Altar of Fangs)
+        -- Ral'kala, Terror of the Isle — Coiled Isle public event (Prey: Curse of the Isle / Nightmare
+        -- Prey mode). Spawned by burning Ossified Relics at a Haunted Brazier; loot needs the
+        -- "Whispers from De Other Side" buff (Preyhunter's Journey Rank 1 + at least one relic burned).
+        -- Repeatable public event, no kill statistic in Achievement.db2 → open-world loot path counts tries.
+        { sourceType = "world_rare", npcID = 258928,
+          drops = {
+              { type = "mount", itemID = 275659, name = "Hexflame Reaver", mountID = 3031 },
+              { type = "pet",   itemID = 278572, name = "Pale Hexscale" },
+              { type = "toy",   itemID = 276207, name = "Preyhunter's Masquerade" },
+          },
+        },
+
         -- Encounter Name → NPC(s) mappings (GUID fallback for Midnight)
         { sourceType = "encounter_name", encounterName = "Restless Heart", npcIDs = { 231636 } },  -- Windrunner Spire
         { sourceType = "encounter_name", encounterName = "Degentrius",     npcIDs = { 231865 } },  -- Magisters' Terrace
         { sourceType = "encounter_name", encounterName = "Midnight Falls", npcIDs = { 214650 } },  -- March on Quel'Danas
+        { sourceType = "encounter_name", encounterName = "Ula'tek",       npcIDs = { 268956 } },  -- The Venomous Abyss (12.1)
+        { sourceType = "encounter_name", encounterName = "Zul'jan",       npcIDs = { 259447 } },  -- Altar of Fangs (12.1)
         -- Darkflame Cleft — ENCOUNTER_END encounterName is localized (Midnight 12.0 secret encounterID fallback).
         { sourceType = "encounter_name", encounterName = "The Darkness", npcIDs = { 210798, 210797 } },
         { sourceType = "encounter_name", encounterName = "Die Dunkelheit", npcIDs = { 210798, 210797 } },
@@ -2096,6 +2153,9 @@ ns.CollectibleSourceDB = {
         -- Belo'ren mount to Mythic raid only; M+ kills sharing this npcID are filtered out.
         ["Midnight Falls"] = { 214650 },
         ["L'ura"] = { 214650 },
+        -- 12.1 — Ula'tek (Mythic Venomous Abyss), Zul'jan (Mythic Altar of Fangs)
+        ["Ula'tek"] = { 268956 },
+        ["Zul'jan"] = { 259447 },
         -- Midnight zone rares (mount drops)
         ["Aln'sharan"] = { 242086 },
         ["Rhazul"] = { 248741 },

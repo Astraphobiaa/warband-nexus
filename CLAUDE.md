@@ -1,6 +1,6 @@
 # Warband Nexus — Claude Code Instructions
 
-WoW retail addon (Lua 5.1). Target: **Midnight 12.0.7** (`## Interface: 120007`). The War Within is over.
+WoW retail addon (Lua 5.1). Target: **Midnight 12.1.0** (`## Interface: 120100`). The War Within is over.
 
 ---
 
@@ -364,7 +364,7 @@ python .github/scripts/preflight_release.py
 - Correct load order — dependencies before dependents.
 - `SavedVariables: WarbandNexusDB` — never rename.
 - Every shipped file listed; case must match exactly (Linux packager).
-- `## Interface: 120007` (Midnight 12.0.7).
+- `## Interface: 120100` (Midnight 12.1.0).
 
 ---
 
@@ -391,7 +391,7 @@ python .github/scripts/preflight_release.py
 
 ## Version / Midnight Policy
 
-- **Target: Midnight 12.0.7 only.** TWW is over.
+- **Target: Midnight 12.1.0 only.** TWW is over.
 - Currency IDs, crest names, encounter labels — always current Midnight data.
 - Never hard-code expansion skillLineIDs — discover via `C_TradeSkillUI.GetChildProfessionInfos()`.
 - Do NOT use `LE_EXPANSION_*` enums (deprecated) — use `ns.Constants.CURRENT_EXPANSION_INTERFACE`.

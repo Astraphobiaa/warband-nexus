@@ -632,6 +632,58 @@ function Utilities:GetPetNameFromTooltip(itemID)
     return nil
 end
 
+--- nil-preserving field readers (Utilities:SafeString returns "" for nil, which reads truthy).
+local function PetField(val, wantType)
+    if val == nil then return nil end
+    if issecretvalue and issecretvalue(val) then return nil end
+    if type(val) ~= wantType then return nil end
+    return val
+end
+
+local function BuildPetSpeciesInfo(name, icon, petType, creatureID, sourceText, description,
+                                   isWild, canBattle, tradable, unique, obtainable, displayID)
+    return {
+        name = PetField(name, "string"),
+        icon = PetField(icon, "number"),
+        petType = PetField(petType, "number"),
+        creatureID = PetField(creatureID, "number"),
+        sourceText = PetField(sourceText, "string"),
+        description = PetField(description, "string"),
+        isWild = PetField(isWild, "boolean") or false,
+        canBattle = PetField(canBattle, "boolean") or false,
+        tradable = PetField(tradable, "boolean") or false,
+        unique = PetField(unique, "boolean") or false,
+        -- obtainable defaults true: only an explicit false should hide a species.
+        obtainable = PetField(obtainable, "boolean") ~= false,
+        displayID = PetField(displayID, "number"),
+    }
+end
+
+--- Normalized battle-pet species info (name/icon/sourceText/obtainable...), or nil.
+--- 12.1 ships C_PetJournal.GetPetInfoTableBySpeciesID, a struct return that survives Blizzard
+--- reordering the positional list (12.0.5 already grew it from 11 to 12 values). Prefer the
+--- table API; fall back to the legacy multi-return on older clients.
+function Utilities:GetPetSpeciesInfo(speciesID)
+    if not speciesID or not C_PetJournal then return nil end
+
+    if C_PetJournal.GetPetInfoTableBySpeciesID then
+        local ok, info = pcall(C_PetJournal.GetPetInfoTableBySpeciesID, speciesID)
+        if ok and type(info) == "table" then
+            return BuildPetSpeciesInfo(info.name, info.icon, info.petType, info.creatureID,
+                info.sourceText, info.description, info.isWild, info.canBattle,
+                info.tradable, info.unique, info.obtainable, info.displayID)
+        end
+    end
+
+    if not C_PetJournal.GetPetInfoBySpeciesID then return nil end
+    local ok, name, icon, petType, creatureID, sourceText, description,
+        isWild, canBattle, tradable, unique, obtainable, displayID =
+        pcall(C_PetJournal.GetPetInfoBySpeciesID, speciesID)
+    if not ok then return nil end
+    return BuildPetSpeciesInfo(name, icon, petType, creatureID, sourceText, description,
+        isWild, canBattle, tradable, unique, obtainable, displayID)
+end
+
 -- BAG UTILITIES
 
 -- GetBagFingerprint: REMOVED — Dead code, never called from any module.
