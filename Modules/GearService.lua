@@ -742,7 +742,8 @@ local function NormalizeUpgradeTrackName(raw)
         if raw:find(eng, 1, true) then return eng end
     end
     local L = ns.L
-    local labelKeys = Constants and Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.PVE_LABEL_KEYS
+    -- Keyed by English track name, NOT currency ID: this loop returns the track name.
+    local labelKeys = ns.SeasonData and ns.SeasonData.TRACK_LABEL_KEYS
     if L and labelKeys then
         for eng, key in pairs(labelKeys) do
             local loc = L[key]
@@ -1061,18 +1062,20 @@ end
 ns.Gear_ResolveSlotUpgradeTrackAndTier = ResolveSlotUpgradeTrackAndTier
 
 -- Crafted items: recraft with crests to reach higher ilvl tiers.
--- Crafted gear caps at 5/6 (285 for Myth, 272 for Hero) — NOT 6/6 like dropped gear.
--- Hero/Myth crafted ilvls are offset: Hero 259-272 (not 263-276), Myth 272-285 (not 276-289).
+-- Crafted gear caps below 6/6 on the top tracks — NOT 6/6 like dropped gear.
 -- Recraft is a single operation: player picks target tier, pays that tier's crest cost.
 -- Ordered highest → lowest so UI picks the best affordable tier first.
-local CRAFTED_CREST_TIERS = {
-    { crestID = 3347, name = "Myth",       maxIlvl = 285, cost = 80 },
-    { crestID = 3345, name = "Hero",       maxIlvl = 272, cost = 60 },
-    { crestID = 3343, name = "Champion",   maxIlvl = 263, cost = 60 },
-    { crestID = 3341, name = "Veteran",    maxIlvl = 250, cost = 45 },
-    { crestID = 3383, name = "Adventurer", maxIlvl = 237, cost = 30 },
-}
+-- Values are season-scoped; see Modules\Data\SeasonData.lua (craftedTiers).
+local CRAFTED_CREST_TIERS = {}
 ns.CRAFTED_CREST_TIERS = CRAFTED_CREST_TIERS
+
+ns.SeasonData:RegisterRebuild(function(season)
+    table.wipe(CRAFTED_CREST_TIERS)
+    local tiers = season.craftedTiers or {}
+    for i = 1, #tiers do
+        CRAFTED_CREST_TIERS[i] = tiers[i]
+    end
+end)
 
 local function InferSlotIsCraftedGear(slot, trackName, itemLevel)
     if slot and slot.isCrafted then return true end
@@ -2818,22 +2821,19 @@ end
 
 -- CURRENCY SNAPSHOT  (Resources available for upgrading)
 
--- Currency IDs for item upgrades (Dawncrest column order — UI only; see Constants.DAWNCREST_UI)
-local UPGRADE_CURRENCY_IDS = (Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.COLUMN_IDS)
-    or { 3383, 3341, 3343, 3345, 3347 }
-
-local UPGRADE_CURRENCY_NAMES = (Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.DISPLAY_NAMES) or {
-    [3383] = "Adventurer Dawncrest",
-    [3341] = "Veteran Dawncrest",
-    [3343] = "Champion Dawncrest",
-    [3345] = "Hero Dawncrest",
-    [3347] = "Myth Dawncrest",
-}
+-- Currency IDs for item upgrades (crest column order — UI only; see Constants.CREST_UI).
+-- Both tables are owned by SeasonData and refilled in place on a season change, so these
+-- references stay valid; only the derived ID set has to be rebuilt here.
+local UPGRADE_CURRENCY_IDS = Constants.CREST_UI.COLUMN_IDS
+local UPGRADE_CURRENCY_NAMES = Constants.CREST_UI.DISPLAY_NAMES
 
 local UPGRADE_CURRENCY_ID_SET = {}
-for i = 1, #UPGRADE_CURRENCY_IDS do
-    UPGRADE_CURRENCY_ID_SET[UPGRADE_CURRENCY_IDS[i]] = true
-end
+ns.SeasonData:RegisterRebuild(function()
+    table.wipe(UPGRADE_CURRENCY_ID_SET)
+    for i = 1, #UPGRADE_CURRENCY_IDS do
+        UPGRADE_CURRENCY_ID_SET[UPGRADE_CURRENCY_IDS[i]] = true
+    end
+end)
 
 local function IsGearSeasonSplitCurrency(currencyID, info)
     if not info then return false end

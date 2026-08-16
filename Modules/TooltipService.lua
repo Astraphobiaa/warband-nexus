@@ -1439,7 +1439,7 @@ local function ReadCurrencyCharQuantityFromSnapshot(currData, charKey)
     return 0
 end
 
----Tracked characters with amount > 0, sorted highest first.
+---Tracked characters with amount > 0, plus the current character even at 0, sorted highest first.
 ---@return table|nil rows { name, realm, classFile, amount }
 ---@return number summedTotal non-account-wide sum of row amounts
 ---@return table|nil currData merged snapshot row
@@ -1467,17 +1467,22 @@ local function BuildCurrencyPerCharacterRows(currencyID)
                 if canon and not seenCanon[canon] then
                     seenCanon[canon] = true
                     local amount = ReadCurrencyCharQuantityFromSnapshot(currData, charKey)
+                    local isCurrentChar = false
                     if WarbandNexus.GetCurrencyData then
                         local storage = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
                         local curCanon = storage and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(storage)
                         if curCanon and canon == curCanon then
+                            isCurrentChar = true
                             local cd = WarbandNexus:GetCurrencyData(currencyID, charKey)
                             if cd and cd.quantity ~= nil then
                                 amount = cd.quantity
                             end
                         end
                     end
-                    if amount > 0 then
+                    -- Alts are listed only when they hold some, but the CURRENT character always
+                    -- shows — even at 0. Hiding it made "you genuinely have none" look identical to
+                    -- "this row never got scanned", which is exactly the ambiguity that hides bugs.
+                    if amount > 0 or isCurrentChar then
                         local realm = char.realm or ""
                         if U and U.FormatRealmName then
                             realm = U:FormatRealmName(realm)

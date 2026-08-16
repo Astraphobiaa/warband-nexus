@@ -14,9 +14,9 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.5.0",
+    ADDON_VERSION = "3.5.1",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-08-12",
+    ADDON_RELEASE_DATE = "2026-08-16",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -250,73 +250,10 @@ local Constants = {
         DRUID = 11, DEMONHUNTER = 12, EVOKER = 13,
     },
     
-    -- MIDNIGHT KEY CURRENCIES (auto-highlighted in UI)
-    
-    MIDNIGHT_KEY_CURRENCIES = {
-        [3378] = { name = "Dawnlight Manaflux", category = "catalyst" },   -- Catalyst charges
-        [3314] = { name = "Radiant Ember", category = "crest" },           -- Gilded Crest equivalent
-        [3313] = { name = "Radiant Dust", category = "crest" },            -- Runed Crest equivalent
-        [3312] = { name = "Radiant Shard", category = "crest" },           -- Carved Crest equivalent
-        [3089] = { name = "Coffer Key", category = "delves" },             -- Delve Coffer Keys
-    },
-
-    -- DAWNCREST UI COLUMN ORDER (Gear tab + PvE summary only)
-    -- Chat notifications and CurrencyCache use C_CurrencyInfo flags (useTotalEarnedForMaxQty, etc.),
-    -- not this list — so new patch currencies do not require ID updates for WN-Currency messages.
-    DAWNCREST_UI = {
-        COLUMN_IDS = { 3383, 3341, 3343, 3345, 3347 },
-        DISPLAY_NAMES = {
-            [3383] = "Adventurer Dawncrest",
-            [3341] = "Veteran Dawncrest",
-            [3343] = "Champion Dawncrest",
-            [3345] = "Hero Dawncrest",
-            [3347] = "Myth Dawncrest",
-        },
-        PVE_LABEL_KEYS = {
-            [3383] = "PVE_CREST_ADV",
-            [3341] = "PVE_CREST_VET",
-            [3343] = "PVE_CREST_CHAMP",
-            [3345] = "PVE_CREST_HERO",
-            [3347] = "PVE_CREST_MYTH",
-        },
-        -- Source tables for "where to farm" tooltip (Midnight S1).
-        -- Sources: Warcraft Wiki Midnight S1 + Method/IcyVeins/Wowhead patch notes (verify per patch).
-        -- Amount strings are deliberately a mix of exact ("10\226\128\14318 / key") and qualitative
-        -- ("varies") because Blizzard does not document T1\226\128\14310 delve / per-boss raid amounts.
-        SOURCES = {
-            [3383] = {  -- Adventurer
-                "Repeatable Outdoor Events",
-                "Tier 4 Delves",
-            },
-            [3341] = {  -- Veteran
-                "Hard-Mode Prey events  (~15 / ~7\226\128\13110 min)",
-                "Heroic Seasonal Dungeons",
-                "Raid Finder bosses",
-                "Delves Tier 5\226\128\1316",
-                "Trovehunter\226\128\153s Bounty (T4\226\128\1315)",
-            },
-            [3343] = {  -- Champion
-                "Mythic 0 Seasonal Dungeons",
-                "Mythic Keystone +2 to +3 (timed)",
-                "Normal Raid bosses",
-                "Delves Tier 7\226\128\13110",
-                "Trovehunter\226\128\153s Bounty (T6\226\128\1317)",
-                "Weekly Outdoor Events",
-            },
-            [3345] = {  -- Hero
-                "Mythic Keystone +2 to +6 timed  (10\226\128\13118 / key)",
-                "Heroic Raid bosses",
-                "Delves Tier 11",
-                "Trovehunter\226\128\153s Bounty (T8+)",
-            },
-            [3347] = {  -- Myth
-                "Mythic Keystone +7 and higher  (10\226\128\13120 / key)",
-                "Mythic Raid bosses",
-                "T11 Bountiful Gilded Stash  (7 / run, up to 3 / week)",
-            },
-        },
-        WEEKLY_CAP_PER_TIER = 100,  -- Some tiers have +source-specific caps (e.g. Veteran 200 cumulative).
-    },
+    -- MIDNIGHT KEY CURRENCIES (auto-highlighted in UI) and the crest column tables
+    -- (CREST_UI, alias DAWNCREST_UI) are season-scoped and now live in
+    -- Modules\Data\SeasonData.lua, which fills them in on this table at load and
+    -- refills them in place whenever the active season changes.
 
     -- Slots used for "missing primary enchant" (Gear tab + GearService). INVSLOT_* ids.
     -- Midnight 12.x primary enchants: head, shoulder, chest, boots, rings, weapon(s).
@@ -344,7 +281,9 @@ local Constants = {
     -- Gilded Stash weekly counter (Delver's Journey / Delves UI widget; spell id for tooltip fallback).
     PVE_GILDED_STASH_WIDGET_ID = 7591,
     PVE_GILDED_STASH_SPELL_ID = 1216211,
-    PVE_GILDED_STASH_WEEKLY_MAX = 4,
+    -- 12.1: live widget reports 3/week (was 4 in 12.0). Only a fallback — GetGildedStashCounts
+    -- overrides this whenever the Delves widget/tooltip exposes an explicit max.
+    PVE_GILDED_STASH_WEEKLY_MAX = 3,
 
     -- PvE "Bountiful" column: icon from Trovehunter's Bounty item (C_Item.GetItemIconByID); ALT for ID drift between patches.
     TROVEHUNTERS_BOUNTY_ITEM_ID = 252415,

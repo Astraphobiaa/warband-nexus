@@ -280,7 +280,8 @@ function M.GetGildedStashData(charKey)
     if current == nil then return nil end
     return {
         current = current,
-        max = tonumber(delveChar.gildedStashesMax) or 4,
+        max = tonumber(delveChar.gildedStashesMax)
+            or (ns.Constants and ns.Constants.PVE_GILDED_STASH_WEEKLY_MAX) or 3,
         unknown = current < 0,
     }
 end

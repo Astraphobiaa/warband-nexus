@@ -753,6 +753,23 @@ function WarbandNexus:InitializeCurrencyCache()
         scanReason = "Persisted warm — event-driven updates only"
     end
 
+    -- Warmth alone is NOT enough to skip a full scan. db.headers (Blizzard's category tree) is
+    -- written ONLY by PerformFullScan — the event path updates quantities and never the tree.
+    -- So once a character had any currency row, a patch that reshapes Blizzard's categories
+    -- (12.1 added Midnight > Crests and > Professions) would never show up: the panel kept
+    -- rendering last patch's headers indefinitely. Re-scan whenever the client build changed,
+    -- and as a backstop whenever the stored tree is older than a week.
+    if not needsScan then
+        local _, clientBuild = GetBuildInfo()
+        if clientBuild and db.clientBuild ~= clientBuild then
+            needsScan = true
+            scanReason = "Client build changed (" .. tostring(db.clientBuild) .. " -> " .. tostring(clientBuild) .. ")"
+        elseif (db.lastScan or 0) > 0 and (time() - db.lastScan) > (7 * 24 * 60 * 60) then
+            needsScan = true
+            scanReason = "Header tree older than 7 days"
+        end
+    end
+
     if not needsScan then
         if (db.lastScan or 0) <= 0 then
             db.lastScan = time()
@@ -1106,13 +1123,26 @@ local function ScanHeaderNode(headerIndex, depth, currencyDataCollector)
 
     -- Some sub-headers may have retained an internal "expanded" state.
     -- Collapse them so only DIRECT children are visible.
+    --
+    -- The scan window MUST stop at the end of this header's own subtree. Expanding a header
+    -- only ever inserts rows directly beneath it, so the subtree spans
+    --   headerIndex + 1 .. headerIndex + (currentSize - sizeBefore)
+    -- and everything past that belongs to later siblings / other root headers. Walking to the
+    -- end of the list instead (the old behaviour) collapsed those unrelated roots — the player's
+    -- own expanded "Dungeon and Raid" / "Miscellaneous" / "Player vs. Player" — which shrank the
+    -- list mid-scan. That made sizeAfter-sizeBefore under-count this header's children, so the
+    -- child walk below stopped early and silently dropped trailing sub-headers (e.g. Midnight's
+    -- "Crests"), and in recursion it shifted the parent's indices, making the resulting tree
+    -- differ from one scan to the next.
     local subChanged = true
     local subSafety = 0
     while subChanged and subSafety < 100 do
         subChanged = false
         subSafety = subSafety + 1
         local curSize = C_CurrencyInfo.GetCurrencyListSize()
-        for j = headerIndex + 1, curSize do
+        local subtreeEnd = headerIndex + (curSize - sizeBefore)
+        if subtreeEnd > curSize then subtreeEnd = curSize end
+        for j = headerIndex + 1, subtreeEnd do
             local jInfo = C_CurrencyInfo.GetCurrencyListInfo(j)
             if not jInfo then break end
             if jInfo.isHeader and jInfo.isHeaderExpanded then
@@ -1241,7 +1271,27 @@ local function BuildHierarchyFromAPI()
         end
     end
 
-    return roots, currencyDataCollector
+    -- Phase 4: everything is expanded now, so a flat walk yields exactly the rows Blizzard
+    -- currently puts in the player's Currency panel. This is the authority on what still
+    -- exists — the hierarchy scan above can miss children on expand/collapse timing quirks,
+    -- but this pass cannot. Used to drop currencies Blizzard retired (e.g. last season's
+    -- crests) without letting a flaky scan delete currencies that are simply mis-nested.
+    local apiListed = {}
+    local flatSize = C_CurrencyInfo.GetCurrencyListSize()
+    for k = 1, flatSize do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(k)
+        if info and not info.isHeader then
+            local link = C_CurrencyInfo.GetCurrencyListLink(k)
+            if link and not (issecretvalue and issecretvalue(link)) then
+                local currencyID = tonumber(link:match("currency:(%d+)"))
+                if currencyID and currencyID > 0 then
+                    apiListed[currencyID] = true
+                end
+            end
+        end
+    end
+
+    return roots, currencyDataCollector, apiListed
 end
 
 -- HEADER MERGE (accumulate currency IDs across character scans)
@@ -1271,8 +1321,12 @@ local function BuildOldCurrencyLookup(headers)
     return lookup
 end
 
----Merge old currency IDs into a new header tree (preserves IDs from prior scans)
-local function MergeOldCurrencyIDs(newHeaders, oldLookup)
+---Merge old currency IDs into a new header tree (preserves IDs from prior scans).
+---`apiListed` (optional) is the set Blizzard returned in this scan's flat walk: an old ID is
+---only carried over if Blizzard STILL lists it, so retired currencies fall out of the panel on
+---their own instead of living forever in SavedVariables. Pass nil to skip the check (used when
+---the flat walk came back empty, i.e. the scan cannot be trusted to prune anything).
+local function MergeOldCurrencyIDs(newHeaders, oldLookup, apiListed)
     for i = 1, #newHeaders do
         local h = newHeaders[i]
         local old = oldLookup[h.name]
@@ -1283,13 +1337,13 @@ local function MergeOldCurrencyIDs(newHeaders, oldLookup)
                 newSet[cid] = true
             end
             for cid in pairs(old) do
-                if not newSet[cid] then
+                if not newSet[cid] and (not apiListed or apiListed[cid]) then
                     table.insert(h.currencies, cid)
                 end
             end
         end
         if h.children and #h.children > 0 then
-            MergeOldCurrencyIDs(h.children, oldLookup)
+            MergeOldCurrencyIDs(h.children, oldLookup, apiListed)
         end
     end
 end
@@ -1381,11 +1435,57 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         return
     end
 
+    -- The currency API is warm here, so this is the earliest reliable point to tell which
+    -- gearing season is live (crest IDs / upgrade-track ilvls all hang off it). Re-checked on
+    -- every full scan so a mid-session season rollover is picked up; Apply() no-ops if unchanged.
+    if ns.SeasonData then
+        ns.SeasonData:ResolveFromAPI()
+    end
+
     ns.CurrencyLoadingState.loadingProgress = 20
     ns.CurrencyLoadingState.currentStage = string.format("Scanning %d list entries...", listSize)
 
-    -- Build hierarchy from Blizzard API (collapse/expand technique)
-    local headerTree, currencyDataArray = BuildHierarchyFromAPI()
+    -- Build hierarchy from Blizzard API (collapse/expand technique).
+    -- apiListed = flat set of every row Blizzard currently lists; empty means the scan is not
+    -- trustworthy enough to prune with (treated as nil below).
+    local headerTree, currencyDataArray, apiListed = BuildHierarchyFromAPI()
+    if apiListed and next(apiListed) == nil then apiListed = nil end
+
+    -- Completeness check: every row Blizzard lists must have landed somewhere in the tree.
+    -- If any did not, the collapse/expand pass missed a header (observed: the Midnight "Crests"
+    -- sub-header holding the season's crests). Such a tree is lossy, so it must NOT be used to
+    -- prune anything, and the scan is retried once the UI settles.
+    if apiListed then
+        local placed = {}
+        local function CollectPlaced(nodes)
+            for i = 1, #nodes do
+                local h = nodes[i]
+                local hcur = h.currencies or {}
+                for j = 1, #hcur do placed[hcur[j]] = true end
+                if h.children then CollectPlaced(h.children) end
+            end
+        end
+        CollectPlaced(headerTree)
+
+        local missing = 0
+        for currencyID in pairs(apiListed) do
+            if not placed[currencyID] then missing = missing + 1 end
+        end
+        if missing > 0 then
+            DebugPrint("|cffFF6B6B[CurrencyCache]|r Incomplete hierarchy: " .. missing
+                .. " listed currencies had no header — skipping prune, retrying scan")
+            apiListed = nil
+            if not self.hierarchyRetryPending then
+                self.hierarchyRetryPending = true
+                C_Timer.After(3, function()
+                    if CurrencyCache then
+                        CurrencyCache.hierarchyRetryPending = nil
+                        CurrencyCache:PerformFullScan(true)
+                    end
+                end)
+            end
+        end
+    end
 
     ns.CurrencyLoadingState.loadingProgress = 70
     ns.CurrencyLoadingState.currentStage = string.format("Processed %d currencies", #currencyDataArray)
@@ -1395,9 +1495,29 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     if db then
         if db.headers and #db.headers > 0 then
             local oldLookup = BuildOldCurrencyLookup(db.headers)
-            MergeOldCurrencyIDs(headerTree, oldLookup)
+            MergeOldCurrencyIDs(headerTree, oldLookup, apiListed)
         end
         db.headers = headerTree
+        -- Stamp the build this tree came from so the next login can tell it apart from a patch.
+        local _, clientBuild = GetBuildInfo()
+        if clientBuild then db.clientBuild = clientBuild end
+
+        -- The panel mirrors Blizzard's list, so the notification whitelist must too: drop IDs
+        -- Blizzard no longer lists (retired season currencies) instead of accumulating forever.
+        -- Stored quantities in db.currencies / db.totalEarned are left untouched — this only
+        -- controls what is rendered and what the event path is allowed to announce.
+        if apiListed and db.visibleCurrencyIDs then
+            local dropped = 0
+            for currencyID in pairs(db.visibleCurrencyIDs) do
+                if not apiListed[currencyID] then
+                    db.visibleCurrencyIDs[currencyID] = nil
+                    dropped = dropped + 1
+                end
+            end
+            if dropped > 0 then
+                DebugPrint("|cff9370DB[CurrencyCache]|r Pruned " .. dropped .. " currency IDs no longer listed by Blizzard")
+            end
+        end
     end
 
     -- Update DB (quantities per character)
