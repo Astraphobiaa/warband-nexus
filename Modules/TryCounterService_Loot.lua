@@ -552,7 +552,10 @@ function Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops, baseline
             if tryKey and not Fns.IsObtainOutcomeApplied(tcType, tryKey, drop) then
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = preResetForDrop(drop)
-                WarbandNexus:ResetTryCount(tcType, tryKey)
+                local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, drop)
+                if didReset then
+                    WarbandNexus:ResetTryCount(tcType, tryKey)
+                end
                 if drop.type == "item" then
                     V.lastTryCountSourceKey = "item_" .. tostring(drop.itemID)
                     V.lastTryCountSourceTime = GetTime()
@@ -563,7 +566,10 @@ function Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops, baseline
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
                 local itemLink = Fns.GetDropItemLink(drop)
-                Fns.TryChat(Fns.BuildObtainedChat("TRYCOUNTER_OBTAINED_RESET", "Obtained %s! Try counter reset.", itemLink, preResetCount))
+                Fns.TryChat(Fns.BuildObtainedChat(
+                    didReset and "TRYCOUNTER_OBTAINED_RESET" or "TRYCOUNTER_OBTAINED",
+                    didReset and "Obtained %s! Try counter reset." or "Obtained %s!",
+                    itemLink, preResetCount))
                 if drop.type == "item" then
                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                     local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)

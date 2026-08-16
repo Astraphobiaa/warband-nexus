@@ -510,15 +510,16 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
             Fns.MarkDropObtainedThisKill(tcType, tryKey, foundDrop)
             local preResetCount = self:GetTryCount(tcType, tryKey)
             preResetCount = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
-            if foundDrop.repeatable then
+            local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, foundDrop)
+            if didReset then
                 self:ResetTryCount(tcType, tryKey)
             end
             local cacheKey = tcType .. "\0" .. tostring(tryKey)
             RT.pendingPreResetCounts[cacheKey] = preResetCount or 0
             C_Timer.After(30, function() RT.pendingPreResetCounts[cacheKey] = nil end)
             local itemLink = Fns.GetDropItemLink(foundDrop)
-            local chatKey = foundDrop.repeatable and "TRYCOUNTER_OBTAINED_RESET" or "TRYCOUNTER_OBTAINED"
-            local chatFallback = foundDrop.repeatable and "Obtained %s! Try counter reset." or "Obtained %s!"
+            local chatKey = didReset and "TRYCOUNTER_OBTAINED_RESET" or "TRYCOUNTER_OBTAINED"
+            local chatFallback = didReset and "Obtained %s! Try counter reset." or "Obtained %s!"
             Fns.TryChat(Fns.BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
             if self.SendMessage then
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
@@ -612,11 +613,17 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             end
             Fns.MarkDropObtainedThisKill(tcType, tryKey, repDrop)
             local preResetCount = self:GetTryCount(tcType, tryKey)
-            self:ResetTryCount(tcType, tryKey)
+            local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, repDrop)
+            if didReset then
+                self:ResetTryCount(tcType, tryKey)
+            end
             V.lastTryCountSourceKey = "item_" .. tostring(itemID)
             V.lastTryCountSourceTime = now
             local itemLink = Fns.GetDropItemLink(repDrop)
-            Fns.TryChat(Fns.BuildObtainedChat("TRYCOUNTER_OBTAINED_RESET", "Obtained %s! Try counter reset.", itemLink, preResetCount))
+            Fns.TryChat(Fns.BuildObtainedChat(
+                didReset and "TRYCOUNTER_OBTAINED_RESET" or "TRYCOUNTER_OBTAINED",
+                didReset and "Obtained %s! Try counter reset." or "Obtained %s!",
+                itemLink, preResetCount))
             local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
             local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(repDrop.itemID)
             SendTryCounterCollectibleObtained(self, {
@@ -709,12 +716,15 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if tryKey then
                         Fns.MarkDropObtainedThisKill(tcType, tryKey, caughtDrop)
                         local preResetCount = self:GetTryCount(tcType, tryKey)
-                        self:ResetTryCount(tcType, tryKey)
+                        local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, caughtDrop)
+                        if didReset then
+                            self:ResetTryCount(tcType, tryKey)
+                        end
                         V.lastTryCountSourceKey = "item_" .. tostring(itemID)
                         V.lastTryCountSourceTime = now
                         local itemLink = Fns.GetDropItemLink(caughtDrop)
-                        local chatKey = caughtDrop.repeatable and "TRYCOUNTER_CAUGHT_RESET" or "TRYCOUNTER_CAUGHT"
-                        local chatFallback = caughtDrop.repeatable and "Caught %s! Try counter reset." or "Caught %s!"
+                        local chatKey = didReset and "TRYCOUNTER_CAUGHT_RESET" or "TRYCOUNTER_CAUGHT"
+                        local chatFallback = didReset and "Caught %s! Try counter reset." or "Caught %s!"
                         Fns.TryChat(Fns.BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                         
                         local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo

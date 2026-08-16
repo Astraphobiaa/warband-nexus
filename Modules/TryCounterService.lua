@@ -1748,13 +1748,40 @@ end
 function WarbandNexus:ResetTryCount(collectibleType, id)
     if not VALID_TYPES[collectibleType] or not id then return end
     if not Fns.EnsureDB() then return end
-    local tbl = WarbandNexus.db.global.tryCounts[collectibleType]
+    local idNum = tonumber(id)
+    if idNum then id = idNum end
+    local tc = WarbandNexus.db.global.tryCounts
+    local tbl = tc[collectibleType]
     tbl[id] = 0
+
+    local function ZeroOther(t, key)
+        if not t or key == nil then return end
+        if type(t[key]) == "number" and t[key] > 0 then t[key] = 0 end
+    end
+
+    -- Read branch 2: alias keys (mountID <-> itemID, pet itemID -> speciesID).
     Fns.ForEachTryCountAliasKey(collectibleType, id, function(key)
-        if type(tbl[key]) == "number" and tbl[key] > 0 then
-            tbl[key] = 0
-        end
+        if key ~= id then ZeroOther(tbl, key) end
     end)
+
+    -- Read branch 1: quest-starter mounts. GetTryCount returns early on this branch and maxes
+    -- tryCounts.item[sourceItemID] + every mount key in sourceItemToAllMountKeys, none of which
+    -- ForEachTryCountAliasKey visits — a reset that skipped them read back the old count.
+    -- Mirrors the same key set SetTryCount clamps.
+    if collectibleType == "mount" then
+        local sourceItemID = Fns.ResolveQuestStarterSourceItemID(id)
+        if sourceItemID then
+            ZeroOther(tc.item, sourceItemID) -- separate table: no key ~= id guard needed
+            local allKeys = sourceItemToAllMountKeys[sourceItemID]
+            if allKeys then
+                for i = 1, #allKeys do
+                    if allKeys[i] ~= id then ZeroOther(tbl, allKeys[i]) end
+                end
+            end
+        end
+    end
+
+    Fns.SchedulePlansTryCountUIUpdate()
 end
 
 -- Bag scan (BAG_UPDATE_DELAYED) fires the same moment as loot; suppress duplicate mount/pet/toy toasts.
@@ -2216,13 +2243,20 @@ end
 ---@param id number collectibleID (mountID/speciesID) or itemID for toys
 ---@return boolean
 function WarbandNexus:IsRepeatableCollectible(collectibleType, id)
-    -- Check user override first
+    -- Check user override first. SetBuiltinRepeatable (Settings) keys by itemID, but the obtain /
+    -- reset paths call this with the native collectibleID (mountID/speciesID) — probe both keys or
+    -- the override is silently ignored exactly where it matters.
     if self.db and self.db.global and self.db.global.trackDB then
         local overrides = self.db.global.trackDB.repeatableOverrides
         if overrides then
-            local overrideKey = (collectibleType or "") .. ":" .. tostring(id or 0)
-            local val = overrides[overrideKey]
+            local prefix = (collectibleType or "") .. ":"
+            local val = overrides[prefix .. tostring(id or 0)]
             if val ~= nil then return val end
+            local sourceItemID = id and resolvedIDsReverse[id]
+            if sourceItemID then
+                val = overrides[prefix .. tostring(sourceItemID)]
+                if val ~= nil then return val end
+            end
         end
     end
     return Fns.IndexLookup(repeatableIndex, repeatableCache, collectibleType, id)
@@ -2251,6 +2285,23 @@ function WarbandNexus:ShouldShowTryCountInUI(collectibleType, id)
     if not self.IsDropSourceCollectible or not self:IsDropSourceCollectible(collectibleType, id) then return false end
     if self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(collectibleType, id) then return false end
     return true
+end
+
+---Reset-on-obtain policy for a found drop.
+---The counter is keyed on the collectible the try count belongs to, which is NOT always the
+---looted drop: `tryCountReflectsTo` moves it onto another collectible (Crackling Shard -> Alunira).
+---A repeatable SOURCE must not zero a one-time TARGET's total, and a one-time drop must never
+---reset at all — that frozen "tries to obtain" value is what the UI shows after collection.
+---@param collectibleType string tcType from GetTryCountTypeAndKey
+---@param tryKey number tryKey from GetTryCountTypeAndKey
+---@param drop table drop row
+---@return boolean
+function Fns.ShouldResetOnObtain(collectibleType, tryKey, drop)
+    if not drop or not collectibleType or not tryKey then return false end
+    if drop.tryCountReflectsTo then
+        return WarbandNexus:IsRepeatableCollectible(collectibleType, tryKey) == true
+    end
+    return drop.repeatable == true
 end
 
 -- Session cache for difficulty lookups
@@ -3219,6 +3270,18 @@ function Fns.NotifyLootTryOutcomeCommitted(sourceKey, npcID)
     if Fns.CancelEncounterLootlessMissFallback then
         Fns.CancelEncounterLootlessMissFallback()
     end
+
+    -- Statistics only move when THIS character kills something, so an attributed kill is the one
+    -- moment a delta is worth re-reading. ENCOUNTER_END marks instance bosses; open-world rares
+    -- never fire it, so mark here too and let the CRITERIA_UPDATE handler re-read just this NPC's
+    -- statistic ids. No-op for NPCs without statisticIds.
+    local npc = tonumber(npcID)
+    if npc and Fns.MarkNpcForRuntimeStatReseed then
+        local npcData = RT.npcDropDB and RT.npcDropDB[npc]
+        if npcData and Fns.NpcEntryHasStatisticIds and Fns.NpcEntryHasStatisticIds(npcData) then
+            Fns.MarkNpcForRuntimeStatReseed(npc, nil)
+        end
+    end
 end
 
 --- Fast auto-loot: LOOT_CLOSED closed route may run before LOOT_OPENED (HK-8 / personal loot).
@@ -3984,7 +4047,10 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
             if tryKey and not Fns.IsObtainOutcomeApplied(tcType, tryKey, drop) then
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = preResetForDrop(drop)
-                WarbandNexus:ResetTryCount(tcType, tryKey)
+                local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, drop)
+                if didReset then
+                    WarbandNexus:ResetTryCount(tcType, tryKey)
+                end
                 if drop.type == "item" then
                     V.lastTryCountSourceKey = "item_" .. tostring(drop.itemID)
                     V.lastTryCountSourceTime = GetTime()
@@ -3995,7 +4061,10 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
                 local itemLink = Fns.GetDropItemLink(drop)
-                Fns.TryChat(Fns.BuildObtainedChat("TRYCOUNTER_OBTAINED_RESET", "Obtained %s! Try counter reset.", itemLink, preResetCount))
+                Fns.TryChat(Fns.BuildObtainedChat(
+                    didReset and "TRYCOUNTER_OBTAINED_RESET" or "TRYCOUNTER_OBTAINED",
+                    didReset and "Obtained %s! Try counter reset." or "Obtained %s!",
+                    itemLink, preResetCount))
                 if drop.type == "item" then
                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                     local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)
@@ -4184,7 +4253,10 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
             if tryKey then
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = preResetForDrop(drop)
-                WarbandNexus:ResetTryCount(tcType, tryKey)
+                local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, drop)
+                if didReset then
+                    WarbandNexus:ResetTryCount(tcType, tryKey)
+                end
                 if drop.type == "item" then
                     V.lastTryCountSourceKey = "item_" .. tostring(drop.itemID)
                     V.lastTryCountSourceTime = GetTime()
@@ -4195,7 +4267,10 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
                 local itemLink = Fns.GetDropItemLink(drop)
-                Fns.TryChat(Fns.BuildObtainedChat("TRYCOUNTER_CAUGHT_RESET", "Caught %s! Try counter reset.", itemLink, preResetCount))
+                Fns.TryChat(Fns.BuildObtainedChat(
+                    didReset and "TRYCOUNTER_CAUGHT_RESET" or "TRYCOUNTER_CAUGHT",
+                    didReset and "Caught %s! Try counter reset." or "Caught %s!",
+                    itemLink, preResetCount))
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                 local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(drop.itemID)
                 SendTryCounterCollectibleObtained(WarbandNexus, {
@@ -4209,7 +4284,8 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
             if tryKey then
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = preResetForDrop(drop)
-                WarbandNexus:ResetTryCount(tcType, tryKey)
+                -- One-time catch: the counter freezes at "tries to obtain" (NPC path semantics).
+                -- Resetting here wiped that total the moment the item was caught.
                 local cacheKey = tcType .. "\0" .. tostring(tryKey)
                 pendingPreResetCounts[cacheKey] = preResetCount or 0
                 C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
@@ -4271,7 +4347,10 @@ function Fns.ApplyContainerLootOutcomes(self, opts)
                 Fns.ResolveCollectibleID(drop)
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = preResetForDrop(drop)
-                WarbandNexus:ResetTryCount(tcType, tryKey)
+                local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, drop)
+                if didReset then
+                    WarbandNexus:ResetTryCount(tcType, tryKey)
+                end
                 if drop.type == "item" then
                     V.lastTryCountSourceKey = "item_" .. tostring(drop.itemID)
                     V.lastTryCountSourceTime = GetTime()
@@ -4282,8 +4361,8 @@ function Fns.ApplyContainerLootOutcomes(self, opts)
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
                 local itemLink = Fns.GetDropItemLink(drop)
-                local chatKey = drop.repeatable and "TRYCOUNTER_CONTAINER_RESET" or "TRYCOUNTER_CONTAINER"
-                local chatFallback = drop.repeatable and "Obtained %s from container! Try counter reset." or "Obtained %s from container!"
+                local chatKey = didReset and "TRYCOUNTER_CONTAINER_RESET" or "TRYCOUNTER_CONTAINER"
+                local chatFallback = didReset and "Obtained %s from container! Try counter reset." or "Obtained %s from container!"
                 Fns.TryChat(Fns.BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
                 local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(drop.itemID)
@@ -6515,18 +6594,12 @@ function WarbandNexus:InitializeTryCounter()
     -- Must run AFTER DB references are loaded and trackDB is merged.
     Fns.BuildReverseIndices()
 
-    local dbGlobal = self.db and self.db.global
-    local charKey = StatisticSnapshotStorageKey()
-    local DF = ns.DataFreshness
-    local statsWarm = DF and DF.IsTryCounterStatisticsWarm and dbGlobal and charKey
-        and DF.IsTryCounterStatisticsWarm(dbGlobal, charKey)
-
-    if not statsWarm then
-        Fns.InvalidateMergedStatisticSeedIndex()
-        Fns.EnsureMergedStatisticSeedIndex()
-    else
-        Fns.InvalidateMergedStatisticSeedIndex()
-    end
+    -- The per-character Statistics seed runs on every character entry (Statistics are per-character,
+    -- so a revisited character's kills only reach the account total through its own pass). The index
+    -- and the ID warmup below are therefore always needed: the old "snapshot already warm" shortcut
+    -- just pushed the same work into the seed's on-demand retry path.
+    Fns.InvalidateMergedStatisticSeedIndex()
+    Fns.EnsureMergedStatisticSeedIndex()
 
     -- Merge previously discovered lockout quests from SavedVariables
     Fns.MergeDiscoveredLockoutQuests()
@@ -6537,8 +6610,6 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Pre-resolve mount/pet IDs for all known drop items (warmup cache for SeedFromStatistics)
     -- Delayed 5s (absolute ~T+6.5s). Time-budgeted to prevent frame spikes.
-    -- Skip when statistics snapshots already warm — event path resolves on demand.
-    if not statsWarm then
     C_Timer.After(5, function()
         local RESOLVE_BUDGET_MS = 3
         local resolveQueue = {}
@@ -6574,7 +6645,6 @@ function WarbandNexus:InitializeTryCounter()
         end
         ResolveBatch()
     end)
-    end
 
     -- Per-character Statistics seed + Rarity max overlay (PLAYER_ENTERING_WORLD also schedules on alt/reload).
     -- Quick pass T+1s, full pass T+8s (after pre-resolve ~T+5s warms mount/pet IDs).

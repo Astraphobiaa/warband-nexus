@@ -72,6 +72,12 @@ function Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadRe
     if not tryKey or not tcType or not Fns.EnsureDB() then return false end
     if not hadReadable then return false end
     local WN = WarbandNexus
+    -- Repeatable collectibles reset to 0 on every obtain, but the kill statistic keeps its lifetime
+    -- total — applying it would resurrect the count the reset just cleared. No shipped DB row is both
+    -- repeatable and statistic-backed today; this keeps that combination safe if one is ever added.
+    if WN.IsRepeatableCollectible and WN:IsRepeatableCollectible(tcType, tryKey) then
+        return false
+    end
     local currentCount = WN:GetTryCount(tcType, tryKey) or 0
     local syncDown = WN.db.profile.notifications
         and WN.db.profile.notifications.syncTryCountDownToStatistics == true
@@ -711,7 +717,9 @@ end
 function Fns.ReseedStatisticsForPendingRuntimeNpcs(options)
     Fns.PurgeStaleRuntimeStatReseedNpcs()
     if not next(RT.pendingRuntimeStatNpcIds) then return false end
-    if not Fns.IsRaidOrDungeonInstance() then return false end
+    -- Not instance-only: open-world rares with kill statistics move the same counters, and their
+    -- delta used to wait for the next login pass. Difficulty-gated drops still fail closed in
+    -- FilterDropsByDifficulty when encDiff is nil, so nothing counts on the wrong difficulty.
     if not GetStatistic or not Fns.EnsureDB() then return false end
 
     local immediateAnnounce = options and options.immediateAnnounce
@@ -863,14 +871,12 @@ local function HasPersistedTryCountEntries()
     return false
 end
 
+--- Statistics are per-character, so every character entry must re-read them once: kills made on a
+--- character between two visits only reach the account total through that character's own login pass.
+--- No wall-clock freshness gate here — a 24h window silently skipped the read for any character
+--- revisited the same day. Repeat calls are safe: OnTryCounterInstanceEntry only reaches this on
+--- login / reload / character change (not zone hops), and perCharStatSyncSerial cancels superseded runs.
 function Fns.SchedulePerCharacterStatisticsAndRaritySync()
-    local dbGlobal = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
-    local charKey = Fns.StatisticSnapshotStorageKey()
-    local DF = ns.DataFreshness
-    if DF and DF.IsTryCounterStatisticsWarm and dbGlobal and charKey
-        and DF.IsTryCounterStatisticsWarm(dbGlobal, charKey) then
-        return
-    end
     RT.statState.perCharStatSyncSerial = RT.statState.perCharStatSyncSerial + 1
     local serial = RT.statState.perCharStatSyncSerial
     local function runSeed(pruneOrphans)
