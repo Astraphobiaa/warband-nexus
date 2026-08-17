@@ -77,6 +77,7 @@ jobs:
             lua5.1 .github/scripts/test_addon_independence.lua
             lua5.1 .github/scripts/test_try_counter_selftest.lua
             lua5.1 .github/scripts/test_release_changelog.lua
+            lua5.1 .github/scripts/test_try_counter_statistics.lua
           else
             echo "lua5.1 unavailable - skipping behavioural gate"
           fi

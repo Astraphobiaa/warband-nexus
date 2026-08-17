@@ -158,7 +158,22 @@ env.InCombatLockdown = function() return false end
 env.IsInGroup = function() return false end
 env.IsInRaid = function() return false end
 env.GetRealmName = function() return "TestRealm" end
-env.GetStatistic = function() return nil end
+-- GetStatistic(category[, index]) returns the value as a STRING ("Wrapping the returned value with
+-- tonumber() is necessary" -- warcraft.wiki.gg/wiki/API_GetStatistic), or nil when unknown. Tests
+-- populate M.statistics[statID]; anything unset reads as nil, which is the "no value" case.
+-- A stub that returned nil unconditionally left the whole statistics seed/reseed path inert: zero
+-- GetStatistic calls across every suite, while 57 statistic-backed counter buckets existed.
+M.statistics = {}
+M.statCalls = 0
+function M.SetStatistic(statID, value)
+    -- Stored as a string on purpose, so the product's own tostring/gsub/tonumber handling is exercised.
+    M.statistics[statID] = value ~= nil and tostring(value) or nil
+end
+function M.ClearStatistics() M.statistics = {}; M.statCalls = 0 end
+env.GetStatistic = function(category)
+    M.statCalls = M.statCalls + 1
+    return M.statistics[category]
+end
 
 -- Midnight 12.0 secret values. Tests opt specific values in with M.MarkSecret(v); everything else
 -- reads as non-secret. A stub that always answered false left every issecretvalue guard in the
@@ -235,6 +250,11 @@ env.Item = {
 }
 
 -- ---------- lua-side WoW globals ----------
+-- Milliseconds since client start; the addon uses it to time-budget batched work. Driven by the
+-- fake clock so a test that advances time also advances the budget, and a batch loop that expects
+-- to yield actually yields instead of spinning.
+env.debugprofilestop = function() return clock.now * 1000 end
+
 env.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 env.strsplit = function(sep, str)
     local out = {}

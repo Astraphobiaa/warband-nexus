@@ -35,6 +35,9 @@ WN.db = {
 }
 
 function WN:Print(msg) stub.chat[#stub.chat + 1] = msg end
+-- AceConsole/DebugService in the real addon. Swallowed here, but it must exist: the statistics seed
+-- calls it on success, so a nil Debug aborts the seed mid-batch with no visible failure.
+function WN:Debug() end
 function WN:SendMessage() end
 function WN:RegisterMessage() end
 function WN:RegisterEvent() end
