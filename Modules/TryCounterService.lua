@@ -73,10 +73,11 @@ local function TrimGuidParseCachesIfOversized()
     trim(guidNpcIDCache)
     trim(guidObjectIDCache)
 end
+-- Removed 8 declaration-only locals here (three Sylvanas/raid constants read straight from TC
+-- at their real call sites, strfind/tconcat aliases nothing used, and three debug scalars left
+-- behind by a earlier refactor). This chunk is the tightest in the addon: 200 simultaneously
+-- active locals is a hard load failure, and dead slots were spending that budget for nothing.
 local ENCOUNTER_OBJECT_TTL = TC.ENCOUNTER_OBJECT_TTL or 300
-local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 2450
-local RAID_MYTHIC_DIFFICULTY_ID = TC.RAID_MYTHIC_DIFFICULTY_ID or 16
-local SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 369898
 
 Fns.TryChat = TC.TryChat
 Fns.BuildObtainedChat = TC.BuildObtainedChat
@@ -92,8 +93,6 @@ local strsplit = strsplit
 local tonumber = tonumber
 local pairs = pairs
 local format = string.format
-local strfind = string.find
-local tconcat = table.concat
 local C_MountJournal = C_MountJournal
 local C_PetJournal = C_PetJournal
 local C_ToyBox = C_ToyBox
@@ -682,9 +681,6 @@ local lootReady = {
 }
 local LOOT_READY_STATE_TTL = 5  -- seconds; treat lootReady data as valid for this long
 
-local lastLootReadyFlowDebugSig = nil
-local lastLootReadyFlowDebugTime = 0
-local lastChatLootWindowActiveDebugTime = 0
 
 local lastGatherCastName = nil
 local lastGatherCastTime = 0
