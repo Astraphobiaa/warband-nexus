@@ -75,6 +75,7 @@ jobs:
             lua5.1 .github/scripts/test_try_counter_fishing.lua
             lua5.1 .github/scripts/test_try_counter_npc_loot.lua
             lua5.1 .github/scripts/test_addon_independence.lua
+            lua5.1 .github/scripts/test_try_counter_selftest.lua
           else
             echo "lua5.1 unavailable - skipping behavioural gate"
           fi
