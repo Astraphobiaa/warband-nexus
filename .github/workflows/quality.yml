@@ -64,3 +64,16 @@ jobs:
 
       - name: Locale parity, version sync, changelog keys
         run: python .github/scripts/preflight_release.py
+
+      # Behavioural gate: loads the shipped Modules/*.lua under a WoW API stub and fires
+      # real events at them. Unlike the re-implementation-style test_*.lua scripts, a
+      # regression in the shipped file fails here. Needs a real 5.1 VM, so it is skipped
+      # when the Install Lua step fell back to 5.4.
+      - name: Try Counter behaviour (real files under WoW stub)
+        run: |
+          if command -v lua5.1 >/dev/null 2>&1; then
+            lua5.1 .github/scripts/test_try_counter_fishing.lua
+            lua5.1 .github/scripts/test_try_counter_npc_loot.lua
+          else
+            echo "lua5.1 unavailable - skipping behavioural gate"
+          fi

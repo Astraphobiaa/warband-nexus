@@ -3296,7 +3296,23 @@ function Fns.ShouldSkipLateLootOpenedRoute(isFromItem)
     local key = RT.lastLootTryOutcomeCommittedKey or V.lastTryCountSourceKey
     if not key or type(key) ~= "string" then return false end
     if key:match("^encounter_") or key:match("^inst_slot_") then return true end
-    if key:match("^npc_") then return true end
+    if key:match("^npc_") then
+        -- npc_<id> + a 10s window is not enough to identify "the same corpse we just counted".
+        -- Farming one rare (or two of the same mob) inside the window made every kill that showed a
+        -- loot window skip its route here — and because LOOT_OPENED had already set lootSession.opened,
+        -- the LOOT_CLOSED fallback route did not run either, so the attempt vanished with no error.
+        -- The corpse GUID is the actual identity; the LOOT_CLOSED debounce already compares on it.
+        -- Only suppress when the incoming corpse IS the one just committed; when the GUID is
+        -- unavailable or secret, fall back to the old time+key behaviour (skipping a possible
+        -- duplicate beats double-counting one).
+        local incoming = lootSession.sourceGUIDs and lootSession.sourceGUIDs[1] or lootSession.npcGUID
+        local committedGUID = V.lastTryCountLootSourceGUID
+        if type(incoming) == "string" and type(committedGUID) == "string"
+            and not (issecretvalue and (issecretvalue(incoming) or issecretvalue(committedGUID))) then
+            return incoming == committedGUID
+        end
+        return true
+    end
     return false
 end
 
@@ -3340,10 +3356,18 @@ function Fns.RunOrDeferTryCounterIncrementAnnounce(emitFn)
 end
 
 function Fns.FlushDeferredTryCounterIncrementAnnounces()
-    if #pendingIncrementAnnounces == 0 then return end
-    local batch = pendingIncrementAnnounces
-    pendingIncrementAnnounces = {}
-    for i = 1, #batch do
+    local n = #pendingIncrementAnnounces
+    if n == 0 then return end
+    -- Drain in place. Rebinding the local to a fresh table orphaned RT.pendingIncrementAnnounces
+    -- (aliased once at load), so every `#RT.pendingIncrementAnnounces > 0` guard in
+    -- TryCounterService_Handlers.lua read a dead table that still held the first batch forever:
+    -- permanently true, and permanently leaking those closures.
+    local batch = {}
+    for i = 1, n do
+        batch[i] = pendingIncrementAnnounces[i]
+        pendingIncrementAnnounces[i] = nil
+    end
+    for i = 1, n do
         local fn = batch[i]
         if type(fn) == "function" then fn() end
     end
@@ -4598,6 +4622,41 @@ function Fns.MergeDiscoveredLockoutQuests()
     end
 end
 
+--- Bobber creature ids learned at runtime (ClassifyLootSession, when IsFishingLoot confirmed it).
+--- Shipped FISHING_BOBBER_NPC_IDS only covers three legacy ids, so every expansion's bobber has to be
+--- learned. Learning it into a runtime-only table meant re-learning it after every /reload, and the
+--- structural (no-API) fishing route stayed blind the whole time. Persist so one confirmed cast is
+--- enough, forever, on every character.
+function Fns.MergeDiscoveredFishingBobbers()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local disc = WarbandNexus.db.global.discoveredFishingBobbers
+    if type(disc) ~= "table" then return end
+    for npcID, v in pairs(disc) do
+        local nid = tonumber(npcID)
+        if nid and v == true then
+            FISHING_BOBBER_NPC_IDS[nid] = true
+        end
+    end
+end
+
+function Fns.RememberFishingBobberNpcId(npcID)
+    local nid = tonumber(npcID)
+    if not nid or nid <= 0 then return end
+    -- Never learn a tracked NPC as a bobber. IsFishingLoot() being true is normally proof the only
+    -- creature source is the bobber, but a merged loot session (fishing loot plus a corpse) would
+    -- otherwise teach us a real rare's id — and since this is now persisted, that rare's own try
+    -- counting would stay broken across reloads. Refuse the poisoned entry instead.
+    if npcDropDB[nid] or tryCounterNpcEligible[nid] then return end
+    FISHING_BOBBER_NPC_IDS[nid] = true
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local disc = WarbandNexus.db.global.discoveredFishingBobbers
+    if type(disc) ~= "table" then
+        disc = {}
+        WarbandNexus.db.global.discoveredFishingBobbers = disc
+    end
+    disc[nid] = true
+end
+
 -- EVENT HANDLERS (encounter): Modules/TryCounterService_Handlers.lua
 
 -- INSTANCE ENTRY (Encounter Journal helpers kept for debug / TryCounterShowInstanceDrops if invoked manually)
@@ -5809,7 +5868,7 @@ Fns.ClassifyLootSession = function(source, isFromItem)
                and g:match("^Creature") then
                 local nid = Fns.GetNPCIDFromGUID(g)
                 if nid and not FISHING_BOBBER_NPC_IDS[nid] then
-                    FISHING_BOBBER_NPC_IDS[nid] = true
+                    Fns.RememberFishingBobberNpcId(nid)
                 end
             end
         end
@@ -5817,7 +5876,16 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     local fishingContextFresh = fishingCtx.active and (now - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
     local sourceCompatible = fishingContextFresh and Fns.IsFishingSourceCompatible(lootSession.sourceGUIDs)
 
-    if fishingLootAPI or fishingFromSourcesOnly then
+    -- Third trigger: a fresh fishing cast in a trackable fishing zone, with sources that are not a
+    -- tracked NPC/object. Needed because the shipped bobber allowlist only knows three legacy ids and
+    -- the learn-on-confirm path is circular (it only learns while IsFishingLoot() is already true), so
+    -- a client where that API reads false leaves the whole route permanently silent with no way out.
+    -- This is the "cast + fishable zone" rule that was removed once before for counting normal kills —
+    -- the corpse gate below is what makes it safe now: it uses the STRICT branch (sources AND unit
+    -- frames), so any mob corpse in the session or on target/mouseover still falls through to NPC.
+    local fishingFromCastContext = sourceCompatible and Fns.IsInTrackableFishingZone()
+
+    if fishingLootAPI or fishingFromSourcesOnly or fishingFromCastContext then
         local corpseInSources = Fns.LootSessionHasBlockingMobCorpseForFishing(lootSession.sourceGUIDs)
         local corpseFromUnits = Fns.LootSessionHasMobLootContext()
         -- When the client reports fishing loot (API or LOOT_READY snapshot), trust it over unit
@@ -6603,6 +6671,7 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Merge previously discovered lockout quests from SavedVariables
     Fns.MergeDiscoveredLockoutQuests()
+    Fns.MergeDiscoveredFishingBobbers()
 
     -- Sync lockout state with server quest flags (prevents false increments after /reload mid-farm)
     Fns.SyncLockoutState()

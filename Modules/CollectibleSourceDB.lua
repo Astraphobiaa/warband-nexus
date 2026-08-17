@@ -203,8 +203,20 @@ local _coiledIsleRareMounts = {
 -- Drop source: direct fishing loot (bobber/pool) in ALL main Midnight zones.
 -- Verified against community fishing-zone datasets:
 --   Eversong Woods (2395), Harandar (2413), Zul'Aman (2437), Voidstorm (2405), Slayer's Rise (2444).
--- Sub-zones (Silvermoon 2393, Isle of Quel'Danas 2424, The Den 2576, Atal'Aman 2536, Arcantina 2541)
--- are reached automatically by CollectFishingDropsForZone()'s parent-map-chain walker.
+--
+-- Sub-zone coverage relies on CollectFishingDropsForZone()'s parent-map-chain walker, so every
+-- sub-zone must actually chain into a listed map. Checked against UiMap.db2 on build 12.1.0.69299:
+--   Silvermoon City   2393 -> 2395  reached
+--   The Den           2576 -> 2413  reached
+--   Atal'Aman         2536 -> 2437  reached
+--   Slayer's Rise     2444 -> 2405  reached (also listed explicitly)
+--   Isle of Quel'Danas 2424 -> 2537  NOT reached: its parent is the Quel'Thalas region map, not
+--   Arcantina          2541 -> 2537  NOT reached: same — 2537 carries no fishing entry.
+-- Those last two were assumed covered and were not; both are listed explicitly below instead.
+--
+-- The Coiled Isle (2512 -> 2537) and Vaults of Atal'Utek (2509 -> 2512) are deliberately absent:
+-- patch 12.1 fishing rewards there are vendor (Coiled Filament) or questline unlocks, not RNG drops,
+-- so there is no try-counter target. Add 2512 here if a random-drop collectible is confirmed.
 -- NOTE: Patient Treasure chests that spawn while fishing are world objects (GameObject), NOT fishing loot.
 -- ClassifyLootSession skips GameObject-only sources without IsFishingLoot(); ProcessFishingLoot requires
 -- API/bobber/cast evidence so mob loot and containers in Midnight zones do not inflate Nether-Warped Egg tries.
@@ -269,7 +281,9 @@ ns.CollectibleSourceDB = {
     sources = {
         {
             sourceType = "fishing",
-            mapIDs = { 2395, 2413, 2437, 2405, 2444 },  -- Eversong, Harandar, Zul'Aman, Voidstorm, Slayer's Rise
+            -- Eversong, Harandar, Zul'Aman, Voidstorm, Slayer's Rise, plus the two sub-zones whose
+            -- UiMap parent is the region map (2537) and so never reach a listed entry on their own.
+            mapIDs = { 2395, 2413, 2437, 2405, 2444, 2424, 2541 },
             drops = _netherWarpedEgg,
         },
 
