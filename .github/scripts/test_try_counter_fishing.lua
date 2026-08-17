@@ -145,6 +145,47 @@ check(not Fns.IsFishingBobberNpcId(TRACKED_RARE), "a tracked rare is refused as 
 check((WN.db.global.discoveredFishingBobbers or {})[TRACKED_RARE] == nil,
       "a tracked rare is never persisted as a bobber")
 
+print("phase 6b: the GameObject bobber is learned, persisted and then recognised")
+-- The live bobber is GAMEOBJECT_TYPE_FISHINGNODE (17), so GetLootSourceInfo reports fishing loot as
+-- a GameObject GUID. The learn loop used to scan only "^Creature", so nothing was ever learned and
+-- LootSourcesLookLikeFishingOnly rejected every real fishing session (GameObject-only => false).
+local NODE_OBJ = 888001
+local NODE_GUID = "GameObject-0-0-0-0-" .. NODE_OBJ .. "-000000000000"
+check(not Fns.IsFishingBobberObjectId(NODE_OBJ), "fishing-node object starts unknown")
+check(not Fns.LootSourcesLookLikeFishingOnly({ NODE_GUID }),
+      "unknown GameObject alone is NOT treated as fishing (herb/ore stay safe)")
+
+stub.Reset()
+stub.world.mapID = VOIDSTORM
+stub.world.isFishingLoot = true
+stub.world.lootSlots = { { hasItem = true, link = "|Hitem:" .. JUNK .. "::::::::::::::::|h[Junk]|h" } }
+stub.world.lootSources = { { NODE_GUID, 1 } }
+stub.Fire("LOOT_READY", true)
+stub.Fire("LOOT_OPENED", true, false)
+stub.Advance(0.05)
+stub.Fire("LOOT_CLOSED")
+stub.Advance(5)
+
+check(Fns.IsFishingBobberObjectId(NODE_OBJ), "confirmed cast learns the GameObject bobber id")
+check((WN.db.global.discoveredFishingBobberObjects or {})[NODE_OBJ] == true,
+      "learned fishing-node object id is written to SavedVariables")
+
+stub.world.isFishingLoot = false
+check(Fns.LootSourcesLookLikeFishingOnly({ NODE_GUID }),
+      "once learned, the GameObject bobber classifies without IsFishingLoot()")
+
+-- Same poisoning guard as the creature side: a tracked object owns its own route.
+local TRACKED_OBJ = 469857   -- Overflowing Dumpster
+Fns.RememberFishingBobberObjectId(TRACKED_OBJ)
+check(not Fns.IsFishingBobberObjectId(TRACKED_OBJ), "a tracked object is refused as a bobber")
+
+print("phase 6c: the fishing spell icon probe matches the live icon id")
+-- SpellMisc.SpellIconFileDataID on 12.1.0.69299: spells 7620 / 131474 / 1281823 all report 4620674.
+-- The probe used to compare against 136245 only, so any fishing spell outside the hardcoded list
+-- was cached as NOT fishing forever and never armed the cast context.
+check(TC.FISHING_SPELL_ICON_IDS[4620674] == true, "live 12.1 fishing icon id is accepted")
+check(TC.FISHING_SPELL_ICON_IDS[136245] == true, "legacy icon id still accepted for older clients")
+
 print("phase 7: every Midnight fishing sub-zone resolves to the drop")
 -- Parent chains are the real UiMap.db2 ones (see wow_stub.M.uiMapParents). A zone that stops
 -- resolving here goes completely silent in game: no count, no chat, no error.
@@ -177,9 +218,13 @@ local function ClassifyWithCast(sources, mouseoverCorpse)
     return Fns.ClassifyLootSession("opened")
 end
 check(ClassifyWithCast({}, nil) == "fishing",
-      "cast + fishable zone + no evidence -> fishing (was silent before)")
+      "cast + fishable zone + NO loot sources -> fishing (was silent before)")
 check(ClassifyWithCast({}, "Creature-0-0-0-0-246332-000000000000") == "npc",
       "a tracked mob corpse on mouseover still routes to npc, not fishing")
+-- The trigger is restricted to empty sources on purpose: with a corpse in the source list the cast
+-- context must not win, or fishing near mobs starts counting kills as casts.
+check(ClassifyWithCast({ "Creature-0-0-0-0-777777-000000000000" }, nil) ~= "fishing",
+      "cast context does not claim a session that has a creature source")
 RT.fishingCtx.active = false
 
 print("phase 9: no errors escaped any handler or timer")

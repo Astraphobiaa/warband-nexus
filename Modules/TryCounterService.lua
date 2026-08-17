@@ -352,11 +352,19 @@ end)
 -- ops-030: fishing + classify constants -> TryCounterService_Process.lua (mutable bobber table)
 local FISHING_SPELLS = TC.FISHING_SPELLS or {}
 local FISHING_BOBBER_NPC_IDS = TC.FISHING_BOBBER_NPC_IDS or {}
+local FISHING_BOBBER_OBJECT_IDS = TC.FISHING_BOBBER_OBJECT_IDS or {}
+local FISHING_SPELL_ICON_IDS = TC.FISHING_SPELL_ICON_IDS or { [4620674] = true, [136245] = true }
 local probedNonFishingSpells = TC.probedNonFishingSpells or {}
 TC.probedNonFishingSpells = probedNonFishingSpells
 
 function Fns.IsFishingBobberNpcId(npcID)
     return npcID and FISHING_BOBBER_NPC_IDS[npcID] == true
+end
+
+--- The bobber / fishing hole is a GameObject (GAMEOBJECT_TYPE_FISHINGNODE 17, FISHINGHOLE 25),
+--- so this is the id that actually appears in GetLootSourceInfo for live fishing loot.
+function Fns.IsFishingBobberObjectId(objectID)
+    return objectID and FISHING_BOBBER_OBJECT_IDS[objectID] == true
 end
 
 function Fns.LootSessionSourcesAreOnlyGameObjects(sourceGUIDs)
@@ -407,6 +415,15 @@ function Fns.LootSourcesLookLikeFishingOnly(sourceGUIDs)
         if issecretvalue and issecretvalue(g) then return false end
         if g:match("^GameObject") then
             hasGameObject = true
+            -- A GameObject source is the normal shape for live fishing loot (the bobber is
+            -- GAMEOBJECT_TYPE_FISHINGNODE). Only a LEARNED fishing-node id counts as evidence;
+            -- an unknown GameObject is still ambiguous with herb/ore/chests and must not.
+            local oid = Fns.GetObjectIDFromGUID(g)
+            if oid and Fns.IsFishingBobberObjectId(oid) then
+                knownBobber = true
+            elseif oid and objectDropDB[oid] then
+                return false   -- tracked object (dumpster, raid chest) owns its own route
+            end
         elseif g:match("^Creature") or g:match("^Vehicle") then
             hasCreatureOrVehicle = true
             local nid = Fns.GetNPCIDFromGUID(g)
@@ -4630,13 +4647,40 @@ end
 function Fns.MergeDiscoveredFishingBobbers()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
     local disc = WarbandNexus.db.global.discoveredFishingBobbers
-    if type(disc) ~= "table" then return end
-    for npcID, v in pairs(disc) do
-        local nid = tonumber(npcID)
-        if nid and v == true then
-            FISHING_BOBBER_NPC_IDS[nid] = true
+    if type(disc) == "table" then
+        for npcID, v in pairs(disc) do
+            local nid = tonumber(npcID)
+            if nid and v == true then
+                FISHING_BOBBER_NPC_IDS[nid] = true
+            end
         end
     end
+    local objs = WarbandNexus.db.global.discoveredFishingBobberObjects
+    if type(objs) == "table" then
+        for objectID, v in pairs(objs) do
+            local oid = tonumber(objectID)
+            if oid and v == true then
+                FISHING_BOBBER_OBJECT_IDS[oid] = true
+            end
+        end
+    end
+end
+
+--- GameObject side of the same learn-and-persist path. This is the one that matches live fishing.
+function Fns.RememberFishingBobberObjectId(objectID)
+    local oid = tonumber(objectID)
+    if not oid or oid <= 0 then return end
+    -- Never learn a tracked object (Overflowing Dumpster, raid chests): it owns its own route, and a
+    -- persisted mistake here would reroute that object's loot to fishing on every future session.
+    if objectDropDB[oid] then return end
+    FISHING_BOBBER_OBJECT_IDS[oid] = true
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local objs = WarbandNexus.db.global.discoveredFishingBobberObjects
+    if type(objs) ~= "table" then
+        objs = {}
+        WarbandNexus.db.global.discoveredFishingBobberObjects = objs
+    end
+    objs[oid] = true
 end
 
 function Fns.RememberFishingBobberNpcId(npcID)
@@ -5271,7 +5315,7 @@ local function ResolveTryCounterFishingSpell(spellID)
         return false
     end
     local iconID = spellInfo.iconID
-    if iconID and not (issecretvalue and issecretvalue(iconID)) and iconID == 136245 then
+    if iconID and not (issecretvalue and issecretvalue(iconID)) and FISHING_SPELL_ICON_IDS[iconID] then
         FISHING_SPELLS[spellID] = true
         return true
     end
@@ -5864,11 +5908,20 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     if fishingLootAPI and lootSession.sourceGUIDs then
         for i = 1, #lootSession.sourceGUIDs do
             local g = lootSession.sourceGUIDs[i]
-            if type(g) == "string" and not (issecretvalue and issecretvalue(g))
-               and g:match("^Creature") then
-                local nid = Fns.GetNPCIDFromGUID(g)
-                if nid and not FISHING_BOBBER_NPC_IDS[nid] then
-                    Fns.RememberFishingBobberNpcId(nid)
+            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) then
+                if g:match("^Creature") then
+                    local nid = Fns.GetNPCIDFromGUID(g)
+                    if nid and not FISHING_BOBBER_NPC_IDS[nid] then
+                        Fns.RememberFishingBobberNpcId(nid)
+                    end
+                elseif g:match("^GameObject") then
+                    -- The live bobber is a GameObject, so this is the branch that actually fires
+                    -- while fishing. Scanning only "^Creature" here is why nothing was ever learned
+                    -- and the structural route stayed permanently dead.
+                    local oid = Fns.GetObjectIDFromGUID(g)
+                    if oid and not FISHING_BOBBER_OBJECT_IDS[oid] then
+                        Fns.RememberFishingBobberObjectId(oid)
+                    end
                 end
             end
         end
@@ -5876,14 +5929,15 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     local fishingContextFresh = fishingCtx.active and (now - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
     local sourceCompatible = fishingContextFresh and Fns.IsFishingSourceCompatible(lootSession.sourceGUIDs)
 
-    -- Third trigger: a fresh fishing cast in a trackable fishing zone, with sources that are not a
-    -- tracked NPC/object. Needed because the shipped bobber allowlist only knows three legacy ids and
-    -- the learn-on-confirm path is circular (it only learns while IsFishingLoot() is already true), so
-    -- a client where that API reads false leaves the whole route permanently silent with no way out.
-    -- This is the "cast + fishable zone" rule that was removed once before for counting normal kills —
-    -- the corpse gate below is what makes it safe now: it uses the STRICT branch (sources AND unit
-    -- frames), so any mob corpse in the session or on target/mouseover still falls through to NPC.
-    local fishingFromCastContext = sourceCompatible and Fns.IsInTrackableFishingZone()
+    -- Third trigger: a fresh fishing cast in a trackable fishing zone when the session reports NO
+    -- loot sources at all. Deliberately narrow. With sources present the two triggers above already
+    -- decide (learned fishing-node GameObject / IsFishingLoot), and a mob corpse must keep winning —
+    -- an earlier version of this rule counted normal kills as fishing, which is why it was removed
+    -- once before. Restricting it to the empty-source case covers the only gap the others cannot see
+    -- (secret or absent GetLootSourceInfo data) without reintroducing that false positive.
+    local fishingFromCastContext = sourceCompatible
+        and #lootSession.sourceGUIDs == 0
+        and Fns.IsInTrackableFishingZone()
 
     if fishingLootAPI or fishingFromSourcesOnly or fishingFromCastContext then
         local corpseInSources = Fns.LootSessionHasBlockingMobCorpseForFishing(lootSession.sourceGUIDs)
