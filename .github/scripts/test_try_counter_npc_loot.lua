@@ -109,7 +109,33 @@ check(Count() - before == 0, "late LOOT_OPENED on the SAME corpse does not doubl
 -- Reopening the same corpse later (partial loot, close, reopen) must also stay at one attempt.
 check(Loot(sameCorpse, true, 15) == 0, "reopening the same corpse after the window does not recount")
 
-print("phase 4: no errors escaped any handler or timer")
+print("phase 4: a secret corpse GUID falls back to suppressing, never to double counting")
+-- Midnight can hand back secret GUIDs, and then the corpse identities cannot be compared at all.
+-- The fix must fail CLOSED there (suppress a possible duplicate) rather than fail open and count
+-- twice. Without a controllable issecretvalue stub this branch never ran in any suite.
+stub.Advance(15)
+local secretCorpse = NewCorpse()
+check(Loot(secretCorpse, false) == 1, "baseline: the kill counts while GUIDs are readable")
+
+stub.Reset()
+stub.world.lootSlots = { { hasItem = true, link = "|Hitem:2589::::::::::::::::|h[Linen]|h" } }
+stub.world.lootSources = { { stub.MarkSecret(NewCorpse()), 1 } }
+local beforeSecret = Count()
+stub.Fire("LOOT_READY", true)
+stub.Fire("LOOT_OPENED", true, false)
+stub.Advance(0.05)
+stub.Fire("LOOT_CLOSED")
+stub.Advance(3)
+check(Count() - beforeSecret == 0,
+      "an unreadable (secret) corpse GUID inside the window is suppressed, not counted twice")
+check(#stub.errors == 0, "no error raised while handling a secret GUID")
+stub.ClearSecrets()
+
+-- Outside the window the secret case must not block a legitimate kill forever.
+stub.Advance(20)
+check(Loot(NewCorpse(), false) == 1, "after the window, counting resumes normally")
+
+print("phase 5: no errors escaped any handler or timer")
 for i = 1, #stub.errors do print("  error: " .. tostring(stub.errors[i])) end
 check(#stub.errors == 0, "no runtime errors")
 

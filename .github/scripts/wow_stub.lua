@@ -159,7 +159,14 @@ env.IsInGroup = function() return false end
 env.IsInRaid = function() return false end
 env.GetRealmName = function() return "TestRealm" end
 env.GetStatistic = function() return nil end
-env.issecretvalue = function() return false end
+
+-- Midnight 12.0 secret values. Tests opt specific values in with M.MarkSecret(v); everything else
+-- reads as non-secret. A stub that always answered false left every issecretvalue guard in the
+-- addon (200+ of them) permanently on its happy path, so the defensive branches were never run.
+M.secrets = setmetatable({}, { __mode = "k" })
+function M.MarkSecret(v) M.secrets[v] = true; return v end
+function M.ClearSecrets() for k in pairs(M.secrets) do M.secrets[k] = nil end end
+env.issecretvalue = function(v) return M.secrets[v] == true end
 
 -- Real UiMap.db2 parent chain for the Midnight maps, build 12.1.0.69299 (wago.tools).
 -- 2537 is the Quel'Thalas region map and carries no fishing entry, which is exactly why
