@@ -76,8 +76,13 @@ end
 _G.GetLocale = function() return "enUS" end
 
 -- TOC order for the Try Counter slice and everything it reads.
+-- ChatIntegrationService is included on purpose: it owns the real chat routing, so the suites
+-- exercise delivery end to end instead of stopping at "a line was emitted". The stub reports every
+-- external addon as absent (see wow_stub: IsAddOnLoaded / C_AddOns), which is the configuration we
+-- must never break -- no ElvUI, no Chattynator, no Rarity.
 LoadFile("Locales/enUS.lua")
 LoadFile("Modules/Constants.lua")
+LoadFile("Modules/ChatIntegrationService.lua")
 LoadFile("Modules/CollectibleSourceDB.lua")
 LoadFile("Modules/TryCounterService_Shared.lua")
 LoadFile("Modules/TryCounterService_Events.lua")

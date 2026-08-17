@@ -74,6 +74,7 @@ jobs:
           if command -v lua5.1 >/dev/null 2>&1; then
             lua5.1 .github/scripts/test_try_counter_fishing.lua
             lua5.1 .github/scripts/test_try_counter_npc_loot.lua
+            lua5.1 .github/scripts/test_addon_independence.lua
           else
             echo "lua5.1 unavailable - skipping behavioural gate"
           fi
