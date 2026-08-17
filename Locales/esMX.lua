@@ -1180,21 +1180,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V353"] = [=[v3.5.3 (2026-08-17)
+L["CHANGELOG_V354"] = [=[v3.5.4-beta1 (2026-08-17)
 
-Updated:
-- Crest tracking now follows the active season automatically. Season 2 Mistcrests replace Season 1 Dawncrests in the Gear and PvE tabs, and future seasons will switch over on their own instead of waiting for an addon update.
-- Gear upgrade tracks now use Season 2 item levels, so upgrade steps and costs read correctly on Season 2 gear.
-- The Currencies tab now refreshes Blizzard's category tree after a game patch. Categories added in 12.1, such as Crests and Professions, no longer stay missing until a manual rescan.
-- Currencies retired by a season change are no longer kept in the list forever.
-- The Gilded Stash weekly count now shows the correct 3 per week for patch 12.1.
-- Currency tooltips now always list your current character, even at zero, so an empty balance is no longer indistinguishable from missing data.
+Beta build. Please report anything that looks miscounted.
 
 Fixed:
-- Try counters for one-time collectibles no longer reset when you finally obtain them, so the number of tries it took stays on the card instead of dropping to zero. Repeatable drops still reset as before.
-- Fixed try counters resetting from the wrong source when a drop credits its tries to another collectible, such as Crackling Shard counting toward Alunira.
-- The obtained message in chat now only claims the counter was reset when it actually was.
-- Fixed localized upgrade track names failing to resolve, which could leave gear rows without a track label.
+- Try counts no longer skip kills while you farm the same rare over and over. Killing a rare again within about ten seconds of the last one could silently drop the attempt, losing roughly half the kills in a back-to-back farm.
+- Fishing attempts now count on Isle of Quel'Danas and in Arcantina. Both zones were producing no try counts and no chat lines at all.
+- Fishing is now recognised much more reliably. The addon learns your bobber the first time it sees a confirmed catch and remembers it from then on, instead of relying on a short built-in list that no longer matched current fishing.
+- Fishing casts made with newer or unusual fishing abilities are now recognised, so their attempts are counted instead of being ignored for the rest of the session.
+- Attempt messages can no longer go missing from chat when several loot windows follow each other quickly.
 
 CurseForge: Warband Nexus]=]
 

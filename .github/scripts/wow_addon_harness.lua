@@ -64,15 +64,12 @@ local function LoadFile(rel)
     if not ok then error("run " .. rel .. ": " .. tostring(rerr), 0) end
 end
 
--- AceLocale stub: Locales/enUS.lua writes straight into ns.L.
-local L = {}
-ns.L = L
-_G.LibStub = function(name)
-    if name == "AceLocale-3.0" then
-        return { NewLocale = function() return L end, GetLocale = function() return L end }
-    end
-    return nil
-end
+-- The locale files do NOT use AceLocale: each one fills ns.LOCALES.<locale> and Core.lua builds
+-- ns.L from that registry (see the header of Locales/enUS.lua). ns.L is wired up after the load
+-- below. Getting this wrong leaves ns.L empty, and every `(L and L[key]) or "fallback"` call site
+-- silently uses its hardcoded English fallback -- so the suites would pass without ever reading a
+-- single shipped string.
+_G.LibStub = function() return nil end
 _G.GetLocale = function() return "enUS" end
 
 -- TOC order for the Try Counter slice and everything it reads.
@@ -81,6 +78,11 @@ _G.GetLocale = function() return "enUS" end
 -- external addon as absent (see wow_stub: IsAddOnLoaded / C_AddOns), which is the configuration we
 -- must never break -- no ElvUI, no Chattynator, no Rarity.
 LoadFile("Locales/enUS.lua")
+-- Core.lua's job, reduced to the part the try counter needs: enUS is the fallback base.
+ns.L = ns.LOCALES and ns.LOCALES.enUS
+assert(type(ns.L) == "table" and next(ns.L) ~= nil,
+    "ns.L is empty - Locales/enUS.lua did not populate ns.LOCALES.enUS")
+
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/ChatIntegrationService.lua")
 LoadFile("Modules/CollectibleSourceDB.lua")
