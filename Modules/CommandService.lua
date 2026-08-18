@@ -382,6 +382,16 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             return
         end
+        -- The fishing triage shipped in TryCounterService_SelfTest but was never dispatched,
+        -- so "/wn tc fishing" fell through to the trycount usage help.
+        if subLower == "fishing" or subLower == "fish" then
+            if addon.PrintFishingTryCounterDiagnostics then
+                addon:PrintFishingTryCounterDiagnostics()
+            else
+                addon:Print("|cffff6600[WN]|r Fishing diagnostics not loaded.")
+            end
+            return
+        end
         CommandService:HandleTryCountDebugCommand(addon, input)
         return
 

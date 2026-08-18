@@ -677,6 +677,10 @@ local lootReady = {
     targetGUID = nil,
     npcGUID = nil,
     time = 0,
+    -- LOOT_CLOSED clears `time` (it gates the 5s replay window), which made the fishing
+    -- diagnostic report "last LOOT_READY 43839s ago" — i.e. GetTime() since login — right
+    -- after a loot. This stamp is never cleared, so triage can tell "never" from "just now".
+    lastSeenAt = 0,
     wasFishing = false,    -- snapshot of fishingCtx.active at LOOT_READY time
 }
 local LOOT_READY_STATE_TTL = 5  -- seconds; treat lootReady data as valid for this long
@@ -696,6 +700,16 @@ V.lastTryCountSourceTime = 0
 V.lastTryCountLootSourceGUID = nil
 V.lastEncounterEndTime = 0  -- set on ANY successful ENCOUNTER_END (even unmatched); suppresses zone fallback
 local CHAT_LOOT_DEBOUNCE = 2.0  -- seconds: avoid double-count if LOOT_OPENED and CHAT_MSG_LOOT both fire
+-- Attempt-announce flush delay. Deliberately NOT CHAT_LOOT_DEBOUNCE: that 2.0s is a double-count
+-- guard between the LOOT_OPENED and CHAT_MSG_LOOT routes, and reusing it here made the "N attempts"
+-- line land ~2s after the catch while "Caught X!" printed instantly. The queue only has to trail
+-- the loot chat lines of the SAME loot event, and those arrive within a frame or two of LOOT_CLOSED.
+-- RT fields rather than locals: this chunk already carries 175 top-level locals (~200 is the ceiling).
+RT.INCREMENT_ANNOUNCE_FLUSH_DELAY = 0.25
+-- Ceiling measured from the first queued line, so a multi-item loot burst cannot walk the flush
+-- forward one bump at a time.
+RT.INCREMENT_ANNOUNCE_MAX_DEFER = 1.0
+RT.pendingIncrementAnnounceQueuedAt = 0
 -- Auto-loot may LOOT_CLOSED (closed route) before LOOT_OPENED; skip late opened re-processing.
 local LATE_LOOT_OPENED_SKIP_TTL = 10.0
 
@@ -744,6 +758,17 @@ function Fns.TryCounterLootDebug(addon, cat, fmt, ...)
     local n = select("#", ...)
     local msg = (n > 0) and string.format(tostring(fmt), ...) or tostring(fmt)
     addon:Print("|cff9370DB[WN-TC]|r " .. color .. msg .. "|r")
+end
+
+--- Trace the attempt-announce chain (branch taken, deltas, sink) under the loot debug flag.
+--- Counts incrementing while no "N attempts" line reaches chat is otherwise invisible: every
+--- stage returns silently, so field reports could only say "it does not print".
+function Fns.TryCounterAnnounceDebug(fmt, ...)
+    local addon = WarbandNexus
+    if not Fns.IsTryCounterLootDebugEnabled(addon) then return end
+    local n = select("#", ...)
+    local msg = (n > 0) and format(tostring(fmt), ...) or tostring(fmt)
+    addon:Print("|cff9370DB[WN-TC]|r |cff88ccffannounce: " .. msg .. "|r")
 end
 
 function Fns.TryCounterLootDebugDropLines(addon, source, drops, mult)
@@ -3331,6 +3356,11 @@ end
 
 --- Queue miss-increment chat until after loot chat settles (auto-loot CHAT_MSG_LOOT can trail LOOT_CLOSED).
 function Fns.IsLootSessionActiveForIncrementAnnounce()
+    -- A route processor running after its OWN LOOT_CLOSED still sees the restored snapshot's
+    -- opened=true, but no further LOOT_CLOSED is coming to flush the queue -- so deferring there parks
+    -- the line until the NEXT loot closes. That is the second half of the same fast-auto-loot frame
+    -- race ShouldDeferLootOutcomeUntilClose handles: emit inline, the loot chat is already out.
+    if V.lootRouteWindowAlreadyClosed then return false end
     if lootSession.opened then return true end
     if pendingLootSessionFinalize then return true end
     return false
@@ -3343,25 +3373,54 @@ function Fns.CancelIncrementAnnounceFlush()
     end
 end
 
---- Flush queued try-counter lines after loot chat (default: CHAT_LOOT_DEBOUNCE). Reschedule on each self-loot line.
+--- Self-test accessor: the timer handle is a file local, and its presence is the only observable
+--- proof that scheduling produced something cancelable (see RunTryCounterSelfTest).
+function Fns.GetIncrementAnnounceFlushTimer()
+    return incrementAnnounceFlushTimer
+end
+
+--- Flush queued try-counter lines just after loot chat settles. Reschedule on each self-loot line,
+--- but never past INCREMENT_ANNOUNCE_MAX_DEFER measured from the first queued line.
 function Fns.ScheduleIncrementAnnounceFlushAfterLoot(delay)
     if #pendingIncrementAnnounces == 0 then return end
-    delay = tonumber(delay) or CHAT_LOOT_DEBOUNCE or 2.0
+    delay = tonumber(delay) or RT.INCREMENT_ANNOUNCE_FLUSH_DELAY
+    local queuedAt = RT.pendingIncrementAnnounceQueuedAt or 0
+    if queuedAt > 0 then
+        local remaining = (queuedAt + RT.INCREMENT_ANNOUNCE_MAX_DEFER) - GetTime()
+        if remaining <= 0 then
+            -- Deadline spent. Re-arming here would walk the line further out on every bump instead of
+            -- capping it, so deliver now: this is what makes MAX_DEFER a real ceiling and not a nudge.
+            Fns.CancelIncrementAnnounceFlush()
+            Fns.TryCounterAnnounceDebug("flush now (max defer reached, queued=%d)", #pendingIncrementAnnounces)
+            Fns.FlushDeferredTryCounterIncrementAnnounces()
+            return
+        end
+        if remaining < delay then delay = remaining end
+    end
     Fns.CancelIncrementAnnounceFlush()
-    incrementAnnounceFlushTimer = C_Timer.After(delay, function()
+    -- C_Timer.After returns nothing (warcraft.wiki.gg/wiki/API_C_Timer.After, verified 2026-08-18), so
+    -- the old `= C_Timer.After(...)` left this handle nil and CancelIncrementAnnounceFlush was a silent
+    -- no-op: every bump armed ANOTHER live timer, and a leftover one from the previous loot could fire
+    -- mid-session and flush the next loot's line early. NewTimer hands back a real :Cancel() handle.
+    incrementAnnounceFlushTimer = C_Timer.NewTimer(delay, function()
         incrementAnnounceFlushTimer = nil
         Fns.FlushDeferredTryCounterIncrementAnnounces()
     end)
+    Fns.TryCounterAnnounceDebug("flush scheduled in %.2fs (queued=%d)", delay, #pendingIncrementAnnounces)
 end
 
 function Fns.BumpIncrementAnnounceFlushAfterLootChat()
     if #pendingIncrementAnnounces == 0 then return end
-    Fns.ScheduleIncrementAnnounceFlushAfterLoot(CHAT_LOOT_DEBOUNCE)
+    Fns.ScheduleIncrementAnnounceFlushAfterLoot(RT.INCREMENT_ANNOUNCE_FLUSH_DELAY)
 end
 
 function Fns.RunOrDeferTryCounterIncrementAnnounce(emitFn)
     if type(emitFn) ~= "function" then return end
     if Fns.IsLootSessionActiveForIncrementAnnounce() then
+        -- Stamp only on 0 -> 1: the deadline belongs to the batch, not to its newest member.
+        if #pendingIncrementAnnounces == 0 then
+            RT.pendingIncrementAnnounceQueuedAt = GetTime()
+        end
         pendingIncrementAnnounces[#pendingIncrementAnnounces + 1] = emitFn
         return
     end
@@ -3380,6 +3439,8 @@ function Fns.FlushDeferredTryCounterIncrementAnnounces()
         batch[i] = pendingIncrementAnnounces[i]
         pendingIncrementAnnounces[i] = nil
     end
+    -- Queue is empty again: the next line queued starts a fresh max-defer window.
+    RT.pendingIncrementAnnounceQueuedAt = 0
     for i = 1, n do
         local fn = batch[i]
         if type(fn) == "function" then fn() end
@@ -3394,13 +3455,20 @@ function Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce, immediate)
             local count = info.finalCount or info.added
             if link and count and count > 0 then
                 local tmpl = (ns.L and ns.L["TRYCOUNTER_INCREMENT_CHAT"]) or "%d attempts for %s"
+                Fns.TryCounterAnnounceDebug("emit line (count=%s)", tostring(count))
                 Fns.TryChat("|cff9370DB[WN-Counter]|r |cffffffff" .. format(tmpl, count, link) .. "|r")
+            else
+                Fns.TryCounterAnnounceDebug("line dropped: link=%s count=%s",
+                    tostring(link ~= nil), tostring(count))
             end
         end
     end
     if immediate and not Fns.IsLootSessionActiveForIncrementAnnounce() then
         emitFn()
     else
+        Fns.TryCounterAnnounceDebug("route: sessionActive=%s (opened=%s pendingFinalize=%s)",
+            tostring(Fns.IsLootSessionActiveForIncrementAnnounce()),
+            tostring(lootSession.opened), tostring(pendingLootSessionFinalize ~= nil))
         Fns.RunOrDeferTryCounterIncrementAnnounce(emitFn)
     end
 end
@@ -3565,14 +3633,17 @@ end
 
 function Fns.PrintTryCounterDisabledHint(WN)
     WN = WN or WarbandNexus
-    if not WN or not WN.Print then return end
+    if not WN then return end
     local reason = Fns.GetTryCounterDisabledReason()
     if not reason then return end
     local L = ns.L
     local key = (reason == "module") and "TRYCOUNTER_DISABLED_MODULE" or "TRYCOUNTER_DISABLED_AUTO"
     local msg = (L and L[key])
         or "Try Counter is disabled in Settings - kills are not counted."
-    WN:Print("|cffff6600[WN-Counter]|r " .. msg)
+    -- TryChat, not :Print. This is a [WN-Counter] line, but :Print goes to one resolved frame and
+    -- ignores notifications.tryCounterChatRoute, so it landed in a different tab than every other
+    -- try-counter line -- including the drop lines emitted beside it on instance entry.
+    Fns.TryChat("|cffff6600[WN-Counter]|r " .. msg)
 end
 
 function Fns.IsAutoTryCounterEnabled()
@@ -3803,7 +3874,11 @@ end
 
 --- All slot-based try counting defers DB writes until LOOT_CLOSED (LOOT_OPENED may fire early).
 function Fns.ShouldDeferLootOutcomeUntilClose(lootRouteSource)
-    return lootRouteSource == "opened"
+    if lootRouteSource ~= "opened" then return false end
+    -- Nothing left to wait for: the window this route belongs to has already closed (see
+    -- ScheduleLootRouteProcessor). Apply the outcome now instead of staging an unfinalizable session.
+    if V.lootRouteWindowAlreadyClosed then return false end
+    return true
 end
 
 function Fns.SessionTrackableContainsItemID(trackable, itemID)
@@ -3838,16 +3913,46 @@ function Fns.CaptureTryCountBaselines(trackable)
         local drop = trackable[i]
         local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
         if tryKey then
-            baselines[tcType .. "\0" .. tostring(tryKey)] = WarbandNexus:GetTryCount(tcType, tryKey) or 0
+            local count = WarbandNexus:GetTryCount(tcType, tryKey) or 0
+            baselines[tcType .. "\0" .. tostring(tryKey)] = count
+            -- Second entry keyed by the drop TABLE itself. The composite key is derived from
+            -- ResolveCollectibleID, which yields the mountID only while C_MountJournal
+            -- .GetMountFromItem is warm and silently falls back to the itemID when it is not -- so a
+            -- key captured at LOOT_OPENED can fail to match the one re-derived at LOOT_CLOSED. That
+            -- mismatch made the whole attempt line vanish (base=nil -> "nothing to announce") and
+            -- also skewed the "after N attempts" number on obtain. The drop table is the same object
+            -- at both ends, so this lookup cannot drift. Read it via Fns.GetTryCountBaseline.
+            baselines[drop] = count
         end
     end
     return baselines
 end
 
+--- Baseline for one drop. Identity first (drift-proof), composite key second (older callers /
+--- baselines captured before a drop entry existed). Returns nil when neither is present.
+function Fns.GetTryCountBaseline(baselines, drop, tcType, tryKey)
+    if not baselines then return nil end
+    if drop ~= nil then
+        local byDrop = baselines[drop]
+        if byDrop ~= nil then return byDrop end
+    end
+    if tcType and tryKey ~= nil then
+        return baselines[tcType .. "\0" .. tostring(tryKey)]
+    end
+    return nil
+end
+
 --- LOOT_OPENED early miss uses silentAnnounce; emit the delta at LOOT_CLOSED finalize.
 function Fns.EmitEarlyMissIncrementAnnounce(trackable, found, baselineTryCounts)
-    if not Fns.IsAutoTryCounterEnabled() then return end
-    if not trackable or not baselineTryCounts then return end
+    if not Fns.IsAutoTryCounterEnabled() then
+        Fns.TryCounterAnnounceDebug("early-miss: skipped (auto try counter disabled)")
+        return
+    end
+    if not trackable or not baselineTryCounts then
+        Fns.TryCounterAnnounceDebug("early-miss: skipped (trackable=%s baselines=%s)",
+            tostring(trackable ~= nil), tostring(baselineTryCounts ~= nil))
+        return
+    end
     local incrementAnnounce = {}
     for i = 1, #trackable do
         local drop = trackable[i]
@@ -3857,23 +3962,34 @@ function Fns.EmitEarlyMissIncrementAnnounce(trackable, found, baselineTryCounts)
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
             if tryKey then
                 local ck = tcType .. "\0" .. tostring(tryKey)
-                local base = baselineTryCounts[ck]
-                if base ~= nil then
-                    local now = WarbandNexus:GetTryCount(tcType, tryKey) or 0
-                    local added = now - base
-                    if added > 0 then
-                        incrementAnnounce[ck] = {
-                            drop = drop,
-                            added = added,
-                            finalCount = now,
-                        }
-                    end
+                local base = Fns.GetTryCountBaseline(baselineTryCounts, drop, tcType, tryKey)
+                local now = WarbandNexus:GetTryCount(tcType, tryKey) or 0
+                -- gsub returns 2 values; parenthesise so the count never shifts the format args.
+                Fns.TryCounterAnnounceDebug("early-miss %s: base=%s now=%d added=%s",
+                    (ck:gsub("%z", ":")), tostring(base), now, tostring(base and (now - base)))
+                if base == nil then
+                    -- We only get here when the early increment already ran, so this drop WAS
+                    -- counted. Staying silent is the one wrong answer: report the total instead of
+                    -- the delta we can no longer compute.
+                    Fns.TryCounterAnnounceDebug("early-miss %s: no baseline - announcing total %d",
+                        (ck:gsub("%z", ":")), now)
+                    base = (now > 0) and (now - 1) or 0
+                end
+                local added = now - base
+                if added > 0 then
+                    incrementAnnounce[ck] = {
+                        drop = drop,
+                        added = added,
+                        finalCount = now,
+                    }
                 end
             end
         end
     end
     if next(incrementAnnounce) then
         Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce)
+    else
+        Fns.TryCounterAnnounceDebug("early-miss: nothing to announce")
     end
 end
 
@@ -3973,6 +4089,7 @@ function Fns.StageDeferredLootSession(ctx)
         containerItemID = ctx.containerItemID,
         baselineTryCounts = Fns.CaptureTryCountBaselines(ctx.trackable),
         stagedAt = GetTime(),
+        lootOpenSerial = RT.lootOpenSerial or 0,
         earlyMissApplied = false,
     }
     if Fns.ApplyEarlyLootAttemptIncrement(ctx) then
@@ -3995,7 +4112,18 @@ function Fns.FinalizeDeferredLootSessionOutcome(self)
     RT.pendingLootSessionFinalize = nil
 
     local kind = pending.kind or "npc"
-    local found = Fns.BuildNpcLootFoundMap(pending.trackable, lootSession.numLoot, lootSession.slotData)
+    -- Slot data is only evidence for the window the session was staged in. Reading a later window's
+    -- slots could mark a drop "found" that was never seen here and wrongly reset its try counter.
+    local sameWindow = (pending.lootOpenSerial == nil)
+        or (pending.lootOpenSerial == (RT.lootOpenSerial or 0))
+    local found
+    if sameWindow then
+        found = Fns.BuildNpcLootFoundMap(pending.trackable, lootSession.numLoot, lootSession.slotData)
+    else
+        found = {}
+        Fns.TryCounterAnnounceDebug("finalize: stale pending (staged serial=%s, now=%s) - slots ignored",
+            tostring(pending.lootOpenSerial), tostring(RT.lootOpenSerial))
+    end
     local baseline = pending.baselineTryCounts
     local earlyMissApplied = pending.earlyMissApplied
 
@@ -4033,7 +4161,16 @@ function Fns.FinalizeDeferredLootSessionOutcome(self)
     end
 
     local matchedNpcID = pending.matchedNpcID
-    local isLockoutSkip = matchedNpcID and Fns.IsLockoutDuplicate(matchedNpcID)
+    -- IsLockoutDuplicate LATCHES: the first observation of a flagged quest marks the period as used
+    -- and returns false, every later call returns true. ApplyEarlyLootAttemptIncrement already
+    -- consumed that first observation at LOOT_OPENED (that is what earlyMissApplied records), so
+    -- asking again here reports a duplicate for the very kill we just counted -- and the isLockoutSkip
+    -- branch in ApplyNpcLootOutcomes then printed "Skipped: daily/weekly lockout" INSTEAD of calling
+    -- EmitEarlyMissIncrementAnnounce. Every Undermine daily/weekly rare incremented in silence.
+    local isLockoutSkip = false
+    if not earlyMissApplied and matchedNpcID then
+        isLockoutSkip = Fns.IsLockoutDuplicate(matchedNpcID) == true
+    end
     Fns.ApplyNpcLootOutcomes(self, {
         trackable = pending.trackable,
         found = found,
@@ -4067,8 +4204,7 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
         local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
         if not tryKey then return 0 end
         if baselineTryCounts then
-            local ck = tcType .. "\0" .. tostring(tryKey)
-            local base = baselineTryCounts[ck]
+            local base = Fns.GetTryCountBaseline(baselineTryCounts, drop, tcType, tryKey)
             if base ~= nil then
                 return Fns.AdjustPreResetForDelayedReseed(base, tcType, tryKey)
             end
@@ -4276,8 +4412,7 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
         local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
         if not tryKey then return 0 end
         if baselineTryCounts then
-            local ck = tcType .. "\0" .. tostring(tryKey)
-            local base = baselineTryCounts[ck]
+            local base = Fns.GetTryCountBaseline(baselineTryCounts, drop, tcType, tryKey)
             if base ~= nil then return base end
         end
         return WarbandNexus:GetTryCount(tcType, tryKey) or 0
@@ -4348,6 +4483,8 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
         end
     end
     Fns.TryCounterLootDebugDropLines(self, "Fishing", missed)
+    Fns.TryCounterAnnounceDebug("fishing outcomes: missed=%d earlyMissApplied=%s baselines=%s",
+        #missed, tostring(earlyMissApplied == true), tostring(baselineTryCounts ~= nil))
     if earlyMissApplied then
         Fns.EmitEarlyMissIncrementAnnounce(trackable, found, baselineTryCounts)
     elseif #missed > 0 then
@@ -4368,8 +4505,7 @@ function Fns.ApplyContainerLootOutcomes(self, opts)
         local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
         if not tryKey then return 0 end
         if baselineTryCounts then
-            local ck = tcType .. "\0" .. tostring(tryKey)
-            local base = baselineTryCounts[ck]
+            local base = Fns.GetTryCountBaseline(baselineTryCounts, drop, tcType, tryKey)
             if base ~= nil then return base end
         end
         return WarbandNexus:GetTryCount(tcType, tryKey) or 0
@@ -4783,7 +4919,9 @@ local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
             local L = ns.L
             local msg = (L and L["TRYCOUNTER_INSTANCE_ENTRY_HINT"])
                 or "Collectible mount(s) are tracked in this instance. Type |cffffffff/wn check|r for bosses and difficulty."
-            WN:Print("|cff00ccffWarband Nexus:|r " .. msg)
+            -- Routed like the TryCounterShowInstanceDrops lines in the sibling branch: both belong to
+            -- the same instance-entry announce and must not split across two chat tabs.
+            Fns.TryChat("|cff9370DB[WN-Counter]|r " .. msg)
         end
     end
 end
@@ -5540,7 +5678,12 @@ end
 function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
     if not bagID or not slotID then return end
     if issecretvalue and (issecretvalue(bagID) or issecretvalue(slotID)) then return end
-    if bagID < 0 or bagID > 4 then return end
+    -- Reagent bag is BagID 5 on Midnight (warcraft.wiki.gg/wiki/BagID, verified 2026-08-18). The old
+    -- 0..4 range ignored any container item kept there, so V.lastContainerItemID stayed nil and
+    -- ProcessContainerLoot fell through to its passive "container not identified" scan -- which counts
+    -- nothing at all. Enum first, literal fallback, matching how the rest of the addon reads bag ids.
+    local maxCarriedBagID = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
+    if bagID < 0 or bagID > maxCarriedBagID then return end
     if not C_Container or not C_Container.GetContainerItemID then return end
 
     local itemID = C_Container.GetContainerItemID(bagID, slotID)
@@ -5960,6 +6103,7 @@ local function ScheduleLootRouteProcessor(addon, route, source)
     local containerItemIDSnapshot = V.lastContainerItemID
     local containerItemTimeSnapshot = V.lastContainerItemTime
     local professionLootingSnapshot = V.isProfessionLooting
+    local lootOpenSerialSnapshot = RT.lootOpenSerial or 0
 
     C_Timer.After(0, function()
         if not addon or not Fns.IsAutoTryCounterEnabled() then return end
@@ -5973,6 +6117,14 @@ local function ScheduleLootRouteProcessor(addon, route, source)
         V.lastContainerItemID = containerItemIDSnapshot
         V.lastContainerItemTime = containerItemTimeSnapshot
         V.isProfessionLooting = professionLootingSnapshot
+
+        -- Fast auto-loot can fire LOOT_CLOSED in the SAME frame that LOOT_OPENED scheduled this
+        -- processor. Deferring the outcome then strands the staged session: no LOOT_CLOSED is left to
+        -- finalize it, so the attempt line sits in the queue until the NEXT loot closes -- which is
+        -- why a fishing attempt appeared seconds late, on the following catch.
+        local prevWindowClosed = V.lootRouteWindowAlreadyClosed
+        V.lootRouteWindowAlreadyClosed =
+            not (RT.lootOpenSerial == lootOpenSerialSnapshot and RT.lootWindowOpen == true)
 
         local ok, err
         local P = ns.Profiler
@@ -5996,6 +6148,7 @@ local function ScheduleLootRouteProcessor(addon, route, source)
         V.lastContainerItemID = liveContainerItemID
         V.lastContainerItemTime = liveContainerItemTime
         V.isProfessionLooting = liveProfessionLooting
+        V.lootRouteWindowAlreadyClosed = prevWindowClosed
 
         if route == "fishing" and ok and (source == "closed" or not liveSession.opened) then
             fishingCtx.active = false
@@ -6042,6 +6195,11 @@ end
 function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     Fns.CaptureLootSessionState()
     lootSession.opened = true
+    -- Live window state for the next-frame route processor. lootSession.opened cannot answer this:
+    -- LOOT_CLOSED resets it and ScheduleLootRouteProcessor restores its snapshot value, so inside the
+    -- processor it always reads "open". The serial distinguishes "still this window" from "a new one".
+    RT.lootOpenSerial = (RT.lootOpenSerial or 0) + 1
+    RT.lootWindowOpen = true
     -- Auto-loot may close before OPENED; closed route already incremented (e.g. HK-8 Mythic).
     if Fns.ShouldSkipLateLootOpenedRoute(isFromItem) then
         return

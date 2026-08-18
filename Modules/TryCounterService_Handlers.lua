@@ -387,6 +387,7 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
     RT.lootReady.targetGUID = Fns.SafeGetTargetGUID()
     RT.lootReady.npcGUID = Fns.SafeGetUnitGUID("npc")
     RT.lootReady.time = GetTime()
+    RT.lootReady.lastSeenAt = RT.lootReady.time
     -- Structural bobber/pool (zone DB) or IsFishingLoot API. Profession loot is excluded so herb/ore
     -- in fishable zones does not set wasFishing (see ClassifyLootSession GameObject-only guard).
     local apiFish = Fns.SafeIsFishingLoot()
@@ -406,6 +407,11 @@ end
 ---is opened multiple times in quick succession (user takes partial loot, closes, reopens).
 ---Different loot sources get their own GUID and are counted separately.
 function WarbandNexus:OnTryCounterLootClosed()
+    -- Clear the live window flag FIRST: a route processor scheduled by LOOT_OPENED runs next frame and
+    -- reads this to decide whether deferring to LOOT_CLOSED is still possible (see
+    -- ShouldDeferLootOutcomeUntilClose). Fast auto-loot puts both events in one frame.
+    RT.lootWindowOpen = false
+
     -- Loot session resolver: one attempt decision after looting finishes (slot scan + session obtain marks).
     if RT.pendingLootSessionFinalize then
         Fns.FinalizeDeferredLootSessionOutcome(self)
@@ -430,7 +436,10 @@ function WarbandNexus:OnTryCounterLootClosed()
         end
     end
 
-    Fns.ScheduleIncrementAnnounceFlushAfterLoot(RT.CHAT_LOOT_DEBOUNCE)
+    -- Short, dedicated delay -- not the 2.0s CHAT_LOOT_DEBOUNCE double-count guard. Trailing
+    -- auto-loot CHAT_MSG_LOOT lines land within a frame or two of here, and the attempt line
+    -- should follow them, not arrive seconds after the player has already cast again.
+    Fns.ScheduleIncrementAnnounceFlushAfterLoot(RT.INCREMENT_ANNOUNCE_FLUSH_DELAY)
 
     -- Full cleanup: wipe both session and ready state so nothing bleeds into next loot event.
     Fns.ResetLootSession()

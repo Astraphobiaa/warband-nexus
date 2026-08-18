@@ -1179,21 +1179,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V354"] = [=[v3.5.4-beta2 (2026-08-18)
+L["CHANGELOG_V354"] = [=[v3.5.4-beta3 (2026-08-18)
 
-Beta build. Try counter data expansion plus the beta1 fixes; please report anything that looks miscounted.
-
-Added:
-- The Coiled Isle rare mounts (Topaz Skyfang, Ruby Writhe) now count tries across all twelve daily rares and the five Cursed Surge bosses, including inside the Vaults of Atal'Utek.
-- New Season 2 collectibles are tracked: the Soulcoil Remnant pet from Nek'zali in The Venomous Abyss, Lil' Mon from Big Mon, and the Vibrant Venomfang from the Wriggling Venom-Soaked Satchel.
-- The Mythic raid mounts Ascendant Skyrazor, Keys to the Big G and Unbound Star-Eater are now tracked with kill statistics.
-- Hundreds of drop-based mounts, pets and toys from Classic through The War Within have been added to try counting.
+Beta build. Try counter chat and counting fixes throughout; please report anything that still looks miscounted or stays silent.
 
 Fixed:
-- Try counts no longer skip kills while you farm the same rare back-to-back.
-- Fishing attempts now count on Isle of Quel'Danas and in Arcantina, and fishing is recognised much more reliably: the addon learns your bobber on the first confirmed catch and recognises newer fishing abilities.
-- Attempt messages can no longer go missing from chat when several loot windows follow each other quickly.
-- The try counter self-test no longer prints a spurious "mount journal not ready" warning on every run.
+- Attempt messages could go missing from chat completely even though the try was counted. Mount drops whose journal entry had not finished loading were affected most.
+- The attempt message after fishing arrived seconds late, sometimes only turning up on your next catch. It now follows the loot right away.
+- Daily and weekly lockout rares, including every Undermine rare, printed "Skipped: daily/weekly lockout" instead of your attempt count on the kill that actually counted.
+- Containers kept in your reagent bag were never counted at all.
+- The "after N attempts" total shown when you finally obtain a drop could be wrong.
+- Two try counter notices ignored your Try Counter chat tab setting and showed up in a different tab from every other try counter line. They now follow the hide-chat option as well.
+- Try counter lines could be lost without a trace when another chat addon's message handler failed.
 
 CurseForge: Warband Nexus]=]
 

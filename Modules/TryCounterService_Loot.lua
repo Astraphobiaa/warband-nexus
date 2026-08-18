@@ -535,8 +535,8 @@ function Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops, baseline
         local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
         if not tryKey then return 0 end
         if baselineTryCounts then
-            local ck = tcType .. "\0" .. tostring(tryKey)
-            local base = baselineTryCounts[ck]
+            -- Identity-keyed read: see Fns.CaptureTryCountBaselines for why the composite key drifts.
+            local base = Fns.GetTryCountBaseline(baselineTryCounts, drop, tcType, tryKey)
             if base ~= nil then
                 return Fns.AdjustPreResetForDelayedReseed(base, tcType, tryKey)
             end

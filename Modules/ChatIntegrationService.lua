@@ -221,14 +221,15 @@ function ChatOutput.SendToAllStandardChatFrames(message)
     for i = 1, nWin do
         local f = _G["ChatFrame" .. i]
         if f and f.AddMessage then
-            pcall(f.AddMessage, f, message)
-            sent = true
+            if pcall(f.AddMessage, f, message) then
+                sent = true
+            end
         end
     end
     if not sent then
         local fb = ChatOutput.ResolveFallbackChatFrame()
-        if fb and fb.AddMessage then
-            fb:AddMessage(message)
+        if fb and fb.AddMessage and not pcall(fb.AddMessage, fb, message) then
+            ChatOutput.DeliverBlizzardChatFallback(message)
         end
     end
 end
@@ -411,14 +412,19 @@ function ChatOutput.SendToChatFramesMatchingLoot(message)
     for i = 1, n do
         local frame = _G["ChatFrame" .. i]
         if frame and frame.AddMessage and ChatOutput.FrameWantsStandardLootChat(frame) then
-            pcall(frame.AddMessage, frame, message)
-            sent = true
+            -- Only a delivery that actually succeeded counts. Marking `sent` on a failed
+            -- AddMessage (chat replacements can error or swallow) skipped the fallback and
+            -- dropped the line with no trace.
+            if pcall(frame.AddMessage, frame, message) then
+                sent = true
+            end
         end
     end
     if not sent then
         local fb = ChatOutput.ResolveFallbackChatFrame()
-        if fb and fb.AddMessage then
-            pcall(fb.AddMessage, fb, message)
+        if not (fb and fb.AddMessage and pcall(fb.AddMessage, fb, message)) then
+            -- The resolved fallback can be the same replaced frame that just threw; try the rest.
+            ChatOutput.DeliverBlizzardChatFallback(message)
         end
     end
 end
@@ -486,14 +492,16 @@ function ChatOutput.SendToFramesWithGroup(message, group)
     for i = 1, n do
         local frame = _G["ChatFrame" .. i]
         if frame and frame.AddMessage and ChatOutput.FrameHasMessageGroup(frame, group) then
-            frame:AddMessage(message)
-            sent = true
+            -- Same rule as SendToChatFramesMatchingLoot: a throwing AddMessage must fall back.
+            if pcall(frame.AddMessage, frame, message) then
+                sent = true
+            end
         end
     end
     if not sent then
         local fb = ChatOutput.ResolveFallbackChatFrame()
-        if fb then
-            fb:AddMessage(message)
+        if not (fb and fb.AddMessage and pcall(fb.AddMessage, fb, message)) then
+            ChatOutput.DeliverBlizzardChatFallback(message)
         end
     end
 end
@@ -509,8 +517,8 @@ function ChatOutput.SendToFramesWithAnyGroup(message, groups)
     end
     if not groups or #groups == 0 then
         local fb = ChatOutput.ResolveFallbackChatFrame()
-        if fb then
-            fb:AddMessage(message)
+        if not (fb and fb.AddMessage and pcall(fb.AddMessage, fb, message)) then
+            ChatOutput.DeliverBlizzardChatFallback(message)
         end
         return
     end
@@ -519,14 +527,16 @@ function ChatOutput.SendToFramesWithAnyGroup(message, groups)
     for i = 1, n do
         local frame = _G["ChatFrame" .. i]
         if frame and frame.AddMessage and frameHasAnyMessageGroup(frame, groups) then
-            frame:AddMessage(message)
-            sent = true
+            -- Same invariant as the loot/group senders: only a delivery that returned counts.
+            if pcall(frame.AddMessage, frame, message) then
+                sent = true
+            end
         end
     end
     if not sent then
         local fb = ChatOutput.ResolveFallbackChatFrame()
-        if fb then
-            fb:AddMessage(message)
+        if not (fb and fb.AddMessage and pcall(fb.AddMessage, fb, message)) then
+            ChatOutput.DeliverBlizzardChatFallback(message)
         end
     end
 end

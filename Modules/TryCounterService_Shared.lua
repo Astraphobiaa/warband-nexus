@@ -29,17 +29,24 @@ TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = 369898
 
 function TC.TryChat(message)
     local WarbandNexus = ns.WarbandNexus
+    local dbg = ns.TryCounter and ns.TryCounter.Fns and ns.TryCounter.Fns.TryCounterAnnounceDebug
     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
         and WarbandNexus.db.profile.notifications
         and WarbandNexus.db.profile.notifications.hideTryCounterChat then
+        if dbg then dbg("TryChat: suppressed by hideTryCounterChat") end
         return
     end
     if ns.ChatOutput and ns.ChatOutput.SendTryCounterMessage then
+        if dbg then dbg("TryChat: sink=ChatOutput") end
         ns.ChatOutput.SendTryCounterMessage(message)
     elseif ns.SendToChatFramesLootRepCurrency then
+        if dbg then dbg("TryChat: sink=legacy loot frames") end
         ns.SendToChatFramesLootRepCurrency(message)
     elseif WarbandNexus and WarbandNexus.Print then
+        if dbg then dbg("TryChat: sink=Print fallback") end
         WarbandNexus:Print(message)
+    elseif dbg then
+        dbg("TryChat: NO SINK AVAILABLE - line lost")
     end
 end
 

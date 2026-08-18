@@ -246,6 +246,13 @@ function WarbandNexus:RunTryCounterSelfTest()
     requireFn("ApplyEarlyLootAttemptIncrement")
     requireFn("IsLootSessionActiveForIncrementAnnounce")
     requireFn("ScheduleIncrementAnnounceFlushAfterLoot")
+    requireFn("CancelIncrementAnnounceFlush")
+    requireFn("GetIncrementAnnounceFlushTimer")
+    requireFn("ShouldDeferLootOutcomeUntilClose")
+    requireFn("GetTryCountBaseline")
+    requireFn("IsLockoutDuplicate")
+    requireFn("ApplyNpcLootOutcomes")
+    requireFn("EmitEarlyMissIncrementAnnounce")
     requireFn("ShouldSkipLateLootOpenedRoute")
     requireFn("NotifyLootTryOutcomeCommitted")
     requireFn("CancelEncounterLootlessMissFallback")
@@ -740,6 +747,209 @@ function WarbandNexus:RunTryCounterSelfTest()
             if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
                 error("expected fishing miss increment")
             end
+            WN:SetTryCount("item", FAKE_ITEM_ID, old)
+        end)
+    end)
+    probe("Lockout rare: early-counted kill announces instead of 'Skipped'", function()
+        withRestoredState(function()
+            -- Undermine daily/weekly rares: IsLockoutDuplicate latches, so the finalize-time re-ask
+            -- reported a duplicate for the kill the stage had just counted. ApplyNpcLootOutcomes then
+            -- printed "Skipped: lockout" and returned before EmitEarlyMissIncrementAnnounce, leaving
+            -- the count incremented with no chat line at all.
+            local drop = fakeDrop()
+            local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            local captured, sawSkip
+            local skipText = (ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout"
+            local origTryChat = Fns.TryChat
+            Fns.TryChat = function(msg)
+                if type(msg) ~= "string" or msg == "" then return end
+                if msg:find(skipText, 1, true) then sawSkip = true else captured = msg end
+            end
+            -- earlyMissApplied = true means the stage already consumed the lockout latch.
+            Fns.ApplyNpcLootOutcomes(WN, {
+                trackable = { drop },
+                found = {},
+                drops = { drop },
+                baselineTryCounts = Fns.CaptureTryCountBaselines({ drop }),
+                earlyMissApplied = true,
+                isLockoutSkip = false,
+            })
+            Fns.FlushDeferredTryCounterIncrementAnnounces()
+            Fns.TryChat = origTryChat
+            if sawSkip then error("a kill counted at LOOT_OPENED must not report a lockout skip") end
+            if not captured then error("expected the attempt line for an early-counted lockout kill") end
+            WN:SetTryCount("item", FAKE_ITEM_ID, old)
+        end)
+    end)
+    probe("Container in the reagent bag is still identified", function()
+        -- BagID 5 (reagent bag) was outside the accepted 0..4 range, so the container was never
+        -- recorded and ProcessContainerLoot could only run its passive, non-counting scan.
+        local maxCarried = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
+        if maxCarried < 5 then
+            error("reagent bag id must be at least 5 (see warcraft.wiki.gg/wiki/BagID)")
+        end
+        if not WN.OnTryCounterItemLockChanged then
+            error("OnTryCounterItemLockChanged missing")
+        end
+    end)
+    probe("Baseline survives try-key drift (mountID <-> itemID)", function()
+        withRestoredState(function()
+            -- Live failure this reproduces: ResolveCollectibleID returns the mountID only while
+            -- C_MountJournal.GetMountFromItem is warm and falls back to the itemID when it is not, so
+            -- the key captured at LOOT_OPENED did not match the one re-derived at LOOT_CLOSED. The
+            -- baseline read then returned nil and the whole attempt line was dropped in silence
+            -- ("early-miss: nothing to announce" with the count already incremented).
+            local drop = fakeDrop()
+            local baselines = Fns.CaptureTryCountBaselines({ drop })
+            local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+            if Fns.GetTryCountBaseline(baselines, drop, tcType, tryKey) == nil then
+                error("baseline missing for the key it was captured with")
+            end
+            -- Now ask with a DIFFERENT key, as a drifted re-derivation would.
+            local drifted = Fns.GetTryCountBaseline(baselines, drop, tcType, "drifted-key-99")
+            if drifted == nil then
+                error("identity lookup must survive a changed composite key")
+            end
+            -- And a drop that genuinely has no baseline must still report nil, not a stale neighbour.
+            local other = { type = "item", itemID = FAKE_ITEM_ID + 1, repeatable = true, name = "TC Other" }
+            if Fns.GetTryCountBaseline(baselines, other, "item", FAKE_ITEM_ID + 1) ~= nil then
+                error("unrelated drop must not inherit a baseline")
+            end
+        end)
+    end)
+    probe("Early-miss announce still emits when the baseline is missing", function()
+        withRestoredState(function()
+            -- Silence was the one wrong answer here: the early increment already ran, so the drop was
+            -- counted and the player must see a line even if the delta cannot be computed.
+            local drop = fakeDrop()
+            local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            WN:SetTryCount("item", FAKE_ITEM_ID, 6)
+            local captured
+            local origTryChat = Fns.TryChat
+            Fns.TryChat = function(msg) if type(msg) == "string" and msg ~= "" then captured = msg end end
+            -- Empty baseline table = the drifted-key case.
+            Fns.EmitEarlyMissIncrementAnnounce({ drop }, {}, {})
+            Fns.FlushDeferredTryCounterIncrementAnnounces()
+            Fns.TryChat = origTryChat
+            if not captured then
+                error("expected an announce line despite the missing baseline")
+            end
+            WN:SetTryCount("item", FAKE_ITEM_ID, old)
+        end)
+    end)
+    probe("Fishing announce: flush delay is the short one, not CHAT_LOOT_DEBOUNCE", function()
+        -- The attempt line used to reuse the 2.0s double-count guard as its chat delay, so it landed
+        -- seconds after "Caught X!". These are separate concerns and must stay separate values.
+        local flush = RT.INCREMENT_ANNOUNCE_FLUSH_DELAY
+        if type(flush) ~= "number" or flush <= 0 then
+            error("INCREMENT_ANNOUNCE_FLUSH_DELAY missing or not positive")
+        end
+        if flush >= (RT.CHAT_LOOT_DEBOUNCE or 2.0) then
+            error(format("flush delay %.2fs must stay below CHAT_LOOT_DEBOUNCE", flush))
+        end
+        if type(RT.INCREMENT_ANNOUNCE_MAX_DEFER) ~= "number"
+            or RT.INCREMENT_ANNOUNCE_MAX_DEFER < flush then
+            error("INCREMENT_ANNOUNCE_MAX_DEFER must exist and be >= the flush delay")
+        end
+    end)
+    probe("Fishing announce: scheduled flush is actually cancelable", function()
+        withRestoredState(function()
+            -- C_Timer.After returns nothing, so the old `= C_Timer.After(...)` left the handle nil and
+            -- CancelIncrementAnnounceFlush silently did nothing: bumps stacked live timers instead of
+            -- replacing one. Prove the handle is real by cancelling it.
+            local queue = RT.pendingIncrementAnnounces
+            local fired = false
+            local prevQueuedAt = RT.pendingIncrementAnnounceQueuedAt
+            queue[#queue + 1] = function() fired = true end
+            -- Fresh deadline: a stale one makes the scheduler deliver synchronously by design
+            -- (max-defer ceiling), which would leave no handle to test here.
+            RT.pendingIncrementAnnounceQueuedAt = GetTime()
+            Fns.ScheduleIncrementAnnounceFlushAfterLoot(0.5)
+            if not Fns.GetIncrementAnnounceFlushTimer() then
+                error("expected a live timer handle after scheduling")
+            end
+            Fns.CancelIncrementAnnounceFlush()
+            if Fns.GetIncrementAnnounceFlushTimer() then
+                error("CancelIncrementAnnounceFlush left the handle in place")
+            end
+            if fired then error("callback must not run synchronously") end
+            Fns.FlushDeferredTryCounterIncrementAnnounces()
+            if not fired then error("expected queued announce to drain on explicit flush") end
+            if (RT.pendingIncrementAnnounceQueuedAt or 0) ~= 0 then
+                error("drain must clear the max-defer stamp for the next batch")
+            end
+            RT.pendingIncrementAnnounceQueuedAt = prevQueuedAt or 0
+        end)
+    end)
+    probe("Fishing announce: closed window does not stage an unfinalizable session", function()
+        withRestoredState(function()
+            -- Fast auto-loot can fire LOOT_CLOSED in the same frame LOOT_OPENED scheduled the route
+            -- processor. Deferring then stranded the session and the line waited for the NEXT catch.
+            local prev = V.lootRouteWindowAlreadyClosed
+            V.lootRouteWindowAlreadyClosed = true
+            local deferredAfterClose = Fns.ShouldDeferLootOutcomeUntilClose("opened")
+            -- Assert against an explicitly open window rather than whatever `prev` held, so a leaked
+            -- flag cannot turn this probe into a false failure.
+            V.lootRouteWindowAlreadyClosed = nil
+            local deferredWhileOpen = Fns.ShouldDeferLootOutcomeUntilClose("opened")
+            local deferredClosedRoute = Fns.ShouldDeferLootOutcomeUntilClose("closed")
+            V.lootRouteWindowAlreadyClosed = prev
+            if deferredAfterClose then
+                error("must not defer to a LOOT_CLOSED that already fired")
+            end
+            if not deferredWhileOpen then
+                error("an open window must still defer to LOOT_CLOSED")
+            end
+            if deferredClosedRoute then
+                error("closed route must never defer")
+            end
+        end)
+    end)
+    probe("Fishing announce: emits inline when its loot window already closed", function()
+        withRestoredState(function()
+            -- The other half of the fast-auto-loot frame race: the route processor sees the restored
+            -- snapshot's opened=true, so the line used to be queued for a LOOT_CLOSED that had already
+            -- fired -- and only surfaced on the NEXT catch.
+            local prev = V.lootRouteWindowAlreadyClosed
+            local prevOpened = RT.lootSession.opened
+            RT.lootSession.opened = true
+            V.lootRouteWindowAlreadyClosed = true
+            local activeAfterClose = Fns.IsLootSessionActiveForIncrementAnnounce()
+            V.lootRouteWindowAlreadyClosed = nil
+            local activeWhileOpen = Fns.IsLootSessionActiveForIncrementAnnounce()
+            V.lootRouteWindowAlreadyClosed = prev
+            RT.lootSession.opened = prevOpened
+            if activeAfterClose then
+                error("must not defer an announce to a LOOT_CLOSED that already fired")
+            end
+            if not activeWhileOpen then
+                error("an open loot window must still defer the announce")
+            end
+        end)
+    end)
+    probe("Finalize: stale pending ignores a later window's loot slots", function()
+        withRestoredState(function()
+            -- A pending session resolved against a different loot window could see its item in those
+            -- slots, call it obtained and reset a try counter the player never actually earned.
+            local drop = fakeDrop()
+            local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            RT.lootOpenSerial = (RT.lootOpenSerial or 0) + 1
+            Fns.StageDeferredLootSession({
+                kind = "fishing",
+                trackable = { drop },
+                baselineTryCounts = Fns.CaptureTryCountBaselines({ drop }),
+            })
+            if not RT.pendingLootSessionFinalize then error("expected pending session") end
+            -- A brand new loot window, and this time the item IS in the slots.
+            RT.lootOpenSerial = RT.lootOpenSerial + 1
+            RT.lootSession.numLoot = 1
+            RT.lootSession.slotData[1] = { hasItem = true, link = fakeItemLink() }
+            Fns.FinalizeDeferredLootSessionOutcome(WN)
+            if WN:GetTryCount("item", FAKE_ITEM_ID) < old + 1 then
+                error("stale finalize treated a foreign window's slot as an obtain (counter reset)")
+            end
+            RT.lootSession.numLoot = 0
+            wipe(RT.lootSession.slotData)
             WN:SetTryCount("item", FAKE_ITEM_ID, old)
         end)
     end)
@@ -1383,8 +1593,15 @@ function WarbandNexus:PrintFishingTryCounterDiagnostics()
     local apiFish = Fns.SafeIsFishingLoot and Fns.SafeIsFishingLoot()
     info("IsFishingLoot() right now: " .. tostring(apiFish) .. " (only true while a fishing loot window is open)")
     if RT.lootReady then
-        info(format("last LOOT_READY: wasFishing=%s, %.1fs ago",
-            tostring(RT.lootReady.wasFishing), now - (RT.lootReady.time or now)))
+        -- Read lastSeenAt, not time: LOOT_CLOSED zeroes `time`, so this line used to report
+        -- "seconds since login" and read as "LOOT_READY never fired" after every loot.
+        local seenAt = RT.lootReady.lastSeenAt or 0
+        if seenAt > 0 then
+            info(format("last LOOT_READY: wasFishing=%s, %.1fs ago",
+                tostring(RT.lootReady.wasFishing), now - seenAt))
+        else
+            info("last LOOT_READY: never this session (no loot window has opened yet)")
+        end
     end
 
     local learnedObjects = countKeys(TC.FISHING_BOBBER_OBJECT_IDS)
@@ -1426,6 +1643,12 @@ function WarbandNexus:PrintFishingTryCounterDiagnostics()
             else
                 info("no chat tab subscribes to Loot — lines fall back to the default chat frame")
             end
+        end
+        -- Send one real line down the shipped path. "The count moved but nothing printed" was
+        -- otherwise unfalsifiable from a bug report: this makes the sink itself observable.
+        if Fns.TryChat then
+            info("sending one test line through the live chat path — you should see it next:")
+            Fns.TryChat("|cff9370DB[WN-Counter]|r |cffffffffchat routing test line (no attempt was counted)|r")
         end
     end
 
