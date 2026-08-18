@@ -6885,20 +6885,48 @@ function WarbandNexus:InitializeTryCounter()
     Fns.SyncLockoutState()
     lastLockoutSyncAt = GetTime() or 0
 
-    -- Pre-resolve mount/pet IDs for all known drop items (warmup cache for SeedFromStatistics)
+    -- Pre-resolve mount/pet IDs for all known drop items (warmup cache for SeedFromStatistics, and
+    -- for try-count key stability).
+    --
+    -- Coverage matters beyond seeding: GetTryCountKey returns the mountID only once
+    -- ResolveCollectibleID succeeds and falls back to the itemID while the journal is cold. Writes
+    -- land on whichever key was current, and GetTryCount reads the MAX across both -- so a key that
+    -- flips between sessions starts a fresh bucket at 0 and the displayed count STALLS until it
+    -- overtakes the old one. This queue used to walk npcDropDB alone, and only entries carrying
+    -- statisticIds, so fishing / container / object drops (and plain rares) were never warmed:
+    -- Nether-Warped Drake is a fishing drop and hit the cold path every time.
     -- Delayed 5s (absolute ~T+6.5s). Time-budgeted to prevent frame spikes.
     C_Timer.After(5, function()
         local RESOLVE_BUDGET_MS = 3
         local resolveQueue = {}
-        for _, npcData in pairs(npcDropDB) do
-            if Fns.NpcEntryHasStatisticIds(npcData) then
-                for j = 1, #npcData do
-                    local drop = npcData[j]
-                    if type(drop) == "table" and drop.itemID and not resolvedIDs[drop.itemID] then
-                        resolveQueue[#resolveQueue + 1] = drop
-                    end
-                end
+        local queued = {}
+        local function enqueue(drop)
+            if type(drop) ~= "table" or not drop.itemID then return end
+            if resolvedIDs[drop.itemID] or queued[drop.itemID] then return end
+            queued[drop.itemID] = true
+            resolveQueue[#resolveQueue + 1] = drop
+            -- tryCountReflectsTo resolves through its OWN itemID (see GetTryCountTypeAndKey), so the
+            -- reflected target needs warming too or the reflecting drop keeps flipping keys.
+            local ref = drop.tryCountReflectsTo
+            if type(ref) == "table" and ref.itemID and not resolvedIDs[ref.itemID]
+                and not queued[ref.itemID] then
+                queued[ref.itemID] = true
+                resolveQueue[#resolveQueue + 1] = ref
             end
+        end
+        local function enqueueList(list)
+            if type(list) ~= "table" then return end
+            for j = 1, #list do enqueue(list[j]) end
+        end
+        -- Statistic-bearing NPCs first: seeding still depends on these being warm soonest.
+        for _, npcData in pairs(npcDropDB) do
+            if Fns.NpcEntryHasStatisticIds(npcData) then enqueueList(npcData) end
+        end
+        for _, npcData in pairs(npcDropDB) do enqueueList(npcData) end
+        for _, objectData in pairs(objectDropDB) do enqueueList(objectData) end
+        for _, mapDrops in pairs(fishingDropDB) do enqueueList(mapDrops) end
+        for _, containerData in pairs(containerDropDB) do
+            enqueueList(containerData.drops or containerData)
         end
         
         local idx = 1
