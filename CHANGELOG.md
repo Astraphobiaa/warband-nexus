@@ -1,4 +1,4 @@
-## v3.5.4-beta3 (2026-08-18)
+## v3.5.4-beta4 (2026-08-18)
 
 Beta build. Try counter chat and counting fixes throughout; please report anything that still looks miscounted or stays silent.
 
@@ -11,3 +11,4 @@ Beta build. Try counter chat and counting fixes throughout; please report anythi
 - The "after N attempts" total shown when you finally obtain a drop could be wrong.
 - Two try counter notices ignored your Try Counter chat tab setting and showed up in a different tab from every other try counter line. They now follow the hide-chat option as well.
 - Try counter lines could be lost without a trace when another chat addon's message handler failed.
+- The built-in try counter self-test no longer reports a failure of its own making.
