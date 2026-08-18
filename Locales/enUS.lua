@@ -1179,16 +1179,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V354"] = [=[v3.5.4-beta1 (2026-08-17)
+L["CHANGELOG_V354"] = [=[v3.5.4-beta2 (2026-08-18)
 
-Beta build. Please report anything that looks miscounted.
+Beta build. Try counter data expansion plus the beta1 fixes; please report anything that looks miscounted.
+
+Added:
+- The Coiled Isle rare mounts (Topaz Skyfang, Ruby Writhe) now count tries across all twelve daily rares and the five Cursed Surge bosses, including inside the Vaults of Atal'Utek.
+- New Season 2 collectibles are tracked: the Soulcoil Remnant pet from Nek'zali in The Venomous Abyss, Lil' Mon from Big Mon, and the Vibrant Venomfang from the Wriggling Venom-Soaked Satchel.
+- The Mythic raid mounts Ascendant Skyrazor, Keys to the Big G and Unbound Star-Eater are now tracked with kill statistics.
+- Hundreds of drop-based mounts, pets and toys from Classic through The War Within have been added to try counting.
 
 Fixed:
-- Try counts no longer skip kills while you farm the same rare over and over. Killing a rare again within about ten seconds of the last one could silently drop the attempt, losing roughly half the kills in a back-to-back farm.
-- Fishing attempts now count on Isle of Quel'Danas and in Arcantina. Both zones were producing no try counts and no chat lines at all.
-- Fishing is now recognised much more reliably. The addon learns your bobber the first time it sees a confirmed catch and remembers it from then on, instead of relying on a short built-in list that no longer matched current fishing.
-- Fishing casts made with newer or unusual fishing abilities are now recognised, so their attempts are counted instead of being ignored for the rest of the session.
+- Try counts no longer skip kills while you farm the same rare back-to-back.
+- Fishing attempts now count on Isle of Quel'Danas and in Arcantina, and fishing is recognised much more reliably: the addon learns your bobber on the first confirmed catch and recognises newer fishing abilities.
 - Attempt messages can no longer go missing from chat when several loot windows follow each other quickly.
+- The try counter self-test no longer prints a spurious "mount journal not ready" warning on every run.
 
 CurseForge: Warband Nexus]=]
 
