@@ -750,14 +750,56 @@ function WarbandNexus:RunTryCounterSelfTest()
             WN:SetTryCount("item", FAKE_ITEM_ID, old)
         end)
     end)
-    probe("Lockout rare: early-counted kill announces instead of 'Skipped'", function()
+    probe("Lockout latch is consumed once per kill, not twice", function()
         withRestoredState(function()
-            -- Undermine daily/weekly rares: IsLockoutDuplicate latches, so the finalize-time re-ask
-            -- reported a duplicate for the kill the stage had just counted. ApplyNpcLootOutcomes then
-            -- printed "Skipped: lockout" and returned before EmitEarlyMissIncrementAnnounce, leaving
-            -- the count incremented with no chat line at all.
+            -- IsLockoutDuplicate latches: the first sighting of a flagged quest marks the period used
+            -- and returns false, every later call returns true. ApplyEarlyLootAttemptIncrement spends
+            -- that sighting at LOOT_OPENED, so a second ask at LOOT_CLOSED reported a duplicate for the
+            -- kill just counted -- ApplyNpcLootOutcomes then printed "Skipped: daily/weekly lockout"
+            -- and returned before EmitEarlyMissIncrementAnnounce. Every Undermine daily/weekly rare
+            -- incremented in silence. Counting the asks tests the fix without needing quest state.
+            local asked = 0
+            local origLockout = Fns.IsLockoutDuplicate
+            Fns.IsLockoutDuplicate = function(...)
+                asked = asked + 1
+                return origLockout(...)
+            end
+            local ok, err = pcall(function()
+                local drop = fakeDrop()
+                Fns.StageDeferredLootSession({
+                    kind = "npc",
+                    matchedNpcID = samples.rareNpcID or 230995,
+                    trackable = { drop },
+                })
+                local pending = RT.pendingLootSessionFinalize
+                if not pending then error("expected pending session") end
+                if not pending.earlyMissApplied then
+                    -- Nothing was counted at open, so finalize is entitled to ask. Keep the probe
+                    -- honest by saying so rather than passing vacuously.
+                    error("expected the stage to apply the early increment for this drop")
+                end
+                local askedAfterStage = asked
+                RT.lootSession.numLoot = 0
+                wipe(RT.lootSession.slotData)
+                Fns.FinalizeDeferredLootSessionOutcome(WN)
+                if asked > askedAfterStage then
+                    error(format("finalize re-asked the lockout latch (%d -> %d) for a kill the stage already counted",
+                        askedAfterStage, asked))
+                end
+            end)
+            Fns.IsLockoutDuplicate = origLockout
+            if not ok then error(err) end
+        end)
+    end)
+    probe("Early-counted kill still announces its attempt line", function()
+        withRestoredState(function()
+            -- Companion to the latch probe: once finalize stops reporting a false lockout skip, the
+            -- attempt line must actually reach chat. The baseline is captured BEFORE the increment,
+            -- exactly as StageDeferredLootSession orders it, so the delta is real.
             local drop = fakeDrop()
             local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            local baselines = Fns.CaptureTryCountBaselines({ drop })
+            WN:SetTryCount("item", FAKE_ITEM_ID, (WN:GetTryCount("item", FAKE_ITEM_ID) or 0) + 1)
             local captured, sawSkip
             local skipText = (ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout"
             local origTryChat = Fns.TryChat
@@ -765,19 +807,21 @@ function WarbandNexus:RunTryCounterSelfTest()
                 if type(msg) ~= "string" or msg == "" then return end
                 if msg:find(skipText, 1, true) then sawSkip = true else captured = msg end
             end
-            -- earlyMissApplied = true means the stage already consumed the lockout latch.
-            Fns.ApplyNpcLootOutcomes(WN, {
-                trackable = { drop },
-                found = {},
-                drops = { drop },
-                baselineTryCounts = Fns.CaptureTryCountBaselines({ drop }),
-                earlyMissApplied = true,
-                isLockoutSkip = false,
-            })
-            Fns.FlushDeferredTryCounterIncrementAnnounces()
+            local ok, err = pcall(function()
+                Fns.ApplyNpcLootOutcomes(WN, {
+                    trackable = { drop },
+                    found = {},
+                    drops = { drop },
+                    baselineTryCounts = baselines,
+                    earlyMissApplied = true,
+                    isLockoutSkip = false,
+                })
+                Fns.FlushDeferredTryCounterIncrementAnnounces()
+            end)
             Fns.TryChat = origTryChat
+            if not ok then error(err) end
             if sawSkip then error("a kill counted at LOOT_OPENED must not report a lockout skip") end
-            if not captured then error("expected the attempt line for an early-counted lockout kill") end
+            if not captured then error("expected the attempt line for an early-counted kill") end
             WN:SetTryCount("item", FAKE_ITEM_ID, old)
         end)
     end)
