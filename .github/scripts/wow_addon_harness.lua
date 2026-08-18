@@ -88,6 +88,7 @@ assert(type(ns.L) == "table" and next(ns.L) ~= nil,
 
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/ChatIntegrationService.lua")
+LoadFile("Modules/CollectibleSourceDB_Backfill.lua")
 LoadFile("Modules/CollectibleSourceDB.lua")
 LoadFile("Modules/TryCounterService_Shared.lua")
 LoadFile("Modules/TryCounterService_Events.lua")

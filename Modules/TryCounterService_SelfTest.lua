@@ -324,16 +324,30 @@ function WarbandNexus:RunTryCounterSelfTest()
             return
         end
         -- Need a non quest-starter mount (that branch returns early on a different key set).
+        -- Pair source: mount drop rows in CollectibleSourceDB resolved through GetMountFromItem —
+        -- the only real itemID<->mountID API direction (C_MountJournal.GetMountItemID never existed;
+        -- verified against Blizzard_APIDocumentationGenerated + warcraft.wiki.gg 2026-08-18).
         local mountID, itemID
-        if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountItemID then
-            local ids = C_MountJournal.GetMountIDs() or {}
-            for i = 1, #ids do
-                local ok, iid = pcall(C_MountJournal.GetMountItemID, ids[i])
-                if ok and type(iid) == "number" and iid > 0 and iid ~= ids[i]
-                    and not Fns.ResolveQuestStarterSourceItemID(ids[i]) then
-                    mountID, itemID = ids[i], iid
-                    break
+        if C_MountJournal and C_MountJournal.GetMountFromItem
+            and ns.CollectibleSourceDB and type(ns.CollectibleSourceDB.sources) == "table" then
+            local sources = ns.CollectibleSourceDB.sources
+            for i = 1, #sources do
+                local drops = type(sources[i]) == "table" and sources[i].drops
+                if type(drops) == "table" then
+                    for j = 1, #drops do
+                        local d = drops[j]
+                        if type(d) == "table" and d.type == "mount" and type(d.itemID) == "number" then
+                            local ok, mid = pcall(C_MountJournal.GetMountFromItem, d.itemID)
+                            if ok and type(mid) == "number" and mid > 0 and mid ~= d.itemID
+                                and not (issecretvalue and issecretvalue(mid))
+                                and not Fns.ResolveQuestStarterSourceItemID(mid) then
+                                mountID, itemID = mid, d.itemID
+                                break
+                            end
+                        end
+                    end
                 end
+                if mountID then break end
             end
         end
         if not mountID then
@@ -1236,4 +1250,190 @@ function WarbandNexus:RunTryCounterSylvanasSelfTest()
         Fns.FlushDeferredTryCounterIncrementAnnounces()
     end
     WN:SetTryCount("item", FAKE_ITEM_ID, savedFake or 0)
+end
+
+-- ── Live fishing diagnostic (/wn tc fishing) ──────────────────────────────────
+-- Answers the one question a "fishing does not count" report needs answered:
+-- would a cast RIGHT HERE, RIGHT NOW produce an attempt, and if it did, which
+-- chat tabs would show the line. Reads live state only — changes nothing.
+
+local IsInInstance = IsInInstance
+local GetNumChatWindows = GetNumChatWindows
+local C_Map = C_Map
+
+---@return boolean|nil inInstance nil when the API returned a secret value
+local function safeInInstance()
+    local inInstance = IsInInstance()
+    if issecretvalue and inInstance and issecretvalue(inInstance) then return nil end
+    return inInstance
+end
+
+---@param mapID number|nil
+---@return string label e.g. "2405 (Voidstorm)"
+local function mapLabel(mapID)
+    if not mapID then return "unknown" end
+    local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
+    local name = info and info.name
+    if name and issecretvalue and issecretvalue(name) then name = nil end
+    return format("%d (%s)", mapID, name or "?")
+end
+
+---Which map in the parent chain actually carries the fishing DB entry.
+---@return number|nil mapID
+local function fishingDbMapInChain()
+    local current = Fns.GetSafeMapID()
+    local depthGuard = 0
+    while current and current > 0 do
+        depthGuard = depthGuard + 1
+        if depthGuard > 20 then break end
+        if RT.fishingDropDB and RT.fishingDropDB[current] then return current end
+        local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(current)
+        local nextID = info and info.parentMapID
+        current = (nextID and not (issecretvalue and issecretvalue(nextID))) and nextID or nil
+    end
+    return nil
+end
+
+---@param t table|nil
+---@return number
+local function countKeys(t)
+    if type(t) ~= "table" then return 0 end
+    local n = 0
+    for _ in pairs(t) do n = n + 1 end
+    return n
+end
+
+---Live triage for zone fishing try counts. Slash: /wn tc fishing
+function WarbandNexus:PrintFishingTryCounterDiagnostics()
+    local WN = self
+    local blockers = {}
+    local function pass(label) WN:Print("|cff00ff00[WN-TC-Fish] OK|r " .. label) end
+    local function warn(label, blocker)
+        if blocker then blockers[#blockers + 1] = blocker end
+        WN:Print("|cffffcc00[WN-TC-Fish] WARN|r " .. label)
+    end
+    local function info(label) WN:Print("|cff9370DB[WN-TC-Fish]|r " .. label) end
+
+    if not Fns.EnsureDB() then
+        WN:Print("|cffff0000[WN-TC-Fish]|r DB not ready — aborting.")
+        return
+    end
+    if not Fns.EnsureTryCounterRuntimeDbLoaded or not Fns.EnsureTryCounterRuntimeDbLoaded() then
+        WN:Print("|cffff0000[WN-TC-Fish]|r CollectibleSourceDB not loaded — aborting.")
+        return
+    end
+
+    info("— gates")
+    local reason = Fns.GetTryCounterDisabledReason and Fns.GetTryCounterDisabledReason()
+    if reason == "module" then
+        warn("Try Counter module is OFF (Settings > Modules) — nothing is counted", "module off")
+    elseif reason == "auto" then
+        warn("autoTryCounter is OFF (Settings > Notifications) — nothing is counted", "autoTryCounter off")
+    else
+        pass("module + autoTryCounter enabled")
+    end
+
+    info("— zone")
+    local inInstance = safeInInstance()
+    if inInstance == nil then
+        warn("IsInInstance() returned a secret value — zone route may be skipped this session")
+    elseif inInstance then
+        warn("inside an instance — zone fishing is never counted here", "in instance")
+    else
+        pass("open world (not in an instance)")
+    end
+
+    local mapID = Fns.GetSafeMapID()
+    info("current map: " .. mapLabel(mapID))
+    local dbMap = fishingDbMapInChain()
+    if dbMap then
+        pass("fishing DB entry found on map " .. mapLabel(dbMap))
+    else
+        warn("no fishing drop is registered for this map or any parent map — "
+            .. "casting here never counts (by design)", "zone not in fishing DB")
+    end
+
+    local drops = Fns.CollectFishingDropsForZone() or {}
+    local trackable = Fns.GetFishingTrackableForCurrentZone() or {}
+    info(format("zone drops: %d | still trackable: %d", #drops, #trackable))
+    for i = 1, #drops do
+        local d = drops[i]
+        local t, key = Fns.GetTryCountTypeAndKey(d)
+        local count = (t and key) and (WN:GetTryCount(t, key) or 0) or 0
+        local collected = Fns.IsCollectibleCollected(d) and "collected" or "not collected"
+        local repeatTag = d.repeatable and ", repeatable" or ""
+        info(format("   %s [%s %s] — %s%s, %d attempts",
+            tostring(d.name or "?"), tostring(t or d.type), tostring(key or d.itemID),
+            collected, repeatTag, count))
+    end
+    if #drops > 0 and #trackable == 0 then
+        warn("every zone fishing drop is already collected — no attempt is counted anymore",
+            "all zone drops collected")
+    end
+
+    info("— live fishing evidence")
+    local now = GetTime()
+    local ctx = RT.fishingCtx
+    if ctx and ctx.active then
+        pass(format("fishing cast context active (%.1fs old, TTL %ds)",
+            now - (ctx.castTime or now), RT.FISHING_CAST_CONTEXT_TTL or 35))
+    else
+        info("no fishing cast context right now (cast once, then re-run this within 35s)")
+    end
+    local apiFish = Fns.SafeIsFishingLoot and Fns.SafeIsFishingLoot()
+    info("IsFishingLoot() right now: " .. tostring(apiFish) .. " (only true while a fishing loot window is open)")
+    if RT.lootReady then
+        info(format("last LOOT_READY: wasFishing=%s, %.1fs ago",
+            tostring(RT.lootReady.wasFishing), now - (RT.lootReady.time or now)))
+    end
+
+    local learnedObjects = countKeys(TC.FISHING_BOBBER_OBJECT_IDS)
+    local learnedNpcs = countKeys(TC.FISHING_BOBBER_NPC_IDS)
+    if learnedObjects > 0 then
+        pass(format("%d bobber GameObject id(s) learned — structural route armed", learnedObjects))
+    else
+        info("no bobber GameObject id learned yet — the structural route arms itself after the "
+            .. "first cast that IsFishingLoot() confirms")
+    end
+    info(format("known bobber creature ids: %d", learnedNpcs))
+
+    if V.lastTryCountSourceKey then
+        info(format("last attempt credited by: %s (%.0fs ago)",
+            tostring(V.lastTryCountSourceKey), now - (V.lastTryCountSourceTime or now)))
+    else
+        info("no attempt credited yet this session")
+    end
+
+    info("— chat output")
+    if Fns.IsTryCounterChatHidden and Fns.IsTryCounterChatHidden() then
+        warn("try counter chat lines are hidden (Settings > Notifications) — "
+            .. "attempts still count, they just never print", "chat lines hidden")
+    else
+        local notif = WN.db and WN.db.profile and WN.db.profile.notifications
+        local route = (notif and notif.tryCounterChatRoute) or "loot"
+        pass("chat lines enabled, route = " .. tostring(route))
+        if route == "loot" and ns.ChatOutput and ns.ChatOutput.FrameWantsStandardLootChat then
+            local names, n = {}, GetNumChatWindows and GetNumChatWindows() or 0
+            for i = 1, n do
+                local frame = _G["ChatFrame" .. i]
+                if frame and frame.AddMessage and ns.ChatOutput.FrameWantsStandardLootChat(frame) then
+                    names[#names + 1] = tostring(frame.name or ("ChatFrame" .. i))
+                end
+            end
+            if #names > 0 then
+                info("lines go to tab(s): " .. table.concat(names, ", ")
+                    .. " — check that tab, not the tab you are reading")
+            else
+                info("no chat tab subscribes to Loot — lines fall back to the default chat frame")
+            end
+        end
+    end
+
+    info("— verdict")
+    if #blockers == 0 then
+        WN:Print("|cff00ff00[WN-TC-Fish]|r A cast here should count. If it still does not, "
+            .. "run |cff00ccff/wn tc test|r and report the failing probe.")
+    else
+        WN:Print("|cffff6600[WN-TC-Fish]|r A cast here will NOT count: " .. table.concat(blockers, "; "))
+    end
 end

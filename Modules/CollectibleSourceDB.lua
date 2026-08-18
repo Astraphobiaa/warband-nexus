@@ -366,6 +366,28 @@ ns.CollectibleSourceDB = {
         { sourceType = "lockout_quest", npcID = 257199, questID = 94461 },  -- Hardin Steellock (Horde)
         { sourceType = "lockout_quest", npcID = 257231, questID = 94461 },  -- Gar'chak Skullcleave (Alliance, shared quest)
 
+        -- MIDNIGHT 12.1 — The Coiled Isle daily rares ("Coiled to Strike").
+        -- npcIDs + tracking questIDs from zarillion/handynotes-plugins coiled_isles.lua (2026-08-18);
+        -- 11 of 12 npcIDs independently matched on Wowhead. Garsecg is HandyNotes-sourced only.
+        { sourceType = "lockout_quest", npcID = 264854, questID = 96491 },  -- Farthik the Plunderer
+        { sourceType = "lockout_quest", npcID = 268049, questID = 97112 },  -- Siltmouth
+        { sourceType = "lockout_quest", npcID = 268090, questID = 97122 },  -- Kari'zah the Forgotten
+        { sourceType = "lockout_quest", npcID = 265237, questID = 96456 },  -- Lockjaw
+        { sourceType = "lockout_quest", npcID = 265262, questID = 96464 },  -- Hisstara
+        { sourceType = "lockout_quest", npcID = 263456, questID = 96030 },  -- Szarith the Fanged (The Underbelly)
+        { sourceType = "lockout_quest", npcID = 258916, questID = 94856 },  -- Garsecg
+        { sourceType = "lockout_quest", npcID = 258920, questID = 94860 },  -- Nar'zira (Tomb of the Lost Priest)
+        { sourceType = "lockout_quest", npcID = 257906, questID = 94619 },  -- Coin-Eye Skully
+        { sourceType = "lockout_quest", npcID = 256631, questID = 93829 },  -- Big Mon
+        { sourceType = "lockout_quest", npcID = 261109, questID = 95447 },  -- Sss'alik
+        { sourceType = "lockout_quest", npcID = 261142, questID = 95452 },  -- Destra
+        -- MIDNIGHT 12.1 — Cursed Surge rotating bosses (same HandyNotes source).
+        { sourceType = "lockout_quest", npcID = 255088, questID = 93718 },  -- Looming Mutagenitor
+        { sourceType = "lockout_quest", npcID = 257863, questID = 93676 },  -- Vassti, the Exalted Broodmother
+        { sourceType = "lockout_quest", npcID = 258254, questID = 93715 },  -- Ss'akrithos
+        { sourceType = "lockout_quest", npcID = 255927, questID = 93722 },  -- Venom Lancer Ori'kassi
+        { sourceType = "lockout_quest", npcID = 255087, questID = 93673 },  -- Malformed Leviathan
+
         -- Isle of Quel'Danas — 2 rares (gear-only drops)
         { sourceType = "lockout_quest", npcID = 252465, questID = 95011 },  -- Tarhu the Ransacker
         { sourceType = "lockout_quest", npcID = 239864, questID = 95010 },  -- Dripping Shadow
@@ -669,8 +691,8 @@ ns.CollectibleSourceDB = {
           drops = _voidstormRareMounts,  -- Voidstorm, Arcantina
         },
         -- MIDNIGHT 12.1 - The Coiled Isle (Topaz Skyfang, Ruby Writhe)
-        { sourceType = "zone_drop", mapIDs = { 2512, 2509 }, raresOnly = true, hostileOnly = true,
-          drops = _coiledIsleRareMounts,  -- The Coiled Isle, Vaults of Atal'Utek (UiMap DB2 12.1.0)
+        { sourceType = "zone_drop", mapIDs = { 2512, 2509, 2613, 2642 }, raresOnly = true, hostileOnly = true,
+          drops = _coiledIsleRareMounts,  -- Coiled Isle, Vaults of Atal'Utek, The Underbelly, Tomb of the Lost Priest
         },
 
         -- NPCs / Instance Bosses / World Rares
@@ -1031,7 +1053,8 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter", encounterID = 3183, npcIDs = { 214650 } },             -- Midnight Falls (March on Quel'Danas)
 
         -- MIDNIGHT 12.1 (Curse of Ula'tek) — Season 2 boss mount drops.
-        -- IDs from wago.tools DB2 12.1.0: Mount, ItemSparse, Creature, JournalEncounter, Achievement.
+        -- IDs from wago.tools DB2 12.1.0: Mount, ItemSparse, Creature, DungeonEncounter, Achievement.
+        -- encounterIDs below are DungeonEncounterIDs (ENCOUNTER_END payload; JE: Ula'tek 2895, Zul'jan 2880).
         -- npcIDs verified in-game (12.1 instance creature rows are absent from client Creature.db2,
         -- so these came from /dump UnitGUID("target") on the live bosses).
         { sourceType = "instance_boss", npcID = 268956,  -- Ula'tek (The Venomous Abyss, final boss)
@@ -1040,7 +1063,27 @@ ns.CollectibleSourceDB = {
           dropDifficulty = "Mythic",  -- Mount SourceText: "Location: Ula'tek (Mythic)"
           difficultyIDs = { 16 },     -- Mythic raid only
         },
-        { sourceType = "encounter", encounterID = 3492, npcIDs = { 268956 } },             -- Ula'tek (The Venomous Abyss)
+        -- 3492 is the DungeonEncounterID (what ENCOUNTER_END delivers); JournalEncounter is 2895.
+        -- 253512 is the Creature.db2 row warcraft.wiki.gg lists for Ula'tek; 268956 came from a live
+        -- /dump. Both are kept until a fresh in-game GUID dump settles which one the encounter uses.
+        { sourceType = "encounter", encounterID = 3492, npcIDs = { 268956, 253512 } },     -- Ula'tek (The Venomous Abyss)
+        -- Nek'zali the Soulcoiler (The Venomous Abyss, first boss; DE 3470 / JE 2888).
+        -- npcID 253563 from Wowhead (wowhead.com/ptr/npc=253563); pet verified in BattlePetSpecies
+        -- DB2 12.1.0.69382 (species 5125, SourceText "Drop: Nek'zali the Soulcoiler"). Kill
+        -- statistics 63533/63534/63535/63536 (LFR/N/H/M) from Achievement.db2; no difficulty gate
+        -- because the pet SourceText carries none.
+        { sourceType = "instance_boss", npcID = 253563,
+          drops = { { type = "pet", itemID = 280305, name = "Soulcoil Remnant" } },
+          statisticIds = { 63533, 63534, 63535, 63536 },
+        },
+        { sourceType = "encounter", encounterID = 3470, npcIDs = { 253563 } },             -- Nek'zali the Soulcoiler
+        { sourceType = "encounter_name", encounterName = "Nek'zali the Soulcoiler", npcIDs = { 253563 } },
+        { sourceType = "instance_boss", npcID = 253512,  -- Ula'tek (wiki Creature.db2 row; mirror of 268956)
+          drops = { { type = "mount", itemID = 275658, name = "Primeval Skyfriend", mountID = 3030, repeatable = false } },
+          statisticIds = { 63569 },
+          dropDifficulty = "Mythic",
+          difficultyIDs = { 16 },
+        },
         { sourceType = "instance_boss", npcID = 259447,  -- Zul'jan (Altar of Fangs, final boss)
           -- Item 279208 teaches the same mount but is not the boss drop; only 276804 is tracked.
           drops = { { type = "mount", itemID = 276804, name = "The Writhing Brood", mountID = 3058, repeatable = false } },
@@ -1048,7 +1091,7 @@ ns.CollectibleSourceDB = {
           dropDifficulty = "Mythic",  -- Mythic-only drop (62285 Normal / 62286 Heroic stats exist but do not drop)
           difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },
-        { sourceType = "encounter", encounterID = 3458, npcIDs = { 259447 } },             -- Zul'jan (Altar of Fangs)
+        { sourceType = "encounter", encounterID = 3458, npcIDs = { 259447 } },             -- Zul'jan (Altar of Fangs; DE 3458 / JE 2880)
         -- Ral'kala, Terror of the Isle — Coiled Isle public event (Prey: Curse of the Isle / Nightmare
         -- Prey mode). Spawned by burning Ossified Relics at a Haunted Brazier; loot needs the
         -- "Whispers from De Other Side" buff (Preyhunter's Journey Rank 1 + at least one relic burned).
@@ -1059,6 +1102,43 @@ ns.CollectibleSourceDB = {
               { type = "pet",   itemID = 278572, name = "Pale Hexscale" },
               { type = "toy",   itemID = 276207, name = "Preyhunter's Masquerade" },
           },
+        },
+
+        -- MIDNIGHT 12.1 — The Coiled Isle daily rares ("Coiled to Strike", shared mount loot table).
+        -- npcIDs cross-verified Wowhead + zarillion/handynotes-plugins 2026-08-18 (Garsecg: HandyNotes only).
+        -- Both mounts drop from every rare below; daily lockout rows live in the lockout_quest block.
+        { sourceType = "world_rare", npcID = 264854, drops = _coiledIsleRareMounts },  -- Farthik the Plunderer
+        { sourceType = "world_rare", npcID = 268049, drops = _coiledIsleRareMounts },  -- Siltmouth
+        { sourceType = "world_rare", npcID = 268090, drops = _coiledIsleRareMounts },  -- Kari'zah the Forgotten
+        { sourceType = "world_rare", npcID = 265237, drops = _coiledIsleRareMounts },  -- Lockjaw
+        { sourceType = "world_rare", npcID = 265262, drops = _coiledIsleRareMounts },  -- Hisstara
+        { sourceType = "world_rare", npcID = 263456, drops = _coiledIsleRareMounts },  -- Szarith the Fanged (Underbelly 2613)
+        { sourceType = "world_rare", npcID = 258916, drops = _coiledIsleRareMounts },  -- Garsecg
+        { sourceType = "world_rare", npcID = 258920, drops = _coiledIsleRareMounts },  -- Nar'zira (Tomb of the Lost Priest 2642)
+        { sourceType = "world_rare", npcID = 257906, drops = _coiledIsleRareMounts },  -- Coin-Eye Skully
+        { sourceType = "world_rare", npcID = 256631, drops = _coiledIsleRareMounts },  -- Big Mon
+        { sourceType = "world_rare", npcID = 261109, drops = _coiledIsleRareMounts },  -- Sss'alik
+        { sourceType = "world_rare", npcID = 261142, drops = _coiledIsleRareMounts },  -- Destra
+        -- Big Mon also drops the Lil' Mon pet (BattlePetSpecies 5137, DB2 SourceText "Drop: Big Mon").
+        { sourceType = "world_rare", npcID = 256631,
+          drops = { { type = "pet", itemID = 280540, name = "Lil' Mon" } },
+        },
+        -- Cursed Surge rotating bosses: HandyNotes data ships Topaz Skyfang only for these five
+        -- (Ruby Writhe deliberately commented out there); encode Topaz-only until in-game evidence.
+        { sourceType = "world_rare", npcID = 255088,
+          drops = { { type = "mount", itemID = 276549, name = "Topaz Skyfang", mountID = 3051 } } },  -- Looming Mutagenitor
+        { sourceType = "world_rare", npcID = 257863,
+          drops = { { type = "mount", itemID = 276549, name = "Topaz Skyfang", mountID = 3051 } } },  -- Vassti, the Exalted Broodmother
+        { sourceType = "world_rare", npcID = 258254,
+          drops = { { type = "mount", itemID = 276549, name = "Topaz Skyfang", mountID = 3051 } } },  -- Ss'akrithos
+        { sourceType = "world_rare", npcID = 255927,
+          drops = { { type = "mount", itemID = 276549, name = "Topaz Skyfang", mountID = 3051 } } },  -- Venom Lancer Ori'kassi
+        { sourceType = "world_rare", npcID = 255087,
+          drops = { { type = "mount", itemID = 276549, name = "Topaz Skyfang", mountID = 3051 } } },  -- Malformed Leviathan
+        -- Wriggling Venom-Soaked Satchel (Cursed Surge reward variant) contains the Vibrant Venomfang
+        -- pet (BattlePetSpecies 5092, teach item 276234; container item 277137 — wago.tools 12.1.0.69382).
+        { sourceType = "container", containerItemID = 277137,
+          drops = { { type = "pet", itemID = 276234, name = "Vibrant Venomfang" } },
         },
 
         -- Encounter Name → NPC(s) mappings (GUID fallback for Midnight)
@@ -2390,6 +2470,19 @@ local function ApplyTypedSources(db)
                 end
             end
         end
+    end
+end
+
+-- Fold in the generated backfill catalog (CollectibleSourceDB_Backfill.lua, earlier in the TOC)
+-- before typed-source normalization so its rows flow through the same npcs/containers/zones build.
+do
+    local backfill = ns.CollectibleSourceDB_BackfillSources
+    if type(backfill) == "table" then
+        local sources = ns.CollectibleSourceDB.sources
+        for i = 1, #backfill do
+            sources[#sources + 1] = backfill[i]
+        end
+        ns.CollectibleSourceDB_BackfillSources = nil
     end
 end
 
