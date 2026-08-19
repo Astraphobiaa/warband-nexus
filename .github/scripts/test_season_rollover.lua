@@ -15,8 +15,7 @@
 ]]
 
 local ADDON_NAME = "WarbandNexus"
-local SCRIPT_DIR = (arg and arg[0] and arg[0]:match("^(.*)/[^/]*$")) or ".github/scripts"
-dofile(SCRIPT_DIR .. "/wow_stub.lua")
+dofile(".github/scripts/wow_stub.lua")   -- run from the repo root, like the other test_*.lua
 
 local failures = 0
 local function check(cond, msg)
@@ -42,8 +41,15 @@ local function NewNS()
 end
 
 local function LoadFile(ns, rel)
-    local chunk, err = loadfile(rel)
-    if not chunk then error("load " .. rel .. ": " .. tostring(err)) end
+    local fh = assert(io.open(rel, "rb"), "missing file: " .. rel)
+    local src = fh:read("*a")
+    fh:close()
+    -- Several shipped files carry a UTF-8 BOM. WoW tolerates it and luajit skips it, but
+    -- reference Lua 5.1 -- what CI runs -- does not, so strip it before compiling.
+    -- Same treatment as wow_addon_harness.lua.
+    src = src:gsub("^\239\187\191", "")
+    local chunk, err = loadstring(src, "@" .. rel)
+    if not chunk then error("load " .. rel .. ": " .. tostring(err), 0) end
     chunk(ADDON_NAME, ns)
 end
 
