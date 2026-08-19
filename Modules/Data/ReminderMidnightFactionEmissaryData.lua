@@ -13,6 +13,7 @@
 
 local ADDON_NAME, ns = ...
 
+-- Must stay in step with ReminderWorldQuestCatalog.ZONE_INDEX_BY_KEY.
 local ZONE_INDEX = {
     silvermoon = 1,
     eversong = 2,
@@ -20,6 +21,7 @@ local ZONE_INDEX = {
     harandar = 4,
     zulaman = 5,
     voidstorm = 6,
+    coiled_isle = 7,
 }
 
 local ENTRIES = {

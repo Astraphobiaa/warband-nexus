@@ -12,9 +12,12 @@ local M = {}
 ns.ReminderWorldQuestCatalog = M
 
 --- Bump when static ENTRIES change; MigrationService seeds new rows into db.global.reminderQuestCatalog.
-M.CATALOG_VERSION = 6
+--- 7: Midnight 12.1 zone keys (Coiled Isle) - saved rows must be re-zoned against the new list.
+M.CATALOG_VERSION = 7
 
 --- zoneKey must match ReminderWorldQuestIndex zone keys.
+--- "isle" is Isle of Quel'Danas (2424); the Midnight 12.1 Coiled Isle is "coiled_isle".
+--- Order must match ReminderWorldQuestIndex.ZONES; only zoneKey strings are persisted.
 M.ZONE_KEYS = {
     "silvermoon",
     "eversong",
@@ -22,6 +25,7 @@ M.ZONE_KEYS = {
     "harandar",
     "zulaman",
     "voidstorm",
+    "coiled_isle",
     "quelthalas_all",
 }
 
@@ -32,7 +36,8 @@ M.ZONE_KEY_BY_INDEX = {
     [4] = "harandar",
     [5] = "zulaman",
     [6] = "voidstorm",
-    [7] = "quelthalas_all",
+    [7] = "coiled_isle",
+    [8] = "quelthalas_all",
 }
 
 M.ZONE_INDEX_BY_KEY = {
@@ -42,7 +47,8 @@ M.ZONE_INDEX_BY_KEY = {
     harandar = 4,
     zulaman = 5,
     voidstorm = 6,
-    quelthalas_all = 7,
+    coiled_isle = 7,
+    quelthalas_all = 8,
 }
 
 --- Shipped static rows { zoneKey, questID, title?, mapID? } from ReminderMidnightWorldQuestData.

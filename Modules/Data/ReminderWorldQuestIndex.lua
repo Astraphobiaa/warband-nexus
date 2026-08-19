@@ -10,7 +10,10 @@ local INDEX = {}
 ns.ReminderWorldQuestIndex = INDEX
 
 local QUELTHALAS_MAP = 2537
-local QUELTHALAS_ALL_INDEX = 7
+-- Bumped from 7 when the Coiled Isle row was inserted ahead of it (Midnight 12.1). Nothing
+-- persists a zone index - db.global.reminderQuestCatalog stores zoneKey strings - so the
+-- renumbering only has to stay in step with ReminderWorldQuestCatalog.ZONE_KEY_BY_INDEX.
+local QUELTHALAS_ALL_INDEX = 8
 
 ---@type { localeKey: string, defaultLabel: string, zoneName: string, mapIDs: number[] }[]
 INDEX.ZONES = {
@@ -20,8 +23,11 @@ INDEX.ZONES = {
     { localeKey = "REMINDER_WQ_CAT_HARANDAR",   defaultLabel = "Harandar",             zoneName = "Harandar",         mapIDs = { 2413, 2576 } },
     { localeKey = "REMINDER_WQ_CAT_ZULAMAN",    defaultLabel = "Zul'Aman",             zoneName = "Zul'Aman",         mapIDs = { 2437, 2536 } },
     { localeKey = "REMINDER_WQ_CAT_VOIDSTORM",  defaultLabel = "Voidstorm",            zoneName = "Voidstorm",        mapIDs = { 2405, 2444, 2541 } },
+    -- Midnight 12.1: The Coiled Isle (2512 -> 2537) with the Vaults of Atal'Utek (2509 -> 2512),
+    -- The Underbelly (2613 -> 2509) and Tomb of the Lost Priest (2642 -> 2512) beneath it.
+    { localeKey = "REMINDER_WQ_CAT_COILED_ISLE", defaultLabel = "The Coiled Isle",     zoneName = "The Coiled Isle",  mapIDs = { 2512, 2509, 2613, 2642 } },
     { localeKey = "REMINDER_WQ_CAT_QUELTHALAS", defaultLabel = "Quel'Thalas (all)",    zoneName = "Quel'Thalas",
-      mapIDs = { 2393, 2395, 2424, 2413, 2576, 2437, 2536, 2405, 2444, 2541, QUELTHALAS_MAP } },
+      mapIDs = { 2393, 2395, 2424, 2413, 2576, 2437, 2536, 2405, 2444, 2541, 2512, 2509, 2613, 2642, QUELTHALAS_MAP } },
 }
 
 local MAP_TO_ZONE_INDEX = {}

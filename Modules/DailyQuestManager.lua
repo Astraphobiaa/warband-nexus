@@ -111,6 +111,12 @@ local MIDNIGHT_MAPS = {
     [2413] = "Harandar",
     [2437] = "Zul'Aman",
     [2405] = "Voidstorm",
+    -- Midnight 12.1 (Curse of Ula'tek). Coiled Isle hangs off Quel'Thalas (2512 -> 2537) and the
+    -- Vaults hang off the isle (2509 -> 2512); both carry their own task quests, and
+    -- GetQuestsForPlayerByMapID only reports quests pinned to the map it was asked about, so the
+    -- sub-zone needs its own entry to be seen at all.
+    [2512] = "The Coiled Isle",
+    [2509] = "Vaults of Atal'Utek",
 }
 
 local MIDNIGHT_MAP_SET = {}

@@ -74,6 +74,15 @@ local MIDNIGHT = {
     { key = "midnight_region_2437", uiMapID = 2437, mapType = 3, group = "regions", contentKind = "zone", journalID = nil },
     { key = "midnight_region_2405", uiMapID = 2405, mapType = 3, group = "regions", contentKind = "zone", journalID = nil },
     { key = "midnight_region_2413", uiMapID = 2413, mapType = 3, group = "regions", contentKind = "zone", journalID = nil },
+    -- Midnight 12.1 (Curse of Ula'tek). The isle is the canonical picker row; the levels beneath it
+    -- get their own uiMapIDs (2509 Vaults of Atal'Utek -> 2512, 2613 The Underbelly -> 2509,
+    -- 2642 Tomb of the Lost Priest -> 2512), so they normalize onto the isle and a zone_enter
+    -- reminder set there keeps firing underground. Parent chain confirmed in-game 2026-08-19:
+    -- C_Map.GetMapInfo(2512).parentMapID = 2537, so the isle sits under the Quel'Thalas apiRoot.
+    -- The wiki UiMapID table still stops at 10.1.7 and cannot be used to check these.
+    -- Altar of Fangs and The Venomous Abyss are deliberately absent: their uiMapIDs are not
+    -- verified anywhere yet - add them once a live GetBestMapForUnit dump confirms the ids.
+    { key = "midnight_region_2512", uiMapID = 2512, mapType = 3, group = "regions", contentKind = "zone", journalID = nil, alternateUIMapIDs = { 2509, 2613, 2642 } },
 
     -- Raids (main-floor uiMapIDs)
     { key = "midnight_raid_2533", uiMapID = 2533, mapType = 4, group = "raids", contentKind = "raid", journalID = nil },

@@ -128,36 +128,50 @@ SeasonData.SEASONS = {
             [3445] = "Hero Mistcrest",
             [3446] = "Myth Mistcrest",
         },
-        -- Derived from the LIVE 12.1 client, not from guide sites. Anchor: two equipped items
-        -- report "Champion 6/6" at ilvl 292 via the item upgrade API (Permafrost Essence 250244,
-        -- Cloak of the Restless Tribes 159288), and the same character holds Mistcrests, so S2
-        -- gear already drops pre-season. Item levels 295 and 298 also appear on that character,
-        -- which lands on Hero 3/6 and 4/6 below.
+        -- REVISED 2026-08-19, and still UNCONFIRMED for Season 2 - read this before trusting it.
         --
-        -- Confirmed:   Champion 6/6 = 292.
-        -- Extrapolated: everything else, using the S1 shape that still holds in 12.1 —
-        --   6 ranks, increments +4/+3/+3/+3/+4 (span 17), adjacent tracks offset by 13 so that
-        --   prev[5] == cur[1] and prev[6] == cur[2].
+        -- What is settled: the table shipped before this was anchored on a reading of
+        -- "Champion 6/6 = 292" taken through C_ItemUpgrade.GetItemUpgradeItemInfo(location), and
+        -- that function takes NO arguments (Blizzard_APIDocumentationGenerated/
+        -- ItemUpgradeDocumentation.lua). It reports whatever sits in the upgrade session, so the
+        -- anchor never described the item it was attributed to. That table matched no source.
         --
-        -- These deliberately CONTRADICT warcraft.wiki.gg/wiki/Midnight_Season_2 (which claims
-        -- Champion 292-308, Myth 318-334) and Wowhead's ranges. The wiki numbers cannot be right
-        -- while the client reports Champion topping out at 292. Re-verify after 2026-08-18 with
-        -- an upgrade NPC open: /dump C_ItemUpgrade.GetItemUpgradeInfo()
+        -- What is NOT settled: two credible sources disagree about where S2 starts.
+        --   Set A (used below): Adventurer 259-276, Veteran 272-289, Champion 285-302,
+        --     Hero 298-315, Myth 311-328; season cap 334/337 on special raid loot.
+        --     Sources: icy-veins.com/wow/news/item-level-of-loot-in-midnight-season-2 ("a
+        --     39-item-level increase from the prior season") and expcarry.com/mistcrest-upgrade-guide.
+        --     +39 on every S1 rank reproduces this set exactly, and S1 is verified.
+        --   Set B: Champion 292-308, Hero 305-321, Myth 318-334, with ranks past 6 ("Myth 9" =
+        --     344 from the last two Mythic bosses). Sources: method.gg/guides/all-midnight-
+        --     season-2-upgrade-tracks-and-item-levels and warcraft.wiki.gg/wiki/Midnight_Season_2.
+        --     That is +45 on S1, and uses +3/+3/+4/+3/+3 (span 16) instead of S1's span 17.
+        -- Set A wins on internal consistency (it is S1's shape and spacing, unchanged), which is
+        -- why it is here - but no Season 2 item has actually been observed to settle it.
+        --
+        -- To settle it, one line in-game (verified signature, warcraft.wiki.gg):
+        --   /run C_MythicPlus.RequestMapInfo() for k=2,12 do print(k,C_MythicPlus.GetRewardLevelForDifficultyLevel(k)) end
+        -- returns weeklyRewardLevel, endOfRunRewardLevel per keystone level - real S2 numbers that
+        -- must land on ranks in whichever set is right.
+        --
+        -- Do NOT re-verify from a player's SavedVariables unless their gear is Season 2: a
+        -- character still in S1 gear (itemIDs below ~270000) produces item levels that fit both
+        -- sets, because S2 Adventurer/Veteran overlap S1 Hero/Myth exactly.
         trackIlvls = {
-            Adventurer = { 249, 253, 256, 259, 262, 266 },
-            Veteran    = { 262, 266, 269, 272, 275, 279 },
-            Champion   = { 275, 279, 282, 285, 288, 292 },
-            Hero       = { 288, 292, 295, 298, 301, 305 },
-            Myth       = { 301, 305, 308, 311, 314, 318 },
+            Adventurer = { 259, 263, 266, 269, 272, 276 },
+            Veteran    = { 272, 276, 279, 282, 285, 289 },
+            Champion   = { 285, 289, 292, 295, 298, 302 },
+            Hero       = { 298, 302, 305, 308, 311, 315 },
+            Myth       = { 311, 315, 318, 321, 324, 328 },
         },
-        -- VERIFY: crafted caps follow the S1 shape (Hero/Myth capped one rank below the track max,
-        -- lower tracks at the track max). Recraft costs carried over from S1 — no S2 numbers yet.
+        -- Crafted caps follow the S1 shape: Hero/Myth one rank below the track max, lower tracks
+        -- at the track max. VERIFY: recraft costs are still carried over from S1, no S2 numbers.
         craftedTiers = {
-            { crestID = 3446, name = "Myth",       maxIlvl = 314, cost = 80 },
-            { crestID = 3445, name = "Hero",       maxIlvl = 301, cost = 60 },
-            { crestID = 3444, name = "Champion",   maxIlvl = 292, cost = 60 },
-            { crestID = 3443, name = "Veteran",    maxIlvl = 279, cost = 45 },
-            { crestID = 3442, name = "Adventurer", maxIlvl = 266, cost = 30 },
+            { crestID = 3446, name = "Myth",       maxIlvl = 324, cost = 80 },
+            { crestID = 3445, name = "Hero",       maxIlvl = 311, cost = 60 },
+            { crestID = 3444, name = "Champion",   maxIlvl = 302, cost = 60 },
+            { crestID = 3443, name = "Veteran",    maxIlvl = 289, cost = 45 },
+            { crestID = 3442, name = "Adventurer", maxIlvl = 276, cost = 30 },
         },
         -- Venomblight Manaflux = S2 catalyst charge (Wowhead 12.1.0 currency=3465).
         -- Spark of Tides and Ascendant Venomstone are NOT listed here: their currency IDs are

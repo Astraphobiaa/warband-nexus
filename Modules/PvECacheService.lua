@@ -614,6 +614,48 @@ local function PruneExpiredKeystonesForWeeklyReset()
     return removed
 end
 
+---Drop Mythic+ score buckets when the season rolls over.
+---Scores are season-scoped: C_MythicPlus.GetSeasonBestForMap only ever reports runs from the
+---running season, so on a flip every map reads back empty. UpdateDungeonScores deliberately
+---refuses to overwrite a populated row with an all-zero snapshot (login / API races), which would
+---otherwise freeze last season's scores on screen until that exact dungeon is re-run.
+---GetCurrentSeason returns -1 until RequestMapInfo has been called at least once, and 0 when no
+---season is running (warcraft.wiki.gg/wiki/API_C_MythicPlus.GetCurrentSeason, verified 2026-08-19)
+---- both are treated as "not known yet" and leave the cache untouched.
+---@return boolean cleared true when a rollover was detected and the score buckets were dropped
+local function ApplyMythicPlusSeasonRollover()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.pveCache then
+        return false
+    end
+    local mp = WarbandNexus.db.global.pveCache.mythicPlus
+    if not mp then return false end
+    if not C_MythicPlus or not C_MythicPlus.GetCurrentSeason then return false end
+
+    local ok, seasonID = pcall(C_MythicPlus.GetCurrentSeason)
+    if not ok or type(seasonID) ~= "number" or seasonID <= 0 then
+        return false
+    end
+
+    local stored = tonumber(mp.season) or 0
+    if stored == seasonID then return false end
+    mp.season = seasonID
+
+    -- stored == 0 means the cache predates this stamp, so there is no way to tell which season
+    -- wrote it - and the stamp shipped in the same build that Season 2 opened in, so in practice
+    -- every unstamped cache holds Season 1 scores. Treat unknown as stale rather than trusting it:
+    -- the current character re-scans immediately, and an alt showing nothing beats an alt showing
+    -- a rating it no longer has.
+    -- Every stored score belongs to the previous season, alts included, so drop them all.
+    if type(mp.dungeonScores) == "table" then wipe(mp.dungeonScores) else mp.dungeonScores = {} end
+    if type(mp.bestRuns) == "table" then wipe(mp.bestRuns) else mp.bestRuns = {} end
+    if type(mp.currentAffixes) == "table" then wipe(mp.currentAffixes) end
+
+    DebugPrint("|cff9370DB[PvECache]|r Mythic+ season "
+        .. (stored == 0 and "stamped -> " or ("rollover " .. tostring(stored) .. " -> "))
+        .. tostring(seasonID) .. "; dungeon scores and best runs cleared")
+    return true
+end
+
 -- CONSTANTS
 
 local Constants = ns.Constants
@@ -877,7 +919,7 @@ end
 function WarbandNexus:InitializePvECache()
     if not self.db.global.pveCache then
         self.db.global.pveCache = {
-            mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} },
+            mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {}, season = 0 },
             greatVault = { activities = {}, rewards = {} },
             lockouts = { raids = {}, dungeons = {}, worldBosses = {} },
             delves = { companion = {}, season = 0 },
@@ -893,11 +935,13 @@ function WarbandNexus:InitializePvECache()
     -- The current character's data is refreshed on PLAYER_LOGIN regardless; for alts
     -- we keep whatever is already stored and just ensure the expected sub-tables exist.
     local cache = self.db.global.pveCache
-    cache.mythicPlus = cache.mythicPlus or { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} }
+    cache.mythicPlus = cache.mythicPlus or { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {}, season = 0 }
     cache.mythicPlus.currentAffixes = cache.mythicPlus.currentAffixes or {}
     cache.mythicPlus.keystones      = cache.mythicPlus.keystones      or {}
     cache.mythicPlus.bestRuns       = cache.mythicPlus.bestRuns       or {}
     cache.mythicPlus.dungeonScores  = cache.mythicPlus.dungeonScores  or {}
+    -- Season the stored scores belong to; 0 = never stamped (see ApplyMythicPlusSeasonRollover).
+    cache.mythicPlus.season         = tonumber(cache.mythicPlus.season) or 0
 
     cache.greatVault = cache.greatVault or { activities = {}, rewards = {} }
     cache.greatVault.activities = cache.greatVault.activities or {}
@@ -1125,7 +1169,10 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     
     if not C_MythicPlus or not charKey or not self.db.global.pveCache then return end
     charKey = CanonicalizePvEKey(charKey)
-    
+
+    -- Must run before anything is read back: a season flip invalidates every stored score.
+    ApplyMythicPlusSeasonRollover()
+
     -- Get best run level for each dungeon
     local maps = C_ChallengeMode and C_ChallengeMode.GetMapTable()
     if not maps then return end
@@ -1213,7 +1260,10 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     
     if not C_ChallengeMode or not charKey or not self.db.global.pveCache then return end
     charKey = CanonicalizePvEKey(charKey)
-    
+
+    -- Must run before the zero-snapshot guard below, or last season's scores survive the flip.
+    ApplyMythicPlusSeasonRollover()
+
     -- Initialize cache
     if not self.db.global.pveCache.mythicPlus.dungeonScores then
         self.db.global.pveCache.mythicPlus.dungeonScores = {}
@@ -2552,7 +2602,7 @@ end
 function WarbandNexus:ClearPvECache()
     if not self.db or not self.db.global or not self.db.global.pveCache then return end
     
-    self.db.global.pveCache.mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} }
+    self.db.global.pveCache.mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {}, season = 0 }
     self.db.global.pveCache.greatVault = { activities = {}, rewards = {} }
     self.db.global.pveCache.lockouts = { raids = {}, dungeons = {}, worldBosses = {} }
     self.db.global.pveCache.delves = { companion = {}, season = 0 }
