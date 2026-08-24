@@ -278,6 +278,12 @@ local Constants = {
         86371,
     },
     PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID = 92600,
+    -- PvE tab weekly quest columns (Midnight 12.1, Prey / Vaults of Atal'Utek).
+    -- 94446 = "A Nightmarish Task" (Astalor Bloodsworn, complete 3 Nightmare Hunts).
+    -- 95520 = "Purging the Vaults" (Warleader Abdumati, Vaults of Atal'Utek weekly meta).
+    -- Both reward a Trovehunter's Bounty; verified on warcraft.wiki.gg.
+    PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID = 94446,
+    PVE_PURGING_VAULTS_WEEKLY_QUEST_ID = 95520,
     -- Gilded Stash weekly counter (Delver's Journey / Delves UI widget; spell id for tooltip fallback).
     PVE_GILDED_STASH_WIDGET_ID = 7591,
     PVE_GILDED_STASH_SPELL_ID = 1216211,

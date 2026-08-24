@@ -52,6 +52,13 @@ local ENTRIES = {
       icon = "Interface\\Icons\\INV_Keystone", sortOrder = 60, coreWeekly = true,
       description = "Complete a Tier 11 Bountiful Delve for a Crested Keystone." },
 
+    { catalogKey = "nightmare_task", questID = 94446, title = "A Nightmarish Task", category = "weeklyQuests", zone = "Quel'Thalas",
+      icon = "Interface\\Icons\\Spell_Shadow_Nightmare", sortOrder = 62, coreWeekly = true, minInterface = 120100,
+      description = "Complete 3 Nightmare Prey hunts for Astalor Bloodsworn (Trovehunter's Bounty)." },
+    { catalogKey = "purging_vaults", questID = 95520, title = "Purging the Vaults", category = "weeklyQuests", zone = "Coiled Isle",
+      icon = "Interface\\Icons\\INV_Misc_Idol_03", sortOrder = 64, coreWeekly = true, minInterface = 120100,
+      description = "Weekly meta in the Vaults of Atal'Utek (Trovehunter's Bounty)." },
+
     -- Rotating / title-match weeklies
     { catalogKey = "timewalking_path", discoverByTitle = true, titlePattern = "path through time", category = "weeklyQuests", zone = "Silvermoon",
       icon = "Interface\\Icons\\INV_Misc_Pocketwatch_01", sortOrder = 70,

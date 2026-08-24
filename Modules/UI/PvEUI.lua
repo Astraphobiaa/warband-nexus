@@ -146,6 +146,10 @@ local function PvE_BuildCompactHeaderLabel(col)
         return GetLocalizedText("VAULT_SLOT_WORLD", "World"), "ffffff"
     elseif key == "bountiful" then
         return GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"), "ffffff"
+    elseif key == "nightmare_task" then
+        return GetLocalizedText("PVE_HEADER_NIGHTMARE_SHORT", "Nightmare"), "ffffff"
+    elseif key == "purging_vaults" then
+        return GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"), "ffffff"
     elseif key == "vault_status" then
         return GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), "ffffff"
     elseif key:match("^crest_") then
@@ -564,7 +568,7 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
                 return PvE_MeasurePlainWidth(bodyFs, formatVault(list, total, typeName, claim, iconSz))
             end
         end
-        if key == "bountiful" then
+        if key == "bountiful" or key == "nightmare_task" or key == "purging_vaults" then
             local wIcon = PvE_MeasurePlainWidth(bodyFs, "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t")
             local wProg = PvE_MeasurePlainWidth(bodyFs, "0 / 1")
             return math.max(iconSz, wIcon, wProg)
@@ -728,6 +732,8 @@ local function EnsurePvEExtraVisibleColumns(profile)
     if ex.coffer_shards == nil then ex.coffer_shards = true end
     if ex.restored_key == nil then ex.restored_key = true end
     if ex.shard_of_dundun == nil then ex.shard_of_dundun = true end
+    if ex.nightmare_task == nil then ex.nightmare_task = true end
+    if ex.purging_vaults == nil then ex.purging_vaults = true end
     return ex
 end
 
@@ -1267,6 +1273,8 @@ local function GetPvEDefaultColumnKeyOrder(profile)
     order[#order + 1] = "slot2"
     order[#order + 1] = "slot3"
     order[#order + 1] = "bountiful"
+    order[#order + 1] = "nightmare_task"
+    order[#order + 1] = "purging_vaults"
     order[#order + 1] = "vault_status"
     return order
 end
@@ -1314,6 +1322,8 @@ local function IsPvEInlineColumnKeyVisible(key, profile, vc, ex)
     if key == "slot2" then return vc.mythicPlus ~= false end
     if key == "slot3" then return vc.world ~= false end
     if key == "bountiful" then return vc.bounty ~= false end
+    if key == "nightmare_task" then return ex.nightmare_task ~= false end
+    if key == "purging_vaults" then return ex.purging_vaults ~= false end
     if key == "vault_status" then return vc.status ~= false end
     return false
 end
@@ -1360,6 +1370,8 @@ local function PveBuildStructureColSig(profile)
     if vc.mythicPlus ~= false then keys[#keys + 1] = "slot2" end
     if vc.world ~= false then keys[#keys + 1] = "slot3" end
     if vc.bounty ~= false then keys[#keys + 1] = "bountiful" end
+    if ex.nightmare_task ~= false then keys[#keys + 1] = "nightmare_task" end
+    if ex.purging_vaults ~= false then keys[#keys + 1] = "purging_vaults" end
     if vc.status ~= false then keys[#keys + 1] = "vault_status" end
     keys = PveOrderColumnKeysBySequence(keys, buildSeq(profile))
     return table.concat(keys, "\1")
@@ -1471,6 +1483,8 @@ function ns.ComputePvEMinScrollWidth(self)
         slot2 = vaultTrackColW,
         slot3 = vaultTrackColW,
         bountiful = PVE_BOUNTIFUL_COL_W,
+        nightmare_task = PVE_BOUNTIFUL_COL_W,
+        purging_vaults = PVE_BOUNTIFUL_COL_W,
         vault_status = PVE_STATUS_COL_W,
     }
     local inlineTotal = 0

@@ -537,6 +537,8 @@ local function BuildPvESignature(pveCache, charKey)
     local delveSig = tostring(delves and delves.season or 0)
         .. ":" .. ((delveChar and delveChar.bountifulComplete) and "1" or "0")
         .. ":" .. ((delveChar and delveChar.crackedKeystoneComplete) and "1" or "0")
+        .. ":" .. ((delveChar and delveChar.nightmareTaskComplete) and "1" or "0")
+        .. ":" .. ((delveChar and delveChar.purgingVaultsComplete) and "1" or "0")
         .. ":" .. tostring(delveChar and delveChar.gildedStashes or -1)
         .. ":" .. tostring(delves and delves.companion and delves.companion.renownLevel or 0)
 
@@ -1865,6 +1867,14 @@ function WarbandNexus:IsBountifulDelveWeeklyDone()
     return false
 end
 
+---True when a PvE weekly quest is flagged complete for the **current** client session.
+---Alt rows read the per-character snapshot written by UpdateDelvesData instead.
+---@param questID number
+---@return boolean
+function WarbandNexus:IsPvEWeeklyQuestDone(questID)
+    return SafeIsQuestFlaggedCompleted(tonumber(questID))
+end
+
 ---Update Delves companion data (account-wide) and per-character delve progress.
 ---Uses C_DelvesUI APIs (Midnight 12.0+) for companion info and season tracking.
 function WarbandNexus:UpdateDelvesData(charKey)
@@ -1933,6 +1943,11 @@ function WarbandNexus:UpdateDelvesData(charKey)
         delves.characters[charKey].gildedStashesMax = gildedStashesMax
         local crackedID = Constants.PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID or 92600
         delves.characters[charKey].crackedKeystoneComplete = SafeIsQuestFlaggedCompleted(crackedID)
+        -- Midnight 12.1 weeklies that also award a Trovehunter's Bounty (PvE tab columns).
+        local nightmareID = Constants.PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID or 94446
+        delves.characters[charKey].nightmareTaskComplete = SafeIsQuestFlaggedCompleted(nightmareID)
+        local purgingID = Constants.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID or 95520
+        delves.characters[charKey].purgingVaultsComplete = SafeIsQuestFlaggedCompleted(purgingID)
         delves.characters[charKey].lastUpdate = time()
     end
 end

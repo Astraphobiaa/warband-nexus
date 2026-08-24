@@ -12,6 +12,34 @@ local function PvEStackBodyWidth(scrollPaintW, contentSide)
     return math.max(1, (tonumber(scrollPaintW) or 1) - 2 * side)
 end
 
+local PVE_NIGHTMARE_TASK_ICON = "Interface\\Icons\\Spell_Shadow_Nightmare"
+local PVE_PURGING_VAULTS_ICON = "Interface\\Icons\\INV_Misc_Idol_03"
+
+--- Cell payload for a boolean weekly-quest column (Midnight 12.1 Trovehunter's Bounty weeklies).
+--- Alts read the per-character PvE cache snapshot; the logged-in character may fall back to the live quest API.
+local function BuildPvEWeeklyQuestCell(L, done, isCurrentChar, questID, titleKey, titleFallback, iconPath, emDash, dimColor)
+    local GetLocalizedText = L.GetLocalizedText
+    if done == nil and isCurrentChar and L.WarbandNexus.IsPvEWeeklyQuestDone then
+        done = L.WarbandNexus:IsPvEWeeklyQuestDone(questID)
+    end
+    local unknown = (done == nil)
+    return {
+        text = unknown and emDash or (done and L.VAULT_SLOT_CHECK or L.VAULT_SLOT_CROSS),
+        color = unknown and dimColor or {1, 1, 1},
+        tooltip = {
+            {
+                text = unknown and GetLocalizedText("PVE_BOUNTY_NEED_LOGIN", "No saved status for this character. Log in to refresh.")
+                    or (done and GetLocalizedText("VAULT_COMPLETED_ACTIVITIES", "Completed")
+                        or GetLocalizedText("ACHIEVEMENT_NOT_COMPLETED", "Not Completed")),
+                color = {1, 1, 1},
+            },
+        },
+        tooltipTitle = GetLocalizedText(titleKey, titleFallback),
+        tooltipIcon = iconPath,
+        pveBountyData = { done = done == true, unknown = unknown },
+    }
+end
+
 local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     opts = opts or {}
     if not L or not L.EnsureVaultButtonColumnsForPvE or not L.EnsurePvEExtraVisibleColumns then
@@ -480,6 +508,27 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         }
     end
     -- Vault Status â€” same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
+    -- Midnight 12.1 weeklies that award a Trovehunter's Bounty (A Nightmarish Task / Purging the Vaults).
+    if pveExtraCols.nightmare_task ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "nightmare_task",
+            label = "",
+            width = L.PVE_BOUNTIFUL_COL_W,
+            icon = "Interface\\Icons\\Spell_Shadow_Nightmare",
+            tooltipTitle = GetLocalizedText("PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task"),
+            headerLabel = L.GetLocalizedText("PVE_HEADER_NIGHTMARE_SHORT", "Nightmare"),
+        }
+    end
+    if pveExtraCols.purging_vaults ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "purging_vaults",
+            label = "",
+            width = L.PVE_BOUNTIFUL_COL_W,
+            icon = "Interface\\Icons\\INV_Misc_Idol_03",
+            tooltipTitle = GetLocalizedText("PVE_COL_PURGING_VAULTS", "Purging the Vaults"),
+            headerLabel = L.GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"),
+        }
+    end
     if vaultCols.status ~= false then
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
             key = "vault_status",
@@ -1873,6 +1922,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     unknown = bountifulUnknown,
                 },
             }
+            -- Midnight 12.1 Trovehunter's Bounty weeklies (same per-character snapshot source).
+            local wnConst = L.ns.Constants
+            colValuesByKey.nightmare_task = BuildPvEWeeklyQuestCell(L,
+                delveChar.nightmareTaskComplete, isCurrentChar,
+                (wnConst and wnConst.PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID) or 94446,
+                "PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task", PVE_NIGHTMARE_TASK_ICON, EM_DASH, DIM_COLOR)
+            colValuesByKey.purging_vaults = BuildPvEWeeklyQuestCell(L,
+                delveChar.purgingVaultsComplete, isCurrentChar,
+                (wnConst and wnConst.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID) or 95520,
+                "PVE_COL_PURGING_VAULTS", "Purging the Vaults", PVE_PURGING_VAULTS_ICON, EM_DASH, DIM_COLOR)
             local voidcoreData = L.WarbandNexus:GetCurrencyData(L.PVE_VOIDCORE_ID, charKey)
             local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
             local vmax = (voidcoreData and voidcoreData.maxQuantity) or 0

@@ -338,6 +338,8 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     pickerRows[#pickerRows + 1] = { key = "slot2", label = GetLocalizedText("VAULT_DUNGEON", "Dungeon"), checked = vc.mythicPlus ~= false, vault = true, toggle = function(checked) vc.mythicPlus = checked applyColumnPickerChange(true) end }
     pickerRows[#pickerRows + 1] = { key = "slot3", label = GetLocalizedText("VAULT_SLOT_WORLD", "World"), checked = vc.world ~= false, vault = true, toggle = function(checked) vc.world = checked applyColumnPickerChange(true) end }
     pickerRows[#pickerRows + 1] = { key = "bountiful", label = GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"), checked = vc.bounty ~= false, vault = true, toggle = function(checked) vc.bounty = checked applyColumnPickerChange(true) end }
+    pickerRows[#pickerRows + 1] = { key = "nightmare_task", label = GetLocalizedText("PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task"), checked = ex.nightmare_task ~= false, vault = false, toggle = function(checked) ex.nightmare_task = checked applyColumnPickerChange(false) end }
+    pickerRows[#pickerRows + 1] = { key = "purging_vaults", label = GetLocalizedText("PVE_COL_PURGING_VAULTS", "Purging the Vaults"), checked = ex.purging_vaults ~= false, vault = false, toggle = function(checked) ex.purging_vaults = checked applyColumnPickerChange(false) end }
 
     local rank = {}
     for ri = 1, #colOrder do rank[colOrder[ri]] = ri end
@@ -390,6 +392,8 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
             ex.coffer_shards = true
             ex.restored_key = true
             ex.shard_of_dundun = true
+            ex.nightmare_task = true
+            ex.purging_vaults = true
             vc.raids = true
             vc.mythicPlus = true
             vc.world = true
