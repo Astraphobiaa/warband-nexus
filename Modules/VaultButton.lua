@@ -68,7 +68,7 @@ function M.RefreshMenuVaultSummary(menuFrame)
     end
     local classHex = GetClassHex(charRow.classFile)
     local ilvl = charRow.itemLevel or 0
-    local ilvlText = ilvl > 0 and ("  |cffffd700" .. ((ns.L and ns.L["ILVL_SHORT"]) or "iLvl") .. " " .. string.format("%.0f", ilvl) .. "|r") or ""
+    local ilvlText = ilvl > 0 and ("  |cffffd700" .. ((ns.L and ns.L["ILVL_SHORT"]) or "iLvl") .. " " .. string.format("%d", math.floor(ilvl)) .. "|r") or ""
     rows.title:SetText("|cff" .. classHex .. (charRow.name or "?") .. "|r" .. ilvlText)
 
     local settings = GetSettings()

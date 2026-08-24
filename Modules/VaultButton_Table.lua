@@ -505,7 +505,7 @@ local RefreshTable = function()
         ilvlFS:SetJustifyH("CENTER")
         ilvlFS:SetJustifyV("MIDDLE")
         ilvlFS:SetText(e.itemLevel > 0
-            and (goldHex .. string.format("%.0f", e.itemLevel) .. "|r")
+            and (goldHex .. string.format("%d", math.floor(e.itemLevel)) .. "|r")
             or  DASH)
         x = x + COL_ILVL
 

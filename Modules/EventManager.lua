@@ -144,13 +144,24 @@ function WarbandNexus:OnItemLevelChanged()
         -- Mirror SaveCurrentCharacterData: row may still be under legacy Name-Realm briefly vs Resolve guid slot.
         local chars = self.db.global.characters
         local entry = chars and (chars[tableKey] or chars[key])
+        if not entry then
+            -- No row under either key (legacy/renamed slot): a light save creates/relocates
+            -- it, otherwise this handler is a silent no-op and ilvl never refreshes again.
+            if self.SaveCurrentCharacterData then
+                self:SaveCurrentCharacterData({ lightOnly = true, bypassCombatDefer = true })
+            end
+            return
+        end
         if entry then
             local _, avgItemLevelEquipped = GetAverageItemLevel()
             if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
 
-            -- Floor like DataService does; alternating integer/fractional writes to the
-            -- same DB field made ilvl displays flicker between "489" and "489.25".
-            entry.itemLevel = type(avgItemLevelEquipped) == "number" and math.floor(avgItemLevelEquipped) or avgItemLevelEquipped
+            -- Store the raw fractional value — the same convention SaveCurrentCharacterData
+            -- writes. (Mixing floored and unfloored writes is what made ilvl displays flicker
+            -- between "489" and "489.25"; consumers floor at render time instead.)
+            avgItemLevelEquipped = tonumber(avgItemLevelEquipped)
+            if not avgItemLevelEquipped then return end
+            entry.itemLevel = avgItemLevelEquipped
             entry.lastSeen = time()
             
             -- Fire event for UI update (DB-First pattern)

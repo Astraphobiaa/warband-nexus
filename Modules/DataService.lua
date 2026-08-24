@@ -336,7 +336,9 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
     elseif dataType == "itemLevel" then
         local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
         if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
-        local newItemLevel = math.floor(avgItemLevelEquipped or 0)
+        -- Raw fractional value (same convention as SaveCurrentCharacterData / OnItemLevelChanged);
+        -- integer displays floor at render time.
+        local newItemLevel = tonumber(avgItemLevelEquipped) or 0
         
         charData.itemLevel = newItemLevel
         
@@ -649,6 +651,14 @@ function WarbandNexus:SaveMinimalCharacterData()
         self.db.global.characters = {}
     end
     local chars = self.db.global.characters
+    -- Reuse the row this player already owns (guid scan included). Without this a login
+    -- where UnitGUID is not yet resolvable writes a SECOND row under Name-Realm with
+    -- isTracked = false, which then wins deduplication and untracks the character.
+    local resolvedKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if resolvedKey and resolvedKey ~= "" and resolvedKey ~= legacyKey and chars[resolvedKey] then
+        key = resolvedKey
+    end
     local existingEntry = (chars[key] or (legacyKey and chars[legacyKey])) or nil
     
     -- Get basic character info
@@ -864,6 +874,20 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         or legacyKey
     if not key then return _saveProfEnd(false) end
 
+    -- Prefer the row this player already owns (guid scan included) over a fresh key —
+    -- a login where UnitGUID is not resolvable yet would otherwise fork a duplicate row.
+    do
+        local resolvedKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+            and ns.CharacterService:ResolveCharactersTableKey(self)
+        local existingChars = self.db.global.characters
+        -- resolvedKey == legacyKey is left alone on purpose: RelocateLegacyCharacterSlot
+        -- below still migrates that row to the guid slot.
+        if resolvedKey and resolvedKey ~= "" and resolvedKey ~= legacyKey
+            and existingChars and existingChars[resolvedKey] then
+            key = resolvedKey
+        end
+    end
+
     -- Get character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
@@ -956,14 +980,19 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         end
     end
     
-    -- Get character's average item level (ALWAYS fresh from API when not light-only)
-    local itemLevel = (lightOnly and existingEntry and existingEntry.itemLevel) or 0
-    if not lightOnly then
-        local _, avgItemLevelEquipped = GetAverageItemLevel()
-        if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then
-            avgItemLevelEquipped = existingEntry and existingEntry.itemLevel
-        end
-        itemLevel = avgItemLevelEquipped or 0
+    -- Average item level: ALWAYS fresh from the API, light path included.
+    -- Warm rows skip the full save on every login (IsCharacterRowPersistedWarm), so the
+    -- light path is the only save many characters ever run. Preserving the stored value
+    -- here froze ilvl permanently whenever OnItemLevelChanged never landed on the row.
+    -- Zero/secret readings (gear not streamed in yet at T+2s) keep the previous value.
+    local itemLevel = (existingEntry and existingEntry.itemLevel) or 0
+    local _, avgItemLevelEquipped = GetAverageItemLevel()
+    if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then
+        avgItemLevelEquipped = nil
+    end
+    avgItemLevelEquipped = tonumber(avgItemLevelEquipped)
+    if avgItemLevelEquipped and avgItemLevelEquipped > 0 then
+        itemLevel = avgItemLevelEquipped
     end
     
     -- Spec (for offline main stat in Gear tab)
@@ -1049,6 +1078,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         existingEntry.race = race
         existingEntry.raceFile = raceFile
         existingEntry.gender = gender
+        existingEntry.itemLevel = itemLevel
         existingEntry.isTracked = true
         existingEntry.trackingConfirmed = preserveConfirmed == nil and true or preserveConfirmed
         existingEntry.lastSeen = time()

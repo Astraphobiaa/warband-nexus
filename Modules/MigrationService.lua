@@ -892,10 +892,9 @@ function MigrationService:MigrateTrackingConfirmed(db)
             charData.trackingConfirmed = true
         end
         
-        -- Also add flag to untracked characters with explicit isTracked=false
-        if charData.isTracked == false and not charData.trackingConfirmed then
-            charData.trackingConfirmed = true
-        end
+        -- Untracked rows are NOT auto-confirmed here: a row forked by a login race is
+        -- created with isTracked = false and was never shown to the player. Stamping it
+        -- confirmed suppressed the tracking popup and left the character silently untracked.
     end
     
     -- trackingConfirmed migration applied silently
@@ -1168,6 +1167,18 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
         winner.gold = loser.gold
         winner.silver = loser.silver
         winner.copper = loser.copper
+    end
+    -- Tracking is a user decision and must survive a merge. A login-race duplicate row
+    -- (player GUID not resolvable yet -> row lands under Name-Realm) is created untracked
+    -- and wins on lastSeen; without this the character silently loses tracking next session.
+    -- Tracked wins on either side: silently losing an opt-in is far worse than a stale
+    -- duplicate briefly re-tracking a character the player just untracked (rows collapse
+    -- on the same pass, so the next explicit choice sticks).
+    if loser.isTracked == true and winner.isTracked ~= true then
+        winner.isTracked = true
+        winner.trackingConfirmed = true
+    elseif winner.trackingConfirmed == nil and loser.trackingConfirmed ~= nil then
+        winner.trackingConfirmed = loser.trackingConfirmed
     end
     local wi = tonumber(winner.itemLevel) or 0
     local li = tonumber(loser.itemLevel) or 0
