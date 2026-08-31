@@ -1133,10 +1133,20 @@ local reverseIndicesBuilt = false
 -- type+itemID. This eliminates the O(N) full-DB scans that previously
 -- ran on every cache-miss call to Is*Collectible().
 
+-- Item drops whose collectible yield lags behind the loot itself: the Nether-Warped Egg
+-- incubates for 7 days, so C_MountJournal keeps reporting the mount as uncollected and the
+-- ONLY thing that can stop the counter is the `obtained` latch. Filled by IndexDrop, drained
+-- by ReconcileObtainedFromInventory. See github issue #76.
+Fns.delayedYieldItemIDs = {}
+
 function Fns.IndexDrop(drop, npcDifficulty, hasStatistics)
     if not drop or not drop.type or not drop.itemID then return end
 
     local itemKey = drop.type .. "\0" .. tostring(drop.itemID)
+
+    if drop.type == "item" and not drop.repeatable and drop.yields and #drop.yields > 0 then
+        Fns.delayedYieldItemIDs[drop.itemID] = true
+    end
 
     -- Every entry in the DB is a drop source
     dropSourceIndex[itemKey] = true
@@ -1208,6 +1218,9 @@ end
 
 function Fns.BuildReverseIndices()
     if reverseIndicesBuilt then return end
+
+    -- Wiped here, not with the other indices further down: IndexDropArray below fills it.
+    wipe(Fns.delayedYieldItemIDs)
 
     -- Flat sources: [key] = { { type, itemID, name }, ... }
     for _, drops in pairs(npcDropDB) do Fns.IndexDropArray(drops) end
@@ -1570,6 +1583,51 @@ function Fns.IsItemMarkedObtained(itemID)
     return tc and tc.obtained and tc.obtained[itemID] == true
 end
 
+---Latch `obtained` for delayed-yield item drops the player already holds.
+---The flag is otherwise written only from the live loot routes, and there is no way back:
+---if a route misses the catch (fast auto-loot closing the window before the slot scan,
+---looted on another character, looted before the addon was installed) the drop keeps
+---counting misses forever, because its yield stays uncollected while it incubates.
+---Bags + bank + reagent bank + WARBAND bank: the last one matters, an egg parked in the
+---warband bank is invisible to the 2-argument GetItemCount form.
+---Cheap by construction: the candidate set only holds item drops that declare `yields`,
+---and each entry leaves the set the moment it is latched.
+function Fns.ReconcileObtainedFromInventory()
+    if not Fns.EnsureDB() then return end
+    local GetCount = C_Item and C_Item.GetItemCount
+    if not GetCount then return end
+
+    -- Clearing the current key during pairs() is allowed in Lua 5.1; adding is not, and
+    -- nothing here adds.
+    for itemID in pairs(Fns.delayedYieldItemIDs) do
+        -- true  = already latched, nothing to do.
+        -- false = explicitly un-marked by the player (ClearItemObtained). Never re-latch it:
+        --         RebuildTrackDB refills this set from scratch, and the next sweep would
+        --         otherwise undo their decision from the bags.
+        local marker = WarbandNexus.db.global.tryCounts.obtained[itemID]
+        if marker ~= nil then
+            Fns.delayedYieldItemIDs[itemID] = nil
+        else
+            local ok, count = pcall(GetCount, itemID, true, false, true, true)
+            if ok and count and not (issecretvalue and issecretvalue(count)) then
+                count = tonumber(count)
+                if count and count > 0 then
+                    Fns.MarkItemObtained(itemID)
+                    Fns.delayedYieldItemIDs[itemID] = nil
+                end
+            end
+        end
+    end
+end
+
+---Throttled entry point for the hot collectible filter.
+function Fns.MaybeReconcileObtainedFromInventory()
+    local now = GetTime()
+    if (now - (RT.lastObtainedReconcile or 0)) < (RT.OBTAINED_RECONCILE_INTERVAL or 10) then return end
+    RT.lastObtainedReconcile = now
+    Fns.ReconcileObtainedFromInventory()
+end
+
 -- PUBLIC API (manual get/set/increment - unchanged from before)
 
 ---Resolve the quest-starter source itemID backing a mount, if any.
@@ -1666,13 +1724,9 @@ function Fns.ForEachTryCountAliasKey(collectibleType, id, visit)
                 visit(mid)
             end
         end
-        if C_MountJournal.GetMountItemID then
-            local ok, itemID = pcall(C_MountJournal.GetMountItemID, idNum)
-            if ok and type(itemID) == "number" and itemID > 0
-                and not (issecretvalue and issecretvalue(itemID)) then
-                visit(itemID)
-            end
-        end
+        -- C_MountJournal.GetMountItemID does not exist (no wiki page; the journal only exposes
+        -- the item->mount direction via GetMountFromItem). The guarded branch that used to sit
+        -- here could never run; it read as a working fallback and hid that there is none.
     elseif collectibleType == "pet" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local ok, sid = pcall(function()
             return select(13, C_PetJournal.GetPetInfoByItemID(idNum))
@@ -1919,10 +1973,15 @@ function WarbandNexus:IsItemObtained(itemID)
 end
 
 ---Clear the obtained marker for a drop item (e.g. if marked by mistake).
+---Stores `false` rather than nil: the marker is tri-state, and only `== true` counts as
+---obtained (IsItemMarkedObtained), so nothing downstream changes. `false` additionally
+---tells ReconcileObtainedFromInventory to leave the item alone, which nil could not -
+---the sweep would re-latch it from the bags the moment the indices were rebuilt.
 ---@param itemID number
 function WarbandNexus:ClearItemObtained(itemID)
     if not itemID or not Fns.EnsureDB() then return end
-    WarbandNexus.db.global.tryCounts.obtained[itemID] = nil
+    WarbandNexus.db.global.tryCounts.obtained[itemID] = false
+    Fns.delayedYieldItemIDs[itemID] = nil
 end
 
 ---Return quest-starter mounts (e.g. Stonevault Mechsuit) that are not yet collected, for Mounts browser.
@@ -2138,6 +2197,9 @@ RT.LOOT_READY_STATE_TTL = LOOT_READY_STATE_TTL
 RT.LOOT_SESSION_RECENT_TTL = LOOT_SESSION_RECENT_TTL
 RT.CHAT_LOOT_DEBOUNCE = CHAT_LOOT_DEBOUNCE
 RT.FISHING_CAST_CONTEXT_TTL = FISHING_CAST_CONTEXT_TTL
+-- Seconds between inventory reconciliation sweeps (Fns.MaybeReconcileObtainedFromInventory).
+RT.OBTAINED_RECONCILE_INTERVAL = 10
+RT.lastObtainedReconcile = 0
 V.isPickpocketing = V.isPickpocketing or false
 V.isProfessionLooting = V.isProfessionLooting or false
 V.lastContainerItemID = V.lastContainerItemID
@@ -2815,6 +2877,13 @@ Fns.IsCollectibleCollected = function(drop)
     local collectibleID = Fns.ResolveCollectibleID(drop)
 
     if drop.type == "item" then
+        -- Delayed-yield drops can sit in bags while their yield is still uncollected, so the
+        -- latch below is the only thing that can stop them. Re-sync it from the inventory
+        -- first; `next` makes this free once every candidate has been latched.
+        if drop.yields and next(Fns.delayedYieldItemIDs) then
+            Fns.MaybeReconcileObtainedFromInventory()
+        end
+
         -- Short-circuit: if this item was already found in loot and marked as
         -- obtained (e.g. Nether-Warped Egg fished but mount still hatching),
         -- skip the yield/API check entirely.
@@ -2964,12 +3033,9 @@ function Fns.BuildCollectibleObtainedChatLink(data)
     local nm = data.name
     if nm and issecretvalue and issecretvalue(nm) then nm = nil end
     if data.type == "mount" and C_MountJournal and data.id then
-        if C_MountJournal.GetMountItemID then
-            local ok, itemID = pcall(C_MountJournal.GetMountItemID, data.id)
-            if ok and itemID and type(itemID) == "number" and itemID > 0 then
-                return Fns.GetDropItemLink({ type = "mount", itemID = itemID, name = nm })
-            end
-        end
+        -- C_MountJournal.GetMountItemID does not exist (no wiki page; the journal only exposes
+        -- the item->mount direction via GetMountFromItem). The guarded branch that used to sit
+        -- here could never run; it read as a working fallback and hid that there is none.
         local n = nm
         if (not n or n == "") and C_MountJournal.GetMountInfoByID then
             n = select(1, C_MountJournal.GetMountInfoByID(data.id))

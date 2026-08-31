@@ -281,9 +281,11 @@ local Constants = {
     -- Gilded Stash weekly counter (Delver's Journey / Delves UI widget; spell id for tooltip fallback).
     PVE_GILDED_STASH_WIDGET_ID = 7591,
     PVE_GILDED_STASH_SPELL_ID = 1216211,
-    -- 12.1: live widget reports 3/week (was 4 in 12.0). Only a fallback — GetGildedStashCounts
-    -- overrides this whenever the Delves widget/tooltip exposes an explicit max.
-    PVE_GILDED_STASH_WEEKLY_MAX = 3,
+    -- 12.1 Season 2: live widget reports 4/week (verified 2026-08-30 against two characters'
+    -- persisted gildedStashesMax, both written from a successful widget parse). Only a fallback —
+    -- GetGildedStashCounts overrides this whenever the Delves widget/tooltip exposes an explicit max.
+    -- Keep this in step with the live value: it is what gets persisted when the widget is not loaded.
+    PVE_GILDED_STASH_WEEKLY_MAX = 4,
 
     -- PvE "Bountiful" column: icon from Trovehunter's Bounty item (C_Item.GetItemIconByID); ALT for ID drift between patches.
     TROVEHUNTERS_BOUNTY_ITEM_ID = 252415,

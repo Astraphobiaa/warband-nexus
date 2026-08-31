@@ -105,6 +105,13 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
 
         -- "What a grind" chat line when cumulative drop probability > 70%.
         -- Honors hideTryCounterChat; gracefully no-ops when rate/itemID unknown.
+        --
+        -- DORMANT: C_MountJournal.GetMountItemID does not exist (no wiki page; the journal
+        -- only exposes item->mount, via GetMountFromItem), so this whole block has never run.
+        -- Reviving it needs a real mountID->teach-itemID resolver; TryCounterService already
+        -- keeps one as the private `resolvedIDsReverse` map and would have to expose it.
+        -- Left in place rather than deleted so the intent is not lost, but do not read the
+        -- guard below as a working fallback - it is always false.
         if ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetCumulativeProbability
             and C_MountJournal and C_MountJournal.GetMountItemID then
             local okItem, mountItemID = pcall(C_MountJournal.GetMountItemID, mountID)

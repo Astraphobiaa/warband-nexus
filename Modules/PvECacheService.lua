@@ -764,6 +764,49 @@ local function GetGildedStashCounts()
     return current, weeklyMax
 end
 
+--- Resolve the Delves companion's level and display name.
+--- The companion is NOT always a major faction: in Midnight 12.x it is a *friendship*
+--- faction (Valeera Sanguinar, factionID 2744, verified 2026-08-30 against live
+--- reputationData), so C_MajorFactions.GetMajorFactionData returns nil for it and the
+--- renown-only branch left companion.renownLevel / companion.name unwritten forever.
+--- Major faction is still tried first so a future renown-based companion keeps working.
+---@param factionID number
+---@return number|nil level current renown level or friendship rank
+---@return number|nil maxLevel only known for friendship companions
+---@return string|nil name
+local function GetCompanionLevelInfo(factionID)
+    local level, maxLevel, name
+
+    if C_Reputation and C_Reputation.IsMajorFaction and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+        local okMajor, isMajor = pcall(C_Reputation.IsMajorFaction, factionID)
+        if okMajor and isMajor then
+            local ok, majorData = pcall(C_MajorFactions.GetMajorFactionData, factionID)
+            if ok and majorData then
+                level = majorData.renownLevel
+                name = majorData.name
+            end
+        end
+    end
+
+    -- Friendship companion: rank lives on the gossip ranks API, not on renown.
+    if level == nil and C_GossipInfo and C_GossipInfo.GetFriendshipReputationRanks then
+        local ok, ranks = pcall(C_GossipInfo.GetFriendshipReputationRanks, factionID)
+        if ok and ranks and (tonumber(ranks.maxLevel) or 0) > 0 then
+            level = ranks.currentLevel
+            maxLevel = ranks.maxLevel
+        end
+    end
+
+    if not name and C_Reputation and C_Reputation.GetFactionDataByID then
+        local ok, data = pcall(C_Reputation.GetFactionDataByID, factionID)
+        if ok and data and data.name and not (issecretvalue and issecretvalue(data.name)) then
+            name = data.name
+        end
+    end
+
+    return level, maxLevel, name
+end
+
 -- Persisted in db.global.pveCache (no separate RAM mirror).
 
 -- Throttle timers
@@ -1895,14 +1938,20 @@ function WarbandNexus:UpdateDelvesData(charKey)
             local factionID = C_DelvesUI.GetFactionForCompanion()
             if factionID and type(factionID) == "number" then
                 delves.companion.factionID = factionID
-                
-                -- Resolve companion renown level from reputation API
-                if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                    local factionData = C_MajorFactions.GetMajorFactionData(factionID)
-                    if factionData then
-                        delves.companion.renownLevel = factionData.renownLevel or 0
-                        delves.companion.name = factionData.name
-                    end
+
+                -- Companion level + display name. `renownLevel` keeps its name for the
+                -- existing dirty-signature / export consumers, but for a friendship
+                -- companion it holds the friendship rank (see GetCompanionLevelInfo).
+                -- Only write on a real read so a cold API call cannot wipe a good value.
+                local level, maxLevel, factionName = GetCompanionLevelInfo(factionID)
+                if level ~= nil then
+                    delves.companion.renownLevel = level
+                end
+                if maxLevel ~= nil then
+                    delves.companion.maxLevel = maxLevel
+                end
+                if factionName then
+                    delves.companion.name = factionName
                 end
             end
         end

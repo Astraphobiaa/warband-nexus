@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Audit Warband Nexus SavedVariables character-key health."""
+import glob
 import re
 import sys
 from pathlib import Path
@@ -59,8 +60,36 @@ def roster_gold(content: str) -> dict[str, tuple[str, int]]:
     return out
 
 
+# Default install roots per platform. The account id differs per user, so glob it.
+SV_GLOBS = [
+    "/Applications/World of Warcraft/_retail_/WTF/Account/*/SavedVariables/WarbandNexus.lua",
+    "C:/Program Files (x86)/World of Warcraft/_retail_/WTF/Account/*/SavedVariables/WarbandNexus.lua",
+    "D:/World of Warcraft/_retail_/WTF/Account/*/SavedVariables/WarbandNexus.lua",
+    "E:/World of Warcraft/_retail_/WTF/Account/*/SavedVariables/WarbandNexus.lua",
+]
+
+
+def find_saved_variables() -> str:
+    """Locate WarbandNexus.lua in a default WoW install; newest wins."""
+    hits: list[Path] = []
+    for pattern in SV_GLOBS:
+        hits.extend(Path(p) for p in glob.glob(pattern))
+    if not hits:
+        return ""
+    return str(max(hits, key=lambda p: p.stat().st_mtime))
+
+
 def main() -> None:
-    path = sys.argv[1] if len(sys.argv) > 1 else r"e:\World of Warcraft\_retail_\WTF\Account\436855179#1\SavedVariables\WarbandNexus.lua"
+    if len(sys.argv) > 1:
+        path = sys.argv[1]
+    else:
+        path = find_saved_variables()
+    if not path:
+        sys.exit(
+            "Could not find WarbandNexus.lua. Pass the path explicitly:\n"
+            "  python3 .github/scripts/audit_sv_keys.py "
+            "'<WoW>/_retail_/WTF/Account/<id>/SavedVariables/WarbandNexus.lua'"
+        )
     bak_path = str(Path(path).with_suffix(".lua.bak"))
     content = read(path)
     bak = read(bak_path) if Path(bak_path).exists() else ""
@@ -73,7 +102,6 @@ def main() -> None:
     flags = [
         "charactersGuidKeyedV1",
         "charactersKeyNormalized",
-        "charactersNameGuidConsolidatedV1",
         "subsidiaryOrphanRemapV1",
         "subsidiaryAliasConsolidatedV1",
         "guidOnlySubsidiaryV1",
