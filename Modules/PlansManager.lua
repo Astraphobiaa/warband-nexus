@@ -2257,14 +2257,9 @@ function WarbandNexus:GetPlanChatLink(plan)
                 local s = SafeChatLinkString(ok and link)
                 if s then return s end
             end
-            if C_MountJournal.GetMountItemID and C_Item and C_Item.GetItemLinkByID then
-                local ok, itemID = pcall(C_MountJournal.GetMountItemID, plan.mountID)
-                if ok and itemID and type(itemID) == "number" and itemID > 0 then
-                    local ok2, link = pcall(C_Item.GetItemLinkByID, itemID)
-                    local s = SafeChatLinkString(ok2 and link)
-                    if s then return s end
-                end
-            end
+            -- C_MountJournal.GetMountItemID does not exist (no wiki page; the journal only exposes
+            -- the item->mount direction via GetMountFromItem). The guarded branch that used to sit
+            -- here could never run; it read as a working fallback and hid that there is none.
         end
         return nil
     end

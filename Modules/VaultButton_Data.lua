@@ -281,7 +281,7 @@ function M.GetGildedStashData(charKey)
     return {
         current = current,
         max = tonumber(delveChar.gildedStashesMax)
-            or (ns.Constants and ns.Constants.PVE_GILDED_STASH_WEEKLY_MAX) or 3,
+            or (ns.Constants and ns.Constants.PVE_GILDED_STASH_WEEKLY_MAX) or 4,
         unknown = current < 0,
     }
 end

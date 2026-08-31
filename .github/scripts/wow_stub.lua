@@ -129,6 +129,7 @@ M.world = {
     ownedMounts = {},
     ownedPets = {},
     ownedToys = {},
+    bagCounts = {},        -- [itemID] = count, backs C_Item.GetItemCount
 }
 
 env.IsInInstance = function() return M.world.inInstance, M.world.instanceType end
@@ -225,7 +226,9 @@ env.C_TransmogCollection = { PlayerHasTransmogByItemInfo = function() return fal
 env.C_Item = {
     GetItemInfo = function(id) return "Item" .. tostring(id), "|Hitem:" .. tostring(id) .. "::::::::::::::::|h[Item" .. tostring(id) .. "]|h" end,
     GetItemInfoInstant = function(id) return id end,
-    GetItemCount = function() return 0 end,
+    -- (itemInfo, includeBank, includeUses, includeReagentBank, includeAccountBank).
+    -- The stub ignores the scope flags: bagCounts models "the player holds it somewhere".
+    GetItemCount = function(id) return M.world.bagCounts[id] or 0 end,
     RequestLoadItemDataByID = function() end,
     DoesItemExistByID = function() return true end,
 }

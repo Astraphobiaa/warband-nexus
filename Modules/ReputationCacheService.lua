@@ -75,6 +75,42 @@ local DELVE_COMPANION_XP_ITEM_IDS = {
     [228072] = true, -- Chunk of Companion Experience (TWW variant / deprecated row)
 }
 
+--- Resolve the active delve companion's factionID from ID-only sources.
+--- Every other companion lookup in this file matches on the English name "Valeera", which
+--- silently resolves to nothing on a deDE/frFR/ruRU/zhCN client and takes the whole
+--- companion-XP notification chain down with it. These two sources are IDs: the PvE cache
+--- row written by UpdateDelvesData, and the Delves API itself
+--- (C_DelvesUI.GetFactionForCompanion, wiki-verified 11.0.0+, present in 12.1.0).
+--- They are also companion-agnostic, so a future companion needs no alias-table edit.
+---@return number|nil
+local function ResolveCompanionFactionIDFromDelves()
+    local db = WarbandNexus and WarbandNexus.db
+    local cachedFactionID = db
+        and db.global
+        and db.global.pveCache
+        and db.global.pveCache.delves
+        and db.global.pveCache.delves.companion
+        and db.global.pveCache.delves.companion.factionID
+    if cachedFactionID and not (issecretvalue and issecretvalue(cachedFactionID)) then
+        cachedFactionID = tonumber(cachedFactionID)
+        if cachedFactionID and cachedFactionID > 0 then
+            return cachedFactionID
+        end
+    end
+
+    if C_DelvesUI and C_DelvesUI.GetFactionForCompanion then
+        local ok, factionID = pcall(C_DelvesUI.GetFactionForCompanion)
+        if ok and factionID and not (issecretvalue and issecretvalue(factionID)) then
+            factionID = tonumber(factionID)
+            if factionID and factionID > 0 then
+                return factionID
+            end
+        end
+    end
+
+    return nil
+end
+
 ---@return string
 local function FormatFactionFallbackName(factionID)
     local base = (ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction"
@@ -1205,38 +1241,18 @@ function ReputationCache:RegisterEventListeners()
     end
 
     ---Resolve the active delve companion factionID from the most reliable sources.
-    ---Order: cached PvE data -> snapshot aliases -> live Delves API.
+    ---Order: ID sources (PvE cache -> Delves API) -> snapshot aliases -> live name lookup.
+    ---The ID sources go first because the alias paths below are enUS-only.
     ---@return number|nil
     local function ResolveDelveCompanionFactionID()
-        local db = WarbandNexus and WarbandNexus.db
-        local cachedFactionID = db
-            and db.global
-            and db.global.pveCache
-            and db.global.pveCache.delves
-            and db.global.pveCache.delves.companion
-            and db.global.pveCache.delves.companion.factionID
-        if cachedFactionID and not (issecretvalue and issecretvalue(cachedFactionID)) then
-            cachedFactionID = tonumber(cachedFactionID) or cachedFactionID
-            if cachedFactionID and cachedFactionID > 0 then
-                return cachedFactionID
-            end
-        end
+        local byID = ResolveCompanionFactionIDFromDelves()
+        if byID then return byID end
 
         local nameToID = ReputationCache._nameToID
         if nameToID then
             local aliasID = nameToID["Valeera Sanguinar"] or nameToID["Valeera"]
             if aliasID and aliasID > 0 then
                 return aliasID
-            end
-        end
-
-        if C_DelvesUI and C_DelvesUI.GetFactionForCompanion then
-            local factionID = C_DelvesUI.GetFactionForCompanion()
-            if factionID and not (issecretvalue and issecretvalue(factionID)) then
-                factionID = tonumber(factionID) or factionID
-                if factionID and factionID > 0 then
-                    return factionID
-                end
             end
         end
 
@@ -2261,12 +2277,42 @@ end
 -- C_Reputation.GetFactionDataByID (e.g. nextReactionThreshold) does not match Processor DB
 -- totals and produced duplicate lines (e.g. 41,248/41,248 vs 217k/262k + Level).
 
+--- Read (factionID, currentValue, friendshipStanding) for a known companion factionID.
+--- Returns nil when the faction data is not loaded yet, so callers fall through instead of
+--- recording a bogus 0 baseline that the next delta would read as a huge gain.
+---@param fid number
+---@return number|nil factionID
+---@return number|nil currentValue
+---@return number|nil friendshipStanding
+local function ReadCompanionRepValues(fid)
+    if not fid or not C_Reputation or not C_Reputation.GetFactionDataByID then return nil end
+    local ok, data = pcall(C_Reputation.GetFactionDataByID, fid)
+    if not ok or not data then return nil end
+
+    local friend
+    if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+        local gfi = C_GossipInfo.GetFriendshipReputation(fid)
+        if gfi and gfi.friendshipFactionID and gfi.friendshipFactionID > 0 then
+            local st = gfi.standing
+            if not (issecretvalue and st and issecretvalue(st)) then
+                friend = tonumber(st)
+            end
+        end
+    end
+
+    return fid, data.currentStanding or 0, friend
+end
+
 local function WalkFactionsForCompanion()
-    -- Scan the live faction list and return (factionID, currentValue, friendshipStanding)
-    -- for any faction whose name matches a known delve companion alias OR whose
-    -- factionID matches the cached companion ID.
+    -- Resolve the companion faction and return (factionID, currentValue, friendshipStanding).
+    -- ID first (locale-independent, and immune to a collapsed faction header that
+    -- GetNumFactions would hide), then the enUS name walk as a last resort.
     if not C_Reputation then return nil end
-    local cachedID = ReputationCache._companionFactionID
+    local cachedID = ReputationCache._companionFactionID or ResolveCompanionFactionIDFromDelves()
+    if cachedID then
+        local fid, cur, friend = ReadCompanionRepValues(cachedID)
+        if fid then return fid, cur, friend end
+    end
     local bestID, bestCur, bestFriend
 
     local numFactions = (C_Reputation.GetNumFactions and C_Reputation.GetNumFactions())
@@ -2287,24 +2333,13 @@ local function WalkFactionsForCompanion()
         end
         if fid and fname and type(fname) == "string"
             and not (issecretvalue and issecretvalue(fname)) then
-            local isMatch = (cachedID and cachedID == fid)
-                or fname == "Valeera Sanguinar"
+            local isMatch = fname == "Valeera Sanguinar"
                 or fname == "Valeera"
                 or fname:find("Valeera", 1, true) ~= nil
             if isMatch then
-                local data = C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(fid)
-                local cur = (data and data.currentStanding) or 0
-                local friend
-                if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
-                    local gfi = C_GossipInfo.GetFriendshipReputation(fid)
-                    if gfi and gfi.friendshipFactionID and gfi.friendshipFactionID > 0 then
-                        local st = gfi.standing
-                        if not (issecretvalue and st and issecretvalue(st)) then
-                            friend = tonumber(st)
-                        end
-                    end
-                end
-                bestID, bestCur, bestFriend = fid, cur, friend
+                local rid, cur, friend = ReadCompanionRepValues(fid)
+                bestID = rid or fid
+                bestCur, bestFriend = cur or 0, friend
                 break
             end
         end
