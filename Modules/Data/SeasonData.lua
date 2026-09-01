@@ -27,6 +27,10 @@ ns.SeasonData = SeasonData
 -- craftedTiers: crafted gear does NOT use the crest track — it recrafts to a tier cap.
 --   Ordered high -> low; GearService walks it top-down.
 
+-- weeklyCapPerTier: kept at 100 because that is the crests' MaxQty, but CurrencyTypes.db2
+-- reads MaxEarnablePerWeek = 0 with MaxQtyWorldStateID set (30934 for Myth Mistcrest) - the cap
+-- is a total that Blizzard raises weekly through a world state, not a fixed per-week allowance.
+-- Nothing reads Constants.CREST_UI.WEEKLY_CAP_PER_TIER yet, so this is a note, not a behaviour.
 SeasonData.SEASONS = {
     -- MIDNIGHT SEASON 1 (12.0.x) - Dawncrests
     [1] = {
@@ -63,11 +67,12 @@ SeasonData.SEASONS = {
             { crestID = 3341, name = "Veteran",    maxIlvl = 250, cost = 45 },
             { crestID = 3383, name = "Adventurer", maxIlvl = 237, cost = 30 },
         },
+        -- Corrected 2026-08-31 against CurrencyTypes.db2 (wago.tools): 3312 has no row at all,
+        -- and 3313 / 3314 are "Raid Renown - Gallagio" tracker rows, not Radiant crest currencies.
+        -- The real S1 spark currency is Radiant Spark Dust (3212), matching S2's Tidal Spark Dust.
         keyCurrencies = {
             [3378] = { name = "Dawnlight Manaflux", category = "catalyst" },
-            [3314] = { name = "Radiant Ember", category = "crest" },
-            [3313] = { name = "Radiant Dust", category = "crest" },
-            [3312] = { name = "Radiant Shard", category = "crest" },
+            [3212] = { name = "Radiant Spark Dust", category = "spark" },
         },
         -- "Where to farm" tooltip copy. Amount strings mix exact ("10\226\128\14318 / key") and
         -- qualitative ("varies") because Blizzard does not document per-boss / per-tier amounts.
@@ -128,83 +133,80 @@ SeasonData.SEASONS = {
             [3445] = "Hero Mistcrest",
             [3446] = "Myth Mistcrest",
         },
-        -- REVISED 2026-08-19, and still UNCONFIRMED for Season 2 - read this before trusting it.
+        -- RESOLVED 2026-08-31 from the client's own CurrencyTypes.db2 (wago.tools), which ends
+        -- the Set A / Set B guessing this table used to carry.
         --
-        -- What is settled: the table shipped before this was anchored on a reading of
-        -- "Champion 6/6 = 292" taken through C_ItemUpgrade.GetItemUpgradeItemInfo(location), and
-        -- that function takes NO arguments (Blizzard_APIDocumentationGenerated/
-        -- ItemUpgradeDocumentation.lua). It reports whatever sits in the upgrade session, so the
-        -- anchor never described the item it was attributed to. That table matched no source.
+        -- Each crest's Description_lang states the track it upgrades: Adventurer 269-282,
+        -- Veteran 282-295, Champion 295-308, Hero 308-321, Myth 321-334.
         --
-        -- What is NOT settled: two credible sources disagree about where S2 starts.
-        --   Set A (used below): Adventurer 259-276, Veteran 272-289, Champion 285-302,
-        --     Hero 298-315, Myth 311-328; season cap 334/337 on special raid loot.
-        --     Sources: icy-veins.com/wow/news/item-level-of-loot-in-midnight-season-2 ("a
-        --     39-item-level increase from the prior season") and expcarry.com/mistcrest-upgrade-guide.
-        --     +39 on every S1 rank reproduces this set exactly, and S1 is verified.
-        --   Set B: Champion 292-308, Hero 305-321, Myth 318-334, with ranks past 6 ("Myth 9" =
-        --     344 from the last two Mythic bosses). Sources: method.gg/guides/all-midnight-
-        --     season-2-upgrade-tracks-and-item-levels and warcraft.wiki.gg/wiki/Midnight_Season_2.
-        --     That is +45 on S1, and uses +3/+3/+4/+3/+3 (span 16) instead of S1's span 17.
-        -- Set A wins on internal consistency (it is S1's shape and spacing, unchanged), which is
-        -- why it is here - but no Season 2 item has actually been observed to settle it.
+        -- Those endpoints are ranks 2..6, not 1..6. Control: the same field on the Season 1
+        -- Dawncrests reads 224-237 / 237-250 / 250-263 / 263-276 / 276-289, and the verified S1
+        -- table above starts each track one rank lower (Adventurer rank 1 = 220). All five match,
+        -- so the reading is confirmed rather than assumed.
         --
-        -- To settle it, one line in-game (verified signature, warcraft.wiki.gg):
-        --   /run C_MythicPlus.RequestMapInfo() for k=2,12 do print(k,C_MythicPlus.GetRewardLevelForDifficultyLevel(k)) end
-        -- returns weeklyRewardLevel, endOfRunRewardLevel per keystone level - real S2 numbers that
-        -- must land on ranks in whichever set is right.
-        --
-        -- Do NOT re-verify from a player's SavedVariables unless their gear is Season 2: a
-        -- character still in S1 gear (itemIDs below ~270000) produces item levels that fit both
-        -- sets, because S2 Adventurer/Veteran overlap S1 Hero/Myth exactly.
+        -- That makes Season 2 exactly Season 1 + 45 on every rank - the +45 that method.gg and
+        -- warcraft.wiki.gg reported, not the +39 that used to be here. The rank 1 values
+        -- (265 / 278 / 291 / 304 / 317) are the one derived part: DB2 gives rank 2, and S1's
+        -- verified +4/+3/+3/+3/+4 shape gives the step down to rank 1.
         trackIlvls = {
-            Adventurer = { 259, 263, 266, 269, 272, 276 },
-            Veteran    = { 272, 276, 279, 282, 285, 289 },
-            Champion   = { 285, 289, 292, 295, 298, 302 },
-            Hero       = { 298, 302, 305, 308, 311, 315 },
-            Myth       = { 311, 315, 318, 321, 324, 328 },
+            Adventurer = { 265, 269, 272, 275, 278, 282 },
+            Veteran    = { 278, 282, 285, 288, 291, 295 },
+            Champion   = { 291, 295, 298, 301, 304, 308 },
+            Hero       = { 304, 308, 311, 314, 317, 321 },
+            Myth       = { 317, 321, 324, 327, 330, 334 },
         },
-        -- Crafted caps follow the S1 shape: Hero/Myth one rank below the track max, lower tracks
-        -- at the track max. VERIFY: recraft costs are still carried over from S1, no S2 numbers.
+        -- Crafted caps come from the same DB2 descriptions ("sets the item level of the
+        -- resulting item to X-Y based on Quality"); the top of each range is the cap here.
+        -- Champion is the one gap: Blizzard omitted the crafting line from 3444's description,
+        -- so 305 follows the crafted = track - 3 offset the other four all share. VERIFY.
+        -- Recraft costs are still S1 numbers - no S2 source found for those yet.
         craftedTiers = {
-            { crestID = 3446, name = "Myth",       maxIlvl = 324, cost = 80 },
-            { crestID = 3445, name = "Hero",       maxIlvl = 311, cost = 60 },
-            { crestID = 3444, name = "Champion",   maxIlvl = 302, cost = 60 },
-            { crestID = 3443, name = "Veteran",    maxIlvl = 289, cost = 45 },
-            { crestID = 3442, name = "Adventurer", maxIlvl = 276, cost = 30 },
+            { crestID = 3446, name = "Myth",       maxIlvl = 331, cost = 80 },
+            { crestID = 3445, name = "Hero",       maxIlvl = 318, cost = 60 },
+            { crestID = 3444, name = "Champion",   maxIlvl = 305, cost = 60 },
+            { crestID = 3443, name = "Veteran",    maxIlvl = 292, cost = 45 },
+            { crestID = 3442, name = "Adventurer", maxIlvl = 279, cost = 30 },
         },
-        -- Venomblight Manaflux = S2 catalyst charge (Wowhead 12.1.0 currency=3465).
-        -- Spark of Tides and Ascendant Venomstone are NOT listed here: their currency IDs are
-        -- not published yet and guessing an ID would silently highlight the wrong row.
+        -- Both verified against CurrencyTypes.db2 on 2026-08-31 (wago.tools).
+        -- "Spark of Tides" does not exist - the S2 spark currency is Tidal Spark Dust (3509),
+        -- the direct counterpart of S1's Radiant Spark Dust (3212). Ascendant Venomstone is not
+        -- a currency at all: no CurrencyTypes row under that name, so it does not belong here.
         keyCurrencies = {
             [3465] = { name = "Venomblight Manaflux", category = "catalyst" },
+            [3509] = { name = "Tidal Spark Dust", category = "spark" },
         },
-        -- VERIFY: farm sources are from 12.1 previews, not final patch notes.
+        -- Straight from each crest's Description_lang in CurrencyTypes.db2 (2026-08-31), so
+        -- these are the client's own lists, not preview copy. Note the keystone bands: Hero is
+        -- +4 to +8 and Myth is +9 and up, both of which the previews had wrong.
         crestSources = {
             [3442] = {
                 "Repeatable Outdoor Events",
                 "Tier 4 Delves",
             },
             [3443] = {
-                "Heroic Seasonal Dungeons",
-                "Raid Finder bosses",
-                "Delves Tier 5\226\128\1316",
+                "Repeatable Outdoor Events",
+                "Raid Finder The Venomous Abyss",
+                "Heroic Season Dungeons",
+                "Delves (Tiers 5 to 6)",
+                "Trovehunter\226\128\153s Bounty (Tiers 4 to 5)",
             },
             [3444] = {
-                "Mythic 0 Seasonal Dungeons",
-                "Mythic Keystone +2 to +3 (timed)",
-                "Normal Raid bosses",
-                "Delves Tier 7\226\128\13110",
+                "Weekly Outdoor Events",
+                "Normal The Venomous Abyss",
+                "Mythic Season Dungeons",
+                "Mythic Keystone Dungeons (+2 to +3)",
+                "Delves (Tiers 7 to 10)",
+                "Trovehunter\226\128\153s Bounty (Tiers 6 to 7)",
             },
             [3445] = {
-                "Mythic Keystone +2 to +6 timed",
-                "Heroic Raid bosses",
-                "Delves Tier 11",
+                "Heroic The Venomous Abyss",
+                "Mythic Keystone Dungeons (+4 to +8)",
+                "Delves (Tier 11)",
+                "Trovehunter\226\128\153s Bounty (Tiers 8 and up)",
             },
             [3446] = {
-                "Mythic Keystone +7 and higher",
-                "Mythic Raid bosses",
-                "T11 Bountiful Stash",
+                "Mythic The Venomous Abyss",
+                "Mythic Keystone Dungeons (+9 and up)",
             },
         },
     },
