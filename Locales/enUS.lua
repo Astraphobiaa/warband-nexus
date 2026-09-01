@@ -1179,7 +1179,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V356"] = [=[v3.5.6 (2026-08-31)
+L["CHANGELOG_V356"] = [=[v3.5.6 (2026-09-01)
 
 Season 2 item levels corrected against the game's own data, a try counter fix reported from the field, and three Delves corrections.
 

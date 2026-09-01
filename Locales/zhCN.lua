@@ -1177,7 +1177,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V356"] = [=[v3.5.6 (2026-08-31)
+L["CHANGELOG_V356"] = [=[v3.5.6 (2026-09-01)
 
 Season 2 item levels corrected against the game's own data, a try counter fix reported from the field, and three Delves corrections.
 

@@ -2206,7 +2206,7 @@ L["SOURCE_TYPE_PVP"] = "PvP"
 L["DIFFICULTY_NORMAL"] = "Normal"
 L["DIFFICULTY_HEROIC"] = "Heroic"
 L["DIFFICULTY_MYTHIC"] = "Mythic"
-L["CHANGELOG_V356"] = [=[v3.5.6 (2026-08-31)
+L["CHANGELOG_V356"] = [=[v3.5.6 (2026-09-01)
 
 Season 2 item levels corrected against the game's own data, a try counter fix reported from the field, and three Delves corrections.
 

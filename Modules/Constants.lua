@@ -16,7 +16,7 @@ local Constants = {
     -- GetAddOnMetadata() cannot be called during file initialization
     ADDON_VERSION = "3.5.6",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-08-31",
+    ADDON_RELEASE_DATE = "2026-09-01",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.

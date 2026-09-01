@@ -1180,7 +1180,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Скрывает системные с
 
 
 
-L["CHANGELOG_V356"] = [=[v3.5.6 (2026-08-31)
+L["CHANGELOG_V356"] = [=[v3.5.6 (2026-09-01)
 
 Season 2 item levels corrected against the game's own data, a try counter fix reported from the field, and three Delves corrections.
 
