@@ -1184,18 +1184,17 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Скрывает системные с
 
 
 
-L["CHANGELOG_V356"] = [=[v3.5.6 (2026-08-24)
+L["CHANGELOG_V357"] = [=[v3.5.7 (2026-09-02)
 
-Two new PvE weekly columns for patch 12.1, plus fixes for characters quietly losing their Tracking setting or their item level.
-
-Added:
-- The PvE tab can show two more weeklies: "A Nightmarish Task" and "Purging the Vaults". Both award a Trovehunter's Bounty, and both work like the existing Bounty column - a tick per character with a hover tooltip - and can be turned off from the Columns menu.
-- Both weeklies can now be picked as objectives in Weekly Progress.
+Season 2 item levels corrected against the game's own data, a try counter fix reported from the field, and three Delves corrections.
 
 Fixed:
-- Characters could quietly lose their Tracking setting between sessions. When it happened, that character stopped collecting data entirely - currency messages in chat were only the most visible symptom - and turning Tracking back on did not survive the next login. It hit a different character each time, depending on login timing.
-- Item level could freeze at an old number on a single character and never move again, no matter how many times you logged out, changed gear or reloaded.
-- Item level is now consistent everywhere it is shown; some places rounded up while others rounded down, so the same character could appear one level apart in two windows.
+- Season 2 item levels are right now. Every upgrade track was six item levels too low, so a Season 2 piece could be shown on the wrong rank with the wrong next upgrade step, and crafted gear caps were off with them. The new numbers are read from the game's own crest descriptions rather than from patch previews.
+- Crest tooltips now list where each crest actually comes from, again from the game's own descriptions. The Mythic Keystone ranges were wrong for Hero and Myth crests, and the Season 2 spark currency was missing from the highlighted currencies entirely.
+- The try counter no longer keeps counting attempts for a drop you already have when the collectible it turns into has not appeared yet. The Nether-Warped Egg is the case that exposed it: the drake takes seven days to hatch, so every later cast kept adding an attempt. The addon now recognises the item in your bags, bank, reagent bank or warband bank and stops counting - including when you looted it on another character or before installing the addon. Thanks to @claytonkimber for the detailed report.
+- Delves now show the right number of weekly Gilded Stashes. A character could show a maximum of 3 instead of 4 whenever the Delves panel had not been opened that session.
+- Reputation gains from your Delve companion are announced again on non-English game clients. The addon recognised the companion by its English name only, which silently switched the companion experience notifications off everywhere else.
+- The Delve companion's level and name are recorded again. The companion is a friendship rather than a renown faction in Midnight, so the addon was asking for renown data that never existed for it.
 
 CurseForge: Warband Nexus]=]
 
