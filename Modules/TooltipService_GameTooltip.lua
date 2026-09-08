@@ -469,6 +469,7 @@ local function ResolveTooltipWidgetSetID(tooltip)
         local widgetContainer = tooltip.widgetContainer
         if widgetContainer then
             widgetSetID = widgetContainer.widgetSetID
+            if issecretvalue and issecretvalue(widgetSetID) then return widgetSetID end
         end
     end
     return widgetSetID
@@ -483,12 +484,14 @@ local function IsBlizzardWidgetTooltip(tooltip)
     if widgetSetID ~= nil and widgetSetID ~= 0 then return true end
     local widgetContainer = tooltip.widgetContainer
     if widgetContainer then
-        -- Blizzard's UIWidgetContainerMixin tracks the live count as `numWidgetsShowing`
-        -- (verified vs Blizzard_UIWidgetManager). The old `shownWidgetCount` field never
-        -- existed, so this net was silently dead and let widget tooltips slip through.
         local shown = widgetContainer.numWidgetsShowing
         if issecretvalue and issecretvalue(shown) then return true end
         if type(shown) == "number" and shown > 0 then return true end
+
+        local shownCount = widgetContainer.shownWidgetCount
+        if issecretvalue and issecretvalue(shownCount) then return true end
+        if type(shownCount) == "number" and shownCount > 0 then return true end
+
         -- Belt-and-suspenders: a *shown* widget container re-runs its secret-number grid
         -- Layout on hide (GridLayoutFrameMixin:ShouldUpdateLayout early-outs unless IsShown).
         -- If our AddLine/Show drives that layout under our taint, CacheLayoutSettings stores
@@ -504,7 +507,7 @@ end
 
 --- Injection state in weak tables — never assign tooltip._wn* (taints GameTooltip).
 local tooltipInjectTokensByFrame = setmetatable({}, { __mode = "k" })
-local tooltipItemCountTimerByFrame = setmetatable({}, { __mode = "k" })
+local tooltipLastDataInstanceByFrame = setmetatable({}, { __mode = "k" })
 local itemCountShiftStateByTooltip = setmetatable({}, { __mode = "k" })
 local itemCountShiftWatcherFrame = nil
 
@@ -542,43 +545,27 @@ local function GetTooltipShownSafe(tooltip)
     return isShown and true or false
 end
 
---- Resize NineSlice after lines added post-Show (deferred widget-check path only).
-local function RefreshGameTooltipLayout(tooltip)
-    if not tooltip or not tooltip.Show then return end
-    if not GetTooltipShownSafe(tooltip) then return end
-    -- Re-check right before Show(): a widget set can mount between inject()'s guard and this
-    -- deferred call. Show() re-runs Blizzard's widget layout, and doing that under our taint
-    -- poisons fields (e.g. numWidgetsShowing / oldGridSettings) secure code re-reads on hide.
-    if IsBlizzardWidgetTooltip(tooltip) then return end
-    -- Injection tokens prevent duplicate AddLine if Show retriggers post-call.
-    tooltip:Show()
-end
-
 --- TooltipDataProcessor post-call runs before InternalProcessInfo :Show().
---- Bag/item lines must inject synchronously so backdrop sizing includes WN Search.
---- Widget map/quest tooltips defer one frame so IsBlizzardWidgetTooltip can skip AddLine.
+--- Bag/item lines inject synchronously so backdrop sizing includes WN Search.
+--- Never defer injection or call Show() on GameTooltip: doing so taints widget layout
+--- and LayoutFrame calculations (Midnight 12.0+).
+--- If a tooltip uses widgets or is a widget tooltip, skip injection completely.
 local function RunGameTooltipInjection(tooltip, data, fn)
     if not tooltip or type(fn) ~= "function" then return end
     if tooltip.IsEmbedded then return end
     if IsBlizzardWidgetTooltip(tooltip) then return end
+    if WillTooltipUseWidgets(tooltip, data) then return end
 
-    local function inject(deferred)
-        if not GetTooltipShownSafe(tooltip) then return end
-        if IsBlizzardWidgetTooltip(tooltip) then return end
-        pcall(fn)
-        if deferred then
-            RefreshGameTooltipLayout(tooltip)
+    local dataInstanceID = SafeTooltipNumber(data and data.dataInstanceID)
+    if dataInstanceID then
+        local lastID = tooltipLastDataInstanceByFrame[tooltip]
+        if lastID ~= dataInstanceID then
+            tooltipLastDataInstanceByFrame[tooltip] = dataInstanceID
+            tooltipInjectTokensByFrame[tooltip] = nil
         end
     end
 
-    if WillTooltipUseWidgets(tooltip, data) and C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if not tooltip then return end
-            inject(true)
-        end)
-    else
-        inject(false)
-    end
+    pcall(fn)
 end
 
 local function ParseItemIDFromItemLink(link)
@@ -617,14 +604,8 @@ end
 local function ClearTooltipInjectionTokens(tooltip)
     if not tooltip then return end
     tooltipInjectTokensByFrame[tooltip] = nil
+    tooltipLastDataInstanceByFrame[tooltip] = nil
     itemCountShiftStateByTooltip[tooltip] = nil
-    local timer = tooltipItemCountTimerByFrame[tooltip]
-    if timer then
-        if timer.Cancel then
-            timer:Cancel()
-        end
-        tooltipItemCountTimerByFrame[tooltip] = nil
-    end
 end
 
 local function SafeAtlasMarkup(atlas, w, h)
@@ -944,30 +925,13 @@ local function RegisterItemCountShiftTooltip(tooltip, itemID)
 end
 
 local function InstallGameTooltipInjectionClearHooks()
-    if TooltipService._injectionHideHooked then return end
-    if not hooksecurefunc then return end
-    TooltipService._injectionHideHooked = true
-    -- hooksecurefunc(Hide) clears weak-table injection state only (never tooltip._wn* fields).
-    local function hookHide(frame)
-        if not frame then return end
-        hooksecurefunc(frame, "Hide", function(service)
-            ClearTooltipInjectionTokens(service)
-        end)
-    end
-    -- ItemRefTooltip never mounts POI/event widget sets, so hooking its Hide is taint-safe.
-    if ItemRefTooltip then hookHide(ItemRefTooltip) end
-    -- GameTooltip: do NOT hook Hide. An insecure closure on GameTooltip:Hide taints the
-    -- OnHide -> GameTooltip_ClearWidgetSet -> UpdateWidgetLayout path, which then hard-errors on
-    -- a secret-number compare (Blizzard_SharedXML/LayoutFrame.lua:491) whenever a widget-carrying
-    -- tooltip (e.g. an Area POI pin) hides. A guard inside the callback cannot help: the error
-    -- fires inside Hide()'s own OnHide before any post-hook runs. Clear our weak-table injection
-    -- state from OnTooltipCleared instead -- it is pure Lua and never touches the widget grid
-    -- layout, so it stays off the tainted secret-compare path. (issue #69)
-    if GameTooltip and GameTooltip.HookScript then
-        GameTooltip:HookScript("OnTooltipCleared", function(service)
-            ClearTooltipInjectionTokens(service)
-        end)
-    end
+    -- In Midnight 12.0/12.1+, GameTooltip lifecycle scripts (Hide, OnHide, OnTooltipCleared) must
+    -- NEVER be hooked with HookScript or hooksecurefunc.
+    -- Crucially, HookScript("OnTooltipCleared") runs inside GameTooltip:ClearLines() during
+    -- GameTooltip_OnHide, directly tainting the execution context right before Blizzard executes
+    -- GameTooltip_ClearWidgetSet -> UpdateWidgetLayout -> DefaultWidgetLayout -> LayoutFrame.lua:491.
+    -- That caused "attempt to compare a secret number value (execution tainted by 'WarbandNexus')".
+    -- Token deduplication is now driven safely by TooltipData.dataInstanceID lifecycle in pure Lua.
 end
 
 local function AppendWNItemCountLines(tooltip, itemID)
