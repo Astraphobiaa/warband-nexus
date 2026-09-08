@@ -2570,3 +2570,15 @@ L["PVP_TT_HONOR_GAINED"] = "Honor Gained"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "Weekly Brawl"
 L["PVP_BRAWL_TIME_LEFT"] = "Changes in %s"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Dead Run Floor: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Runs at or below this level provide 0% vault improvement."
+L["VAULT_UPGRADE_REQUIREMENT"] = "To upgrade this slot: Complete %s or higher."
+L["VAULT_DEAD_RUN_TAG"] = "Dead Run"
+L["VAULT_SLOT_BASE_TAG"] = "Slot %d Base"
+L["SHOPPING_LIST_BUTTON"] = "Shopping List"
+L["SHOPPING_LIST_ALL_OWNED"] = "All reagents for %s are available in your Warband!"
+L["SHOPPING_LIST_COPIED"] = "Copied shopping list for %s (%d items) to clipboard."
+L["SHOPPING_LIST_TITLE"] = "Shopping List: %s"
+

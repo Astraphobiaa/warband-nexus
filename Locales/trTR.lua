@@ -2224,3 +2224,15 @@ Fixed:
 - The Delve companion's level and name are recorded again. The companion is a friendship rather than a renown faction in Midnight, so the addon was asking for renown data that never existed for it.
 
 CurseForge: Warband Nexus]=]
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Ölü Koşu Eşiği: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Bu seviye veya altındaki koşular Büyük Kasa için %0 iyileştirme sağlar."
+L["VAULT_UPGRADE_REQUIREMENT"] = "Bu yuvayı yükseltmek için: %s veya üzerini tamamlayın."
+L["VAULT_DEAD_RUN_TAG"] = "Ölü Koşu"
+L["VAULT_SLOT_BASE_TAG"] = "Yuva %d Temeli"
+L["SHOPPING_LIST_BUTTON"] = "Alışveriş Listesi"
+L["SHOPPING_LIST_ALL_OWNED"] = "%s için tüm reaktifler Harp Ekibinizde mevcut!"
+L["SHOPPING_LIST_COPIED"] = "%s için alışveriş listesi (%d öğe) panoya kopyalandı."
+L["SHOPPING_LIST_TITLE"] = "Alışveriş Listesi: %s"
+

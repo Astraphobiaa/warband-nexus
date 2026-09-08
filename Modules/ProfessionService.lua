@@ -1084,7 +1084,24 @@ end
     Deferred until TRADE_SKILL_SHOW fires (frame is load-on-demand).
     The hook fires WN_RECIPE_SELECTED with recipeInfo for the companion window.
 ]]
+local customerOrdersHookInstalled = false
+local function InstallCustomerOrdersHook()
+    if customerOrdersHookInstalled then return end
+    if ProfessionsCustomerOrdersFrame and ProfessionsCustomerOrdersFrame.Form and ProfessionsCustomerOrdersFrame.Form.SchematicForm then
+        local ok = pcall(hooksecurefunc, ProfessionsCustomerOrdersFrame.Form.SchematicForm, "Init", function(self, recipeInfo)
+            if not recipeInfo then return end
+            if WarbandNexus and WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage(E.RECIPE_SELECTED, recipeInfo)
+            end
+        end)
+        if ok then
+            customerOrdersHookInstalled = true
+        end
+    end
+end
+
 local function InstallRecipeHook()
+    InstallCustomerOrdersHook()
     if hooksInstalled then return end
 
     -- ProfessionsFrame is load-on-demand; must exist by now (TRADE_SKILL_SHOW fired)
@@ -3609,6 +3626,115 @@ function WarbandNexus:StopRechargeTimer()
             DebugVerbosePrint("[Recharge Timer] Stopped")
         end
     end
+end
+
+-- =========================================================================
+-- CRAFTING SHOPPING LIST HELPER
+-- =========================================================================
+
+---Compute missing reagents for a recipe across character inventory and Warband Bank.
+---@param recipeID number Recipe ID
+---@param quantityMultiplier number|nil Number of crafts (defaults to 1)
+---@param characterOnly boolean|nil Only check current character bags (ignore Warband Bank)
+---@return table { recipeID = number, recipeName = string, missingReagents = table, allOwned = boolean, totalMissingItems = number }
+function WarbandNexus:GetRecipeMissingReagents(recipeID, quantityMultiplier, characterOnly)
+    local multiplier = math.max(1, tonumber(quantityMultiplier) or 1)
+    local result = {
+        recipeID = recipeID,
+        recipeName = "",
+        missingReagents = {},
+        allOwned = true,
+        totalMissingItems = 0,
+    }
+    if not recipeID or not C_TradeSkillUI or not C_TradeSkillUI.GetRecipeSchematic then
+        return result
+    end
+
+    local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
+    if not schematic then return result end
+
+    local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
+    result.recipeName = (recipeInfo and recipeInfo.name) or ("Recipe " .. recipeID)
+
+    local slots = schematic.reagentSlotSchematics
+    if not slots then return result end
+
+    local canonKey = CurrentSessionCanonicalCharacterKey()
+    local playerName = UnitName("player")
+
+    for si = 1, #slots do
+        local slot = slots[si]
+        if slot and slot.required ~= false and slot.reagents and #slot.reagents > 0 then
+            local needed = (slot.quantityRequired or 1) * multiplier
+            local totalHave = 0
+            local primaryItem = slot.reagents[1]
+
+            for ti = 1, #slot.reagents do
+                local r = slot.reagents[ti]
+                if r and r.itemID then
+                    local details = self.GetDetailedItemCountsFast and self:GetDetailedItemCountsFast(r.itemID)
+                    if details then
+                        local wbCount = details.warbandBank or 0
+                        local curBagCount = 0
+                        if details.characters then
+                            for ci = 1, #details.characters do
+                                local ch = details.characters[ci]
+                                if ch and (ch.charKey == canonKey or ch.charName == playerName) then
+                                    curBagCount = curBagCount + (ch.bagCount or 0)
+                                end
+                            end
+                        end
+                        if characterOnly then
+                            totalHave = totalHave + curBagCount
+                        else
+                            totalHave = totalHave + curBagCount + wbCount
+                        end
+                    else
+                        local inBags = (C_Item and C_Item.GetItemCount) and C_Item.GetItemCount(r.itemID, false) or 0
+                        local inBank = (C_Item and C_Item.GetItemCount) and C_Item.GetItemCount(r.itemID, true) or 0
+                        if characterOnly then
+                            totalHave = totalHave + inBags
+                        else
+                            totalHave = totalHave + inBank
+                        end
+                    end
+                end
+            end
+
+            if totalHave < needed then
+                result.allOwned = false
+                local missingCount = needed - totalHave
+                local itemName = (primaryItem and primaryItem.itemID and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(primaryItem.itemID))
+                    or (primaryItem and primaryItem.itemID and GetItemInfo and GetItemInfo(primaryItem.itemID))
+                    or ("Item " .. tostring(primaryItem and primaryItem.itemID or si))
+                result.missingReagents[#result.missingReagents + 1] = {
+                    itemID = primaryItem and primaryItem.itemID or 0,
+                    name = itemName,
+                    needed = needed,
+                    have = totalHave,
+                    missing = missingCount,
+                }
+                result.totalMissingItems = result.totalMissingItems + missingCount
+            end
+        end
+    end
+
+    return result
+end
+
+---Format missing reagents into a player-friendly shopping list for clipboard and chat.
+---@param missingData table Output of GetRecipeMissingReagents
+---@return string Formatted text
+function WarbandNexus:FormatShoppingList(missingData)
+    if not missingData or not missingData.missingReagents then return "" end
+    local lines = {}
+    local title = missingData.recipeName or "Shopping List"
+    lines[#lines + 1] = "Warband Nexus: " .. title
+    for i = 1, #missingData.missingReagents do
+        local r = missingData.missingReagents[i]
+        lines[#lines + 1] = string.format("- %dx %s", r.missing, r.name)
+    end
+    return table.concat(lines, "\n")
 end
 
 -- EXPORT

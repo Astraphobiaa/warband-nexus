@@ -2570,3 +2570,15 @@ L["PVP_TT_HONOR_GAINED"] = "Honneur gagné"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "Bagarre hebdomadaire"
 L["PVP_BRAWL_TIME_LEFT"] = "Change dans %s"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Seuil de course morte: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Les courses à ce niveau ou en dessous n'apportent aucune amélioration à la grande chambre-forte."
+L["VAULT_UPGRADE_REQUIREMENT"] = "Pour améliorer cet emplacement: Terminez %s ou supérieur."
+L["VAULT_DEAD_RUN_TAG"] = "Course morte"
+L["VAULT_SLOT_BASE_TAG"] = "Base empl. %d"
+L["SHOPPING_LIST_BUTTON"] = "Liste de courses"
+L["SHOPPING_LIST_ALL_OWNED"] = "Tous les composants pour %s sont disponibles dans votre bataillon !"
+L["SHOPPING_LIST_COPIED"] = "Liste de courses pour %s (%d objets) copiée dans le presse-papiers."
+L["SHOPPING_LIST_TITLE"] = "Liste de courses: %s"
+

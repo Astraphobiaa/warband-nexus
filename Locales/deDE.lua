@@ -2570,3 +2570,15 @@ L["PVP_TT_HONOR_GAINED"] = "Erhaltene Ehre"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "Wöchentliche Rauferei"
 L["PVP_BRAWL_TIME_LEFT"] = "Wechselt in %s"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Tote Durchlauf-Grenze: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Durchläufe auf oder unter dieser Stufe bringen 0% Schatzkammer-Verbesserung."
+L["VAULT_UPGRADE_REQUIREMENT"] = "Um diesen Platz aufzuwerten: Schließe %s oder höher ab."
+L["VAULT_DEAD_RUN_TAG"] = "Toter Durchlauf"
+L["VAULT_SLOT_BASE_TAG"] = "Platz %d Basis"
+L["SHOPPING_LIST_BUTTON"] = "Einkaufsliste"
+L["SHOPPING_LIST_ALL_OWNED"] = "Alle Reagenzien für %s sind in deiner Kriegsmeute verfügbar!"
+L["SHOPPING_LIST_COPIED"] = "Einkaufsliste für %s (%d Gegenstände) in die Zwischenablage kopiert."
+L["SHOPPING_LIST_TITLE"] = "Einkaufsliste: %s"
+

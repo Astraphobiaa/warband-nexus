@@ -2300,6 +2300,124 @@ function WarbandNexus:GetPvEData(charKey)
     end
 end
 
+---Analyze weekly Great Vault runs to calculate dead run floor and upgrade thresholds.
+---@param charKey string|nil Canonical character key (defaults to current session)
+---@return table Analysis result { mythicPlus = table, world = table }
+function WarbandNexus:GetVaultDeadRunAnalysis(charKey)
+    local pve = self:GetPvEData(charKey) or {}
+    local analysis = {
+        mythicPlus = {
+            totalRuns = 0,
+            deadRunFloor = nil,
+            deadRunsCount = 0,
+            slotTargets = {},
+            sortedRuns = {},
+        },
+        world = {
+            totalActivities = 0,
+            deadRunFloor = nil,
+            deadRunsCount = 0,
+            slotTargets = {},
+            sortedActivities = {},
+        },
+    }
+
+    -- 1. Mythic+ Analysis
+    local rawRuns = pve.mythicPlus and pve.mythicPlus.runHistory
+    local runs = {}
+    if rawRuns and type(rawRuns) == "table" then
+        for i = 1, #rawRuns do
+            local r = rawRuns[i]
+            if r and type(r) == "table" then
+                runs[#runs + 1] = {
+                    level = tonumber(r.level) or 0,
+                    mapChallengeModeID = r.mapChallengeModeID,
+                    dungeon = r.dungeon or r.name,
+                }
+            end
+        end
+    end
+    table.sort(runs, function(a, b)
+        local aLvl = a.level or 0
+        local bLvl = b.level or 0
+        if aLvl ~= bLvl then return aLvl > bLvl end
+        return (a.mapChallengeModeID or 0) < (b.mapChallengeModeID or 0)
+    end)
+    analysis.mythicPlus.sortedRuns = runs
+    analysis.mythicPlus.totalRuns = #runs
+
+    local mplusThresholds = { 1, 4, 8 }
+    local mplusBaseRuns = { 1, 4, 8 }
+    if #runs >= 8 then
+        analysis.mythicPlus.deadRunFloor = runs[8].level
+        analysis.mythicPlus.deadRunsCount = #runs - 8
+    end
+
+    for s = 1, 3 do
+        local thresh = mplusThresholds[s]
+        local baseIdx = mplusBaseRuns[s]
+        local runAtBase = runs[baseIdx]
+        local isUnlocked = (#runs >= thresh)
+        local curLevel = (isUnlocked and runAtBase) and runAtBase.level or 0
+        local nextNeeded = isUnlocked and (curLevel + 1) or nil
+        analysis.mythicPlus.slotTargets[s] = {
+            slotIndex = s,
+            threshold = thresh,
+            baseRunIndex = baseIdx,
+            isUnlocked = isUnlocked,
+            currentLevel = curLevel,
+            nextLevelNeeded = nextNeeded,
+            runsRemaining = isUnlocked and 0 or (thresh - #runs),
+        }
+    end
+
+    -- 2. World / Delves Analysis
+    local worldTierProgress = pve.vaultActivities and pve.vaultActivities.worldTierProgress
+    local worldActivities = {}
+    if worldTierProgress and type(worldTierProgress) == "table" then
+        for wi = 1, #worldTierProgress do
+            local entry = worldTierProgress[wi]
+            local count = tonumber(entry.numPoints) or 0
+            local tier = tonumber(entry.difficulty) or 0
+            for _ = 1, count do
+                worldActivities[#worldActivities + 1] = { tier = tier }
+            end
+        end
+    end
+    table.sort(worldActivities, function(a, b)
+        return (a.tier or 0) > (b.tier or 0)
+    end)
+    analysis.world.sortedActivities = worldActivities
+    analysis.world.totalActivities = #worldActivities
+
+    local worldThresholds = { 2, 4, 8 }
+    local worldBaseActivities = { 2, 4, 8 }
+    if #worldActivities >= 8 then
+        analysis.world.deadRunFloor = worldActivities[8].tier
+        analysis.world.deadRunsCount = #worldActivities - 8
+    end
+
+    for s = 1, 3 do
+        local thresh = worldThresholds[s]
+        local baseIdx = worldBaseActivities[s]
+        local actAtBase = worldActivities[baseIdx]
+        local isUnlocked = (#worldActivities >= thresh)
+        local curTier = (isUnlocked and actAtBase) and actAtBase.tier or 0
+        local nextNeeded = isUnlocked and (curTier + 1) or nil
+        analysis.world.slotTargets[s] = {
+            slotIndex = s,
+            threshold = thresh,
+            baseRunIndex = baseIdx,
+            isUnlocked = isUnlocked,
+            currentTier = curTier,
+            nextTierNeeded = nextNeeded,
+            activitiesRemaining = isUnlocked and 0 or (thresh - #worldActivities),
+        }
+    end
+
+    return analysis
+end
+
 ---True if CollectPvEData produced real M+ rows (not an error/empty pre-hydration snapshot).
 local function LegacyMythicSnapshotHasData(mp)
     if not mp or type(mp) ~= "table" then return false end

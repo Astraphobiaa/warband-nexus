@@ -2571,3 +2571,15 @@ L["PVP_TT_HONOR_GAINED"] = "Получено чести"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "Еженедельная потасовка"
 L["PVP_BRAWL_TIME_LEFT"] = "Сменится через %s"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Порог бесполезного прохождения: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Прохождения на этом уровне или ниже дают 0% улучшения Великого хранилища."
+L["VAULT_UPGRADE_REQUIREMENT"] = "Для улучшения этой ячейки: завершите %s или выше."
+L["VAULT_DEAD_RUN_TAG"] = "Пустой забег"
+L["VAULT_SLOT_BASE_TAG"] = "База ячейки %d"
+L["SHOPPING_LIST_BUTTON"] = "Список покупок"
+L["SHOPPING_LIST_ALL_OWNED"] = "Все реагенты для %s уже есть у вашего отряда!"
+L["SHOPPING_LIST_COPIED"] = "Список покупок для %s (%d предм.) скопирован в буфер обмена."
+L["SHOPPING_LIST_TITLE"] = "Список покупок: %s"
+

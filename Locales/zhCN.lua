@@ -2568,3 +2568,15 @@ L["PVP_TT_HONOR_GAINED"] = "获得荣誉"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "每周乱斗"
 L["PVP_BRAWL_TIME_LEFT"] = "%s后更换"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "无效次数底线：%s"
+L["VAULT_DEAD_RUN_DESC"] = "等于或低于此等级的次数对宏伟宝库奖励提升为0%。"
+L["VAULT_UPGRADE_REQUIREMENT"] = "要升级此格子：完成 %s 或更高。"
+L["VAULT_DEAD_RUN_TAG"] = "无效次数"
+L["VAULT_SLOT_BASE_TAG"] = "格子 %d 基准"
+L["SHOPPING_LIST_BUTTON"] = "购买清单"
+L["SHOPPING_LIST_ALL_OWNED"] = "%s 的所有材料都已在你的战团中！"
+L["SHOPPING_LIST_COPIED"] = "已将 %s 的购买清单（%d 件物品）复制到剪贴板。"
+L["SHOPPING_LIST_TITLE"] = "购买清单：%s"
+

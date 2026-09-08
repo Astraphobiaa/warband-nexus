@@ -2570,3 +2570,15 @@ L["PVP_TT_HONOR_GAINED"] = "獲得榮譽"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "每週亂鬥"
 L["PVP_BRAWL_TIME_LEFT"] = "%s後更換"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "無效次數底線：%s"
+L["VAULT_DEAD_RUN_DESC"] = "等於或低於此等級的次數對偉大保存庫獎勵提升為0%。"
+L["VAULT_UPGRADE_REQUIREMENT"] = "若要升級此欄位：完成 %s 或更高。"
+L["VAULT_DEAD_RUN_TAG"] = "無效次數"
+L["VAULT_SLOT_BASE_TAG"] = "欄位 %d 基準"
+L["SHOPPING_LIST_BUTTON"] = "購買清單"
+L["SHOPPING_LIST_ALL_OWNED"] = "%s 的所有材料皆已在你的戰隊中！"
+L["SHOPPING_LIST_COPIED"] = "已將 %s 的購買清單（%d 件物品）複製到剪貼簿。"
+L["SHOPPING_LIST_TITLE"] = "購買清單：%s"
+

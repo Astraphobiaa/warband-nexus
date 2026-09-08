@@ -2570,3 +2570,15 @@ L["PVP_TT_HONOR_GAINED"] = "획득한 명예"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "주간 난투"
 L["PVP_BRAWL_TIME_LEFT"] = "%s 후 변경"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "무효 회차 기준선: %s"
+L["VAULT_DEAD_RUN_DESC"] = "이 레벨 이하의 회차는 위대한 금고 보상에 0% 개선을 제공합니다."
+L["VAULT_UPGRADE_REQUIREMENT"] = "이 칸을 업그레이드하려면: %s 이상 완료."
+L["VAULT_DEAD_RUN_TAG"] = "무효 회차"
+L["VAULT_SLOT_BASE_TAG"] = "%d번 칸 기준"
+L["SHOPPING_LIST_BUTTON"] = "쇼핑 목록"
+L["SHOPPING_LIST_ALL_OWNED"] = "%s의 모든 재료가 전투부대에 준비되어 있습니다!"
+L["SHOPPING_LIST_COPIED"] = "%s의 쇼핑 목록(%d개 항목)이 클립보드에 복사되었습니다."
+L["SHOPPING_LIST_TITLE"] = "쇼핑 목록: %s"
+

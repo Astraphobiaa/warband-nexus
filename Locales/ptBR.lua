@@ -2539,3 +2539,15 @@ L["PVP_TT_HONOR_GAINED"] = "Honra obtida"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "Briga semanal"
 L["PVP_BRAWL_TIME_LEFT"] = "Muda em %s"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Limite de corrida morta: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Corridas neste nível ou abaixo não fornecem melhoria ao Grande Cofre."
+L["VAULT_UPGRADE_REQUIREMENT"] = "Para aprimorar este espaço: Conclua %s ou superior."
+L["VAULT_DEAD_RUN_TAG"] = "Corrida morta"
+L["VAULT_SLOT_BASE_TAG"] = "Base espaço %d"
+L["SHOPPING_LIST_BUTTON"] = "Lista de compras"
+L["SHOPPING_LIST_ALL_OWNED"] = "Todos os reagentes de %s estão disponíveis no seu bando de guerra!"
+L["SHOPPING_LIST_COPIED"] = "Lista de compras de %s (%d itens) copiada para a área de transferência."
+L["SHOPPING_LIST_TITLE"] = "Lista de compras: %s"
+

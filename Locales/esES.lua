@@ -2571,3 +2571,15 @@ L["PVP_TT_HONOR_GAINED"] = "Honor obtenido"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "Trifulca semanal"
 L["PVP_BRAWL_TIME_LEFT"] = "Cambia en %s"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Límite de carrera muerta: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Las carreras en o por debajo de este nivel aportan un 0% de mejora a la gran cámara."
+L["VAULT_UPGRADE_REQUIREMENT"] = "Para mejorar esta casilla: Completa %s o superior."
+L["VAULT_DEAD_RUN_TAG"] = "Carrera muerta"
+L["VAULT_SLOT_BASE_TAG"] = "Base casilla %d"
+L["SHOPPING_LIST_BUTTON"] = "Lista de la compra"
+L["SHOPPING_LIST_ALL_OWNED"] = "¡Todos los componentes para %s están disponibles en tu tropa!"
+L["SHOPPING_LIST_COPIED"] = "Lista de compra copiada para %s (%d objetos) al portapapeles."
+L["SHOPPING_LIST_TITLE"] = "Lista de compra: %s"
+

@@ -943,11 +943,70 @@ local function CreateCompanionWindow()
     hIcon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
     frame.headerIcon = hIcon
 
+    -- Shopping List button (top-right of header)
+    local shopBtn = Factory:CreateButton(header, 92, 20, false)
+    shopBtn:SetPoint("RIGHT", header, "RIGHT", -PADDING, 0)
+    if ApplyVisuals then
+        ApplyVisuals(shopBtn, ChromeBackdrop(), ChromeBorder(0.6))
+    end
+    local shopLabel = FontManager:CreateFontString(shopBtn, "small", "OVERLAY")
+    shopLabel:SetPoint("CENTER", 0, 0)
+    shopLabel:SetText((ns.L and ns.L["SHOPPING_LIST_BUTTON"]) or "Shopping List")
+    ns.UI_SetTextColorRole(shopLabel, "Bright")
+    frame.shoppingListBtn = shopBtn
+
+    shopBtn:SetScript("OnClick", function()
+        if not currentRecipeID then return end
+        local missingData = WarbandNexus.GetRecipeMissingReagents and WarbandNexus:GetRecipeMissingReagents(currentRecipeID, 1, false)
+        if not missingData then return end
+
+        if missingData.allOwned or #missingData.missingReagents == 0 then
+            local allOwnedFmt = (ns.L and ns.L["SHOPPING_LIST_ALL_OWNED"]) or "All reagents for %s are available in your Warband!"
+            local msg = string.format(allOwnedFmt, currentRecipeName or "this recipe")
+            if WarbandNexus.Print then
+                WarbandNexus:Print("|cff00ff00" .. msg .. "|r")
+            end
+            return
+        end
+
+        local formattedText = WarbandNexus.FormatShoppingList and WarbandNexus:FormatShoppingList(missingData) or ""
+
+        -- Copy to system clipboard
+        if C_Clipboard and C_Clipboard.SetClipboardText then
+            pcall(C_Clipboard.SetClipboardText, formattedText)
+        elseif CopyToClipboard then
+            pcall(CopyToClipboard, formattedText)
+        end
+
+        -- If AuctionHouseFrame is open, set search bar text to first missing reagent
+        if AuctionHouseFrame and AuctionHouseFrame:IsShown() then
+            local searchBox = (AuctionHouseFrame.SearchBar and AuctionHouseFrame.SearchBar.SearchBox)
+                or (AuctionHouseFrame.SearchBox)
+            if searchBox and searchBox.SetText and missingData.missingReagents[1] then
+                searchBox:SetText(missingData.missingReagents[1].name or "")
+            end
+        end
+
+        -- Show Copy dialog for visual confirmation and Ctrl+C
+        local titleFmt = (ns.L and ns.L["SHOPPING_LIST_TITLE"]) or "Shopping List: %s"
+        local dialogTitle = string.format(titleFmt, currentRecipeName or "")
+        if Factory and Factory.ShowCopyURL then
+            Factory:ShowCopyURL(formattedText, dialogTitle, shopBtn)
+        end
+
+        -- Feedback message
+        local copyFmt = (ns.L and ns.L["SHOPPING_LIST_COPIED"]) or "Copied shopping list for %s (%d items) to clipboard."
+        local copyMsg = string.format(copyFmt, currentRecipeName or "recipe", #missingData.missingReagents)
+        if WarbandNexus.Print then
+            WarbandNexus:Print("|cff00ccff" .. copyMsg .. "|r")
+        end
+    end)
+
     -- Title
     local titleFontRole = (FontManager.GetFontRole and FontManager:GetFontRole("windowChromeTitle")) or "body"
     local titleText = FontManager:CreateFontString(header, titleFontRole, "OVERLAY")
     titleText:SetPoint("LEFT", hIcon, "RIGHT", 6, 0)
-    titleText:SetPoint("RIGHT", header, "RIGHT", -PADDING, 0)
+    titleText:SetPoint("RIGHT", shopBtn, "LEFT", -6, 0)
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
     titleText:SetMaxLines(1)
@@ -1208,6 +1267,9 @@ ns.RecipeCompanionWindow = {
         end
         if toggleTrackerBtn and ApplyVisuals then
             ApplyVisuals(toggleTrackerBtn, ChromeBackdrop(), ChromeBorder(0.6))
+        end
+        if frame.shoppingListBtn and ApplyVisuals then
+            ApplyVisuals(frame.shoppingListBtn, ChromeBackdrop(), ChromeBorder(0.6))
         end
         if frame:IsShown() then
             RefreshCompanion()

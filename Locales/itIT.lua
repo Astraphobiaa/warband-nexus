@@ -2540,3 +2540,15 @@ L["PVP_TT_HONOR_GAINED"] = "Onore guadagnato"
 L["PVP_TT_MMR"] = "MMR"
 L["PVP_BRAWL_TITLE"] = "Rissa settimanale"
 L["PVP_BRAWL_TIME_LEFT"] = "Cambia tra %s"
+
+-- Great Vault Dead Run Tracker & Shopping List
+L["VAULT_DEAD_RUN_FLOOR"] = "Soglia corsa morta: %s"
+L["VAULT_DEAD_RUN_DESC"] = "Le corse a questo livello o inferiore forniscono lo 0% di miglioramento alla Gran Banca."
+L["VAULT_UPGRADE_REQUIREMENT"] = "Per potenziare questo slot: Completa %s o superiore."
+L["VAULT_DEAD_RUN_TAG"] = "Corsa morta"
+L["VAULT_SLOT_BASE_TAG"] = "Base slot %d"
+L["SHOPPING_LIST_BUTTON"] = "Lista della spesa"
+L["SHOPPING_LIST_ALL_OWNED"] = "Tutti i reagenti per %s sono disponibili nella tua brigata!"
+L["SHOPPING_LIST_COPIED"] = "Lista della spesa per %s (%d oggetti) copiata negli appunti."
+L["SHOPPING_LIST_TITLE"] = "Lista della spesa: %s"
+

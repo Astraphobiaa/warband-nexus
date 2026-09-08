@@ -586,12 +586,8 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
     local mythicLabel = GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
     local heroicLabel = GetLocalizedText("DIFFICULTY_HEROIC", "Heroic")
     local topRunsLabel = GetLocalizedText("VAULT_TOP_RUNS_FORMAT", "Top %d Runs This Week")
-    
-    table.insert(lines, { text = " ", color = VaultSpacerColor() })
-    table.insert(lines, {
-        text = string.format("|cffffffcc" .. topRunsLabel .. "|r", threshold),
-        color = {1, 1, 0.8}
-    })
+    local deadRunTag = GetLocalizedText("VAULT_DEAD_RUN_TAG", "Dead Run")
+    local slotBaseTagFmt = GetLocalizedText("VAULT_SLOT_BASE_TAG", "Slot %d Base")
     
     -- Keystone runs (sorted descending by level)
     local runs = {}
@@ -606,10 +602,17 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
         if aLvl ~= bLvl then return aLvl > bLvl end
         return (a.mapChallengeModeID or 0) < (b.mapChallengeModeID or 0)
     end)
+
+    table.insert(lines, { text = " ", color = VaultSpacerColor() })
+    table.insert(lines, {
+        text = string.format("|cffffffcc" .. topRunsLabel .. "|r", threshold),
+        color = {1, 1, 0.8}
+    })
     
-    -- Show keystone runs (Blizzard pattern: level + dungeon name)
+    -- Show keystone runs: show runs up to max(threshold, min(#runs, 10))
+    local displayLimit = math.max(threshold, math.min(#runs, 10))
     local shown = 0
-    for ri = 1, math.min(#runs, threshold) do
+    for ri = 1, math.min(#runs, displayLimit) do
         local run = runs[ri]
         local dungeonName = run.dungeon or run.name or ""
         if not dungeonName or dungeonName == "" then
@@ -618,11 +621,22 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
             end
         end
         local lvl = run.level or 0
+        local badge = ""
+        if ri == 1 then
+            badge = string.format(" |cff00ff00[%s]|r", string.format(slotBaseTagFmt, 1))
+        elseif ri == 4 then
+            badge = string.format(" |cff00ff00[%s]|r", string.format(slotBaseTagFmt, 2))
+        elseif ri == 8 then
+            badge = string.format(" |cff00ff00[%s]|r", string.format(slotBaseTagFmt, 3))
+        elseif ri > 8 then
+            badge = string.format(" |cffff5555[%s]|r", deadRunTag)
+        end
+
         local runText
         if lvl > 0 then
-            runText = string.format("  %s+%d %s|r", VaultBrightHex(), lvl, dungeonName)
+            runText = string.format("  %s+%d %s|r%s", VaultBrightHex(), lvl, dungeonName, badge)
         else
-            runText = string.format("  %s%s 0 %s|r", VaultBrightHex(), mythicLabel, dungeonName)
+            runText = string.format("  %s%s 0 %s|r%s", VaultBrightHex(), mythicLabel, dungeonName, badge)
         end
         table.insert(lines, { text = runText, color = VaultBrightColor() })
         shown = shown + 1
@@ -650,6 +664,34 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
             remaining = remaining - 1
         end
     end
+
+    -- DEAD RUN ANALYSIS SECTION
+    if #runs >= 8 then
+        local floorLevel = runs[8].level or 0
+        local floorFmt = GetLocalizedText("VAULT_DEAD_RUN_FLOOR", "Dead Run Floor: %s")
+        local floorDesc = GetLocalizedText("VAULT_DEAD_RUN_DESC", "Runs at or below this level provide 0% vault improvement.")
+        table.insert(lines, { text = " ", color = VaultSpacerColor() })
+        table.insert(lines, {
+            text = string.format("|cffffaa00" .. floorFmt .. "|r", "+" .. floorLevel),
+            color = {1, 0.67, 0}
+        })
+        table.insert(lines, {
+            text = string.format("|cffaaaaaa" .. floorDesc .. "|r"),
+            color = VaultDimLineColor()
+        })
+    end
+
+    -- Specific slot improvement requirement
+    local baseIdx = (threshold == 1 and 1) or (threshold == 4 and 4) or 8
+    local baseRun = runs[baseIdx]
+    if baseRun and baseRun.level and baseRun.level > 0 then
+        local neededLevel = baseRun.level + 1
+        local reqFmt = GetLocalizedText("VAULT_UPGRADE_REQUIREMENT", "To upgrade this slot: Complete %s or higher.")
+        table.insert(lines, {
+            text = string.format("|cff55ff55" .. reqFmt .. "|r", "+" .. neededLevel),
+            color = VaultCompleteLineColor()
+        })
+    end
 end
 
 --[[
@@ -671,7 +713,20 @@ local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
         color = {1, 1, 0.8}
     })
     
-    local desiredRuns = threshold
+    local totalActivities = 0
+    local expandedTiers = {}
+    for wi = 1, #worldTierProgress do
+        local tierProg = worldTierProgress[wi]
+        local numRuns = tonumber(tierProg.numPoints) or 0
+        local tier = tonumber(tierProg.difficulty) or 0
+        for _ = 1, numRuns do
+            expandedTiers[#expandedTiers + 1] = tier
+        end
+        totalActivities = totalActivities + numRuns
+    end
+    table.sort(expandedTiers, function(a, b) return a > b end)
+
+    local desiredRuns = math.max(threshold, math.min(totalActivities, 10))
     for wi = 1, #worldTierProgress do
         local tierProg = worldTierProgress[wi]
         local numRuns = math.min(tierProg.numPoints or 0, desiredRuns)
@@ -680,6 +735,34 @@ local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
         table.insert(lines, {
             text = string.format("  %s" .. delveTierFmt .. "|r", VaultBrightHex(), tierProg.difficulty or 0, numRuns),
             color = VaultBrightColor()
+        })
+    end
+
+    -- DEAD RUN ANALYSIS SECTION FOR WORLD/DELVES
+    if totalActivities >= 8 then
+        local floorTier = expandedTiers[8] or 0
+        local floorFmt = GetLocalizedText("VAULT_DEAD_RUN_FLOOR", "Dead Run Floor: %s")
+        local floorDesc = GetLocalizedText("VAULT_DEAD_RUN_DESC", "Runs at or below this level provide 0% vault improvement.")
+        table.insert(lines, { text = " ", color = VaultSpacerColor() })
+        table.insert(lines, {
+            text = string.format("|cffffaa00" .. floorFmt .. "|r", "Tier " .. floorTier),
+            color = {1, 0.67, 0}
+        })
+        table.insert(lines, {
+            text = string.format("|cffaaaaaa" .. floorDesc .. "|r"),
+            color = VaultDimLineColor()
+        })
+    end
+
+    -- Specific slot improvement requirement
+    local baseIdx = (threshold == 2 and 2) or (threshold == 4 and 4) or 8
+    local baseTier = expandedTiers[baseIdx]
+    if baseTier and baseTier > 0 then
+        local neededTier = baseTier + 1
+        local reqFmt = GetLocalizedText("VAULT_UPGRADE_REQUIREMENT", "To upgrade this slot: Complete %s or higher.")
+        table.insert(lines, {
+            text = string.format("|cff55ff55" .. reqFmt .. "|r", "Tier " .. neededTier),
+            color = VaultCompleteLineColor()
         })
     end
 end
