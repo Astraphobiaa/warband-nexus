@@ -1446,6 +1446,29 @@ local function MergeGearDataWatermarks(target, donor)
     end
 end
 
+local function SaveAccountWatermark(slotID, acctWM)
+    if not slotID or not acctWM or type(acctWM) ~= "number" or acctWM <= 0 then return end
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    if not WarbandNexus.db.global.accountWatermarks then
+        WarbandNexus.db.global.accountWatermarks = {}
+    end
+    local current = WarbandNexus.db.global.accountWatermarks[slotID] or 0
+    if acctWM > current then
+        WarbandNexus.db.global.accountWatermarks[slotID] = acctWM
+    end
+end
+
+function WarbandNexus:GetAccountWatermarkForSlot(slotID)
+    if not slotID or not WarbandNexus.db or not WarbandNexus.db.global then return 0 end
+    local wm = WarbandNexus.db.global.accountWatermarks and WarbandNexus.db.global.accountWatermarks[slotID]
+    return tonumber(wm) or 0
+end
+
+function WarbandNexus:GetAccountWatermarks()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return {} end
+    return WarbandNexus.db.global.accountWatermarks or {}
+end
+
 function MergeGearDataBucket(current, legacy)
     if type(legacy) ~= "table" then return current end
     if type(current) ~= "table" then return legacy end
@@ -1933,10 +1956,14 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                         if location and location:IsValid() then
                             local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(location)
                             if hwSlot and C_ItemUpgrade.GetHighWatermarkForSlot then
-                                local charHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
+                                local charHW, accountHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
                                 local apiWM = (type(charHW) == "number") and charHW or 0
+                                local acctWM = (type(accountHW) == "number") and accountHW or 0
                                 if not SLOT_PAIRS[slotID] and apiWM > (watermarks[slotID] or 0) then
                                     watermarks[slotID] = apiWM
+                                end
+                                if acctWM > 0 then
+                                    SaveAccountWatermark(slotID, acctWM)
                                 end
                             end
                         end
@@ -2022,10 +2049,14 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                         if location and location:IsValid() then
                             local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(location)
                             if hwSlot and C_ItemUpgrade.GetHighWatermarkForSlot then
-                                local charHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
+                                local charHW, accountHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
                                 local apiWM = (type(charHW) == "number") and charHW or 0
+                                local acctWM = (type(accountHW) == "number") and accountHW or 0
                                 if not SLOT_PAIRS[slotID] and apiWM > (watermarks[slotID] or 0) then
                                     watermarks[slotID] = apiWM
+                                end
+                                if acctWM > 0 then
+                                    SaveAccountWatermark(slotID, acctWM)
                                 end
                             end
                         end
@@ -2558,7 +2589,7 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 maxUpgrade = tonumber(maxUpgrade) or 0,
                 trackName = trackName or "",
                 currencyID = 0, crestCost = 0, moneyCost = 0,
-                watermarkIlvl = watermarks[slotID] or 0,
+                watermarkIlvl = math.max(watermarks[slotID] or 0, WarbandNexus:GetAccountWatermarkForSlot(slotID)),
             }
         elseif slot.isCrafted or trackName == "Crafted" then
             -- Crafted items: NO Hero/Myth crest-track upgrades — they recraft with
@@ -2596,7 +2627,7 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 currencyID      = 0,
                 crestCost       = 0,
                 moneyCost       = 0,
-                watermarkIlvl   = watermarks[slotID] or 0,
+                watermarkIlvl   = math.max(watermarks[slotID] or 0, WarbandNexus:GetAccountWatermarkForSlot(slotID)),
             }
         elseif trackName and currUpgrade and maxUpgrade and maxUpgrade > 0 then
             local hasNext = (currUpgrade < maxUpgrade) and slot.itemUpgradeable ~= false
@@ -2622,8 +2653,16 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
             -- Gold-only = upgrades to ilvl this slot has already reached. Use per-slot watermark only;
             -- for paired slots (rings/trinkets), cap by this item's current ilvl so we don't use the pair's max
             -- (e.g. Ring 1 at 3/6 only gets gold-only up to 227, not Ring 2's 237).
+            -- Account-wide watermark rule (Midnight): If ANY character has reached nextIlvl in this slot, crestCost is ZERO.
             local rawWm = watermarks[slotID] or 0
             local perSlotWm = SLOT_PAIRS[slotID] and (itemLevel < rawWm and itemLevel or rawWm) or rawWm
+            local acctWm = WarbandNexus:GetAccountWatermarkForSlot(slotID)
+            if acctWm > 0 and nextIlvl <= acctWm then
+                crestCost = 0
+                isDiscounted = true
+            end
+            local effectiveWm = math.max(perSlotWm, acctWm)
+
             upgrades[slotID] = {
                 canUpgrade    = hasNext,
                 currentIlvl   = itemLevel,
@@ -2635,8 +2674,10 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 currencyID    = currencyID,
                 crestCost     = crestCost,
                 moneyCost     = moneyCost,
-                watermarkIlvl = perSlotWm,
-                nextUpgradeIsDiscounted = isDiscounted,
+                watermarkIlvl = effectiveWm,
+                accountWatermarkIlvl = acctWm,
+                isAccountDiscounted = (acctWm > 0 and itemLevel <= acctWm),
+                nextUpgradeIsDiscounted = isDiscounted or (acctWm > 0 and nextIlvl <= acctWm),
             }
         end
     end
