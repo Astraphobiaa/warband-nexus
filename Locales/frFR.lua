@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - French
 ]]
 
@@ -1995,6 +1995,7 @@ L["TRYCOUNTER_PROBE_REQ_25H"] = "25 joueurs héroïque uniquement"
 L["TRYCOUNTER_PROBE_REQ_10N"] = "10 joueurs normal uniquement"
 L["TRYCOUNTER_PROBE_REQ_25N"] = "25 joueurs normal uniquement"
 L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25 joueurs normal ou héroïque"
+L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"] = "Marcheurs du temps uniquement"
 
 -- Loading Tracker Labels
 L["LT_CHARACTER_DATA"] = "Données du personnage"

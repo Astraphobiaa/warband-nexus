@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - German
 ]]
 
@@ -1995,6 +1995,7 @@ L["TRYCOUNTER_PROBE_REQ_25H"] = "nur 25er Heroisch"
 L["TRYCOUNTER_PROBE_REQ_10N"] = "nur 10er Normal"
 L["TRYCOUNTER_PROBE_REQ_25N"] = "nur 25er Normal"
 L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25er Normal oder Heroisch"
+L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"] = "nur Zeitwanderung"
 
 -- Loading Tracker Labels
 L["LT_CHARACTER_DATA"] = "Charakterdaten"

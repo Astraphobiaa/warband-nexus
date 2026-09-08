@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Turkish (trTR)
 
     WoW has no Turkish game client, so AceLocale would never auto-select this locale.
@@ -1660,6 +1660,7 @@ L["TRYCOUNTER_PROBE_REQ_25H"] = "Yalnızca 25 kişilik Heroic"
 L["TRYCOUNTER_PROBE_REQ_10N"] = "Yalnızca 10 kişilik Normal"
 L["TRYCOUNTER_PROBE_REQ_25N"] = "Yalnızca 25 kişilik Normal"
 L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25 kişilik Normal veya Heroic"
+L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"] = "Yalnızca Zamanda Yürüyüş"
 L["LT_CHARACTER_DATA"] = "Karakter Verisi"
 L["LT_CURRENCY_CACHES"] = "Para Birimi ve Önbellekler"
 L["LT_PVE_DATA"] = "PvE Verisi"

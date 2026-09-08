@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - English (fallback)
 ]]
 
@@ -1995,6 +1995,7 @@ L["TRYCOUNTER_PROBE_REQ_25H"] = "25-player Heroic only"
 L["TRYCOUNTER_PROBE_REQ_10N"] = "10-player Normal only"
 L["TRYCOUNTER_PROBE_REQ_25N"] = "25-player Normal only"
 L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25-player Normal or Heroic"
+L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"] = "Timewalking only"
 
 -- Loading Tracker Labels
 L["LT_CHARACTER_DATA"] = "Character Data"

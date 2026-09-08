@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Korean
 ]]
 
@@ -1995,6 +1995,7 @@ L["TRYCOUNTER_PROBE_REQ_25H"] = "25인 영웅만"
 L["TRYCOUNTER_PROBE_REQ_10N"] = "10인 일반만"
 L["TRYCOUNTER_PROBE_REQ_25N"] = "25인 일반만"
 L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25인 일반 또는 영웅"
+L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"] = "시간여행만"
 
 -- Loading Tracker Labels
 L["LT_CHARACTER_DATA"] = "캐릭터 데이터"

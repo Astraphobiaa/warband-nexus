@@ -763,17 +763,21 @@ ns.CollectibleSourceDB = {
         { sourceType = "instance_boss", npcID = 24664,  -- Kael'thas Sunstrider (Magister's Terrace)
           drops = { { type = "mount", itemID = 35513, name = "Swift White Hawkstrider" } },
           statisticIds = { 1082 },  -- Kael'thas kills (Magister's Terrace); DB2 12.0.1
+          dropDifficulty = "Heroic",
         },
         { sourceType = "instance_boss", npcID = 23035,  -- Anzu (Sethekk Halls Heroic)
           drops = { { type = "mount", itemID = 32768, name = "Reins of the Raven Lord" } },
+          dropDifficulty = "Heroic",
         },
 
         -- WRATH OF THE LICH KING
         { sourceType = "instance_boss", npcID = 26693,  -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
           drops = { { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" } },
+          dropDifficulty = "Heroic",
         },
         { sourceType = "instance_boss", npcID = 174062,  -- Skadi the Ruthless (Utgarde Pinnacle - Timewalking)
           drops = { { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" } },
+          dropDifficulty = "Timewalking",
         },
         { sourceType = "instance_boss", npcID = 28859,  -- Malygos (Eye of Eternity)
           drops = {
@@ -789,10 +793,9 @@ ns.CollectibleSourceDB = {
           },
           statisticIds = { 1392, 1393 },
         },
-        { sourceType = "instance_boss", npcID = 33288,  -- Yogg-Saron (Ulduar 0-Light 25-man)
+        { sourceType = "instance_boss", npcID = 33288,  -- Yogg-Saron (Ulduar 0-Light)
           drops = { { type = "mount", itemID = 45693, name = "Mimiron's Head" } },
           statisticIds = { 2869, 2883 },
-          dropDifficulty = "25-man",
         },
         { sourceType = "instance_boss", npcID = 10184,  -- Onyxia (Onyxia's Lair)
           drops = { { type = "mount", itemID = 49636, name = "Reins of the Onyxian Drake" } },
@@ -846,9 +849,11 @@ ns.CollectibleSourceDB = {
         },
         { sourceType = "instance_boss", npcID = 52151,  -- Bloodlord Mandokir (Zul'Gurub)
           drops = { { type = "mount", itemID = 68823, name = "Armored Razzashi Raptor" } },
+          dropDifficulty = "Heroic",
         },
         { sourceType = "instance_boss", npcID = 52059,  -- High Priestess Kilnara (Zul'Gurub)
           drops = { { type = "mount", itemID = 68824, name = "Swift Zulian Panther" } },
+          dropDifficulty = "Heroic",
         },
         { sourceType = "instance_boss", npcID = 55294,  -- Ultraxion (Dragon Soul) - ALL DIFFICULTIES
           drops = { { type = "mount", itemID = 78919, name = "Experiment 12-B" } },
@@ -1387,6 +1392,7 @@ ns.CollectibleSourceDB = {
         -- Dungeon Bosses
         [114262] = { -- Attumen the Huntsman (Return to Karazhan)
             { type = "mount", itemID = 142236, name = "Midnight's Eternal Reins" },
+            dropDifficulty = "Mythic",
         },
 
         -- Argus Rares [Verified]
@@ -1891,11 +1897,10 @@ ns.CollectibleSourceDB = {
         },
 
         -- Raid Bosses
-        [189492] = { -- Raszageth the Storm-Eater (Vault of the Incarnates Mythic)
+        [189492] = { -- Raszageth the Storm-Eater (Vault of the Incarnates) - ALL DIFFICULTIES
             { type = "mount", itemID = 201790, name = "Renewed Proto-Drake: Embodiment of the Storm-Eater" },
-            statisticIds = { 16394 },  -- Raszageth kills (Mythic Vault of the Incarnates); DB2 12.0.1
-            dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only dragonriding customization manuscript
+            statisticIds = { 16391, 16392, 16393, 16394 },  -- Raszageth kills (LFR, N, H, M Vault of the Incarnates); DB2 12.0.1
+            -- NOTE: Drops on ALL difficulties (LFR, Normal, Heroic, Mythic)
         },
         [204931] = { -- Fyrakk (Amirdrassil Mythic)
             { type = "mount", itemID = 210061, name = "Reins of Anu'relos, Flame's Guidance" },

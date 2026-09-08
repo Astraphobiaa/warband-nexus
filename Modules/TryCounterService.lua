@@ -2508,8 +2508,10 @@ function Fns.ResolveLiveInstanceDifficultyID(instanceType, giDifficulty)
     return nil
 end
 
-local function MatchSingleDifficulty(label, requiredDifficulty)
-    if requiredDifficulty == "Mythic" then
+local function MatchSingleDifficulty(label, requiredDifficulty, difficultyID)
+    if requiredDifficulty == "Timewalking" then
+        return difficultyID == 24 or difficultyID == 33 or difficultyID == 151 or label == "Timewalking"
+    elseif requiredDifficulty == "Mythic" then
         return label == "Mythic"
     elseif requiredDifficulty == "Heroic" then
         -- Threshold: Heroic+ (Heroic, Mythic, legacy 25H) — matches standard "drops on Heroic or higher" mounts
@@ -2525,8 +2527,8 @@ local function MatchSingleDifficulty(label, requiredDifficulty)
     elseif requiredDifficulty == "25N" then
         return label == "25N"
     elseif requiredDifficulty == "25-man" then
-        -- Legacy 25-player only (exclude 10-player and LFR); e.g. Ulduar Mimiron's Head.
-        return label == "25N" or label == "25H"
+        -- Legacy 25-player (or flex Ulduar Normal); e.g. Ulduar Mimiron's Head.
+        return label == "25N" or label == "25H" or label == "Normal"
     elseif requiredDifficulty == "LFR" then
         return label == "LFR"
     end
@@ -2540,6 +2542,11 @@ function Fns.DoesDifficultyMatch(difficultyID, requiredDifficulty)
     if not difficultyID then return false end
     if issecretvalue and issecretvalue(difficultyID) then return false end
 
+    -- Timewalking gate: matches ONLY Timewalking instances (dungeon 24, raid 33, LFR 151).
+    if requiredDifficulty == "Timewalking" then
+        return difficultyID == 24 or difficultyID == 33 or difficultyID == 151
+    end
+
     local label = Fns.ResolveDifficultyLabel(difficultyID)
     if not label then return false end
 
@@ -2547,14 +2554,20 @@ function Fns.DoesDifficultyMatch(difficultyID, requiredDifficulty)
     if type(requiredDifficulty) == "table" then
         for i = 1, #requiredDifficulty do
             local req = requiredDifficulty[i]
-            if type(req) == "string" and MatchSingleDifficulty(label, req) then
-                return true
+            if type(req) == "string" then
+                if req == "Timewalking" then
+                    if difficultyID == 24 or difficultyID == 33 or difficultyID == 151 then
+                        return true
+                    end
+                elseif MatchSingleDifficulty(label, req, difficultyID) then
+                    return true
+                end
             end
         end
         return false
     end
 
-    return MatchSingleDifficulty(label, requiredDifficulty)
+    return MatchSingleDifficulty(label, requiredDifficulty, difficultyID)
 end
 
 --- Chat segment for a drop's difficulty requirement ([WN-Drops] lines).
@@ -2565,7 +2578,7 @@ end
 ---@param encDiff number|nil
 ---@return string
 function Fns.FormatDropDifficultySegment(reqDiff, encDiff)
-    if not reqDiff then return "|cff888888\226\128\148|r" end
+    if not reqDiff or reqDiff == "All Difficulties" then return "|cff888888\226\128\148|r" end
     local label = nil
     if encDiff and not (issecretvalue and issecretvalue(encDiff)) then
         label = Fns.ResolveDifficultyLabel(encDiff)
@@ -2578,8 +2591,12 @@ function Fns.FormatDropDifficultySegment(reqDiff, encDiff)
                 -- Exact label compare, not DoesDifficultyMatch: "Heroic" is a threshold that also
                 -- matches Mythic, which would green both entries while standing in Mythic.
                 local color = "|cffffaa00"
-                if label then
-                    color = (label == d) and "|cff00ff00" or "|cff888888"
+                if label or encDiff then
+                    if d == "Timewalking" then
+                        color = (encDiff == 24 or encDiff == 33 or encDiff == 151) and "|cff00ff00" or "|cff888888"
+                    else
+                        color = (label == d) and "|cff00ff00" or "|cff888888"
+                    end
                 end
                 parts[#parts + 1] = color .. d .. "|r"
             end
@@ -2587,7 +2604,7 @@ function Fns.FormatDropDifficultySegment(reqDiff, encDiff)
         if #parts == 0 then return "|cff888888\226\128\148|r" end
         return "(" .. table.concat(parts, "/") .. ")"
     end
-    if not label then return "(|cffffaa00" .. reqDiff .. "|r)" end
+    if not label and not encDiff then return "(|cffffaa00" .. reqDiff .. "|r)" end
     local color = Fns.DoesDifficultyMatch(encDiff, reqDiff) and "|cff00ff00" or "|cffff6666"
     return "(" .. color .. reqDiff .. "|r)"
 end
@@ -2704,7 +2721,7 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
             if drop.repeatable or not Fns.IsCollectibleCollected(drop) then
                 trackable[#trackable + 1] = drop
             end
-        elseif not diffSkipped then
+        elseif not diffSkipped and reqDiff ~= "Timewalking" then
             diffSkipped = { drop = drop, required = reqDiff }
         end
     end
@@ -2767,6 +2784,7 @@ function Fns.TryCounterProbeRequirementText(reqDiff)
     if reqDiff == "10N" then return (L and L["TRYCOUNTER_PROBE_REQ_10N"]) or "10-player Normal only" end
     if reqDiff == "25N" then return (L and L["TRYCOUNTER_PROBE_REQ_25N"]) or "25-player Normal only" end
     if reqDiff == "25-man" then return (L and L["TRYCOUNTER_PROBE_REQ_25MAN"]) or "25-player Normal or Heroic" end
+    if reqDiff == "Timewalking" then return (L and L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"]) or "Timewalking only" end
     return tostring(reqDiff)
 end
 
@@ -2818,9 +2836,13 @@ function WarbandNexus:GetDropDifficulty(collectibleType, id)
 
     -- Direct lookup: id might already be an itemID
     local key = collectibleType .. "\0" .. tostring(id)
-    if dropDifficultyIndex[key] then
-        difficultyCache[cacheKey] = dropDifficultyIndex[key]
-        return dropDifficultyIndex[key]
+    local diff = dropDifficultyIndex[key]
+    if diff and diff ~= "All Difficulties" then
+        difficultyCache[cacheKey] = diff
+        return diff
+    elseif diff == "All Difficulties" then
+        difficultyCache[cacheKey] = false
+        return nil
     end
 
     -- For non-toy types, caller may pass a native collectibleID (mountID/speciesID)
@@ -2829,10 +2851,13 @@ function WarbandNexus:GetDropDifficulty(collectibleType, id)
         local sourceItemID = resolvedIDsReverse[id]
         if sourceItemID then
             local altKey = collectibleType .. "\0" .. tostring(sourceItemID)
-            local diff = dropDifficultyIndex[altKey]
-            if diff then
-                difficultyCache[cacheKey] = diff
-                return diff
+            local altDiff = dropDifficultyIndex[altKey]
+            if altDiff and altDiff ~= "All Difficulties" then
+                difficultyCache[cacheKey] = altDiff
+                return altDiff
+            elseif altDiff == "All Difficulties" then
+                difficultyCache[cacheKey] = false
+                return nil
             end
         end
     end
@@ -5390,6 +5415,7 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
             if not WN then return end
 
             local encDiff = Fns.ResolveEffectiveEncounterDifficultyID(true, nil)
+            local inTW = (encDiff == 24 or encDiff == 33 or encDiff == 151)
 
             local Ltc = ns.L
             local printed = 0
@@ -5399,7 +5425,10 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
                 local entry = dropsToShow[i]
                 for j = 1, #entry.drops do
                     local drop = entry.drops[j]
-                    if maxLines and printed >= maxLines then
+                    local reqDiff = entry.diffMap and entry.diffMap[drop.itemID]
+                    if reqDiff == "Timewalking" and not inTW then
+                        -- Suppress Timewalking drop when not in a Timewalking instance
+                    elseif maxLines and printed >= maxLines then
                         omitted = omitted + 1
                     else
                     -- Get item hyperlink (quality-colored, bracketed)
@@ -5462,7 +5491,6 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
                     end
 
                     -- Third segment: accepted difficulties, current one greened; em dash when ungated.
-                    local reqDiff = entry.diffMap and entry.diffMap[drop.itemID]
                     local diffSegment = Fns.FormatDropDifficultySegment(reqDiff, encDiff)
 
                         -- Drop the " - " separators around the bare em dash, or a gate-less drop reads

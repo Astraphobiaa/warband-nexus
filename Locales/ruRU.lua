@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Russian
 ]]
 
@@ -1996,6 +1996,7 @@ L["TRYCOUNTER_PROBE_REQ_25H"] = "только 25 игроков героичес
 L["TRYCOUNTER_PROBE_REQ_10N"] = "только 10 игроков обычный"
 L["TRYCOUNTER_PROBE_REQ_25N"] = "только 25 игроков обычный"
 L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25 игроков обычный или героический"
+L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"] = "только Путешествия во времени"
 
 -- Loading Tracker Labels
 L["LT_CHARACTER_DATA"] = "Данные персонажа"

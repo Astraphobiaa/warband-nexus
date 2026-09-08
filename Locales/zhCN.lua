@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Chinese (Simplified)
 ]]
 
@@ -1993,6 +1993,7 @@ L["TRYCOUNTER_PROBE_REQ_25H"] = "仅25人英雄"
 L["TRYCOUNTER_PROBE_REQ_10N"] = "仅10人普通"
 L["TRYCOUNTER_PROBE_REQ_25N"] = "仅25人普通"
 L["TRYCOUNTER_PROBE_REQ_25MAN"] = "25人普通或英雄"
+L["TRYCOUNTER_PROBE_REQ_TIMEWALKING"] = "仅时空漫游"
 
 -- Loading Tracker Labels
 L["LT_CHARACTER_DATA"] = "角色数据"
