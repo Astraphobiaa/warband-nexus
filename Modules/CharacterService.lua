@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Character Service
     Manages character tracking, favorites, and character-specific operations
     Extracted from Core.lua for proper separation of concerns
@@ -1520,6 +1520,56 @@ function CharacterService:SortCharacterRosterList(list, profile, orderKey, opts)
         })
     end)
     return list
+end
+
+--- Get persisted location for a specific character.
+--- @param addon table WarbandNexus addon instance
+--- @param charKey string Character GUID or Name-Realm key
+--- @return table|nil { uiMapID, zoneName, mapX, mapY, isResting, savedAt }
+function CharacterService:GetCharacterLocation(addon, charKey)
+    if not addon or not addon.db or not addon.db.global or not addon.db.global.characters then return nil end
+    local chars = addon.db.global.characters
+    local entry = chars[charKey]
+    if not entry and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local canon = ns.Utilities:GetCanonicalCharacterKey(charKey)
+        entry = chars[canon]
+    end
+    if not entry then return nil end
+
+    if entry.uiMapID or entry.zoneName then
+        return {
+            uiMapID = entry.uiMapID,
+            zoneName = entry.zoneName or "",
+            mapX = entry.mapX,
+            mapY = entry.mapY,
+            isResting = entry.isResting or false,
+            savedAt = entry.locationSavedAt or entry.lastSeen or 0,
+        }
+    end
+    return nil
+end
+
+--- Get all characters' persisted locations across the Warband.
+--- @param addon table WarbandNexus addon instance
+--- @return table { [charKey] = locationTable }
+function CharacterService:GetAllCharacterLocations(addon)
+    local result = {}
+    if not addon or not addon.db or not addon.db.global or not addon.db.global.characters then return result end
+    for charKey, entry in pairs(addon.db.global.characters) do
+        if entry.uiMapID or entry.zoneName then
+            result[charKey] = {
+                uiMapID = entry.uiMapID,
+                zoneName = entry.zoneName or "",
+                mapX = entry.mapX,
+                mapY = entry.mapY,
+                isResting = entry.isResting or false,
+                savedAt = entry.locationSavedAt or entry.lastSeen or 0,
+                charName = entry.name or charKey,
+                classFile = entry.classFile or "PRIEST",
+            }
+        end
+    end
+    return result
 end
 
 -- EXPORT

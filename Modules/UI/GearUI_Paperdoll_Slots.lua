@@ -351,7 +351,17 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                         }
                     end
                 end
+
+                if up.cascadeSavings and up.cascadeSavings.totalCrestsSaved and up.cascadeSavings.totalCrestsSaved > 0 then
+                    local fmt = (ns.L and ns.L["CASCADE_SAVINGS_BANNER"]) or "Cascades to %d alts: Saves %d %s Crests across your Warband"
+                    local crestName = up.cascadeSavings.crestType or "Dawncrest"
+                    additionalLines[#additionalLines + 1] = {
+                        text = format(fmt, #up.cascadeSavings.affectedAlts, up.cascadeSavings.totalCrestsSaved, crestName),
+                        color = { 1, 0.82, 0.22 }
+                    }
+                end
             end
+
 
             if #additionalLines == 0 then
                 additionalLines = nil

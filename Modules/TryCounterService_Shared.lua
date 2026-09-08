@@ -5,6 +5,7 @@
 ]]
 
 local _, ns = ...
+local WarbandNexus = ns.WarbandNexus
 
 local format = string.format
 local strfind = string.find
@@ -78,3 +79,90 @@ function TC.BuildObtainedChat(baseKey, baseFallback, itemLink, preResetCount)
         or "You got %s after %d attempts!"
     return prefix .. "|cffffffff" .. format(fmt, itemLink, totalTries) .. "|r" .. tagStr
 end
+
+--- Find the nearest eligible alt for a target entity / encounter / rare.
+--- @param targetID number|string|nil Optional identifier (e.g. creatureID, encounterID, questID)
+--- @param targetMapID number|nil Target zone uiMapID
+--- @param targetX number|nil Target normalized map X coordinate (0-1)
+--- @param targetY number|nil Target normalized map Y coordinate (0-1)
+--- @return table|nil { bestAlt = table, allAlts = table }
+function WarbandNexus:FindNearestEligibleAlt(targetID, targetMapID, targetX, targetY)
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return nil
+    end
+
+    local candidates = {}
+    local CS = ns.CharacterService
+    local locs = CS and CS.GetAllCharacterLocations and CS:GetAllCharacterLocations(self) or {}
+
+    for charKey, charData in pairs(self.db.global.characters) do
+        local isEligible = true
+        if targetID and self.IsDropEligible then
+            local ok, eligible = pcall(self.IsDropEligible, self, charKey, targetID)
+            if ok and eligible == false then
+                isEligible = false
+            end
+        end
+
+        local loc = locs[charKey] or {
+            uiMapID = charData.uiMapID,
+            zoneName = charData.zoneName or "",
+            mapX = charData.mapX,
+            mapY = charData.mapY,
+            isResting = charData.isResting or false,
+        }
+
+        local score = 100
+        local distDesc = "Distant"
+        local charMap = loc and loc.uiMapID
+
+        if targetMapID and charMap and charMap == targetMapID then
+            if targetX and targetY and loc.mapX and loc.mapY then
+                local dx = loc.mapX - targetX
+                local dy = loc.mapY - targetY
+                local d = math.sqrt(dx * dx + dy * dy)
+                score = math.floor(d * 10)
+                distDesc = string.format("In Zone (%.0f%% away)", d * 100)
+            else
+                score = 5
+                distDesc = "In Same Zone"
+            end
+        elseif loc and loc.isResting then
+            score = 30
+            distDesc = (loc.zoneName and loc.zoneName ~= "") and ("Resting in " .. loc.zoneName) or "Resting in City"
+        elseif loc and loc.zoneName and loc.zoneName ~= "" then
+            score = 70
+            distDesc = loc.zoneName
+        end
+
+        if not isEligible then
+            score = score + 1000
+        end
+
+        candidates[#candidates + 1] = {
+            charKey = charKey,
+            charName = charData.name or charKey,
+            classFile = charData.classFile or "PRIEST",
+            uiMapID = charMap,
+            zoneName = loc and loc.zoneName or "",
+            mapX = loc and loc.mapX,
+            mapY = loc and loc.mapY,
+            score = score,
+            distanceDesc = distDesc,
+            isEligible = isEligible,
+        }
+    end
+
+    table.sort(candidates, function(a, b)
+        return a.score < b.score
+    end)
+
+    if #candidates > 0 then
+        return {
+            bestAlt = candidates[1],
+            allAlts = candidates,
+        }
+    end
+    return nil
+end
+

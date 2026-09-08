@@ -691,8 +691,26 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
             text = string.format("|cff55ff55" .. reqFmt .. "|r", "+" .. neededLevel),
             color = VaultCompleteLineColor()
         })
+        if WarbandNexus.GetKeystoneSynergyMatrix then
+            local synergies = WarbandNexus:GetKeystoneSynergyMatrix()
+            if synergies and #synergies > 0 then
+                for si = 1, #synergies do
+                    local syn = synergies[si]
+                    if syn.keystone and syn.keystone.level and syn.keystone.level >= neededLevel then
+                        local kInfo = string.format("+%d %s", syn.keystone.level, syn.keystone.dungeonName or "")
+                        local synTitle = GetLocalizedText("KEYSTONE_SYNERGY_TITLE", "Keystone Synergy")
+                        table.insert(lines, {
+                            text = string.format("|cff00ccff[%s]|r %s (%s)", synTitle, syn.holderName, kInfo),
+                            color = { 0, 0.8, 1 }
+                        })
+                        break
+                    end
+                end
+            end
+        end
     end
 end
+
 
 --[[
     Build world/delve tier progress lines for vault tooltips using cached GetSortedProgressForActivity.

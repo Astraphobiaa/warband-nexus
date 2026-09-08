@@ -267,11 +267,41 @@ function WarbandNexus:GetCharacterData(forceRefresh)
     return self.db.global.characters[tableKey]
 end
 
+local function CollectPlayerLocation()
+    if not C_Map or not C_Map.GetBestMapForUnit then return nil end
+    local okMap, uiMapID = pcall(C_Map.GetBestMapForUnit, "player")
+    if not okMap or not uiMapID or (issecretvalue and issecretvalue(uiMapID)) then return nil end
+    local mapInfo = C_Map.GetMapInfo and C_Map.GetMapInfo(uiMapID)
+    local mapX, mapY = nil, nil
+    if C_Map.GetPlayerMapPosition then
+        local okPos, pos = pcall(C_Map.GetPlayerMapPosition, uiMapID, "player")
+        if okPos and pos and pos.GetXY then
+            local x, y = pos:GetXY()
+            if x and y and not (issecretvalue and issecretvalue(x)) then
+                mapX = math.floor(x * 10000) / 10000
+                mapY = math.floor(y * 10000) / 10000
+            end
+        end
+    end
+    local zoneName = (mapInfo and mapInfo.name) or (GetZoneText and GetZoneText()) or ""
+    if issecretvalue and issecretvalue(zoneName) then zoneName = "" end
+    local isResting = (IsResting and IsResting()) and true or false
+    return {
+        uiMapID = uiMapID,
+        zoneName = zoneName,
+        mapX = mapX,
+        mapY = mapY,
+        isResting = isResting,
+        savedAt = time(),
+    }
+end
+
 ---Update character data in DB (called by event handlers)
 ---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
 ---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
 ---@param value any|nil Optional event payload for dataType (e.g. new level from PLAYER_LEVEL_UP)
 function WarbandNexus:UpdateCharacterCache(dataType, value)
+
     local tableKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
         and ns.CharacterService:ResolveCharactersTableKey(self)
     if not tableKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
@@ -363,12 +393,19 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         local newSubZone = GetSubZoneText()
         if newZone and issecretvalue and issecretvalue(newZone) then newZone = nil end
         if newSubZone and issecretvalue and issecretvalue(newSubZone) then newSubZone = nil end
-        if charData.zoneName == newZone and charData.subZoneName == newSubZone then
-            return
-        end
         charData.zoneName = newZone
         charData.subZoneName = newSubZone
+
+        local loc = CollectPlayerLocation()
+        if loc then
+            charData.uiMapID = loc.uiMapID
+            charData.mapX = loc.mapX
+            charData.mapY = loc.mapY
+            charData.isResting = loc.isResting
+            charData.locationSavedAt = loc.savedAt
+        end
     elseif dataType == "rested" then
+
         local newRested = CollectRestedData()
         local existingRested = charData.rested
         -- Preserve maxXP when API returned nil so we don't overwrite good DB value
@@ -1096,6 +1133,15 @@ function WarbandNexus:SaveCurrentCharacterData(options)
             end
             return false
         end)()
+        local lightLoc = CollectPlayerLocation()
+        if lightLoc then
+            existingEntry.uiMapID = lightLoc.uiMapID
+            existingEntry.zoneName = lightLoc.zoneName
+            existingEntry.mapX = lightLoc.mapX
+            existingEntry.mapY = lightLoc.mapY
+            existingEntry.isResting = lightLoc.isResting
+            existingEntry.locationSavedAt = lightLoc.savedAt
+        end
         if not existingEntry.guid or existingEntry.guid == ""
             or (issecretvalue and issecretvalue(existingEntry.guid)) then
             if ns.Utilities and ns.Utilities.SafeGuid then
@@ -1109,6 +1155,8 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         RelocateLegacyCharacterSlot(self.db, key, legacyKey)
         return _saveProfEnd(true)
     end
+
+    local fullLoc = CollectPlayerLocation()
 
     self.db.global.characters[key] = {
         name = name,
@@ -1127,6 +1175,12 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         gender = gender,
         itemLevel = itemLevel,
         mythicKey = keystoneData,
+        uiMapID = (fullLoc and fullLoc.uiMapID) or (existingEntry and existingEntry.uiMapID),
+        zoneName = (fullLoc and fullLoc.zoneName) or (existingEntry and existingEntry.zoneName),
+        mapX = (fullLoc and fullLoc.mapX) or (existingEntry and existingEntry.mapX),
+        mapY = (fullLoc and fullLoc.mapY) or (existingEntry and existingEntry.mapY),
+        isResting = (fullLoc and fullLoc.isResting) or (existingEntry and existingEntry.isResting),
+        locationSavedAt = (fullLoc and fullLoc.savedAt) or (existingEntry and existingEntry.locationSavedAt),
         isTracked = true,     -- Track this character (API calls, data updates enabled)
         -- Preserve the user's explicit choice (false must survive a save or the
         -- tracking popup gets skipped); default true only when no choice exists yet.
@@ -1136,6 +1190,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
         -- Preserve profession service data
         concentration        = preserveConcentration,
+
         recipes              = preserveRecipes,
         professionExpansions = preserveProfExpansions,
         discoveredSkillLines = preserveDiscoveredSkillLines,

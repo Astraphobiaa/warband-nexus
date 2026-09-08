@@ -2524,6 +2524,148 @@ function WarbandNexus:GetAllConcentrationData()
     return result
 end
 
+--- Get projected concentration for a character's profession in real-time.
+--- In WoW, Concentration regenerates at 10 points per hour (1 point every 360 seconds).
+--- @param charKey string Character key or GUID
+--- @param skillLineID number|string
+--- @return table|nil { current, max, projected, secondsToCap, isCapped, currencyID, professionName, lastUpdate }
+function WarbandNexus:GetProjectedConcentration(charKey, skillLineID)
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return nil
+    end
+    local charData = self.db.global.characters[charKey]
+    if not charData or not charData.concentration then
+        return nil
+    end
+    local concData = charData.concentration[skillLineID]
+    if not concData then
+        for _, cd in pairs(charData.concentration) do
+            if cd.skillLineID == skillLineID or cd.professionName == skillLineID or cd.currencyID == skillLineID then
+                concData = cd
+                break
+            end
+        end
+    end
+    if not concData then return nil end
+
+    local current = tonumber(concData.current) or 0
+    local maxVal = tonumber(concData.max) or 1000
+    if maxVal <= 0 then maxVal = 1000 end
+    local lastUpdate = tonumber(concData.lastUpdate) or time()
+    local elapsed = math.max(0, time() - lastUpdate)
+
+    -- 1 point every 360 seconds (10 points per hour)
+    local gained = math.floor(elapsed / 360)
+    local projected = math.min(maxVal, current + gained)
+    local remaining = math.max(0, maxVal - projected)
+    local secondsToCap = remaining * 360
+    local isCapped = (projected >= maxVal)
+
+    return {
+        current = current,
+        max = maxVal,
+        projected = projected,
+        secondsToCap = secondsToCap,
+        isCapped = isCapped,
+        currencyID = concData.currencyID,
+        professionName = concData.professionName,
+        lastUpdate = lastUpdate,
+    }
+end
+
+--- Get all crafters whose concentration is within thresholdHours of capping or already capped.
+--- @param thresholdHours number|nil Default 4 hours
+--- @return table list of { charKey, charName, classFile, professionName, current, projected, max, secondsToCap, isCapped }
+function WarbandNexus:GetConcentrationExpiringAlerts(thresholdHours)
+    local maxSeconds = (tonumber(thresholdHours) or 4) * 3600
+    local list = {}
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return list
+    end
+
+    local allConc = self:GetAllConcentrationData()
+    for profName, entries in pairs(allConc) do
+        for i = 1, #entries do
+            local e = entries[i]
+            local current = tonumber(e.current) or 0
+            local maxVal = tonumber(e.max) or 1000
+            if maxVal <= 0 then maxVal = 1000 end
+            local lastUpdate = tonumber(e.lastUpdate) or time()
+            local elapsed = math.max(0, time() - lastUpdate)
+            local gained = math.floor(elapsed / 360)
+            local projected = math.min(maxVal, current + gained)
+            local remaining = math.max(0, maxVal - projected)
+            local secondsToCap = remaining * 360
+            local isCapped = (projected >= maxVal)
+
+            if isCapped or secondsToCap <= maxSeconds then
+                list[#list + 1] = {
+                    charKey = e.charKey,
+                    charName = e.charName,
+                    classFile = e.classFile,
+                    professionName = profName,
+                    current = current,
+                    projected = projected,
+                    max = maxVal,
+                    secondsToCap = secondsToCap,
+                    isCapped = isCapped,
+                }
+            end
+        end
+    end
+
+    table.sort(list, function(a, b)
+        return a.secondsToCap < b.secondsToCap
+    end)
+
+    return list
+end
+
+--- Get full concentration queue across all crafters, ranked by urgency (least seconds to cap first).
+--- @return table list of all tracked crafters with projected concentration and time-to-cap
+function WarbandNexus:GetConcentrationQueue()
+    local list = {}
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return list
+    end
+
+    local allConc = self:GetAllConcentrationData()
+    for profName, entries in pairs(allConc) do
+        for i = 1, #entries do
+            local e = entries[i]
+            local current = tonumber(e.current) or 0
+            local maxVal = tonumber(e.max) or 1000
+            if maxVal <= 0 then maxVal = 1000 end
+            local lastUpdate = tonumber(e.lastUpdate) or time()
+            local elapsed = math.max(0, time() - lastUpdate)
+            local gained = math.floor(elapsed / 360)
+            local projected = math.min(maxVal, current + gained)
+            local remaining = math.max(0, maxVal - projected)
+            local secondsToCap = remaining * 360
+            local isCapped = (projected >= maxVal)
+
+            list[#list + 1] = {
+                charKey = e.charKey,
+                charName = e.charName,
+                classFile = e.classFile,
+                professionName = profName,
+                current = current,
+                projected = projected,
+                max = maxVal,
+                secondsToCap = secondsToCap,
+                isCapped = isCapped,
+            }
+        end
+    end
+
+    table.sort(list, function(a, b)
+        return a.secondsToCap < b.secondsToCap
+    end)
+
+    return list
+end
+
+
 --[[
     How many crafts are possible from materials (same math as Recipe Companion: warband bank +
     all tracked characters' bags/banks). Uses limiting required reagent slots only; optional slots skipped.

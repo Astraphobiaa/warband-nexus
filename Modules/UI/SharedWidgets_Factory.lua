@@ -318,9 +318,19 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
                 hintR, hintG, hintB = 1, 1, 1
             end
             GameTooltip:AddLine(hint, hintR, hintG, hintB, true)
+            if WarbandNexus and WarbandNexus.FindNearestEligibleAlt and self._wnTryID then
+                local res = WarbandNexus:FindNearestEligibleAlt(self._wnTryID)
+                if res and res.bestAlt then
+                    local altFmt = (ns.L and ns.L["NEAREST_ELIGIBLE_ALT"]) or "Best Alt: %s (%s)"
+                    local altStr = string.format(altFmt, res.bestAlt.charName, res.bestAlt.distanceDesc or "Ready")
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine(altStr, 0.3, 0.9, 1, true)
+                end
+            end
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     end
 
     row:SetScript("OnClick", nil)

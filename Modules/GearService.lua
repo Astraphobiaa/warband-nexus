@@ -1469,6 +1469,82 @@ function WarbandNexus:GetAccountWatermarks()
     return WarbandNexus.db.global.accountWatermarks or {}
 end
 
+--- Simulate how upgrading an item in slotID to targetIlvl cascades crest discounts to other alts in the Warband.
+--- @param slotID number Equipment slot ID (e.g. 1=Head, 5=Chest, etc.)
+--- @param targetIlvl number Target item level after upgrade
+--- @param sourceCharKey string|nil Character performing the upgrade (to exclude from beneficiaries)
+--- @return table { totalCrestsSaved = number, crestType = string, affectedAlts = table }
+function WarbandNexus:SimulateWatermarkCascade(slotID, targetIlvl, sourceCharKey)
+    local result = {
+        totalCrestsSaved = 0,
+        crestType = "Dawncrest",
+        affectedAlts = {},
+    }
+    if not slotID or not targetIlvl or targetIlvl <= 0 then return result end
+    if not self.db or not self.db.global or not self.db.global.characters then return result end
+
+    local currentAccountWm = self:GetAccountWatermarkForSlot(slotID)
+    if targetIlvl <= currentAccountWm then return result end
+
+    local U = ns.Utilities
+    local sourceCanon = sourceCharKey
+    if U and U.GetCanonicalCharacterKey and sourceCharKey then
+        sourceCanon = U:GetCanonicalCharacterKey(sourceCharKey) or sourceCharKey
+    end
+
+    for charKey, charData in pairs(self.db.global.characters) do
+        local canon = charKey
+        if U and U.GetCanonicalCharacterKey then
+            canon = U:GetCanonicalCharacterKey(charKey) or charKey
+        end
+
+        if not sourceCanon or canon ~= sourceCanon then
+            local gear = self:GetEquippedGear(canon)
+            if gear and gear.slots and gear.slots[slotID] then
+                local slot = gear.slots[slotID]
+                local charIlvl = tonumber(slot.itemLevel) or 0
+                if charIlvl > 0 and charIlvl < targetIlvl and not slot.isCrafted then
+                    local trackName = slot.upgradeTrack or ""
+                    local currUpgrade = tonumber(slot.currUpgrade) or 0
+                    local maxUpgrade = tonumber(slot.maxUpgrade) or 0
+
+                    local baseline = math.max(charIlvl, currentAccountWm)
+                    local ilvlDiff = targetIlvl - baseline
+                    local stepsDiscounted = math.max(1, math.floor(ilvlDiff / 3.3))
+                    if maxUpgrade > 0 and currUpgrade < maxUpgrade then
+                        local remainingSteps = maxUpgrade - currUpgrade
+                        if stepsDiscounted > remainingSteps then
+                            stepsDiscounted = remainingSteps
+                        end
+                    end
+
+                    local crestsSaved = stepsDiscounted * 15
+                    if crestsSaved > 0 then
+                        result.totalCrestsSaved = result.totalCrestsSaved + crestsSaved
+                        result.affectedAlts[#result.affectedAlts + 1] = {
+                            charKey = canon,
+                            charName = charData.name or canon,
+                            classFile = charData.classFile or "PRIEST",
+                            currentIlvl = charIlvl,
+                            targetIlvl = targetIlvl,
+                            stepsDiscounted = stepsDiscounted,
+                            crestsSaved = crestsSaved,
+                            trackName = trackName,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(result.affectedAlts, function(a, b)
+        return a.currentIlvl < b.currentIlvl
+    end)
+
+    return result
+end
+
+
 function MergeGearDataBucket(current, legacy)
     if type(legacy) ~= "table" then return current end
     if type(current) ~= "table" then return legacy end
@@ -2662,6 +2738,10 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 isDiscounted = true
             end
             local effectiveWm = math.max(perSlotWm, acctWm)
+            local cascade = nil
+            if hasNext and nextIlvl > effectiveWm then
+                cascade = WarbandNexus:SimulateWatermarkCascade(slotID, nextIlvl, canon)
+            end
 
             upgrades[slotID] = {
                 canUpgrade    = hasNext,
@@ -2678,7 +2758,9 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 accountWatermarkIlvl = acctWm,
                 isAccountDiscounted = (acctWm > 0 and itemLevel <= acctWm),
                 nextUpgradeIsDiscounted = isDiscounted or (acctWm > 0 and nextIlvl <= acctWm),
+                cascadeSavings = cascade,
             }
+
         end
     end
 

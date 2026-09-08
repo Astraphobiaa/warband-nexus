@@ -1184,17 +1184,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V357"] = [=[v3.5.7 (2026-09-02)
+L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-08)
 
-Season 2 item levels corrected against the game's own data, a try counter fix reported from the field, and three Delves corrections.
+Warband concentration tracking, crest cascade simulation, strategic alt staging, keystone synergy tools, and Great Vault improvements.
+
+Added:
+- Concentration recovery and time-to-cap countdowns are now tracked across all characters, with alerts before a profession caps.
+- Equipment upgrade tooltips now calculate and display crest savings cascaded across your alts when raising an account watermark.
+- The try counter now recommends the nearest eligible alt staged in the zone or resting in a nearby hub for collectible attempts.
+- Great Vault Mythic+ slots now highlight warband alts holding keystones that can upgrade your vault or boost your rating.
+- Added a Great Vault dead run tracker showing the exact run level floor where additional runs stop improving your vault rewards.
+- Added a crafting order shopping list generator that reconciles missing materials with your bags and warband bank.
 
 Fixed:
-- Season 2 item levels are right now. Every upgrade track was six item levels too low, so a Season 2 piece could be shown on the wrong rank with the wrong next upgrade step, and crafted gear caps were off with them. The new numbers are read from the game's own crest descriptions rather than from patch previews.
-- Crest tooltips now list where each crest actually comes from, again from the game's own descriptions. The Mythic Keystone ranges were wrong for Hero and Myth crests, and the Season 2 spark currency was missing from the highlighted currencies entirely.
-- The try counter no longer keeps counting attempts for a drop you already have when the collectible it turns into has not appeared yet. The Nether-Warped Egg is the case that exposed it: the drake takes seven days to hatch, so every later cast kept adding an attempt. The addon now recognises the item in your bags, bank, reagent bank or warband bank and stops counting - including when you looted it on another character or before installing the addon. Thanks to @claytonkimber for the detailed report.
-- Delves now show the right number of weekly Gilded Stashes. A character could show a maximum of 3 instead of 4 whenever the Delves panel had not been opened that session.
-- Reputation gains from your Delve companion are announced again on non-English game clients. The addon recognised the companion by its English name only, which silently switched the companion experience notifications off everywhere else.
-- The Delve companion's level and name are recorded again. The companion is a friendship rather than a renown faction in Midnight, so the addon was asking for renown data that never existed for it.
+- Corrected drop conditions for Timewalking dungeons, flexible raids, and legacy bosses in the try counter.
+- Prevented interface taint issues caused by custom tooltip layouts when hiding widgets.
 
 CurseForge: Warband Nexus]=]
 
@@ -2582,4 +2586,16 @@ L["SHOPPING_LIST_BUTTON"] = "Lista de compras"
 L["SHOPPING_LIST_ALL_OWNED"] = "¡Todos los componentes para %s están disponibles en tu tropa!"
 L["SHOPPING_LIST_COPIED"] = "Lista de compras copiada para %s (%d objetos) al portapapeles."
 L["SHOPPING_LIST_TITLE"] = "Lista de compras: %s"
+
+-- Features 1-4: Concentration, Crest Cascade, Proximity Dispatcher, Keystone Synergy
+L["CONCENTRATION_CAP_IN"] = "Máx en %s"
+L["CONCENTRATION_CAPPED"] = "Al máximo (1.000/1.000)"
+L["CONCENTRATION_EXPIRING_ALERT"] = "Concentración a punto de alcanzar el límite en %s (%s)"
+L["CASCADE_SAVINGS_BANNER"] = "Cascada a %d personajes: Ahorra %d blasones %s en tu tropa"
+L["CASCADE_AFFECTED_ALTS"] = "Mejorar a %d otorga descuentos de blasones a nivel de cuenta para:"
+L["NEAREST_ELIGIBLE_ALT"] = "Mejor personaje: %s (%s)"
+L["KEYSTONE_SYNERGY_TITLE"] = "Sinergia de piedras angulares"
+L["KEYSTONE_RATING_BOOST"] = "En posesión de %s: +%d índice potencial para %s"
+L["KEYSTONE_REROLL_SUGGESTION"] = "Reroll sugerido: %s (%d personajes necesitan índice)"
+
 

@@ -1181,17 +1181,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V357"] = [=[v3.5.7 (2026-09-02)
+L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-08)
 
-Season 2 item levels corrected against the game's own data, a try counter fix reported from the field, and three Delves corrections.
+Warband concentration tracking, crest cascade simulation, strategic alt staging, keystone synergy tools, and Great Vault improvements.
+
+Added:
+- Concentration recovery and time-to-cap countdowns are now tracked across all characters, with alerts before a profession caps.
+- Equipment upgrade tooltips now calculate and display crest savings cascaded across your alts when raising an account watermark.
+- The try counter now recommends the nearest eligible alt staged in the zone or resting in a nearby hub for collectible attempts.
+- Great Vault Mythic+ slots now highlight warband alts holding keystones that can upgrade your vault or boost your rating.
+- Added a Great Vault dead run tracker showing the exact run level floor where additional runs stop improving your vault rewards.
+- Added a crafting order shopping list generator that reconciles missing materials with your bags and warband bank.
 
 Fixed:
-- Season 2 item levels are right now. Every upgrade track was six item levels too low, so a Season 2 piece could be shown on the wrong rank with the wrong next upgrade step, and crafted gear caps were off with them. The new numbers are read from the game's own crest descriptions rather than from patch previews.
-- Crest tooltips now list where each crest actually comes from, again from the game's own descriptions. The Mythic Keystone ranges were wrong for Hero and Myth crests, and the Season 2 spark currency was missing from the highlighted currencies entirely.
-- The try counter no longer keeps counting attempts for a drop you already have when the collectible it turns into has not appeared yet. The Nether-Warped Egg is the case that exposed it: the drake takes seven days to hatch, so every later cast kept adding an attempt. The addon now recognises the item in your bags, bank, reagent bank or warband bank and stops counting - including when you looted it on another character or before installing the addon. Thanks to @claytonkimber for the detailed report.
-- Delves now show the right number of weekly Gilded Stashes. A character could show a maximum of 3 instead of 4 whenever the Delves panel had not been opened that session.
-- Reputation gains from your Delve companion are announced again on non-English game clients. The addon recognised the companion by its English name only, which silently switched the companion experience notifications off everywhere else.
-- The Delve companion's level and name are recorded again. The companion is a friendship rather than a renown faction in Midnight, so the addon was asking for renown data that never existed for it.
+- Corrected drop conditions for Timewalking dungeons, flexible raids, and legacy bosses in the try counter.
+- Prevented interface taint issues caused by custom tooltip layouts when hiding widgets.
 
 CurseForge: Warband Nexus]=]
 
@@ -2579,4 +2583,16 @@ L["SHOPPING_LIST_BUTTON"] = "购买清单"
 L["SHOPPING_LIST_ALL_OWNED"] = "%s 的所有材料都已在你的战团中！"
 L["SHOPPING_LIST_COPIED"] = "已将 %s 的购买清单（%d 件物品）复制到剪贴板。"
 L["SHOPPING_LIST_TITLE"] = "购买清单：%s"
+
+-- Features 1-4: Concentration, Crest Cascade, Proximity Dispatcher, Keystone Synergy
+L["CONCENTRATION_CAP_IN"] = "%s后满额"
+L["CONCENTRATION_CAPPED"] = "已满额 (1,000/1,000)"
+L["CONCENTRATION_EXPIRING_ALERT"] = "%s (%s) 的专注即将达到上限"
+L["CASCADE_SAVINGS_BANNER"] = "连锁惠及 %d 个小号：战团共节省 %d 个%s纹章"
+L["CASCADE_AFFECTED_ALTS"] = "升级至 %d 将为以下角色解锁全账号纹章折扣："
+L["NEAREST_ELIGIBLE_ALT"] = "最佳角色: %s (%s)"
+L["KEYSTONE_SYNERGY_TITLE"] = "钥石联动协同"
+L["KEYSTONE_RATING_BOOST"] = "%s 持有：为 %s 带来 +%d 潜在评分"
+L["KEYSTONE_REROLL_SUGGESTION"] = "建议重置目标：%s（%d 个角色需要评分）"
+
 

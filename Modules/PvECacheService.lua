@@ -2418,8 +2418,161 @@ function WarbandNexus:GetVaultDeadRunAnalysis(charKey)
     return analysis
 end
 
+--- Get the cross-character keystone synergy matrix.
+--- For every alt holding a keystone, analyzes how that keystone benefits other characters in the warband
+--- (e.g. higher level than their current best run for that dungeon, or lifts a vault slot).
+--- @return table list of synergies { holderKey, holderName, classFile, keystone, beneficiaries = { ... }, totalRatingPotential }
+function WarbandNexus:GetKeystoneSynergyMatrix()
+    local result = {}
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return result
+    end
+
+    local chars = self.db.global.characters
+    local pve = self.db.global.pveCache
+    local runHistory = pve and pve.mythicPlus and pve.mythicPlus.runHistory or {}
+
+    local holders = {}
+    for charKey, charData in pairs(chars) do
+        local mk = charData.mythicKey
+        if mk and mk.level and tonumber(mk.level) and tonumber(mk.level) > 0 then
+            holders[#holders + 1] = {
+                charKey = charKey,
+                charName = charData.name or charKey,
+                classFile = charData.classFile or "WARRIOR",
+                mythicKey = {
+                    level = tonumber(mk.level) or 0,
+                    dungeonName = mk.dungeonName or (ns.Utilities and ns.Utilities.ResolveKeystoneDungeonName and ns.Utilities:ResolveKeystoneDungeonName(mk)) or "Keystone",
+                    mapChallengeModeID = mk.mapChallengeModeID,
+                },
+            }
+        end
+    end
+
+    for hi = 1, #holders do
+        local h = holders[hi]
+        local kLevel = h.mythicKey.level
+        local kDungeon = h.mythicKey.dungeonName
+        local beneficiaries = {}
+
+        for otherKey, otherData in pairs(chars) do
+            if otherKey ~= h.charKey then
+                local otherRuns = runHistory[otherKey] or {}
+                local currentBestForDungeon = 0
+                for ri = 1, #otherRuns do
+                    local r = otherRuns[ri]
+                    if r.dungeon and kDungeon and (r.dungeon == kDungeon or string.find(r.dungeon, kDungeon, 1, true) or string.find(kDungeon, r.dungeon, 1, true)) then
+                        local rLvl = tonumber(r.level) or 0
+                        if rLvl > currentBestForDungeon then
+                            currentBestForDungeon = rLvl
+                        end
+                    end
+                end
+
+                if kLevel > currentBestForDungeon then
+                    local levelDelta = kLevel - currentBestForDungeon
+                    local estRatingGain = math.floor(levelDelta * 7.5)
+                    beneficiaries[#beneficiaries + 1] = {
+                        charKey = otherKey,
+                        charName = otherData.name or otherKey,
+                        classFile = otherData.classFile or "PRIEST",
+                        currentBest = currentBestForDungeon,
+                        keyLevel = kLevel,
+                        levelDelta = levelDelta,
+                        estRatingGain = estRatingGain,
+                    }
+                end
+            end
+        end
+
+        table.sort(beneficiaries, function(a, b)
+            return a.estRatingGain > b.estRatingGain
+        end)
+
+        if #beneficiaries > 0 then
+            local tot = 0
+            for bi = 1, #beneficiaries do tot = tot + beneficiaries[bi].estRatingGain end
+            result[#result + 1] = {
+                holderKey = h.charKey,
+                holderName = h.charName,
+                classFile = h.classFile,
+                keystone = h.mythicKey,
+                beneficiaries = beneficiaries,
+                totalRatingPotential = tot,
+            }
+        end
+    end
+
+    table.sort(result, function(a, b)
+        return a.totalRatingPotential > b.totalRatingPotential
+    end)
+
+    return result
+end
+
+--- Get recommended dungeons to target for keystone rerolls based on what the warband needs most.
+--- @param minLevel number|nil Minimum level threshold (default 7)
+--- @return table list of { dungeonName, needyCount, totalPotential }
+function WarbandNexus:GetKeystoneRerollRecommendations(minLevel)
+    local minLvl = tonumber(minLevel) or 7
+    local dungeonNeeds = {}
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return {}
+    end
+
+    local chars = self.db.global.characters
+    local pve = self.db.global.pveCache
+    local runHistory = pve and pve.mythicPlus and pve.mythicPlus.runHistory or {}
+
+    local seenDungeons = {}
+    for _, runs in pairs(runHistory) do
+        for i = 1, #runs do
+            if runs[i].dungeon then
+                seenDungeons[runs[i].dungeon] = true
+            end
+        end
+    end
+
+    for dName in pairs(seenDungeons) do
+        local needyCount = 0
+        local totalPotential = 0
+        for charKey, charData in pairs(chars) do
+            local otherRuns = runHistory[charKey] or {}
+            local curBest = 0
+            for ri = 1, #otherRuns do
+                if otherRuns[ri].dungeon == dName then
+                    local lvl = tonumber(otherRuns[ri].level) or 0
+                    if lvl > curBest then curBest = lvl end
+                end
+            end
+            if curBest < minLvl then
+                needyCount = needyCount + 1
+                totalPotential = totalPotential + (minLvl - curBest) * 7.5
+            end
+        end
+
+        if needyCount > 0 then
+            dungeonNeeds[#dungeonNeeds + 1] = {
+                dungeonName = dName,
+                needyCount = needyCount,
+                totalPotential = math.floor(totalPotential),
+            }
+        end
+    end
+
+    table.sort(dungeonNeeds, function(a, b)
+        if a.needyCount ~= b.needyCount then
+            return a.needyCount > b.needyCount
+        end
+        return a.totalPotential > b.totalPotential
+    end)
+
+    return dungeonNeeds
+end
+
 ---True if CollectPvEData produced real M+ rows (not an error/empty pre-hydration snapshot).
 local function LegacyMythicSnapshotHasData(mp)
+
     if not mp or type(mp) ~= "table" then return false end
     if mp.keystone and type(mp.keystone.level) == "number" and mp.keystone.level > 0 and mp.keystone.mapID then
         return true
