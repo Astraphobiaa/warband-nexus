@@ -1475,9 +1475,28 @@ end
 --- @param sourceCharKey string|nil Character performing the upgrade (to exclude from beneficiaries)
 --- @return table { totalCrestsSaved = number, crestType = string, affectedAlts = table }
 function WarbandNexus:SimulateWatermarkCascade(slotID, targetIlvl, sourceCharKey)
+    local crestName = "Mistcrest"
+    local upInfo = ns.GearUpgradeTracks and ns.GearUpgradeTracks.ILVL_TO_UPGRADE and ns.GearUpgradeTracks.ILVL_TO_UPGRADE[targetIlvl]
+    local targetTrack = upInfo and upInfo[1]
+    if targetTrack and ns.TRACK_NAME_TO_CURRENCY_ID then
+        local cid = ns.TRACK_NAME_TO_CURRENCY_ID[targetTrack]
+        if cid and cid > 0 then
+            if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
+                if ok and info and info.name and info.name ~= "" and not (issecretvalue and issecretvalue(info.name)) then
+                    crestName = info.name
+                end
+            end
+            if crestName == "Mistcrest" and Constants and Constants.CREST_UI and Constants.CREST_UI.DISPLAY_NAMES and Constants.CREST_UI.DISPLAY_NAMES[cid] then
+                crestName = Constants.CREST_UI.DISPLAY_NAMES[cid]
+            end
+        end
+    end
+
     local result = {
         totalCrestsSaved = 0,
-        crestType = "Dawncrest",
+        crestType = crestName,
+        crestName = crestName,
         affectedAlts = {},
     }
     if not slotID or not targetIlvl or targetIlvl <= 0 then return result end

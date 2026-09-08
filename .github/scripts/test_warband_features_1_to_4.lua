@@ -183,7 +183,7 @@ do
     -- Player-02: baseline was 630 (account watermark > 619). ilvlDiff = 639 - 630 = 9. steps = 2. savings = 30 crests.
     -- Player-03: baseline was 630. ilvlDiff = 9. steps = 2. savings = 30 crests.
     assert_eq(cascade.totalCrestsSaved, 60, "Calculated exactly 60 crests saved across Warband")
-    assert_eq(cascade.crestType, "Dawncrest", "Correct Midnight crest type")
+    assert_eq(cascade.crestType, "Mistcrest", "Correct Midnight crest type")
 end
 
 print("=== Phase 3: Warband Strategic Staging & Rare Proximity Dispatcher ===")

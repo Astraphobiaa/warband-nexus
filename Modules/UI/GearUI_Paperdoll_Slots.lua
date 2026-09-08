@@ -292,14 +292,36 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                 local TRACK_ILVLS = ns.TRACK_ILVLS
                 local nextIlvl = TRACK_ILVLS and TRACK_ILVLS[up.trackName] and TRACK_ILVLS[up.trackName][nextTier]
                 local ilvlStr = nextIlvl and format(" (%d)", nextIlvl) or ""
+                local function GetUpgradeCrestName(upObj)
+                    if not upObj then return (ns.L and ns.L["GEAR_TT_DAWNCREST_WORD"]) or "Mistcrest" end
+                    local cid = upObj.currencyID
+                    if (not cid or cid == 0) and upObj.trackName and ns.TRACK_NAME_TO_CURRENCY_ID then
+                        cid = ns.TRACK_NAME_TO_CURRENCY_ID[upObj.trackName]
+                    end
+                    if cid and cid > 0 then
+                        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                            local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
+                            if ok and info and info.name and info.name ~= "" and not (issecretvalue and issecretvalue(info.name)) then
+                                return info.name
+                            end
+                        end
+                        local Constants = ns.Constants
+                        if Constants and Constants.CREST_UI and Constants.CREST_UI.DISPLAY_NAMES and Constants.CREST_UI.DISPLAY_NAMES[cid] then
+                            return Constants.CREST_UI.DISPLAY_NAMES[cid]
+                        end
+                    end
+                    return (ns.L and ns.L["GEAR_TT_DAWNCREST_WORD"]) or "Mistcrest"
+                end
+
                 if canPayNext then
                     additionalLines[#additionalLines + 1] = {
                         text = format((ns.L and ns.L["GEAR_UPGRADE_AVAILABLE_FORMAT"]) or "Available upgrade to %s %d/%d%s", LocalizeUpgradeTrackName(up.trackName or ""), nextTier, up.maxUpgrade or 0, ilvlStr),
                         color = { 0.4, 1, 0.4 }
                     }
                     if crestNeed > 0 then
+                        local crestWord = GetUpgradeCrestName(up)
                         additionalLines[#additionalLines + 1] = {
-                            text = format((ns.L and ns.L["GEAR_TT_NEXT_STEP_CRESTS"]) or "Next step: %d %s.", crestNeed, (ns.L and ns.L["GEAR_TT_DAWNCREST_WORD"]) or "Dawncrest"),
+                            text = format((ns.L and ns.L["GEAR_TT_NEXT_STEP_CRESTS"]) or "Next step: %d %s.", crestNeed, crestWord),
                             color = { 0.6, 0.9, 0.6 }
                         }
                         additionalLines[#additionalLines + 1] = {
@@ -320,7 +342,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                     end
                 else
                     if crestNeed > 0 then
-                        local crestWord = (ns.L and ns.L["GEAR_TT_DAWNCREST_WORD"]) or "Dawncrest"
+                        local crestWord = GetUpgradeCrestName(up)
                         additionalLines[#additionalLines + 1] = {
                             text = format((ns.L and ns.L["GEAR_TT_NEXT_STEP_CRESTS"]) or "Next step: %d %s.", crestNeed, crestWord),
                             color = { 0.85, 0.85, 0.85 }
@@ -353,8 +375,8 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                 end
 
                 if up.cascadeSavings and up.cascadeSavings.totalCrestsSaved and up.cascadeSavings.totalCrestsSaved > 0 then
-                    local fmt = (ns.L and ns.L["CASCADE_SAVINGS_BANNER"]) or "Cascades to %d alts: Saves %d %s Crests across your Warband"
-                    local crestName = up.cascadeSavings.crestType or "Dawncrest"
+                    local fmt = (ns.L and ns.L["CASCADE_SAVINGS_BANNER"]) or "Cascades to %d alts: Saves %d %s across your Warband"
+                    local crestName = up.cascadeSavings.crestName or up.cascadeSavings.crestType or GetUpgradeCrestName(up)
                     additionalLines[#additionalLines + 1] = {
                         text = format(fmt, #up.cascadeSavings.affectedAlts, up.cascadeSavings.totalCrestsSaved, crestName),
                         color = { 1, 0.82, 0.22 }

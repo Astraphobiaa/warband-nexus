@@ -316,7 +316,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     for i = 1, #crestDefs do
         local id = crestDefs[i].id
         local labelKey = crestDefs[i].labelKey
-        local crestLabel = labelKey and GetLocalizedText(labelKey, GetLocalizedText("PVE_CREST_GENERIC", "Dawncrest")) or GetLocalizedText("PVE_CREST_GENERIC", "Dawncrest")
+        local crestLabel = labelKey and GetLocalizedText(labelKey, GetLocalizedText("PVE_CREST_GENERIC", "Mistcrest")) or GetLocalizedText("PVE_CREST_GENERIC", "Mistcrest")
         local ck = "crest_" .. tostring(id)
         pickerRows[#pickerRows + 1] = {
             key = ck,
