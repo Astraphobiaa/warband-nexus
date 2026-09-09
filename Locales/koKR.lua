@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "이 분류의 할 일에 아직 미�
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "할 일 목록"
 L["CATEGORY_DAILY_TASKS"] = "주간 진행"
+L["CATEGORY_ROADMAP"] = "로드맵"
+L["ROADMAP_SUBTITLE"] = "주간 캐릭터 진행 상황, 위대한 금고 목표 및 우선순위입니다."
+L["ROADMAP_TAB_PVE"] = "PvE"
+L["ROADMAP_TAB_PVP"] = "PvP"
+L["ROADMAP_TAB_PROFESSIONS"] = "전문 기술"
+L["ROADMAP_PVP_TITLE"] = "PvP 주간 로드맵"
+L["ROADMAP_PROF_TITLE"] = "전문 기술 로드맵"
+L["ROADMAP_COMING_SOON"] = "다음 단계에서 추가될 모듈입니다. 활성 목표는 PvE를 확인하세요."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "이 캐릭터의 위대한 금고 보상을 수령할 수 있습니다!"
+L["ROADMAP_DELVES_HEADER"] = "오늘의 풍요로운 구렁"
+L["ROADMAP_KEYS_HELD"] = "열쇠"
+L["ROADMAP_NO_BOUNTIFUL"] = "Midnight 지역에 접속하여 활성 구렁을 스캔하세요."
+L["ROADMAP_PIN_DELVE"] = "고정"
+L["ROADMAP_WEEKLIES_HEADER"] = "주간 우선순위"
+L["ROADMAP_POWER_HEADER"] = "시즌 강화"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "공격대 귀속"
+L["ROADMAP_NO_LOCKOUTS"] = "이번 주 활성화된 공격대 귀속이 없습니다."
 L["CATEGORY_ILLUSIONS"] = "환영"
 
 

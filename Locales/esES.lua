@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Nada en tu lista de esta categoría 
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "Lista de pendientes"
 L["CATEGORY_DAILY_TASKS"] = "Progreso semanal"
+L["CATEGORY_ROADMAP"] = "Hoja de ruta"
+L["ROADMAP_SUBTITLE"] = "Progresión semanal del personaje, hitos de la gran cámara y prioridades."
+L["ROADMAP_TAB_PVE"] = "JcE"
+L["ROADMAP_TAB_PVP"] = "JcJ"
+L["ROADMAP_TAB_PROFESSIONS"] = "Profesiones"
+L["ROADMAP_PVP_TITLE"] = "Ruta semanal de JcJ"
+L["ROADMAP_PROF_TITLE"] = "Ruta de profesiones"
+L["ROADMAP_COMING_SOON"] = "Módulo disponible en la próxima fase. Consulta JcE para ver los hitos activos."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "¡Las recompensas de la Gran Cámara están listas para este personaje!"
+L["ROADMAP_DELVES_HEADER"] = "Abismos abundantes de hoy"
+L["ROADMAP_KEYS_HELD"] = "Llaves"
+L["ROADMAP_NO_BOUNTIFUL"] = "Entra en una zona de Midnight para escanear los abismos activos."
+L["ROADMAP_PIN_DELVE"] = "Fijar"
+L["ROADMAP_WEEKLIES_HEADER"] = "Prioridades semanales"
+L["ROADMAP_POWER_HEADER"] = "Poder de temporada"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Bloqueos de banda"
+L["ROADMAP_NO_LOCKOUTS"] = "No hay bloqueos de banda activos esta semana."
 L["CATEGORY_ILLUSIONS"] = "Ilusiones"
 
 

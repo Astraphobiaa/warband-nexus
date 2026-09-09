@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Niente nella To-Do di questa categor
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "Lista da fare"
 L["CATEGORY_DAILY_TASKS"] = "Progresso settimanale"
+L["CATEGORY_ROADMAP"] = "Tabella di marcia"
+L["ROADMAP_SUBTITLE"] = "Progressione settimanale del personaggio, traguardi della Gran Banca e priorità."
+L["ROADMAP_TAB_PVE"] = "PvE"
+L["ROADMAP_TAB_PVP"] = "PvP"
+L["ROADMAP_TAB_PROFESSIONS"] = "Professioni"
+L["ROADMAP_PVP_TITLE"] = "Roadmap settimanale PvP"
+L["ROADMAP_PROF_TITLE"] = "Roadmap professioni"
+L["ROADMAP_COMING_SOON"] = "Modulo in arrivo nella prossima fase. Controlla PvE per i traguardi attivi."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "Le ricompense della Gran Banca sono pronte per essere riscattate!"
+L["ROADMAP_DELVES_HEADER"] = "Scavi generosi di oggi"
+L["ROADMAP_KEYS_HELD"] = "Chiavi"
+L["ROADMAP_NO_BOUNTIFUL"] = "Accedi a una zona di Midnight per scansionare gli scavi attivi."
+L["ROADMAP_PIN_DELVE"] = "Fissa"
+L["ROADMAP_WEEKLIES_HEADER"] = "Priorità settimanali"
+L["ROADMAP_POWER_HEADER"] = "Potere stagionale"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Salvataggi incursione"
+L["ROADMAP_NO_LOCKOUTS"] = "Nessun salvataggio incursione attivo questa settimana."
 L["CATEGORY_ILLUSIONS"] = "Illusioni"
 
 

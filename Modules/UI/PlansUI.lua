@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Plans Tab UI
     User-driven goal tracker for mounts, pets, and toys
 
@@ -359,8 +359,8 @@ local PLAN_TYPES = ns.PLAN_TYPES
 -- Category definitions – My Plans always first, rest alphabetical
 local CATEGORIES = {
     { key = "active", name = (ns.L and ns.L["CATEGORY_MY_PLANS"]) or "To-Do List", icon = "Interface\\Icons\\INV_Misc_Map_01" },
+    { key = "roadmap", name = (ns.L and ns.L["CATEGORY_ROADMAP"]) or "Roadmap", icon = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend" },
     { key = "achievement", name = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
-    { key = "daily_tasks", name = (ns.L and ns.L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress", icon = "Interface\\Icons\\INV_Misc_Note_06" },
     { key = "illusion", name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions", iconAtlas = "UpgradeItem-32x32" },
     { key = "mount", name = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts", iconAtlas = "dragon-rostrum" },
     { key = "pet", name = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets", iconAtlas = "WildBattlePetCapturable" },
@@ -413,7 +413,7 @@ end
 --- Show Planned applies only on browse subtabs (Mounts, Pets, etc.), not To-Do List / Weekly Progress.
 local function IsPlansPlannedBrowseLocked()
     ResolvePlansCategoryFromSession()
-    return currentCategory == "active" or currentCategory == "daily_tasks"
+    return currentCategory == "active" or currentCategory == "daily_tasks" or currentCategory == "roadmap"
 end
 
 --- Update category bar active styling without rebuilding fixed header (sub-tab perf).
@@ -630,7 +630,7 @@ function WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, toCat)
         or (parent:GetWidth() or 600)
     local yOffset = mf._plansScrollBodyStartY or ((ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8)
 
-    if currentCategory == "daily_tasks" then
+    if currentCategory == "daily_tasks" or currentCategory == "roadmap" then
         yOffset = self:DrawActivePlans(parent, yOffset, width, currentCategory)
     else
         yOffset = self:DrawBrowser(parent, yOffset, width, currentCategory)
@@ -689,8 +689,8 @@ function ns.PlansUI_ApplyPlanDelta(planID, action)
     if currentCategory == "active" then
         return ns.PlansUI_RefreshActiveList()
     end
-    if currentCategory == "daily_tasks" then
-        -- Weekly Progress cards are not virtualized; let the caller repopulate.
+    if currentCategory == "daily_tasks" or currentCategory == "roadmap" then
+        -- Roadmap / Weekly Progress cards are not virtualized; let the caller repopulate.
         return false
     end
 
@@ -776,6 +776,38 @@ Browse.Install(WarbandNexus, {
 
 -- MAIN DRAW FUNCTION
 
+local function UpdatePlansHeaderControls(titleCard, category)
+    if not titleCard then return end
+    local isRoadmap = (category == "roadmap")
+    local isActive = (category == "active")
+
+    if titleCard._addCustomBtn then
+        titleCard._addCustomBtn:SetShown(isActive)
+    end
+    -- Deduplicated: Roadmap handles vault & quests automatically; hide manual add buttons in both Roadmap and To-Do
+    if titleCard._addWeeklyBtn then
+        titleCard._addWeeklyBtn:Hide()
+    end
+    if titleCard._addDailyBtn then
+        titleCard._addDailyBtn:Hide()
+    end
+    if titleCard._resetBtn then
+        titleCard._resetBtn:SetShown(isActive)
+    end
+    if titleCard._showCompletedCheckbox then
+        titleCard._showCompletedCheckbox:SetShown(not isRoadmap)
+    end
+    if titleCard._showCompletedLabel then
+        titleCard._showCompletedLabel:SetShown(not isRoadmap)
+    end
+    if titleCard._showPlannedCheckbox then
+        titleCard._showPlannedCheckbox:SetShown(not isRoadmap and not isActive)
+    end
+    if titleCard._showPlannedLabel then
+        titleCard._showPlannedLabel:SetShown(not isRoadmap and not isActive)
+    end
+end
+
 --- Reposition cached Plans fixedHeader chrome (Collections/Items parity — WN-PERF tab revisit).
 local function RepositionPlansFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, subtitleTextContent)
     local titleCard = hdrCache.titleCard
@@ -788,6 +820,7 @@ local function RepositionPlansFixedHeader(hdrCache, headerParent, chrome, header
         titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
     titleCard:Show()
+    UpdatePlansHeaderControls(titleCard, currentCategory)
     if hdrCache.subtitleText and subtitleTextContent then
         hdrCache.subtitleText:SetText(subtitleTextContent)
     end
@@ -866,10 +899,15 @@ function WarbandNexus:DrawPlansTab(parent)
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
     local titleTextContent = titleHex .. collectionPlansLabel .. "|r"
     local plansSubtitle = (ns.L and ns.L["PLANS_SUBTITLE_TEXT"]) or "Track your weekly goals & collections"
-    local activePlanText = activePlanCount ~= 1
-        and format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
-        or format((ns.L and ns.L["ACTIVE_PLAN_FORMAT"]) or "%d active plan", activePlanCount)
-    local subtitleTextContent = plansSubtitle .. " • " .. activePlanText
+    local subtitleTextContent
+    if currentCategory == "roadmap" then
+        subtitleTextContent = (ns.L and ns.L["ROADMAP_SUBTITLE"]) or "Weekly character progression, vault milestones, and priorities."
+    else
+        local activePlanText = activePlanCount ~= 1
+            and format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
+            or format((ns.L and ns.L["ACTIVE_PLAN_FORMAT"]) or "%d active plan", activePlanCount)
+        subtitleTextContent = plansSubtitle .. " • " .. activePlanText
+    end
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local plansToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
         tm.actionW or 100,
@@ -1160,6 +1198,15 @@ function WarbandNexus:DrawPlansTab(parent)
             end)
         end
 
+        titleCard._addCustomBtn = addCustomBtn
+        titleCard._addWeeklyBtn = addWeeklyBtn
+        titleCard._addDailyBtn = addDailyBtn
+        titleCard._resetBtn = resetBtn
+        titleCard._showCompletedCheckbox = checkbox
+        titleCard._showCompletedLabel = checkboxLabel
+        titleCard._showPlannedCheckbox = plannedCheckbox
+        titleCard._showPlannedLabel = plannedLabel
+        UpdatePlansHeaderControls(titleCard, currentCategory)
     end
 
     if ns.UI_HideTitleCardExpandCollapseControls then
@@ -1359,7 +1406,7 @@ function WarbandNexus:DrawPlansTab(parent)
         bodyY = bodyY + searchH + GetLayout().afterElement
         end
 
-        if currentCategory == "active" or currentCategory == "daily_tasks" then
+        if currentCategory == "active" or currentCategory == "daily_tasks" or currentCategory == "roadmap" then
             bodyY = self:DrawActivePlans(parent, bodyY, width, currentCategory)
         else
             bodyY = self:DrawBrowser(parent, bodyY, width, currentCategory)
@@ -2287,8 +2334,11 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
     end
 
-    if category == "daily_tasks" then
+    if category == "roadmap" or category == "daily_tasks" then
         parent._plansCardLayoutManager = nil
+        if ns.RoadmapUI and ns.RoadmapUI.DrawRoadmapView then
+            return ns.RoadmapUI:DrawRoadmapView(parent, yOffset, width)
+        end
         return self:DrawDailyTasksView(parent, yOffset, width, plans)
     end
     

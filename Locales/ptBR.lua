@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Nada na sua lista de tarefas nesta c
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "Lista de tarefas"
 L["CATEGORY_DAILY_TASKS"] = "Progresso Semanal"
+L["CATEGORY_ROADMAP"] = "Roteiro"
+L["ROADMAP_SUBTITLE"] = "Progressão semanal do personagem, marcos do Grande Cofre e prioridades."
+L["ROADMAP_TAB_PVE"] = "JxE"
+L["ROADMAP_TAB_PVP"] = "JxJ"
+L["ROADMAP_TAB_PROFESSIONS"] = "Profissões"
+L["ROADMAP_PVP_TITLE"] = "Roteiro semanal de JxJ"
+L["ROADMAP_PROF_TITLE"] = "Roteiro de profissões"
+L["ROADMAP_COMING_SOON"] = "Módulo chegando na próxima fase. Verifique JxE para marcos ativos."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "Recompensas do Grande Cofre prontas para resgate deste personagem!"
+L["ROADMAP_DELVES_HEADER"] = "Imersões Abundantes de Hoje"
+L["ROADMAP_KEYS_HELD"] = "Chaves"
+L["ROADMAP_NO_BOUNTIFUL"] = "Entre em uma zona de Midnight para rastrear imersões ativas."
+L["ROADMAP_PIN_DELVE"] = "Fixar"
+L["ROADMAP_WEEKLIES_HEADER"] = "Prioridades semanais"
+L["ROADMAP_POWER_HEADER"] = "Poder da Temporada"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Vínculos de Raide"
+L["ROADMAP_NO_LOCKOUTS"] = "Nenhum vínculo de raide ativo esta semana."
 L["CATEGORY_ILLUSIONS"] = "Ilusões"
 
 

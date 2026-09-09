@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Rien sur votre To-Do dans cette cat�
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "Liste des tâches"
 L["CATEGORY_DAILY_TASKS"] = "Progression hebdomadaire"
+L["CATEGORY_ROADMAP"] = "Feuille de route"
+L["ROADMAP_SUBTITLE"] = "Progression hebdomadaire du personnage, jalons de la Grande chambre forte et priorités."
+L["ROADMAP_TAB_PVE"] = "JcE"
+L["ROADMAP_TAB_PVP"] = "JcJ"
+L["ROADMAP_TAB_PROFESSIONS"] = "Métiers"
+L["ROADMAP_PVP_TITLE"] = "Feuille de route hebdomadaire JcJ"
+L["ROADMAP_PROF_TITLE"] = "Feuille de route des métiers"
+L["ROADMAP_COMING_SOON"] = "Module disponible dans la prochaine phase. Consultez le JcE pour les jalons actifs."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "Des récompenses de la Grande chambre forte sont prêtes à être récupérées pour ce personnage !"
+L["ROADMAP_DELVES_HEADER"] = "Gouffres abondants du jour"
+L["ROADMAP_KEYS_HELD"] = "Clés"
+L["ROADMAP_NO_BOUNTIFUL"] = "Connectez-vous dans une zone de Midnight pour analyser les gouffres actifs."
+L["ROADMAP_PIN_DELVE"] = "Épingler"
+L["ROADMAP_WEEKLIES_HEADER"] = "Priorités hebdomadaires"
+L["ROADMAP_POWER_HEADER"] = "Puissance saisonnière"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Verrouillages de raid"
+L["ROADMAP_NO_LOCKOUTS"] = "Aucun verrouillage de raid actif cette semaine."
 L["CATEGORY_ILLUSIONS"] = "Illusions et apparences"
 
 

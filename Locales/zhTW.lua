@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "此分類待辦中已沒有未收藏
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "待辦清單"
 L["CATEGORY_DAILY_TASKS"] = "每週進度"
+L["CATEGORY_ROADMAP"] = "路線圖"
+L["ROADMAP_SUBTITLE"] = "每週角色進度、偉大保存庫里程碑與優先事項。"
+L["ROADMAP_TAB_PVE"] = "PvE"
+L["ROADMAP_TAB_PVP"] = "PvP"
+L["ROADMAP_TAB_PROFESSIONS"] = "專業"
+L["ROADMAP_PVP_TITLE"] = "PvP 每週進度表"
+L["ROADMAP_PROF_TITLE"] = "專業技能進度表"
+L["ROADMAP_COMING_SOON"] = "該模組將在下一階段推出。請查看 PvE 瞭解重置里程碑。"
+L["ROADMAP_VAULT_REWARD_WAITING"] = "此角色的偉大保存庫獎勵已可領取！"
+L["ROADMAP_DELVES_HEADER"] = "今日豐盛探究"
+L["ROADMAP_KEYS_HELD"] = "鑰匙"
+L["ROADMAP_NO_BOUNTIFUL"] = "請登入至暗之夜區域以掃描活躍的探究興趣點。"
+L["ROADMAP_PIN_DELVE"] = "釘選"
+L["ROADMAP_WEEKLIES_HEADER"] = "每週優先事項"
+L["ROADMAP_POWER_HEADER"] = "賽季能量"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "團隊副本進度"
+L["ROADMAP_NO_LOCKOUTS"] = "本週無進行中的團隊副本進度。"
 L["CATEGORY_ILLUSIONS"] = "幻象"
 
 

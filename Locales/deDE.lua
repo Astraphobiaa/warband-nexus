@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "In dieser Kategorie ist auf der To-D
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "To-Do-Liste"
 L["CATEGORY_DAILY_TASKS"] = "Wöchentlicher Fortschritt"
+L["CATEGORY_ROADMAP"] = "Roadmap"
+L["ROADMAP_SUBTITLE"] = "Wöchentlicher Charakterfortschritt, Belohnungsmeilensteine und Prioritäten."
+L["ROADMAP_TAB_PVE"] = "PvE"
+L["ROADMAP_TAB_PVP"] = "PvP"
+L["ROADMAP_TAB_PROFESSIONS"] = "Berufe"
+L["ROADMAP_PVP_TITLE"] = "PvP-Wochenplan"
+L["ROADMAP_PROF_TITLE"] = "Berufe-Wochenplan"
+L["ROADMAP_COMING_SOON"] = "Modul folgt in der nächsten Phase. Siehe PvE für aktive Meilensteine."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "Große Schatzkammer-Belohnungen können für diesen Charakter abgeholt werden!"
+L["ROADMAP_DELVES_HEADER"] = "Heutige Großzügige Tiefen"
+L["ROADMAP_KEYS_HELD"] = "Schlüssel"
+L["ROADMAP_NO_BOUNTIFUL"] = "Betretet ein Midnight-Gebiet, um aktive Tiefen zu scannen."
+L["ROADMAP_PIN_DELVE"] = "Stecknadel"
+L["ROADMAP_WEEKLIES_HEADER"] = "Wöchentliche Prioritäten"
+L["ROADMAP_POWER_HEADER"] = "Saisonale Macht"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Schlachtzugs-Zuweisungen"
+L["ROADMAP_NO_LOCKOUTS"] = "Keine aktiven Schlachtzugszuweisungen in dieser Woche."
 L["CATEGORY_ILLUSIONS"] = "Illusionen"
 
 

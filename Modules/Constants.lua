@@ -162,6 +162,7 @@ local Constants = {
         QUEST_PROGRESS_UPDATED = "WN_QUEST_PROGRESS_UPDATED",
         --- CollectionService → Plans browse: one deferred ensure per category (payload: { category = "mount"|"pet"|"toy" })
         PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED = "WN_PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED",
+        ROADMAP_UPDATED = "WN_ROADMAP_UPDATED",
         
         -- Vault
         VAULT_CHECKPOINT_COMPLETED = "WN_VAULT_CHECKPOINT_COMPLETED",

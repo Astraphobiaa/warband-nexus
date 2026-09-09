@@ -396,6 +396,9 @@ function InitializationService:InitializeDataServices(addon)
                 if addon and addon.InitializePvECache then
                     addon:InitializePvECache()
                 end
+                if ns.RoadmapService and ns.RoadmapService.Initialize then
+                    ns.RoadmapService:Initialize(addon)
+                end
             end
         end, "P3:CurrencyPvE")
     end)

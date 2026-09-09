@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "В этой категории в с
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "Список дел"
 L["CATEGORY_DAILY_TASKS"] = "Еженедельный прогресс"
+L["CATEGORY_ROADMAP"] = "План развития"
+L["ROADMAP_SUBTITLE"] = "Еженедельный прогресс персонажа, этапы Великого хранилища и приоритеты."
+L["ROADMAP_TAB_PVE"] = "PvE"
+L["ROADMAP_TAB_PVP"] = "PvP"
+L["ROADMAP_TAB_PROFESSIONS"] = "Профессии"
+L["ROADMAP_PVP_TITLE"] = "План на неделю PvP"
+L["ROADMAP_PROF_TITLE"] = "План профессий"
+L["ROADMAP_COMING_SOON"] = "Модуль появится на следующем этапе. Смотрите PvE для активных целей."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "Награды Великого хранилища готовы к получению для этого персонажа!"
+L["ROADMAP_DELVES_HEADER"] = "Сегодняшние изобильные вылазки"
+L["ROADMAP_KEYS_HELD"] = "Ключи"
+L["ROADMAP_NO_BOUNTIFUL"] = "Войдите в зону Midnight для сканирования активных вылазок."
+L["ROADMAP_PIN_DELVE"] = "Метка"
+L["ROADMAP_WEEKLIES_HEADER"] = "Еженедельные приоритеты"
+L["ROADMAP_POWER_HEADER"] = "Сила сезона"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Сохранения рейдов"
+L["ROADMAP_NO_LOCKOUTS"] = "На этой неделе нет активных сохранений рейдов."
 L["CATEGORY_ILLUSIONS"] = "Иллюзии"
 
 

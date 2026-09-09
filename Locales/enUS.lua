@@ -147,6 +147,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Nothing on your To-Do List in this c
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "To-Do List"
 L["CATEGORY_DAILY_TASKS"] = "Weekly Progress"
+L["CATEGORY_ROADMAP"] = "Roadmap"
+L["ROADMAP_SUBTITLE"] = "Weekly character progression, vault milestones, and priorities."
+L["ROADMAP_TAB_PVE"] = "PvE"
+L["ROADMAP_TAB_PVP"] = "PvP"
+L["ROADMAP_TAB_PROFESSIONS"] = "Professions"
+L["ROADMAP_PVP_TITLE"] = "PvP Weekly Roadmap"
+L["ROADMAP_PROF_TITLE"] = "Professions Roadmap"
+L["ROADMAP_COMING_SOON"] = "Module coming in next phase. Check PvE for active reset milestones."
+L["ROADMAP_VAULT_REWARD_WAITING"] = "Great Vault rewards are ready to claim for this character!"
+L["ROADMAP_DELVES_HEADER"] = "Today's Bountiful Delves"
+L["ROADMAP_KEYS_HELD"] = "Keys"
+L["ROADMAP_NO_BOUNTIFUL"] = "Log into a Midnight zone to scan active delve POIs."
+L["ROADMAP_PIN_DELVE"] = "Pin"
+L["ROADMAP_WEEKLIES_HEADER"] = "Weekly Priorities"
+L["ROADMAP_POWER_HEADER"] = "Seasonal Power"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Raid Lockouts"
+L["ROADMAP_NO_LOCKOUTS"] = "No active raid lockouts this week."
 L["CATEGORY_ILLUSIONS"] = "Illusions"
 
 

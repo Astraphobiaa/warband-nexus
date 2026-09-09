@@ -145,6 +145,23 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "该分类待办中已没有未收藏
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "待办列表"
 L["CATEGORY_DAILY_TASKS"] = "每周进度"
+L["CATEGORY_ROADMAP"] = "路线图"
+L["ROADMAP_SUBTITLE"] = "每周角色进度、宏伟宝库里程碑与优先级目标。"
+L["ROADMAP_TAB_PVE"] = "PvE"
+L["ROADMAP_TAB_PVP"] = "PvP"
+L["ROADMAP_TAB_PROFESSIONS"] = "专业"
+L["ROADMAP_PVP_TITLE"] = "PvP 每周路线图"
+L["ROADMAP_PROF_TITLE"] = "专业技能路线图"
+L["ROADMAP_COMING_SOON"] = "该模块将在下一阶段推出。请查看 PvE 获取当前重置里程碑。"
+L["ROADMAP_VAULT_REWARD_WAITING"] = "该角色的宏伟宝库奖励已可领取！"
+L["ROADMAP_DELVES_HEADER"] = "今日丰盛地下堡"
+L["ROADMAP_KEYS_HELD"] = "钥匙"
+L["ROADMAP_NO_BOUNTIFUL"] = "请登录进入至暗之夜区域以扫描活跃的地下堡兴趣点。"
+L["ROADMAP_PIN_DELVE"] = "标记"
+L["ROADMAP_WEEKLIES_HEADER"] = "每周要务"
+L["ROADMAP_POWER_HEADER"] = "赛季能量"
+L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "团队副本锁定"
+L["ROADMAP_NO_LOCKOUTS"] = "本周无活跃团队副本锁定。"
 L["CATEGORY_ILLUSIONS"] = "幻象"
 
 
