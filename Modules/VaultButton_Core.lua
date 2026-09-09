@@ -56,8 +56,32 @@ M.MAX_ROWS = 20
 M.ICON_TEXTURE = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga"
 M.ICON_FALLBACK = "Interface\\Icons\\INV_Misc_TreasureChest02"
 M.VOIDCORE_ID = 3418
-M.MANAFLUX_ID = 3378
+M.MANAFLUX_ID = 3465 -- S2 Venomblight Manaflux default; resolved dynamically via GetManafluxID()
 M.BOUNTY_ITEM_ID = 252415
+
+function M.GetManafluxID()
+    local active = ns.SeasonData and ns.SeasonData.GetActive and ns.SeasonData:GetActive()
+    if active and active.keyCurrencies then
+        for cid, entry in pairs(active.keyCurrencies) do
+            if entry.category == "catalyst" then
+                return cid
+            end
+        end
+    end
+    return M.MANAFLUX_ID or 3465
+end
+
+function M.GetManafluxName()
+    local active = ns.SeasonData and ns.SeasonData.GetActive and ns.SeasonData:GetActive()
+    if active and active.keyCurrencies then
+        for cid, entry in pairs(active.keyCurrencies) do
+            if entry.category == "catalyst" then
+                return entry.name or "Venomblight Manaflux"
+            end
+        end
+    end
+    return "Venomblight Manaflux"
+end
 
 M.COL_NAME = 140
 M.COL_ILVL = 50
@@ -69,7 +93,7 @@ M.COL_PROGRESS = 108
 M.COL_REWARD_PROGRESS = 144
 M.COL_BOUNTY = 46   -- Trovehunter's Bounty (done/not)
 M.COL_VOIDCORE = 58   -- Nebulous Voidcore (current/seasonMax)
-M.COL_MANAFLUX = 58   -- Dawnlight Manaflux (current held)
+M.COL_MANAFLUX = 58   -- Season catalyst currency (current held)
 M.COL_STASH = 58   -- Gilded Stashes (current/max)
 M.COL_STATUS = 136   -- fit the longest status label ("Ready to Claim") without truncation
 

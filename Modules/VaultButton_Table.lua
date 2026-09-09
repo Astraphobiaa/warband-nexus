@@ -352,7 +352,9 @@ function M.BuildTableFrame()
         HCell(nil,      hx, COL_VOIDCORE,true,  TRACK_ICONS.voidcore, "Nebulous Voidcore", nil, "currency", VOIDCORE_ID) ; hx = hx + COL_VOIDCORE
     end
     if columns.manaflux == true then
-        HCell(nil,      hx, COL_MANAFLUX,true,  GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux), "Dawnlight Manaflux", nil, "currency", MANAFLUX_ID) ; hx = hx + COL_MANAFLUX
+        local mfId = (M.GetManafluxID and M.GetManafluxID()) or MANAFLUX_ID or 3465
+        local mfName = (M.GetManafluxName and M.GetManafluxName()) or "Venomblight Manaflux"
+        HCell(nil,      hx, COL_MANAFLUX,true,  GetCurrencyIcon(mfId, TRACK_ICONS.manaflux), mfName, nil, "currency", mfId) ; hx = hx + COL_MANAFLUX
     end
     HCell("Status",     hx, COL_STATUS,  false)
 

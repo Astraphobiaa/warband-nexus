@@ -308,13 +308,14 @@ function M.GetVoidcoreData(charKey)
     }
 end
 
---- Get Dawnlight Manaflux data for a character { quantity }
+--- Get catalyst Manaflux data for a character { quantity }
 function M.GetManafluxData(charKey)
     if not WarbandNexus or not WarbandNexus.GetCurrencyData then return nil end
-    local ok, cd = pcall(WarbandNexus.GetCurrencyData, WarbandNexus, MANAFLUX_ID, charKey)
+    local mfId = (M.GetManafluxID and M.GetManafluxID()) or MANAFLUX_ID or 3465
+    local ok, cd = pcall(WarbandNexus.GetCurrencyData, WarbandNexus, mfId, charKey)
     if not ok or not cd then
         local all = WarbandNexus.GetAllCurrencyData and WarbandNexus:GetAllCurrencyData(charKey)
-        local stored = all and all[MANAFLUX_ID]
+        local stored = all and all[mfId]
         if type(stored) == "table" then stored = stored.quantity end
         local quantity = tonumber(stored)
         if quantity == nil then return nil end

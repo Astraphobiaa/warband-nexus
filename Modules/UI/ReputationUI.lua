@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Reputation Tab
     Display all reputations across characters with progress bars, Renown, and Paragon support
 
@@ -1708,6 +1708,8 @@ function WarbandNexus:DrawReputationList(container, width)
         end
         if headerName:find("Guild") then
             return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
+        elseif headerName:find("Midnight") or headerName:find("Quel'Thalas") or headerName:find("Coiled Isle") or headerName:find("Ula'tek") then
+            return "Interface\\Icons\\Spell_Shadow_Teleport"
         elseif headerName:find("Alliance") then
             return "Interface\\Icons\\Achievement_PVP_A_A"
         elseif headerName:find("Horde") then

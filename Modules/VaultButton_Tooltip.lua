@@ -474,10 +474,12 @@ function M.AppendCharacterVaultTooltipLines(lines, charKey, entry)
     end
 
     if ShowEasyAccessDisplay("tooltipManaflux") and manaflux then
+        local mfId = (M.GetManafluxID and M.GetManafluxID()) or (M.MANAFLUX_ID or 3465)
+        local mfName = (M.GetManafluxName and M.GetManafluxName()) or "Venomblight Manaflux"
         local mfProgress = manaflux.quantity or 0
         local mfMax = 0
         if WarbandNexus and WarbandNexus.GetCurrencyData then
-            local ok, cd = pcall(WarbandNexus.GetCurrencyData, WarbandNexus, MANAFLUX_ID, charKey)
+            local ok, cd = pcall(WarbandNexus.GetCurrencyData, WarbandNexus, mfId, charKey)
             if ok and cd then
                 mfMax = tonumber(cd.seasonMax) or tonumber(cd.maxQuantity) or 0
                 if cd.useTotalEarnedForMaxQty and cd.totalEarned then
@@ -486,8 +488,8 @@ function M.AppendCharacterVaultTooltipLines(lines, charKey, entry)
             end
         end
         lines[#lines + 1] = {
-            left = EAIconLabel(GetCurrencyIconTexture(MANAFLUX_ID, TRACK_ICONS.manaflux), nil,
-                "EA_TOOLTIP_MANAFLUX_LABEL", "Dawnlight Manaflux"),
+            left = EAIconLabel(GetCurrencyIconTexture(mfId, TRACK_ICONS.manaflux), nil,
+                nil, mfName),
             right = FormatProgressFraction(mfProgress, mfMax, mfMax > 0 and mfProgress >= mfMax),
             leftColor = M.EA_LABEL_COLOR,
             rightColor = M.EA_VALUE_COLOR,

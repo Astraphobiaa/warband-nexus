@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Shared UI Widgets & Helpers
     Common UI components and utility functions used across all tabs.
 -- Satellite slices: SharedWidgets_Icons/Collapsible/Search/RowPool/Factory (ops-027–029); Pixel/CharRow load before this file.
@@ -3698,7 +3698,7 @@ local function GetCurrencyHeaderIcon(headerName)
     if headerName:find("Legacy") then
         return "Interface\\Icons\\INV_Misc_Coin_01"
     -- Midnight (12.0) — night/shadow theme (path that exists in the client)
-    elseif headerName:find("Midnight") then
+    elseif headerName:find("Midnight") or headerName:find("Quel'Thalas") or headerName:find("Coiled Isle") or headerName:find("Ula'tek") then
         return "Interface\\Icons\\Spell_Shadow_Teleport"
     -- Season headers (order matters: Season 1 before generic "Season"); all paths exist in-game
     elseif headerName:find("Season 1") or headerName:find("Season1") then

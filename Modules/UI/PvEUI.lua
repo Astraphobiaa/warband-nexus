@@ -95,7 +95,31 @@ local PVE_VOIDCORE_COL_W = 40
 local PVE_MANAFLUX_COL_W = 40
 local PVE_DUNDUN_ID = 3376
 local PVE_VOIDCORE_ID = 3418
-local PVE_MANAFLUX_ID = 3378
+local PVE_MANAFLUX_ID = 3465 -- S2 Venomblight Manaflux default; resolved dynamically via GetPvEManafluxID()
+
+local function GetPvEManafluxID()
+    local active = (ns.SeasonData and ns.SeasonData.GetActive and ns.SeasonData:GetActive())
+    if active and active.keyCurrencies then
+        for cid, entry in pairs(active.keyCurrencies) do
+            if entry.category == "catalyst" then
+                return cid
+            end
+        end
+    end
+    return 3465
+end
+
+local function GetPvEManafluxName()
+    local active = (ns.SeasonData and ns.SeasonData.GetActive and ns.SeasonData:GetActive())
+    if active and active.keyCurrencies then
+        for cid, entry in pairs(active.keyCurrencies) do
+            if entry.category == "catalyst" then
+                return entry.name or "Venomblight Manaflux"
+            end
+        end
+    end
+    return "Venomblight Manaflux"
+end
 
 -- Great Vault slot glyphs — match Modules/VaultButton.lua SlotSymbols (12×12).
 local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
@@ -224,18 +248,19 @@ local function GetPvEDawnCrestColumnDefinitions()
     local MS1 = ns.Constants and ns.Constants.DAWNCREST_UI
     local ordered = MS1 and MS1.COLUMN_IDS
     local labels = MS1 and MS1.PVE_LABEL_KEYS
-    if ordered and labels then
+    if ordered and labels and #ordered > 0 then
         for i = 1, #ordered do
             local id = ordered[i]
             crests[#crests + 1] = { id = id, labelKey = labels[id] }
         end
     else
+        -- Season 2 (12.1 Curse of Ula'tek) Mistcrests fallback
         crests = {
-            { id = 3383, labelKey = "PVE_CREST_ADV" },
-            { id = 3341, labelKey = "PVE_CREST_VET" },
-            { id = 3343, labelKey = "PVE_CREST_CHAMP" },
-            { id = 3345, labelKey = "PVE_CREST_HERO" },
-            { id = 3347, labelKey = "PVE_CREST_MYTH" },
+            { id = 3442, labelKey = "PVE_CREST_ADV" },
+            { id = 3443, labelKey = "PVE_CREST_VET" },
+            { id = 3444, labelKey = "PVE_CREST_CHAMP" },
+            { id = 3445, labelKey = "PVE_CREST_HERO" },
+            { id = 3446, labelKey = "PVE_CREST_MYTH" },
         }
     end
     return crests
@@ -2542,7 +2567,9 @@ if not ns.PvEDrawLibs then
         PVE_MANAFLUX_COL_W = PVE_MANAFLUX_COL_W,
         PVE_DUNDUN_ID = PVE_DUNDUN_ID,
         PVE_VOIDCORE_ID = PVE_VOIDCORE_ID,
-        PVE_MANAFLUX_ID = PVE_MANAFLUX_ID,
+        PVE_MANAFLUX_ID = GetPvEManafluxID(),
+        GetPvEManafluxID = GetPvEManafluxID,
+        GetPvEManafluxName = GetPvEManafluxName,
         VAULT_SLOT_CHECK = VAULT_SLOT_CHECK,
         VAULT_SLOT_CROSS = VAULT_SLOT_CROSS,
         VAULT_SLOT_UPARROW = VAULT_SLOT_UPARROW,

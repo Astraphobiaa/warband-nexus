@@ -34,8 +34,11 @@ end
 local ENTRIES = {
     -- Core weeklies (Midnight 12.0.1+ live)
     { catalogKey = "spark_radiance", questID = 93942, title = "Spark of Radiance", category = "weeklyQuests", zone = "Silvermoon",
-      icon = "Interface\\Icons\\INV_10_Jewelcrafting_Gem3Primal_Fire_Cut_Green", sortOrder = 10, coreWeekly = true,
+      icon = "Interface\\Icons\\INV_10_Jewelcrafting_Gem3Primal_Fire_Cut_Green", sortOrder = 10, coreWeekly = true, maxInterface = 120099,
       description = "Weekly Spark of Radiance from Lady Liadrin (professions)." },
+    { catalogKey = "spark_tides", discoverByTitle = true, titlePattern = "spark of tides", title = "Spark of Tides", category = "weeklyQuests", zone = "Silvermoon",
+      icon = "Interface\\Icons\\INV_10_Jewelcrafting_Gem3Primal_Fire_Cut_Blue", sortOrder = 10, coreWeekly = true, minInterface = 120100,
+      description = "Weekly Spark of Tides from Lady Liadrin (professions)." },
     { catalogKey = "midnight_world_quests", questID = 93766, title = "Midnight: World Quests", category = "weeklyQuests", zone = "Quel'Thalas",
       icon = "Interface\\Icons\\worldquest-icon", sortOrder = 20, coreWeekly = true,
       description = "Complete 6 world quests in Midnight zones." },

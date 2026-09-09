@@ -216,7 +216,7 @@ function M.BuildOptionsFrame()
             GetSettings().columns.voidcore = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Dawnlight Manaflux", -344,
+    CreateMenuCheckbox(f, (M.GetManafluxName and M.GetManafluxName()) or "Venomblight Manaflux", -344,
         function() return GetSettings().columns.manaflux == true end,
         function(value)
             GetSettings().columns.manaflux = value

@@ -2255,6 +2255,8 @@ ns.CollectibleSourceDB = {
         -- 12.1 — Ula'tek (Mythic Venomous Abyss), Zul'jan (Mythic Altar of Fangs)
         ["Ula'tek"] = { 268956 },
         ["Zul'jan"] = { 259447 },
+        ["Nek'zali the Soulcoiler"] = { 253563 },
+        ["Ral'kala"] = { 258928 },
         -- Midnight zone rares (mount drops)
         ["Aln'sharan"] = { 242086 },
         ["Rhazul"] = { 248741 },
@@ -2815,6 +2817,12 @@ ns.CollectibleSourceDB.dropRates = {
     -- Midnight 12.0
     [246590] = 0.5,     -- Ashes of Belo'ren (March on Quel'Danas — Midnight Falls Mythic; per-player ~50%)
     [260916] = 0.0001,  -- Nether-Warped Drake (fishing, Midnight)
+    -- Midnight 12.1 (Curse of Ula'tek)
+    [275658] = 0.5,     -- Primeval Skyfriend (Ula'tek Mythic; per-player ~50%)
+    [276804] = 0.008,   -- The Writhing Brood (Zul'jan Mythic dungeon)
+    [275659] = 0.01,    -- Hexflame Reaver (Ral'kala public event)
+    [276549] = 0.01,    -- Topaz Skyfang (Coiled Isle daily rares)
+    [276803] = 0.01,    -- Ruby Writhe (Coiled Isle daily rares)
 }
 
 -- Returns the known per-attempt drop rate for a mount item, or nil.

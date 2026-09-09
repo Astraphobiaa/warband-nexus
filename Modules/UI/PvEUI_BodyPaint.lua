@@ -452,8 +452,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         }
     end
     if vaultCols.manaflux == true then
+        local manafluxId = (L.GetPvEManafluxID and L.GetPvEManafluxID()) or L.PVE_MANAFLUX_ID or 3465
+        local manafluxName = (L.GetPvEManafluxName and L.GetPvEManafluxName()) or "Venomblight Manaflux"
         local manafluxIcon = "Interface\\Icons\\INV_Enchant_DustArcane"
-        local mfDisp = L.GetPvECachedCurrencyDisplay(L.PVE_MANAFLUX_ID)
+        local mfDisp = L.GetPvECachedCurrencyDisplay(manafluxId)
         if mfDisp and mfDisp.iconFileID then
             manafluxIcon = mfDisp.iconFileID
         end
@@ -462,8 +464,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             label = "",
             width = L.PVE_MANAFLUX_COL_W,
             icon = manafluxIcon,
-            tooltipTitle = L.GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
-            headerLabel = L.GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
+            tooltipTitle = manafluxName,
+            headerLabel = manafluxName,
         }
     end
     if vaultCols.raids ~= false then
@@ -932,7 +934,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 keyId = PVE_RESTORED_KEY_ID,
                 dundunId = L.PVE_DUNDUN_ID,
                 voidcoreId = L.PVE_VOIDCORE_ID,
-                manafluxId = L.PVE_MANAFLUX_ID,
+                manafluxId = (L.GetPvEManafluxID and L.GetPvEManafluxID()) or L.PVE_MANAFLUX_ID or 3465,
                 formatSeasonShift = ns.UI_FormatSeasonProgressShiftAware,
                 compactShift = true,
                 buildCompactHeader = function(col)
@@ -1973,7 +1975,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 }
             end
 
-            local manafluxData = L.WarbandNexus:GetCurrencyData(L.PVE_MANAFLUX_ID, charKey)
+            local manafluxId = (L.GetPvEManafluxID and L.GetPvEManafluxID()) or L.PVE_MANAFLUX_ID or 3465
+            local manafluxName = (L.GetPvEManafluxName and L.GetPvEManafluxName()) or "Venomblight Manaflux"
+            local manafluxData = L.WarbandNexus:GetCurrencyData(manafluxId, charKey)
             local manafluxQty = (manafluxData and manafluxData.quantity) or 0
             local mfMax = (manafluxData and manafluxData.maxQuantity) or 0
             local mfTe = manafluxData and manafluxData.totalEarned
@@ -1982,11 +1986,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             colValuesByKey.manaflux = {
                 text = mfTxt,
                 richText = FormatSeasonLine ~= nil,
-                color = (not FormatSeasonLine) and ((mfTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(L.PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, mfMax, mfTe, mfSm)) or nil,
-                tooltip = BuildCurrencyTooltip(L.PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, mfMax, mfTe, mfSm),
-                tooltipTitle = L.GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
+                color = (not FormatSeasonLine) and ((mfTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(manafluxId, manafluxData and manafluxData.name, manafluxQty, mfMax, mfTe, mfSm)) or nil,
+                tooltip = BuildCurrencyTooltip(manafluxId, manafluxData and manafluxData.name, manafluxQty, mfMax, mfTe, mfSm),
+                tooltipTitle = manafluxName,
                 tooltipIcon = manafluxData and manafluxData.icon,
-                currencyID = L.PVE_MANAFLUX_ID,
+                currencyID = manafluxId,
                 seasonProgressData = manafluxData,
             }
 
