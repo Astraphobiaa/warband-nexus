@@ -1,4 +1,4 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 --[[
     Warband Nexus - Collectible source backfill (pre-Midnight catalog completion).
@@ -10,6 +10,7 @@ local ADDON_NAME, ns = ...
     Regenerate with scratchpad gen_backfill.py rather than hand-editing generated rows.
 ]]
 
+---@type table[]
 ns.CollectibleSourceDB_BackfillSources = {
     -- Mounts/BattleForAzeroth.lua
     { sourceType = "container", containerItemID = 173950, drops = { { type = "mount", itemID = 163584, name = "Twilight Avenger" } } },
