@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - UI Module
     Main window shell, tab routing, and debounced WN_* refresh listeners.
 ]]
@@ -374,8 +374,8 @@ local function ApplyMainShellLayout(f)
     end
 end
 ns.UI_ApplyMainShellLayout = ApplyMainShellLayout
----@deprecated use UI_ApplyMainShellLayout
-ns.UI_ApplyMainShellInsetLayout = ApplyMainShellLayout
+---@deprecated Use UI_ApplyMainShellLayout instead.
+function ns.UI_ApplyMainShellInsetLayout(f) return ApplyMainShellLayout(f) end
 
 --- Golden-ratio rail width + strip/button sync (text rail below header).
 function ApplyMainNavGoldenShellLayout(f)
@@ -1472,7 +1472,7 @@ local function ResolveMainWindowOpenTab(requestedTabKey)
         ns._wnOpenCharsTabOnFirstLogin = nil
         return "chars"
     end
-    if ns._wnSessionLastTab and ns._wnSessionLastTab ~= "settings" and ns._wnSessionLastTab ~= "about" then
+    if type(ns._wnSessionLastTab) == "string" and ns._wnSessionLastTab ~= "settings" and ns._wnSessionLastTab ~= "about" then
         return ns._wnSessionLastTab
     end
     local p = WarbandNexus.db and WarbandNexus.db.profile
@@ -2103,6 +2103,7 @@ ns.UIShell._bind = {
     DetachKeptScrollChildOnMainTabSwitch = DetachKeptScrollChildOnMainTabSwitch,
     GetFontManager = GetFontManager,
     GetMainWindowGeometryBounds = GetMainWindowGeometryBounds,
+    GetScrollViewportWidth = GetScrollViewportWidth,
     GetWindowDimensions = GetWindowDimensions,
     IsDebugModeEnabled = IsDebugModeEnabled,
     IsTabModuleEnabled = IsTabModuleEnabled,
@@ -2115,6 +2116,7 @@ ns.UIShell._bind = {
     PackVariadicInto = PackVariadicInto,
     ProfileFlagOn = ProfileFlagOn,
     PurgeScrollChildLeaksAfterFastDetach = PurgeScrollChildLeaksAfterFastDetach,
+    RefreshFixedHeaderChrome = RefreshFixedHeaderChrome,
     RefreshMainNavLayout = RefreshMainNavLayout,
     RefreshMainNavRailStrip = RefreshMainNavRailStrip,
     RefreshMainNavTabStrip = RefreshMainNavTabStrip,

@@ -1,0 +1,31 @@
+{
+  "ignore": [
+    "libs/**",
+    "Modules/CollectibleSourceDB_Backfill.lua",
+    "Modules/VaultButton*.lua",
+    "Modules/UI/ProfessionsUI_DrawTab.lua"
+  ],
+  "globals": {
+    "read": [
+      "ITEM",
+      "NOTIFICATIONS",
+      "TITLES",
+      "BAG_FILTER_MISCELLANEOUS",
+      "STATICPOPUP_NUMDIALOGS",
+      "BINDING_NAME_WARBANDNEXUS_TOGGLE",
+      "BINDING_HEADER_WARBANDNEXUS",
+      "Chattynator",
+      "VICTORY",
+      "DEFEAT",
+      "C_Clipboard",
+      "error",
+      "UnitCreatureDisplayID"
+    ]
+  },
+  "diagnostics": {
+    "disable": [
+      "undefined-field",
+      "type-mismatch"
+    ]
+  }
+}

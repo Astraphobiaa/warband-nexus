@@ -14,7 +14,10 @@ local DebugPrint = B.DebugPrint
 local DetachKeptScrollChildOnMainTabSwitch = B.DetachKeptScrollChildOnMainTabSwitch
 local GetFontManager = B.GetFontManager
 local GetMainWindowGeometryBounds = B.GetMainWindowGeometryBounds
+local GetScrollViewportWidth = B.GetScrollViewportWidth
 local GetWindowDimensions = B.GetWindowDimensions
+local RefreshFixedHeaderChrome = B.RefreshFixedHeaderChrome or ns.UI_RefreshFixedHeaderChrome
+local FontManager
 local IsDebugModeEnabled = B.IsDebugModeEnabled
 local IsTabModuleEnabled = B.IsTabModuleEnabled
 local IsTabPerfMonitorEnabled = B.IsTabPerfMonitorEnabled

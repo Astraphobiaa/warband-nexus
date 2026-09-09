@@ -62,8 +62,7 @@ end
 
 -- EXTERNAL WINDOW SYSTEM
 
----Creates a standardized external window/dialog with modern UI features
----@param config table Configuration table
+---@class ExternalWindowConfig
 ---@field name string Unique dialog name (required)
 ---@field title string Dialog title (required)
 ---@field icon string Icon path/atlas (required)
@@ -72,6 +71,9 @@ end
 ---@field iconIsAtlas boolean|nil If true, icon is an atlas name (default false)
 ---@field onClose function|nil Callback when dialog closes
 ---@field preventDuplicates boolean|nil Prevent multiple instances (default true)
+
+---Creates a standardized external window/dialog with modern UI features
+---@param config ExternalWindowConfig Configuration table
 ---@return Frame|nil dialog Main dialog frame
 ---@return Frame|nil contentFrame Frame where you add your content
 ---@return Frame|nil header Header frame (for custom additions)
@@ -241,7 +243,10 @@ local function CreateExternalWindow(config)
         closeBtn:SetScript("OnEnter", function()
             closeIcon:SetVertexColor(1, 0.2, 0.2)
             if ApplyVisuals then
-                local negBg, negBorder = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(true)
+                local negBg, negBorder
+                if ns.UI_GetSemanticNegativeCard then
+                    negBg, negBorder = ns.UI_GetSemanticNegativeCard(true)
+                end
                 if negBg and negBorder then
                     ApplyVisuals(closeBtn, negBg, negBorder)
                 end
@@ -627,7 +632,6 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     end
     
     -- Add button
-    local WarbandNexus = ns.WarbandNexus
     if completed then
         popup._addLabel:SetText(ThemeTextHex("Dim") .. (L["ADD_BUTTON"] or "To-Do") .. "|r")
         popup._addBtn:SetScript("OnClick", nil)

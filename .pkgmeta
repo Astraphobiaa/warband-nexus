@@ -18,3 +18,4 @@ ignore:
   - scripts
   - docs
   - CLAUDE.md
+  - .wowluarc.json

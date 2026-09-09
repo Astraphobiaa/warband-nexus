@@ -220,7 +220,7 @@ end
 --- Resolve any character key to the canonical **storage** key used for subsidiary tables (same rules as `ResolveCharacterRowKey`).
 --- Use when passing a key from UI or stored data into services (currency, gear, PvE cache, etc.).
 ---@param charKey string Key from db.characters or UI (may be guid, Name-Realm, or spaced legacy)
----@return string Canonical storage key
+---@return string|nil Canonical storage key
 function Utilities:GetCanonicalCharacterKey(charKey)
     if charKey == nil or charKey == "" then return charKey end
     -- Never return a secret string: callers often do `GetCanonicalCharacterKey(k) or k` and would

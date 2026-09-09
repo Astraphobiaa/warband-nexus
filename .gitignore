@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # Warband Nexus — Git tracks only the WoW addon runtime tree (Interface/AddOns).
 # Maintainer tooling, docs, and pack scripts live under _ignored/ (clone locally; not committed).
 # =============================================================================
@@ -62,6 +62,7 @@ WarbandNexus/
 # ---------------------------------------------------------------------------
 /*
 !.gitignore
+!.wowluarc.json
 !.pkgmeta
 !.github/
 !.github/**
