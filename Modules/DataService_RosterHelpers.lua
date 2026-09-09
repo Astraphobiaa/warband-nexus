@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Character roster cache sig + safe money + storage row helpers.
     Split from DataService.lua (Lua 5.1 local limit).
     Loaded before Modules/DataService.lua.
@@ -170,7 +170,6 @@ local function BuildMergedCharacterRosterView(charsTbl)
     if type(charsTbl) ~= "table" then return seen end
     local guidByNameRealm = BuildGuidByNameRealmIndex(charsTbl)
     local MS = ns.MigrationService
-    local MergeRows = MS and MS.MergeCharacterRowPreserveWinner
 
     for key, data in pairs(charsTbl) do
         if type(data) == "table" then
@@ -180,13 +179,13 @@ local function BuildMergedCharacterRosterView(charsTbl)
                     local existingData = seen[mergeKey]
                     local existingTime = existingData.lastSeen or 0
                     local newTime = data.lastSeen or 0
-                    if MergeRows then
+                    if MS and MS.MergeCharacterRowPreserveWinner then
                         if newTime >= existingTime then
-                            MergeRows(data, existingData)
+                            MS:MergeCharacterRowPreserveWinner(data, existingData)
                             data._key = key
                             seen[mergeKey] = data
                         else
-                            MergeRows(existingData, data)
+                            MS:MergeCharacterRowPreserveWinner(existingData, data)
                         end
                     elseif newTime > existingTime then
                         data._key = key

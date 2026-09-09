@@ -669,9 +669,7 @@ end
 -- Picker order follows Enum.UIMapType geography: continent/zone → micro → delves → dungeons → raids → orphan.
 local GROUP_ORDER = { "regions", "micro", "delves", "dungeons", "raids", "orphan" }
 
----@param rows table[]
----@param groupMeta table<string, { headerKey: string, kindTag: string }>
----@return table[]
+---@param ids table
 local function sortPickerBucketIds(ids)
     table.sort(ids, function(a, b)
         local na = type(a) == "table" and tonumber(a.id) or tonumber(a)
@@ -682,6 +680,9 @@ local function sortPickerBucketIds(ids)
     end)
 end
 
+---@param rows table[]
+---@param groupMeta table<string, { headerKey: string, kindTag: string }>
+---@return table
 local function buildPickerGroupsFromRows(rows, groupMeta)
     local byGroup = {}
     for gi = 1, #GROUP_ORDER do

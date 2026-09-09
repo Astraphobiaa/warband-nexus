@@ -6,7 +6,7 @@
 
 local ADDON_NAME, ns = ...
 
----@class Constants
+---@class WNConstants
 local Constants = {
     -- ADDON VERSION
     

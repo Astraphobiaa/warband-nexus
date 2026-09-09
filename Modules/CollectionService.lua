@@ -869,7 +869,7 @@ ns.CollectionServiceRT = {
 }
 -- Store/cache persist: CollectionService_Store.lua
 
-function ScheduleDeferredCollectionStoreSave()
+local function ScheduleDeferredCollectionStoreSave()
     if ns.CollectionServiceRT and ns.CollectionServiceRT.ScheduleDeferredCollectionStoreSave then
         ns.CollectionServiceRT.ScheduleDeferredCollectionStoreSave()
     end
@@ -1189,7 +1189,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
             local handler
             handler = function(_, data)
                 if data and data.category == "achievement" then
-                    self:UnregisterMessage(msgName, handler)
+                    self:UnregisterMessage(msgName)
                     ns.CollectionLoadingState.loadingProgress = math.min(99, (idx - 1) / #queue * 100)
                     C_Timer.After(0.2, RunNext)
                 end
@@ -1707,7 +1707,7 @@ end
 
 ---Return cached or freshly computed collection counts from Blizzard API only.
 ---Single source of truth for Statistics and Collections (e.g. mount total 1577 in both).
----@return table { mounts = { collected, total }, pets = { collected, totalSpecies, uniqueSpecies, journalEntries }, toys = { collected, total }, achievementPoints = number }
+---@return table|nil { mounts = { collected, total }, pets = { collected, totalSpecies, uniqueSpecies, journalEntries }, toys = { collected, total }, achievementPoints = number }
 function WarbandNexus:GetCollectionCountsFromStore()
     if not IsCollectionEnsureDataComplete(self) then
         return nil

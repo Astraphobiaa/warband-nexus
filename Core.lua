@@ -1179,7 +1179,7 @@ function WarbandNexus:OnDisable()
     -- Unregister all events
     self:UnregisterAllEvents()
     self:UnregisterAllBuckets()
-    self._wnEventManagerInitialized = nil
+    self._wnEventManagerInitialized = false
 end
 
 --[[
@@ -1222,8 +1222,6 @@ end
 ============================================================================]]
 
 ---Confirm character tracking status and broadcast event
----@param charKey string Character key (Name-Realm)
----@param isTracked boolean true = tracked (full API), false = untracked (read-only)
 --[[
     Handle PLAYER_LOGOUT: flush pending service writes, then profiler/NPC cache saves.
 ]]
@@ -1475,7 +1473,7 @@ function WarbandNexus:OnGuildBankClosed()
     if self.CancelGuildBankSettleScans then
         self:CancelGuildBankSettleScans()
     end
-    self._guildBankScanAnnouncedThisOpen = nil
+    self._guildBankScanAnnouncedThisOpen = false
     self.guildBankIsOpen = false
     if self.InvalidateLiveOpenGuildBankSummary then
         self:InvalidateLiveOpenGuildBankSummary()

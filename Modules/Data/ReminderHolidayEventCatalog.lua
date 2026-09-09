@@ -199,7 +199,7 @@ local function BuildTodayHolidayTitles(todayDay)
     return out
 end
 
----@return string[]
+---@return table
 local function GetTodayHolidayTitles()
     local todayDay = GetTodayCalendarDay()
     if not todayDay then return {} end

@@ -767,8 +767,6 @@ end
     @param fontString FontString - Target font string
     @param category string - Font category
 ]]
----Bar overlay labels: same face/size as `small`, with standard outline.
----@param fontString FontString
 --- Resolve light-mode outline opts from FontString ink metadata.
 ---@param fontString FontString|EditBox
 ---@param flagOpts table

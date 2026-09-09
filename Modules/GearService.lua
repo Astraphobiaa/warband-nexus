@@ -616,6 +616,10 @@ local function IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID,
     return allowedByClass[itemSubclassID] == true
 end
 
+local LE_ITEM_BIND_WARBAND = _G.LE_ITEM_BIND_WARBAND
+local LE_ITEM_BIND_TO_BNETACCOUNT = _G.LE_ITEM_BIND_TO_BNETACCOUNT
+local LE_ITEM_BIND_TO_ACCOUNT = _G.LE_ITEM_BIND_TO_ACCOUNT
+
 local ITEM_BIND_WARBAND = (type(LE_ITEM_BIND_WARBAND) == "number" and LE_ITEM_BIND_WARBAND)
     or (Enum and Enum.ItemBind and type(Enum.ItemBind.Warband) == "number" and Enum.ItemBind.Warband)
     or 8
