@@ -200,34 +200,38 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
         roadmap.vault.world.slots, roadmap.vault.world.completedCount = ParseActivities(worldType)
     elseif pveCache and pveCache.greatVault then
         -- Read cached vault activities for alts
-        local gvActs = pveCache.greatVault.activities and resolvedKey and pveCache.greatVault.activities[resolvedKey]
+        local gvActs = (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.greatVault.activities, resolvedKey))
+            or (pveCache.greatVault.activities and resolvedKey and pveCache.greatVault.activities[resolvedKey])
         if gvActs then
-            local function ReadCachedSection(secKey)
+            local function ReadCachedSection(secKey, fallbackKey)
                 local slots = {}
                 local completed = 0
-                local sec = gvActs[secKey]
+                local sec = gvActs[secKey] or (fallbackKey and gvActs[fallbackKey])
                 if type(sec) == "table" then
                     for i = 1, #sec do
                         local act = sec[i]
-                        local isDone = (act.progress or 0) >= (act.threshold or 1) and (act.threshold or 0) > 0
+                        local thresh = act.threshold or 0
+                        local prog = act.progress or 0
+                        local isDone = (prog >= thresh) and (thresh > 0)
                         if isDone then completed = completed + 1 end
                         slots[#slots + 1] = {
-                            threshold = act.threshold or 0,
-                            progress = act.progress or 0,
+                            threshold = thresh,
+                            progress = prog,
                             completed = isDone,
                             level = act.level or 0,
-                            itemLevel = act.itemLevel or 0,
+                            itemLevel = act.rewardItemLevel or act.itemLevel or 0,
                         }
                     end
                 end
                 return slots, completed
             end
-            roadmap.vault.raid.slots, roadmap.vault.raid.completedCount = ReadCachedSection("raid")
-            roadmap.vault.dungeon.slots, roadmap.vault.dungeon.completedCount = ReadCachedSection("dungeon")
+            roadmap.vault.raid.slots, roadmap.vault.raid.completedCount = ReadCachedSection("raids", "raid")
+            roadmap.vault.dungeon.slots, roadmap.vault.dungeon.completedCount = ReadCachedSection("mythicPlus", "dungeon")
             roadmap.vault.world.slots, roadmap.vault.world.completedCount = ReadCachedSection("world")
         end
 
-        local gvRews = pveCache.greatVault.rewards and resolvedKey and pveCache.greatVault.rewards[resolvedKey]
+        local gvRews = (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.greatVault.rewards, resolvedKey))
+            or (pveCache.greatVault.rewards and resolvedKey and pveCache.greatVault.rewards[resolvedKey])
         if gvRews then
             roadmap.vault.hasAvailableRewards = (gvRews.hasAvailableRewards == true)
         end
@@ -246,13 +250,44 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
         { key = "purging", questID = 95520, title = "Purging the Vaults", icon = "Interface\\Icons\\INV_Misc_Idol_03", desc = "Vaults of Atal'Utek (Trovehunter's Bounty)" },
     }
 
-    local delveChar = pveCache and pveCache.delves and pveCache.delves.characters and resolvedKey and pveCache.delves.characters[resolvedKey]
+    local nowServer = (GetServerTime and GetServerTime()) or time()
+    local resetSec = self:GetWeeklyResetTimeRemaining()
+    local cachedQuests = nil
+    if pveCache and pveCache.weeklyQuests then
+        local cq = (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.weeklyQuests, resolvedKey))
+            or (resolvedKey and pveCache.weeklyQuests[resolvedKey])
+        if cq and (not cq.resetAt or cq.resetAt > nowServer) then
+            cachedQuests = cq.quests or cq
+        end
+    end
+
+    local liveQuestsToSave = nil
+    if isCurrentChar and pveCache and resolvedKey then
+        pveCache.weeklyQuests = pveCache.weeklyQuests or {}
+        pveCache.weeklyQuests[resolvedKey] = {
+            quests = {},
+            resetAt = nowServer + (resetSec > 0 and resetSec or 604800),
+            lastUpdate = nowServer,
+        }
+        liveQuestsToSave = pveCache.weeklyQuests[resolvedKey].quests
+    end
+
+    local delveChar = pveCache and pveCache.delves and pveCache.delves.characters and resolvedKey and (
+        (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.delves.characters, resolvedKey))
+        or pveCache.delves.characters[resolvedKey]
+    )
+
     for wi = 1, #CORE_WEEKLIES do
         local w = CORE_WEEKLIES[wi]
         local isDone = false
         if isCurrentChar and C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
             local ok, qDone = pcall(C_QuestLog.IsQuestFlaggedCompleted, w.questID)
             if ok then isDone = (qDone == true) end
+            if liveQuestsToSave then
+                liveQuestsToSave[w.questID] = isDone
+            end
+        elseif cachedQuests and cachedQuests[w.questID] ~= nil then
+            isDone = (cachedQuests[w.questID] == true)
         elseif delveChar then
             if w.key == "nightmare" and delveChar.nightmareTaskComplete ~= nil then
                 isDone = (delveChar.nightmareTaskComplete == true)
@@ -278,12 +313,37 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
         roadmap.delves.gildedStashesMax = tonumber(delveChar.gildedStashesMax) or 3
     end
 
+    -- Helper to resolve offline currency amounts across AceDB and CurrencyCacheService
+    local function GetOfflineCurrency(currID)
+        if charData and charData.currencies and charData.currencies[currID] then
+            local c = charData.currencies[currID]
+            local q = type(c) == "table" and c.quantity or c
+            if tonumber(q) then return tonumber(q) end
+        end
+        if WarbandNexus and WarbandNexus.GetCurrenciesForUI then
+            local ok, allCur = pcall(WarbandNexus.GetCurrenciesForUI, WarbandNexus)
+            if ok and allCur and allCur[currID] and allCur[currID].chars then
+                local chMap = allCur[currID].chars
+                local val = chMap[resolvedKey] or (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and chMap[ns.Utilities:GetCanonicalCharacterKey(resolvedKey)])
+                if type(val) == "table" then return tonumber(val.quantity) or 0 end
+                if tonumber(val) then return tonumber(val) end
+            end
+        end
+        local cdb = db and db.currencyData and db.currencyData.currencies
+        if cdb and resolvedKey and cdb[resolvedKey] and cdb[resolvedKey][currID] then
+            local val = cdb[resolvedKey][currID]
+            if type(val) == "table" then return tonumber(val.quantity) or 0 end
+            if tonumber(val) then return tonumber(val) end
+        end
+        return 0
+    end
+
     -- Coffer Keys currency (3089)
     if isCurrentChar and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
         local ok, cinfo = pcall(C_CurrencyInfo.GetCurrencyInfo, 3089)
         if ok and cinfo then roadmap.delves.cofferKeys = cinfo.quantity or 0 end
-    elseif charData.currencies and charData.currencies[3089] then
-        roadmap.delves.cofferKeys = tonumber(charData.currencies[3089].quantity) or 0
+    else
+        roadmap.delves.cofferKeys = GetOfflineCurrency(3089)
     end
 
     -- 4. Seasonal Power (Catalyst 3465, Spark 3509, Keystones)
@@ -299,20 +359,21 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
         if okSpark and spInfo then
             roadmap.seasonalPower.sparkDustHeld = spInfo.quantity or 0
         end
-    elseif charData.currencies then
-        if charData.currencies[manafluxID] then
+    else
+        roadmap.seasonalPower.manafluxHeld = GetOfflineCurrency(manafluxID)
+        roadmap.seasonalPower.sparkDustHeld = GetOfflineCurrency(3509)
+        if charData.currencies and charData.currencies[manafluxID] then
             local cd = charData.currencies[manafluxID]
-            roadmap.seasonalPower.manafluxHeld = tonumber(cd.quantity) or 0
             roadmap.seasonalPower.manafluxMax = tonumber(cd.maxQuantity or cd.seasonMax) or 0
             roadmap.seasonalPower.manafluxSeasonEarned = tonumber(cd.totalEarned or cd.quantity) or 0
-        end
-        if charData.currencies[3509] then
-            roadmap.seasonalPower.sparkDustHeld = tonumber(charData.currencies[3509].quantity) or 0
         end
     end
 
     -- Keystone info
-    local ksChar = pveCache and pveCache.keystones and pveCache.keystones.characters and resolvedKey and pveCache.keystones.characters[resolvedKey]
+    local ksChar = pveCache and pveCache.keystones and pveCache.keystones.characters and resolvedKey and (
+        (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.keystones.characters, resolvedKey))
+        or pveCache.keystones.characters[resolvedKey]
+    )
     if ksChar then
         roadmap.seasonalPower.keystoneLevel = tonumber(ksChar.level) or 0
         roadmap.seasonalPower.keystoneMap = ksChar.challengeMapID
@@ -342,18 +403,21 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
             end
         end
     end
-    if #roadmap.raidLockouts == 0 and pveCache and pveCache.lockouts and pveCache.lockouts.raids and resolvedKey and pveCache.lockouts.raids[resolvedKey] then
-        local charRaids = pveCache.lockouts.raids[resolvedKey]
-        for _, row in pairs(charRaids) do
-            if row and row.name then
-                roadmap.raidLockouts[#roadmap.raidLockouts + 1] = {
-                    name = row.name,
-                    difficultyName = row.difficultyName or "Raid",
-                    numEncounters = tonumber(row.numEncounters) or 0,
-                    encounterProgress = tonumber(row.encounterProgress) or 0,
-                    locked = (row.locked == true or row.locked == 1),
-                    extended = (row.extended == true or row.extended == 1),
-                }
+    if #roadmap.raidLockouts == 0 and pveCache and pveCache.lockouts and pveCache.lockouts.raids and resolvedKey then
+        local charRaids = (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.lockouts.raids, resolvedKey))
+            or pveCache.lockouts.raids[resolvedKey]
+        if charRaids then
+            for _, row in pairs(charRaids) do
+                if row and row.name then
+                    roadmap.raidLockouts[#roadmap.raidLockouts + 1] = {
+                        name = row.name,
+                        difficultyName = row.difficultyName or "Raid",
+                        numEncounters = tonumber(row.numEncounters) or 0,
+                        encounterProgress = tonumber(row.encounterProgress) or 0,
+                        locked = (row.locked == true or row.locked == 1),
+                        extended = (row.extended == true or row.extended == 1),
+                    }
+                end
             end
         end
     end
