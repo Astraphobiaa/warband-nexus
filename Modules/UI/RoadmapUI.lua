@@ -95,14 +95,20 @@ local function ToggleCharacterDropdown(anchorBtn, parentRoot, onSelect)
     end
 
     local rowH = 22
-    local totalH = #entries * rowH + 8
-    dd:SetHeight(math.min(220, totalH))
+    local scrollChild = nil
+    if ns.UI_ApplyDropdownScrollLayout then
+        scrollChild = select(2, ns.UI_ApplyDropdownScrollLayout(dd, #entries, rowH, { maxVisibleRows = 9 }))
+    else
+        local totalH = #entries * rowH + 8
+        dd:SetHeight(math.min(220, totalH))
+    end
+    local parentHost = scrollChild or dd
 
     for idx = 1, #entries do
         local item = entries[idx]
         local btn = dd._items[idx]
         if not btn then
-            btn = CreateFrame("Button", nil, dd)
+            btn = CreateFrame("Button", nil, parentHost)
             btn:SetHeight(rowH)
             local hi = btn:CreateTexture(nil, "HIGHLIGHT")
             hi:SetAllPoints()
@@ -112,11 +118,13 @@ local function ToggleCharacterDropdown(anchorBtn, parentRoot, onSelect)
             fs:SetJustifyH("LEFT")
             btn._text = fs
             dd._items[idx] = btn
+        elseif btn:GetParent() ~= parentHost then
+            btn:SetParent(parentHost)
         end
 
         btn:ClearAllPoints()
-        btn:SetPoint("TOPLEFT", 4, -4 - ((idx - 1) * rowH))
-        btn:SetPoint("TOPRIGHT", -4, -4 - ((idx - 1) * rowH))
+        btn:SetPoint("TOPLEFT", parentHost, "TOPLEFT", 4, -4 - ((idx - 1) * rowH))
+        btn:SetPoint("TOPRIGHT", parentHost, "TOPRIGHT", -4, -4 - ((idx - 1) * rowH))
         btn:Show()
 
         local cc = (RAID_CLASS_COLORS and RAID_CLASS_COLORS[item.class]) or { r = 1, g = 1, b = 1 }
