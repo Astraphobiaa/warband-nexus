@@ -2239,31 +2239,33 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         parent._wnPlansActiveHost:Hide()
     end
 
-    local plans
+    if category == "roadmap" then
+        parent._plansCardLayoutManager = nil
+        if ns.RoadmapUI and ns.RoadmapUI.DrawRoadmapView then
+            return ns.RoadmapUI:DrawRoadmapView(parent, yOffset, width)
+        end
+    end
+
     if category == "daily_tasks" then
-        plans = {}
-        if self.db and self.db.global then
-            if self.db.global.plans then
-                local p = self.db.global.plans
-                for i = 1, #p do
-                    local plan = p[i]
-                    if plan.type == "daily_quests" then
-                        plans[#plans + 1] = plan
-                    end
-                end
-            end
-            if self.db.global.customPlans then
-                local c = self.db.global.customPlans
-                for i = 1, #c do
-                    local plan = c[i]
-                    if plan.type == "daily_quests" then
-                        plans[#plans + 1] = plan
-                    end
-                end
+        parent._plansCardLayoutManager = nil
+        local dailyPlans = {}
+        if self.db and self.db.global and self.db.global.plans then
+            local p = self.db.global.plans
+            for i = 1, #p do
+                if p[i].type == "daily_quests" then dailyPlans[#dailyPlans + 1] = p[i] end
             end
         end
-    else
-        plans = self:GetActivePlans()
+        return self:DrawDailyTasksView(parent, yOffset, width, dailyPlans)
+    end
+
+    local rawPlans = self:GetActivePlans()
+    local plans = {}
+    for i = 1, #rawPlans do
+        local p = rawPlans[i]
+        -- Deduplication: weekly_vault and daily_quests are managed in Roadmap
+        if p and p.type ~= "weekly_vault" and p.type ~= "daily_quests" then
+            plans[#plans + 1] = p
+        end
     end
     
     -- Apply search filter (My Plans global search, skip for daily_tasks)

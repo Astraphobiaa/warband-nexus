@@ -25,6 +25,20 @@ local MIDNIGHT_DELVE_MAPS = {
     { mapID = 2512, name = "The Coiled Isle" },
 }
 
+-- 2. Core Weeklies (Midnight S2)
+local CORE_WEEKLIES = {
+    { key = "spark", questID = 93942, catalogKey = "spark_tides", title = "Spark of Tides", icon = "Interface\\Icons\\INV_10_Jewelcrafting_Gem3Primal_Fire_Cut_Blue", desc = "Weekly Spark craft currency" },
+    { key = "world_boss", questID = 93913, title = "Midnight: World Boss", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01", desc = "Quel'Thalas weekly world boss" },
+    { key = "world_quests", questID = 93766, title = "Midnight: World Quests", icon = "Interface\\Icons\\worldquest-icon", desc = "Complete 6 World Quests" },
+    { key = "soiree", questID = 93889, title = "Saltheril's Soiree", icon = "Interface\\Icons\\INV_Misc_Food_164_Fish_Seadog", desc = "Eversong Woods event" },
+    { key = "abundance", questID = 93890, title = "Abundance", icon = "Interface\\Icons\\INV_Misc_Herb_AncientLichen", desc = "Zul'Aman treasure cave event" },
+    { key = "haranir", questID = 93891, title = "Legends of the Haranir", icon = "Interface\\Icons\\INV_Misc_Book_09", desc = "Harandar relic event" },
+    { key = "stormarion", questID = 93892, title = "Stormarion Assault", icon = "Interface\\Icons\\Ability_Warrior_Charge", desc = "Voidstorm Singularity event" },
+    { key = "nightmare", questID = 94446, title = "A Nightmarish Task", icon = "Interface\\Icons\\Spell_Shadow_Nightmare", desc = "Prey hunts (Trovehunter's Bounty)" },
+    { key = "purging", questID = 95520, title = "Purging the Vaults", icon = "Interface\\Icons\\INV_Misc_Idol_03", desc = "Vaults of Atal'Utek (Trovehunter's Bounty)" },
+}
+ns.ROADMAP_CORE_WEEKLIES = CORE_WEEKLIES
+
 --- Safe check for secret values before string or numeric ops
 local function IsSafeVal(v)
     return v ~= nil and not (issecretvalue and issecretvalue(v))
@@ -107,6 +121,51 @@ function RoadmapService:SetDelveWaypoint(mapID, position)
     return false
 end
 
+--- Scan and persist current player's live weekly progression to SavedVariables (pveCache.weeklyQuests)
+--- @param optionalCharKey string|nil
+--- @return boolean
+function RoadmapService:ScanAndPersistCurrentCharacter(optionalCharKey)
+    local addon = WarbandNexus
+    if not addon or not addon.db or not addon.db.global then return false end
+    local pveCache = addon.db.global.pveCache
+    if not pveCache then return false end
+
+    local resolvedKey = optionalCharKey
+    if not resolvedKey then
+        local U = ns.Utilities
+        resolvedKey = (U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(addon))
+            or (addon.ResolveCharactersTableKey and addon:ResolveCharactersTableKey(addon))
+    end
+    if not resolvedKey or resolvedKey == "" then return false end
+
+    local nowServer = (GetServerTime and GetServerTime()) or time()
+    local resetSec = self:GetWeeklyResetTimeRemaining()
+    local resetAt = nowServer + (resetSec > 0 and resetSec or 604800)
+
+    pveCache.weeklyQuests = pveCache.weeklyQuests or {}
+    local entry = pveCache.weeklyQuests[resolvedKey]
+    if type(entry) ~= "table" then
+        entry = { quests = {}, resetAt = resetAt, lastUpdate = nowServer }
+        pveCache.weeklyQuests[resolvedKey] = entry
+    else
+        entry.quests = entry.quests or {}
+        entry.resetAt = resetAt
+        entry.lastUpdate = nowServer
+    end
+
+    if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
+        for wi = 1, #CORE_WEEKLIES do
+            local w = CORE_WEEKLIES[wi]
+            local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, w.questID)
+            if ok then
+                entry.quests[w.questID] = (done == true)
+            end
+        end
+    end
+
+    return true
+end
+
 --- Collect comprehensive PvE roadmap for a given character key
 --- @param charKey string|nil canonical character storage key
 --- @return table
@@ -120,11 +179,20 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
         isCurrentChar = true
     else
         local curKey = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-        isCurrentChar = (curKey ~= nil and resolvedKey == curKey)
+        isCurrentChar = (curKey ~= nil and (resolvedKey == curKey or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(curKey, resolvedKey))))
     end
 
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
-    local charData = (db and db.characters and resolvedKey and db.characters[resolvedKey]) or {}
+    local charData = nil
+    if db and db.characters and resolvedKey then
+        charData = db.characters[resolvedKey]
+        if not charData and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            local canon = ns.Utilities:GetCanonicalCharacterKey(resolvedKey)
+            charData = canon and db.characters[canon]
+        end
+    end
+    charData = charData or {}
+
     local pveCache = db and db.pveCache
 
     local roadmap = {
@@ -236,22 +304,18 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
             roadmap.vault.hasAvailableRewards = (gvRews.hasAvailableRewards == true)
         end
     end
+    roadmap.vault.hasUnclaimedReward = roadmap.vault.hasAvailableRewards
+    roadmap.vault.raidSlots = roadmap.vault.raid.slots
+    roadmap.vault.dungeonSlots = roadmap.vault.dungeon.slots
+    roadmap.vault.worldSlots = roadmap.vault.world.slots
 
     -- 2. Core Weeklies (Midnight S2)
-    local CORE_WEEKLIES = {
-        { key = "spark", questID = 93942, catalogKey = "spark_tides", title = "Spark of Tides", icon = "Interface\\Icons\\INV_10_Jewelcrafting_Gem3Primal_Fire_Cut_Blue", desc = "Weekly Spark craft currency" },
-        { key = "world_boss", questID = 93913, title = "Midnight: World Boss", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01", desc = "Quel'Thalas weekly world boss" },
-        { key = "world_quests", questID = 93766, title = "Midnight: World Quests", icon = "Interface\\Icons\\worldquest-icon", desc = "Complete 6 World Quests" },
-        { key = "soiree", questID = 93889, title = "Saltheril's Soiree", icon = "Interface\\Icons\\INV_Misc_Food_164_Fish_Seadog", desc = "Eversong Woods event" },
-        { key = "abundance", questID = 93890, title = "Abundance", icon = "Interface\\Icons\\INV_Misc_Herb_AncientLichen", desc = "Zul'Aman treasure cave event" },
-        { key = "haranir", questID = 93891, title = "Legends of the Haranir", icon = "Interface\\Icons\\INV_Misc_Book_09", desc = "Harandar relic event" },
-        { key = "stormarion", questID = 93892, title = "Stormarion Assault", icon = "Interface\\Icons\\Ability_Warrior_Charge", desc = "Voidstorm Singularity event" },
-        { key = "nightmare", questID = 94446, title = "A Nightmarish Task", icon = "Interface\\Icons\\Spell_Shadow_Nightmare", desc = "Prey hunts (Trovehunter's Bounty)" },
-        { key = "purging", questID = 95520, title = "Purging the Vaults", icon = "Interface\\Icons\\INV_Misc_Idol_03", desc = "Vaults of Atal'Utek (Trovehunter's Bounty)" },
-    }
-
     local nowServer = (GetServerTime and GetServerTime()) or time()
-    local resetSec = self:GetWeeklyResetTimeRemaining()
+
+    if isCurrentChar then
+        self:ScanAndPersistCurrentCharacter(resolvedKey)
+    end
+
     local cachedQuests = nil
     if pveCache and pveCache.weeklyQuests then
         local cq = (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.weeklyQuests, resolvedKey))
@@ -259,17 +323,6 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
         if cq and (not cq.resetAt or cq.resetAt > nowServer) then
             cachedQuests = cq.quests or cq
         end
-    end
-
-    local liveQuestsToSave = nil
-    if isCurrentChar and pveCache and resolvedKey then
-        pveCache.weeklyQuests = pveCache.weeklyQuests or {}
-        pveCache.weeklyQuests[resolvedKey] = {
-            quests = {},
-            resetAt = nowServer + (resetSec > 0 and resetSec or 604800),
-            lastUpdate = nowServer,
-        }
-        liveQuestsToSave = pveCache.weeklyQuests[resolvedKey].quests
     end
 
     local delveChar = pveCache and pveCache.delves and pveCache.delves.characters and resolvedKey and (
@@ -280,14 +333,11 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
     for wi = 1, #CORE_WEEKLIES do
         local w = CORE_WEEKLIES[wi]
         local isDone = false
-        if isCurrentChar and C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
+        if cachedQuests and cachedQuests[w.questID] ~= nil then
+            isDone = (cachedQuests[w.questID] == true)
+        elseif isCurrentChar and C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
             local ok, qDone = pcall(C_QuestLog.IsQuestFlaggedCompleted, w.questID)
             if ok then isDone = (qDone == true) end
-            if liveQuestsToSave then
-                liveQuestsToSave[w.questID] = isDone
-            end
-        elseif cachedQuests and cachedQuests[w.questID] ~= nil then
-            isDone = (cachedQuests[w.questID] == true)
         elseif delveChar then
             if w.key == "nightmare" and delveChar.nightmareTaskComplete ~= nil then
                 isDone = (delveChar.nightmareTaskComplete == true)
@@ -369,14 +419,23 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
         end
     end
 
-    -- Keystone info
-    local ksChar = pveCache and pveCache.keystones and pveCache.keystones.characters and resolvedKey and (
-        (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.keystones.characters, resolvedKey))
-        or pveCache.keystones.characters[resolvedKey]
-    )
-    if ksChar then
+    -- Keystone info: read from pveCache.mythicPlus.keystones, charData.mythicKey, or live C_MythicPlus
+    local ksChar = nil
+    if pveCache and pveCache.mythicPlus and pveCache.mythicPlus.keystones and resolvedKey then
+        ksChar = (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.mythicPlus.keystones, resolvedKey))
+            or pveCache.mythicPlus.keystones[resolvedKey]
+    end
+    if not ksChar and pveCache and pveCache.keystones and pveCache.keystones.characters and resolvedKey then
+        ksChar = (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(pveCache.keystones.characters, resolvedKey))
+            or pveCache.keystones.characters[resolvedKey]
+    end
+
+    if ksChar and ksChar.level and tonumber(ksChar.level) and tonumber(ksChar.level) > 0 then
         roadmap.seasonalPower.keystoneLevel = tonumber(ksChar.level) or 0
-        roadmap.seasonalPower.keystoneMap = ksChar.challengeMapID
+        roadmap.seasonalPower.keystoneMap = ksChar.challengeMapID or ksChar.mapID
+    elseif charData and charData.mythicKey and charData.mythicKey.level and tonumber(charData.mythicKey.level) and tonumber(charData.mythicKey.level) > 0 then
+        roadmap.seasonalPower.keystoneLevel = tonumber(charData.mythicKey.level) or 0
+        roadmap.seasonalPower.keystoneMap = charData.mythicKey.mapID or charData.mythicKey.challengeMapID
     elseif isCurrentChar and C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel then
         local okLvl, klvl = pcall(C_MythicPlus.GetOwnedKeystoneLevel)
         if okLvl and klvl then roadmap.seasonalPower.keystoneLevel = klvl end
@@ -408,7 +467,7 @@ function RoadmapService:GetCharacterPvERoadmap(charKey)
             or pveCache.lockouts.raids[resolvedKey]
         if charRaids then
             for _, row in pairs(charRaids) do
-                if row and row.name then
+                if row and row.name and (row.resetAt == nil or row.resetAt > nowServer) then
                     roadmap.raidLockouts[#roadmap.raidLockouts + 1] = {
                         name = row.name,
                         difficultyName = row.difficultyName or "Raid",
@@ -433,7 +492,11 @@ function RoadmapService:Initialize(addon)
     local target = addon or WarbandNexus
     if not target then return end
 
+    -- Sync and persist current character on startup
+    self:ScanAndPersistCurrentCharacter()
+
     local function OnRoadmapEvent()
+        RoadmapService:ScanAndPersistCurrentCharacter()
         if target.SendMessage and E and E.ROADMAP_UPDATED then
             target:SendMessage(E.ROADMAP_UPDATED)
         end
@@ -445,9 +508,10 @@ function RoadmapService:Initialize(addon)
             "CHALLENGE_MODE_COMPLETED",
             "UPDATE_INSTANCE_INFO",
             "BOSS_KILL",
+            "ENCOUNTER_END",
             "QUEST_LOG_UPDATE",
+            "QUEST_TURNED_IN",
             "CURRENCY_DISPLAY_UPDATE",
         }, 1.0, OnRoadmapEvent)
     end
 end
-
