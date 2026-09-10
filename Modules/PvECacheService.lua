@@ -616,43 +616,6 @@ local function PruneExpiredKeystonesForWeeklyReset()
     return removed
 end
 
----Prune weekly quest completions that belong to a previous weekly cycle.
-local function PruneExpiredWeeklyQuestsForWeeklyReset()
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.pveCache then
-        return 0
-    end
-    local wq = WarbandNexus.db.global.pveCache.weeklyQuests
-    if type(wq) ~= "table" then return 0 end
-
-    local nowServer = (GetServerTime and GetServerTime()) or time()
-    local resetStart = GetCurrentWeeklyResetStartTime()
-    local removed = 0
-    for key, data in pairs(wq) do
-        local stale = false
-        if type(data) == "table" then
-            if data.resetAt and data.resetAt <= nowServer then
-                stale = true
-            elseif resetStart and resetStart > 0 and data.lastUpdate and data.lastUpdate < resetStart then
-                stale = true
-            end
-        else
-            stale = true
-        end
-        if stale then
-            if type(data) == "table" and data.quests then
-                for qid in pairs(data.quests) do
-                    data.quests[qid] = false
-                end
-                data.resetAt = nil
-            else
-                wq[key] = nil
-            end
-            removed = removed + 1
-        end
-    end
-    return removed
-end
-
 ---Drop Mythic+ score buckets when the season rolls over.
 ---Scores are season-scoped: C_MythicPlus.GetSeasonBestForMap only ever reports runs from the
 ---running season, so on a flip every map reads back empty. UpdateDungeonScores deliberately
@@ -1041,9 +1004,8 @@ function WarbandNexus:InitializePvECache()
     cache.version = CACHE_VERSION
     cache.lastUpdate = cache.lastUpdate or 0
 
-    -- Weekly hygiene: do not keep stale pre-reset keystones or quests across sessions.
+    -- Weekly hygiene: do not keep stale pre-reset keystones across sessions.
     PruneExpiredKeystonesForWeeklyReset()
-    PruneExpiredWeeklyQuestsForWeeklyReset()
     
     -- Validate and clear corrupted vault data
     -- Each character should have max 3 activities per type (raids, mythicPlus, pvp, world)
@@ -2123,7 +2085,6 @@ function WarbandNexus:UpdatePvEData()
 
     -- Ensure weekly reset stale keys are pruned even if affix event did not fire this session.
     PruneExpiredKeystonesForWeeklyReset()
-    PruneExpiredWeeklyQuestsForWeeklyReset()
 
     -- Update all PvE data (API > DB)
     self:UpdateMythicPlusAffixes()
@@ -2135,11 +2096,6 @@ function WarbandNexus:UpdatePvEData()
     self:UpdateWorldBossKills(charKey)
     self:UpdateMythicPlusRunHistory(charKey)
     self:UpdateDelvesData(charKey)
-
-    -- Update Roadmap weekly progression for current character
-    if ns.RoadmapService and ns.RoadmapService.ScanAndPersistCurrentCharacter then
-        ns.RoadmapService:ScanAndPersistCurrentCharacter(charKey)
-    end
     
     -- FALLBACK: Populate vault activities from C_WeeklyRewards.GetActivities() only if
     -- VaultScanner hasn't already provided richer data for this character.
@@ -3459,12 +3415,11 @@ function WarbandNexus:RegisterPvECacheEvents()
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_CURRENT_AFFIX_UPDATE triggered (weekly reset)")
         
-        -- Affix refresh: clear affix IDs, then prune stale keystones and quests for the new weekly cycle.
+        -- Affix refresh: clear affix IDs, then prune stale keystones for the new weekly cycle.
         if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
             if WarbandNexus.db.global.pveCache.mythicPlus then
                 WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
                 PruneExpiredKeystonesForWeeklyReset()
-                PruneExpiredWeeklyQuestsForWeeklyReset()
             end
             
             WarbandNexus:SavePvECache()

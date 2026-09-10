@@ -145,23 +145,6 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "该分类待办中已没有未收藏
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "待办列表"
 L["CATEGORY_DAILY_TASKS"] = "每周进度"
-L["CATEGORY_ROADMAP"] = "路线图"
-L["ROADMAP_SUBTITLE"] = "每周角色进度、宏伟宝库里程碑与优先级目标。"
-L["ROADMAP_TAB_PVE"] = "PvE"
-L["ROADMAP_TAB_PVP"] = "PvP"
-L["ROADMAP_TAB_PROFESSIONS"] = "专业"
-L["ROADMAP_PVP_TITLE"] = "PvP 每周路线图"
-L["ROADMAP_PROF_TITLE"] = "专业技能路线图"
-L["ROADMAP_COMING_SOON"] = "该模块将在下一阶段推出。请查看 PvE 获取当前重置里程碑。"
-L["ROADMAP_VAULT_REWARD_WAITING"] = "该角色的宏伟宝库奖励已可领取！"
-L["ROADMAP_DELVES_HEADER"] = "今日丰盛地下堡"
-L["ROADMAP_KEYS_HELD"] = "钥匙"
-L["ROADMAP_NO_BOUNTIFUL"] = "请登录进入至暗之夜区域以扫描活跃的地下堡兴趣点。"
-L["ROADMAP_PIN_DELVE"] = "标记"
-L["ROADMAP_WEEKLIES_HEADER"] = "每周要务"
-L["ROADMAP_POWER_HEADER"] = "赛季能量"
-L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "团队副本锁定"
-L["ROADMAP_NO_LOCKOUTS"] = "本周无活跃团队副本锁定。"
 L["CATEGORY_ILLUSIONS"] = "幻象"
 
 
@@ -1198,13 +1181,12 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-08)
+L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-10)
 
-Warband concentration tracking, crest cascade simulation, strategic alt staging, keystone synergy tools, and Great Vault improvements.
+Warband concentration tracking, strategic alt staging, keystone synergy tools, and Great Vault improvements.
 
 Added:
 - Concentration recovery and time-to-cap countdowns are now tracked across all characters, with alerts before a profession caps.
-- Equipment upgrade tooltips now calculate and display crest savings cascaded across your alts when raising an account watermark.
 - The try counter now recommends the nearest eligible alt staged in the zone or resting in a nearby hub for collectible attempts.
 - Great Vault Mythic+ slots now highlight warband alts holding keystones that can upgrade your vault or boost your rating.
 - Added a Great Vault dead run tracker showing the exact run level floor where additional runs stop improving your vault rewards.
@@ -1213,6 +1195,7 @@ Added:
 Fixed:
 - Corrected drop conditions for Timewalking dungeons, flexible raids, and legacy bosses in the try counter.
 - Prevented interface taint issues caused by custom tooltip layouts when hiding widgets.
+- Equipment upgrade arrows on paperdoll slots now update immediately upon receiving crests or upgrading gear.
 
 CurseForge: Warband Nexus]=]
 

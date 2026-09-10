@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Main shell WN_* message listeners (PopulateContent coalescing).
     Split from Modules/UI.lua CreateMainWindow closure.
     Loaded from WarbandNexus.toc immediately before Modules/UI.lua.
@@ -191,9 +191,6 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             st.lastEventPopulateTime = 0
             SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
-            st.lastEventPopulateTime = 0
-            SchedulePopulateContent(true)
-        elseif f.currentTab == "plans" then
             st.lastEventPopulateTime = 0
             SchedulePopulateContent(true)
         end
@@ -540,15 +537,6 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_SLOT_COMPLETED, refreshVaultSlots)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_PLAN_COMPLETED, refreshVaultSlots)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_REWARD_AVAILABLE, refreshVaultBadge)
-    if Constants.EVENTS.ROADMAP_UPDATED then
-        WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ROADMAP_UPDATED, function()
-            if HiddenOrMissing() then return end
-            if f.currentTab == "plans" then
-                st.lastEventPopulateTime = 0
-                SchedulePopulateContent(true)
-            end
-        end)
-    end
 
     -- Tracking toggle changes the visible character roster on every tab that lists chars.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_TRACKING_CHANGED, function()

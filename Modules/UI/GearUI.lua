@@ -2070,6 +2070,8 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
         local slotID = sb and sb._slotID
         if sb and slotID and refreshSet[slotID] and sb._gearApplySlotVisual then
             sawRefreshTarget = true
+            sb._gearUpgradeInfo = upgradeInfo
+            sb._gearCurrencyAmounts = currencyAmounts
             -- Prefer live inventory when viewing the logged-in character so ring/weapon swaps
             -- never paint stale/empty DB rows before ScanEquippedGear's debounced write lands.
             local liveSnap

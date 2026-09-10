@@ -145,23 +145,6 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "In dieser Kategorie ist auf der To-D
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "To-Do-Liste"
 L["CATEGORY_DAILY_TASKS"] = "Wöchentlicher Fortschritt"
-L["CATEGORY_ROADMAP"] = "Roadmap"
-L["ROADMAP_SUBTITLE"] = "Wöchentlicher Charakterfortschritt, Belohnungsmeilensteine und Prioritäten."
-L["ROADMAP_TAB_PVE"] = "PvE"
-L["ROADMAP_TAB_PVP"] = "PvP"
-L["ROADMAP_TAB_PROFESSIONS"] = "Berufe"
-L["ROADMAP_PVP_TITLE"] = "PvP-Wochenplan"
-L["ROADMAP_PROF_TITLE"] = "Berufe-Wochenplan"
-L["ROADMAP_COMING_SOON"] = "Modul folgt in der nächsten Phase. Siehe PvE für aktive Meilensteine."
-L["ROADMAP_VAULT_REWARD_WAITING"] = "Große Schatzkammer-Belohnungen können für diesen Charakter abgeholt werden!"
-L["ROADMAP_DELVES_HEADER"] = "Heutige Großzügige Tiefen"
-L["ROADMAP_KEYS_HELD"] = "Schlüssel"
-L["ROADMAP_NO_BOUNTIFUL"] = "Betretet ein Midnight-Gebiet, um aktive Tiefen zu scannen."
-L["ROADMAP_PIN_DELVE"] = "Stecknadel"
-L["ROADMAP_WEEKLIES_HEADER"] = "Wöchentliche Prioritäten"
-L["ROADMAP_POWER_HEADER"] = "Saisonale Macht"
-L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Schlachtzugs-Zuweisungen"
-L["ROADMAP_NO_LOCKOUTS"] = "Keine aktiven Schlachtzugszuweisungen in dieser Woche."
 L["CATEGORY_ILLUSIONS"] = "Illusionen"
 
 
@@ -1200,13 +1183,12 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-08)
+L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-10)
 
-Warband concentration tracking, crest cascade simulation, strategic alt staging, keystone synergy tools, and Great Vault improvements.
+Warband concentration tracking, strategic alt staging, keystone synergy tools, and Great Vault improvements.
 
 Added:
 - Concentration recovery and time-to-cap countdowns are now tracked across all characters, with alerts before a profession caps.
-- Equipment upgrade tooltips now calculate and display crest savings cascaded across your alts when raising an account watermark.
 - The try counter now recommends the nearest eligible alt staged in the zone or resting in a nearby hub for collectible attempts.
 - Great Vault Mythic+ slots now highlight warband alts holding keystones that can upgrade your vault or boost your rating.
 - Added a Great Vault dead run tracker showing the exact run level floor where additional runs stop improving your vault rewards.
@@ -1215,6 +1197,7 @@ Added:
 Fixed:
 - Corrected drop conditions for Timewalking dungeons, flexible raids, and legacy bosses in the try counter.
 - Prevented interface taint issues caused by custom tooltip layouts when hiding widgets.
+- Equipment upgrade arrows on paperdoll slots now update immediately upon receiving crests or upgrading gear.
 
 CurseForge: Warband Nexus]=]
 

@@ -1213,27 +1213,67 @@ local function GearSlotHideLegacyIncreaseLabels(btn)
     btn._gearLastIncTarget = nil
 end
 
-local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable)
-    if not btn or not btn._gearUpgradeArrow then return end
+local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable, canAffordOverride)
+    if not btn then return end
     local slotID = btn._slotID
     local hasItem = slotData and slotData.itemLink and slotData.itemLink ~= ""
         and not (issecretvalue and issecretvalue(slotData.itemLink))
     if not hasItem then
-        btn._gearUpgradeArrow:Hide()
+        if btn._gearUpgradeArrow then btn._gearUpgradeArrow:Hide() end
         if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Hide() end
         if btn._gearUpgradeArrowBg then btn._gearUpgradeArrowBg:Hide() end
         GearSlotHideLegacyIncreaseLabels(btn)
         return
     end
+
+    if not btn._gearUpgradeArrow then
+        local side = btn._gearTextSide or "right"
+        local upgradeBd = btn:CreateTexture(nil, "OVERLAY")
+        btn._gearUpgradeArrowBgBorder = upgradeBd
+        upgradeBd:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+        upgradeBd:SetVertexColor(0.1, 0.78, 0.26, 0.95)
+        if upgradeBd.SetDrawLayer then upgradeBd:SetDrawLayer("OVERLAY", 5) end
+        if upgradeBd.SetFrameLevel and btn.GetFrameLevel then
+            upgradeBd:SetFrameLevel((btn:GetFrameLevel() or 0) + 2)
+        end
+
+        local upgradeBg = btn:CreateTexture(nil, "OVERLAY")
+        btn._gearUpgradeArrowBg = upgradeBg
+        upgradeBg:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+        upgradeBg:SetVertexColor(0, 0, 0, 0.88)
+        if upgradeBg.SetDrawLayer then upgradeBg:SetDrawLayer("OVERLAY", 6) end
+        if upgradeBg.SetFrameLevel and btn.GetFrameLevel then
+            upgradeBg:SetFrameLevel((btn:GetFrameLevel() or 0) + 3)
+        end
+
+        local upgradeArrow = btn:CreateTexture(nil, "OVERLAY")
+        btn._gearUpgradeArrow = upgradeArrow
+        if upgradeArrow.SetFrameLevel and btn.GetFrameLevel then
+            upgradeArrow:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
+        end
+        if upgradeArrow.SetAtlas then
+            upgradeArrow:SetAtlas("loottoast-arrow-green", false)
+            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(0.2, 1, 0.48) end
+        else
+            upgradeArrow:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+            upgradeArrow:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            upgradeArrow:SetVertexColor(0.15, 1, 0.42)
+        end
+        if upgradeArrow.SetDrawLayer then upgradeArrow:SetDrawLayer("OVERLAY", 7) end
+        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBd, upgradeBg, upgradeArrow, nil)
+    end
+
     local up = btn._gearUpgradeInfo and btn._gearUpgradeInfo[slotID]
     local currencies = btn._gearCurrencyAmounts
     local arrowDisplay = nil
-    if up and ns.GearUI_GetUpgradeArrowDisplay then
+    if canAffordOverride ~= nil then
+        arrowDisplay = canAffordOverride and "green" or nil
+    elseif up and ns.GearUI_GetUpgradeArrowDisplay then
         arrowDisplay = ns.GearUI_GetUpgradeArrowDisplay(up, currencies)
         up.upgradeArrowDisplay = arrowDisplay
     end
     local showUpChip = GEAR_DEBUG_ALWAYS_SHOW_UPGRADE
-        or (arrowDisplay == "green")
+        or (arrowDisplay == "green" and not notUpgradeable)
     local canAfford = (arrowDisplay == "green")
     if showUpChip then
         btn._gearUpgradeArrow:Show()
@@ -3780,17 +3820,13 @@ function PD.GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, n
         if nsig ~= osig then return false end
     end
 
-    local upInfo = sb._gearUpgradeInfo and sb._gearUpgradeInfo[sb._slotID]
-    local arrowDisplay = (upInfo and ns.GearUI_GetUpgradeArrowDisplay)
-        and ns.GearUI_GetUpgradeArrowDisplay(upInfo, sb._gearCurrencyAmounts) or nil
-    if upInfo then upInfo.upgradeArrowDisplay = arrowDisplay end
     local expectUpgradeShown = (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink and slotData.itemLink ~= ""
             and not (issecretvalue and issecretvalue(slotData.itemLink)))
-        or (arrowDisplay == "green" and not notUpgradeable)
+        or (canUpgrade == true and not notUpgradeable)
     local upShown = sb._gearUpgradeArrow and sb._gearUpgradeArrow:IsShown() == true
     if expectUpgradeShown ~= upShown then return false end
 
-    local aff = arrowDisplay == "green"
+    local aff = (canUpgrade == true)
     if sb._gearLastCanAffordNext ~= aff then return false end
 
     local wantLock = false

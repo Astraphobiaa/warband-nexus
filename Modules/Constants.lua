@@ -16,7 +16,7 @@ local Constants = {
     -- GetAddOnMetadata() cannot be called during file initialization
     ADDON_VERSION = "3.5.8",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-09-08",
+    ADDON_RELEASE_DATE = "2026-09-10",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -162,7 +162,6 @@ local Constants = {
         QUEST_PROGRESS_UPDATED = "WN_QUEST_PROGRESS_UPDATED",
         --- CollectionService → Plans browse: one deferred ensure per category (payload: { category = "mount"|"pet"|"toy" })
         PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED = "WN_PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED",
-        ROADMAP_UPDATED = "WN_ROADMAP_UPDATED",
         
         -- Vault
         VAULT_CHECKPOINT_COMPLETED = "WN_VAULT_CHECKPOINT_COMPLETED",

@@ -457,6 +457,14 @@ function WarbandNexus:InitializeEventManager()
         end
     end)
     self:RegisterEvent("PLAYER_AVG_ITEM_LEVEL_UPDATE", "OnItemLevelChanged")
+    self:RegisterEvent("ITEM_UPGRADE_MASTER_UPDATE", function()
+        if WarbandNexus.OnItemLevelChanged then
+            WarbandNexus:OnItemLevelChanged()
+        end
+        if WarbandNexus.OnGearEquipmentChanged then
+            WarbandNexus:OnGearEquipmentChanged()
+        end
+    end)
     
     -- Keystone tracking (optimized - check only keystone-related events)
     -- CHALLENGE_MODE_KEYSTONE_SLOTTED: Fired when a keystone is inserted into the pedestal

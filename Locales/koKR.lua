@@ -145,23 +145,6 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "이 분류의 할 일에 아직 미�
 -- Plans Categories
 L["CATEGORY_MY_PLANS"] = "할 일 목록"
 L["CATEGORY_DAILY_TASKS"] = "주간 진행"
-L["CATEGORY_ROADMAP"] = "로드맵"
-L["ROADMAP_SUBTITLE"] = "주간 캐릭터 진행 상황, 위대한 금고 목표 및 우선순위입니다."
-L["ROADMAP_TAB_PVE"] = "PvE"
-L["ROADMAP_TAB_PVP"] = "PvP"
-L["ROADMAP_TAB_PROFESSIONS"] = "전문 기술"
-L["ROADMAP_PVP_TITLE"] = "PvP 주간 로드맵"
-L["ROADMAP_PROF_TITLE"] = "전문 기술 로드맵"
-L["ROADMAP_COMING_SOON"] = "다음 단계에서 추가될 모듈입니다. 활성 목표는 PvE를 확인하세요."
-L["ROADMAP_VAULT_REWARD_WAITING"] = "이 캐릭터의 위대한 금고 보상을 수령할 수 있습니다!"
-L["ROADMAP_DELVES_HEADER"] = "오늘의 풍요로운 구렁"
-L["ROADMAP_KEYS_HELD"] = "열쇠"
-L["ROADMAP_NO_BOUNTIFUL"] = "Midnight 지역에 접속하여 활성 구렁을 스캔하세요."
-L["ROADMAP_PIN_DELVE"] = "고정"
-L["ROADMAP_WEEKLIES_HEADER"] = "주간 우선순위"
-L["ROADMAP_POWER_HEADER"] = "시즌 강화"
-L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "공격대 귀속"
-L["ROADMAP_NO_LOCKOUTS"] = "이번 주 활성화된 공격대 귀속이 없습니다."
 L["CATEGORY_ILLUSIONS"] = "환영"
 
 
@@ -1200,13 +1183,12 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "총 플레이 시간·이 레벨 플�
 
 
 
-L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-08)
+L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-10)
 
-Warband concentration tracking, crest cascade simulation, strategic alt staging, keystone synergy tools, and Great Vault improvements.
+Warband concentration tracking, strategic alt staging, keystone synergy tools, and Great Vault improvements.
 
 Added:
 - Concentration recovery and time-to-cap countdowns are now tracked across all characters, with alerts before a profession caps.
-- Equipment upgrade tooltips now calculate and display crest savings cascaded across your alts when raising an account watermark.
 - The try counter now recommends the nearest eligible alt staged in the zone or resting in a nearby hub for collectible attempts.
 - Great Vault Mythic+ slots now highlight warband alts holding keystones that can upgrade your vault or boost your rating.
 - Added a Great Vault dead run tracker showing the exact run level floor where additional runs stop improving your vault rewards.
@@ -1215,6 +1197,7 @@ Added:
 Fixed:
 - Corrected drop conditions for Timewalking dungeons, flexible raids, and legacy bosses in the try counter.
 - Prevented interface taint issues caused by custom tooltip layouts when hiding widgets.
+- Equipment upgrade arrows on paperdoll slots now update immediately upon receiving crests or upgrading gear.
 
 CurseForge: Warband Nexus]=]
 

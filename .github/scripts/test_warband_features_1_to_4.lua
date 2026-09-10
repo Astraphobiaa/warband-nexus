@@ -8,10 +8,7 @@
        - Projection math: 10 pts/hr = 1 pt / 360s
        - Cap countdown & alerts
        - Priority queue sorting
-    2. Warband Crest & High Watermark Cascade Simulator
-       - Multi-alt crest discount calculations (15 crests / step)
-       - Source alt exclusion & watermark thresholding
-    3. Warband Strategic Staging & Rare Proximity Dispatcher
+    2. Warband Strategic Staging & Rare Proximity Dispatcher
        - Coordinate persistence & Euclidean distance scoring
        - Resting status & eligibility filtering
     4. Warband Great Vault & Keystone Synergy Choreographer
@@ -151,40 +148,7 @@ do
     assert_eq(queue[3].charName, "AlchemistMain", "Lowest priority is AlchemistMain")
 end
 
-print("=== Phase 2: Warband Crest & High Watermark Cascade Simulator ===")
-do
-    -- Set account watermark for Chest (slot 5) to 630
-    WarbandNexus.db.global.accountWatermarks[5] = 630
 
-    -- Add alts with chest gear below 639
-    WarbandNexus.db.global.gearData = {
-        ["Player-01"] = {
-            slots = {
-                [5] = { itemLevel = 630, currUpgrade = 4, maxUpgrade = 8, upgradeTrack = "Hero" }
-            }
-        },
-        ["Player-02"] = {
-            slots = {
-                [5] = { itemLevel = 619, currUpgrade = 1, maxUpgrade = 8, upgradeTrack = "Champion" }
-            }
-        },
-        ["Player-03"] = {
-            slots = {
-                [5] = { itemLevel = 606, currUpgrade = 0, maxUpgrade = 8, upgradeTrack = "Veteran" }
-            }
-        },
-    }
-
-    -- Player-01 upgrades chest to 639
-    local cascade = WarbandNexus:SimulateWatermarkCascade(5, 639, "Player-01")
-    assert_true(cascade ~= nil, "Cascade simulation returned result")
-    assert_eq(#cascade.affectedAlts, 2, "Excluded source player Player-01; 2 alts affected")
-    assert_true(cascade.totalCrestsSaved > 0, "Total crests saved is greater than 0")
-    -- Player-02: baseline was 630 (account watermark > 619). ilvlDiff = 639 - 630 = 9. steps = 2. savings = 30 crests.
-    -- Player-03: baseline was 630. ilvlDiff = 9. steps = 2. savings = 30 crests.
-    assert_eq(cascade.totalCrestsSaved, 60, "Calculated exactly 60 crests saved across Warband")
-    assert_eq(cascade.crestType, "Mistcrest", "Correct Midnight crest type")
-end
 
 print("=== Phase 3: Warband Strategic Staging & Rare Proximity Dispatcher ===")
 do

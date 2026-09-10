@@ -579,8 +579,6 @@ function WarbandNexus:CleanupOrphanedData()
 
     purgeOrphans(self.db.global.gearData)
     purgeOrphans(self.db.global.pveProgress)
-    purgeOrphans(self.db.global.pvpProgress)
-    purgeOrphans(self.db.global.pvpMatches)
     purgeOrphans(self.db.global.statisticSnapshots)
     purgeOrphans(self.db.global.personalBanks)
     purgeOrphans(self.db.global.itemStorage)
@@ -608,28 +606,7 @@ function WarbandNexus:CleanupOrphanedData()
         if pc.delves and pc.delves.characters then
             purgeOrphans(pc.delves.characters)
         end
-        if pc.weeklyQuests then
-            purgeOrphans(pc.weeklyQuests)
-        end
-        if pc.keystones and pc.keystones.characters then
-            purgeOrphans(pc.keystones.characters)
-        end
     end
-
-    local function purgeOrphanPlans(planList)
-        if type(planList) ~= "table" then return end
-        local U = ns.Utilities
-        for i = #planList, 1, -1 do
-            local plan = planList[i]
-            local pk = plan and (plan.characterKey or (U and U.GetCharacterKey and U:GetCharacterKey(plan.characterName, plan.characterRealm)))
-            if pk and pk ~= "" and not keyStillOwned(pk) then
-                table.remove(planList, i)
-                removed = removed + 1
-            end
-        end
-    end
-    purgeOrphanPlans(self.db.global.plans)
-    purgeOrphanPlans(self.db.global.customPlans)
 
     if removed > 0 and ns.DebugPrint then
         ns.DebugPrint("|cffff8000[WN Cleanup]|r Orphan subsidiary keys removed: " .. removed)

@@ -218,12 +218,6 @@ local function RemapPveCacheCharacterKeys(pveCache, renames)
     if delves and delves.characters then
         RemapCharKeyedBucket(delves.characters, renames)
     end
-    if pveCache.weeklyQuests then
-        RemapCharKeyedBucket(pveCache.weeklyQuests, renames)
-    end
-    if pveCache.keystones and pveCache.keystones.characters then
-        RemapCharKeyedBucket(pveCache.keystones.characters, renames)
-    end
 end
 
 --[[
@@ -1051,31 +1045,10 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
         RemapCharKeyedBucket(db.global.pveProgress, renames)
     end
 
-    -- pvpProgress & pvpMatches
-    if db.global.pvpProgress then
-        RemapCharKeyedBucket(db.global.pvpProgress, renames)
-    end
-    if db.global.pvpMatches then
-        RemapCharKeyedBucket(db.global.pvpMatches, renames)
-    end
-
     -- pveCache (active PvE storage)
     if db.global.pveCache then
         RemapPveCacheCharacterKeys(db.global.pveCache, renames)
     end
-
-    -- plans & customPlans character references
-    local function remapPlanCharKeys(planList)
-        if type(planList) ~= "table" then return end
-        for i = 1, #planList do
-            local plan = planList[i]
-            if plan and plan.characterKey and renames[plan.characterKey] then
-                plan.characterKey = renames[plan.characterKey]
-            end
-        end
-    end
-    remapPlanCharKeys(db.global.plans)
-    remapPlanCharKeys(db.global.customPlans)
 
     -- statisticSnapshots
     if db.global.statisticSnapshots then

@@ -120,7 +120,6 @@ Modules\TryCounterService_SelfTest.lua
 Modules\Data\MidnightQuestCatalog.lua
 Modules\DailyQuestManager_Tracking.lua
 Modules\DailyQuestManager.lua
-Modules\RoadmapService.lua
 Modules\Data\ReminderMapContent.lua
 Modules\Data\ReminderWorldQuestIndex.lua
 Modules\Data\ReminderMidnightFactionEmissaryData.lua
@@ -216,7 +215,6 @@ Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI_SourceParser.lua
 Modules\UI\PlansUI_Browse.lua
 Modules\UI\PlansUI_WeeklyPlanner.lua
-Modules\UI\RoadmapUI.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua

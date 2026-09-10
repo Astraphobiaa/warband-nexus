@@ -1245,11 +1245,6 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         if self.ScanEquippedGear then
             self:ScanEquippedGear()
         end
-
-        -- Ensure Roadmap weekly progression is synced and persisted into DB
-        if ns.RoadmapService and ns.RoadmapService.ScanAndPersistCurrentCharacter then
-            ns.RoadmapService:ScanAndPersistCurrentCharacter(key)
-        end
     end
     
     -- Fire event for UI refresh (DB-First pattern)

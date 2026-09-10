@@ -341,23 +341,6 @@ L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"] = "Devam eden To-Do öğesi yok"
 L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"] = "Bu kategoride To-Do Listenizde hâlâ toplanmamış bir şey yok. Bitmiş olanları görmek için Tamamlananları Göster seçeneğini açın ya da bu sekmeden hedef ekleyin."
 L["CATEGORY_MY_PLANS"] = "To-Do Listesi"
 L["CATEGORY_DAILY_TASKS"] = "Haftalık İlerleme"
-L["CATEGORY_ROADMAP"] = "Yol Haritası"
-L["ROADMAP_SUBTITLE"] = "Haftalik karakter ilerlemesi, Buyuk Kasa kilometre taslari ve oncelikler."
-L["ROADMAP_TAB_PVE"] = "PvE"
-L["ROADMAP_TAB_PVP"] = "PvP"
-L["ROADMAP_TAB_PROFESSIONS"] = "Meslekler"
-L["ROADMAP_PVP_TITLE"] = "PvP Haftalik Yol Haritasi"
-L["ROADMAP_PROF_TITLE"] = "Meslekler Yol Haritasi"
-L["ROADMAP_COMING_SOON"] = "Modul sonraki asamada gelecek. Aktif hedefler icin PvE sekmesine bakin."
-L["ROADMAP_VAULT_REWARD_WAITING"] = "Bu karakter icin Buyuk Kasa odulleri alinmaya hazir!"
-L["ROADMAP_DELVES_HEADER"] = "Gunun Bereketli Delveleri"
-L["ROADMAP_KEYS_HELD"] = "Anahtarlar"
-L["ROADMAP_NO_BOUNTIFUL"] = "Aktif delve noktalarini taramak icin bir Midnight bolgesine girin."
-L["ROADMAP_PIN_DELVE"] = "Sabitle"
-L["ROADMAP_WEEKLIES_HEADER"] = "Haftalik Oncelikler"
-L["ROADMAP_POWER_HEADER"] = "Sezon Gucu"
-L["ROADMAP_RAID_LOCKOUTS_HEADER"] = "Raid Kilitleri"
-L["ROADMAP_NO_LOCKOUTS"] = "Bu hafta aktif raid kilidi yok."
 L["CATEGORY_ILLUSIONS"] = "İllüzyonlar"
 L["TOOLTIP_WARBAND_BANK"] = "Warband Bank"
 L["TOOLTIP_GUILD_VAULT"] = "Lonca Kasası"
@@ -2228,13 +2211,12 @@ L["SOURCE_TYPE_PVP"] = "PvP"
 L["DIFFICULTY_NORMAL"] = "Normal"
 L["DIFFICULTY_HEROIC"] = "Heroic"
 L["DIFFICULTY_MYTHIC"] = "Mythic"
-L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-08)
+L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-10)
 
-Warband concentration tracking, crest cascade simulation, strategic alt staging, keystone synergy tools, and Great Vault improvements.
+Warband concentration tracking, strategic alt staging, keystone synergy tools, and Great Vault improvements.
 
 Added:
 - Concentration recovery and time-to-cap countdowns are now tracked across all characters, with alerts before a profession caps.
-- Equipment upgrade tooltips now calculate and display crest savings cascaded across your alts when raising an account watermark.
 - The try counter now recommends the nearest eligible alt staged in the zone or resting in a nearby hub for collectible attempts.
 - Great Vault Mythic+ slots now highlight warband alts holding keystones that can upgrade your vault or boost your rating.
 - Added a Great Vault dead run tracker showing the exact run level floor where additional runs stop improving your vault rewards.
@@ -2243,6 +2225,7 @@ Added:
 Fixed:
 - Corrected drop conditions for Timewalking dungeons, flexible raids, and legacy bosses in the try counter.
 - Prevented interface taint issues caused by custom tooltip layouts when hiding widgets.
+- Equipment upgrade arrows on paperdoll slots now update immediately upon receiving crests or upgrading gear.
 
 CurseForge: Warband Nexus]=]
 

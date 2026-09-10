@@ -177,7 +177,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     local showUpgradeChip = wantDebugUpgrade
         or (hasUpgradePath and arrowDisplay == "green" and hasItemNow and not isNotUpgradeable)
     local canAffordNext = (arrowDisplay == "green")
-    if not lockOnly and showUpgradeChip then
+    if not lockOnly and hasItemNow then
         local upgradeBd = btn:CreateTexture(nil, "OVERLAY")
         btn._gearUpgradeArrowBgBorder = upgradeBd
         upgradeBd:SetTexture("Interface\\BUTTONS\\WHITE8X8")
@@ -216,6 +216,11 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         end
         if upgradeArrow.SetDrawLayer then upgradeArrow:SetDrawLayer("OVERLAY", 7) end
         PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBd, upgradeBg, upgradeArrow, nil)
+        if not showUpgradeChip then
+            upgradeArrow:Hide()
+            upgradeBg:Hide()
+            upgradeBd:Hide()
+        end
     elseif lockOnly then
         local lockIcon = btn:CreateTexture(nil, "OVERLAY")
         btn._gearLockIcon = lockIcon
@@ -374,14 +379,6 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                     end
                 end
 
-                if up.cascadeSavings and up.cascadeSavings.totalCrestsSaved and up.cascadeSavings.totalCrestsSaved > 0 then
-                    local fmt = (ns.L and ns.L["CASCADE_SAVINGS_BANNER"]) or "Cascades to %d alts: Saves %d %s across your Warband"
-                    local crestName = up.cascadeSavings.crestName or up.cascadeSavings.crestType or GetUpgradeCrestName(up)
-                    additionalLines[#additionalLines + 1] = {
-                        text = format(fmt, #up.cascadeSavings.affectedAlts, up.cascadeSavings.totalCrestsSaved, crestName),
-                        color = { 1, 0.82, 0.22 }
-                    }
-                end
             end
 
 
@@ -561,7 +558,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                 self._gearTrackLabel:Show()
             end
         end
-        GearSlotRefreshUpgradeArrow(self, slotData, notUpgradeable)
+        GearSlotRefreshUpgradeArrow(self, slotData, notUpgradeable, canUpgrade)
         GearSlotHideLegacyIncreaseLabels(self)
         if self._gearLockIcon then
             if notUpgradeable and slotData and slotData.itemLink then self._gearLockIcon:Show() else self._gearLockIcon:Hide() end

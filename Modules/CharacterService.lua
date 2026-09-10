@@ -583,30 +583,7 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
         if pc.delves and pc.delves.characters then
             removed = removed + PurgeCharKeyedEntries(pc.delves.characters, charKey)
         end
-        if pc.weeklyQuests then
-            removed = removed + PurgeCharKeyedEntries(pc.weeklyQuests, charKey)
-        end
-        if pc.keystones and pc.keystones.characters then
-            removed = removed + PurgeCharKeyedEntries(pc.keystones.characters, charKey)
-        end
     end
-
-    local function purgePlansForChar(planList)
-        if type(planList) ~= "table" then return 0 end
-        local rCount = 0
-        local U = ns.Utilities
-        for i = #planList, 1, -1 do
-            local plan = planList[i]
-            local pk = plan and (plan.characterKey or (U and U.GetCharacterKey and U:GetCharacterKey(plan.characterName, plan.characterRealm)))
-            if pk and (pk == charKey or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(pk, charKey))) then
-                table.remove(planList, i)
-                rCount = rCount + 1
-            end
-        end
-        return rCount
-    end
-    removed = removed + purgePlansForChar(g.plans)
-    removed = removed + purgePlansForChar(g.customPlans)
 
     for _, repData in pairs(g.reputations or {}) do
         if type(repData) == "table" and repData.chars then
