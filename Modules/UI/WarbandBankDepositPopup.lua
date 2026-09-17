@@ -159,17 +159,48 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     reagentLabel:SetText((L and L["REAGENT_DEPOSIT_DEST_REAGENT"]) or "Personal Reagent Bank")
     ns.UI_SetTextColorRole(reagentLabel, "Bright")
 
+    local function ShowDestTooltip(btn, title, desc, note)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        local tr, tg, tb = 1, 1, 1
+        if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+        GameTooltip:SetText(title, tr, tg, tb)
+
+        local br, bg, bb = 0.9, 0.9, 0.9
+        if ns.UI_GetTooltipBodyColor then br, bg, bb = ns.UI_GetTooltipBodyColor() end
+        GameTooltip:AddLine(desc, br, bg, bb, true)
+
+        local nr, ng, nb = 1, 0.82, 0.2
+        if ns.UI_GetTooltipDescColor then nr, ng, nb = ns.UI_GetTooltipDescColor() end
+        GameTooltip:AddLine(note, nr, ng, nb, true)
+
+        GameTooltip:Show()
+    end
+
     warbandBtn:SetScript("OnClick", function()
         warbandRadio.innerDot:Show()
         reagentRadio.innerDot:Hide()
         settings.destination = "warband"
     end)
+    warbandBtn:SetScript("OnEnter", function(b)
+        local title = (L and L["REAGENT_DEPOSIT_DEST_WARBAND"]) or "Warband Bank (Account)"
+        local desc = (L and L["REAGENT_DEPOSIT_DEST_WARBAND_DESC"]) or "Deposits matching reagents and tokens into your Warband Bank, accessible across your entire account."
+        local note = (L and L["REAGENT_DEPOSIT_DEST_WARBAND_NOTE"]) or "Note: Soulbound items cannot be deposited into the Warband Bank due to Blizzard game restrictions."
+        ShowDestTooltip(b, title, desc, note)
+    end)
+    warbandBtn:SetScript("OnLeave", GameTooltip_Hide)
 
     reagentBtn:SetScript("OnClick", function()
         reagentRadio.innerDot:Show()
         warbandRadio.innerDot:Hide()
         settings.destination = "reagent"
     end)
+    reagentBtn:SetScript("OnEnter", function(b)
+        local title = (L and L["REAGENT_DEPOSIT_DEST_REAGENT"]) or "Personal Reagent Bank"
+        local desc = (L and L["REAGENT_DEPOSIT_DEST_REAGENT_DESC"]) or "Deposits matching reagents into this character's personal Reagent Bank tab."
+        local note = (L and L["REAGENT_DEPOSIT_DEST_REAGENT_NOTE"]) or "Note: Only standard crafting reagents can be stored here. Expansion mini-game or covenant materials are not accepted."
+        ShowDestTooltip(b, title, desc, note)
+    end)
+    reagentBtn:SetScript("OnLeave", GameTooltip_Hide)
 
     yOffset = yOffset + 30
 
