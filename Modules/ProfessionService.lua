@@ -1383,6 +1383,104 @@ local function IsMidnightRecipeCategory(categoryID, cache)
     return false
 end
 
+-- Known unobtainable / scrapped recipes from PTR that did not make it to live
+local SCRAPPED_UNOBTAINABLE_RECIPE_NAMES = {
+    ["odious alloy"] = true,
+    ["alliage odieux"] = true,
+    ["gehässige legierung"] = true,
+    ["gehaessige legierung"] = true,
+    ["aleación odiosa"] = true,
+    ["aleacion odiosa"] = true,
+    ["lega odiosa"] = true,
+    ["liga odiosa"] = true,
+    ["гнусный сплав"] = true,
+    ["отвратительный сплав"] = true,
+    ["可憎合金"] = true,
+    ["令人憎恶的合金"] = true,
+    ["令人憎惡的合金"] = true,
+    ["불쾌한 합금"] = true,
+    ["역겨운 합금"] = true,
+}
+
+local function IsScrappedOrUnobtainableRecipe(recipeID, recipeInfo, nameOverride)
+    if recipeInfo and recipeInfo.learned == true then
+        return false
+    end
+    -- Check Blizzard internal flags if present on recipeInfo
+    if recipeInfo and (recipeInfo.isInternal or recipeInfo.isTest or recipeInfo.isDummy) then
+        return true
+    end
+
+    local name = nameOverride or (recipeInfo and recipeInfo.name)
+    if not name or (issecretvalue and issecretvalue(name)) then
+        return false
+    end
+    local lower = (ns.Utilities and ns.Utilities.SafeLower and ns.Utilities:SafeLower(name)) or (type(name) == "string" and name:lower()) or ""
+    if SCRAPPED_UNOBTAINABLE_RECIPE_NAMES[lower] then
+        return true
+    end
+    if lower:find("odious alloy", 1, true) then
+        return true
+    end
+
+    -- Universal Blizzard internal/placeholder tags across all professions ([DNT], [PH], [TEST], (Deprecated), etc.)
+    if lower:find("%[dnt%]")
+        or lower:find("%[ph%]")
+        or lower:find("%[test%]")
+        or lower:find("%(test%)")
+        or lower:find("%(deprecated%)")
+        or lower:find("%(unused%)")
+        or lower:find("%(internal%)")
+        or lower:find("qa test")
+    then
+        return true
+    end
+
+    return false
+end
+ns.IsScrappedOrUnobtainableRecipe = IsScrappedOrUnobtainableRecipe
+
+local function SanitizeScrappedRecipesForCharacter(charData)
+    if not charData or type(charData) ~= "table" then return false end
+    if not charData.recipes or type(charData.recipes) ~= "table" then return false end
+
+    local anyModified = false
+    for slID, rd in pairs(charData.recipes) do
+        if type(rd) == "table" and rd.recipeList and type(rd.recipeList) == "table" then
+            local modified = false
+            local newList = {}
+            local removedCount = 0
+            for ri = 1, #rd.recipeList do
+                local r = rd.recipeList[ri]
+                if r and not r.learned and IsScrappedOrUnobtainableRecipe(r.recipeID, nil, r.name) then
+                    modified = true
+                    removedCount = removedCount + 1
+                else
+                    newList[#newList + 1] = r
+                end
+            end
+            if modified then
+                anyModified = true
+                rd.recipeList = newList
+                rd.totalCount = math.max(0, (rd.totalCount or 0) - removedCount)
+                local bucket = charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[slID]
+                if bucket and bucket.recipes and bucket.recipes.totalCount then
+                    bucket.recipes.totalCount = math.max(0, (bucket.recipes.totalCount or 0) - removedCount)
+                end
+            end
+        end
+    end
+    return anyModified
+end
+
+local function SanitizeAllStoredScrappedRecipes()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.characters then return end
+    for charKey, charData in pairs(WarbandNexus.db.global.characters) do
+        SanitizeScrappedRecipesForCharacter(charData)
+    end
+end
+ns.SanitizeAllStoredScrappedRecipes = SanitizeAllStoredScrappedRecipes
+
 -- Midnight weekly profession knowledge (MIDNIGHT_WEEKLY_SOURCES)
 -- Detection: QuestProgressComplete() = flagged OR in-log complete OR ready for turn-in
 --   OR GetInfo(logIndex).isComplete (quest still in journal).
@@ -1734,38 +1832,40 @@ local function CollectRecipeSummaryData()
             -- Filter to Midnight categories only (strict content isolation).
             local categoryID = recipeInfo.categoryID
             if IsMidnightRecipeCategory(categoryID, categoryCache) then
-                totalCount = totalCount + 1
+                if not IsScrappedOrUnobtainableRecipe(recipeID, recipeInfo) then
+                    totalCount = totalCount + 1
 
-                if recipeInfo.learned == true then
-                    knownCount = knownCount + 1
-                    knownRecipes[recipeID] = true
-                end
+                    if recipeInfo.learned == true then
+                        knownCount = knownCount + 1
+                        knownRecipes[recipeID] = true
+                    end
 
-                -- Store recipe detail for Info window display
-                recipeList[#recipeList + 1] = {
-                    recipeID = recipeID,
-                    name = SafeAPIString(recipeInfo.name) or ("Recipe " .. recipeID),
-                    icon = recipeInfo.icon,
-                    learned = recipeInfo.learned == true,
-                }
+                    -- Store recipe detail for Info window display
+                    recipeList[#recipeList + 1] = {
+                        recipeID = recipeID,
+                        name = SafeAPIString(recipeInfo.name) or ("Recipe " .. recipeID),
+                        icon = recipeInfo.icon,
+                        learned = recipeInfo.learned == true,
+                    }
 
-                -- First Craft (Current / Total): total = only recipes that actually have a first-craft bonus (matches other addons e.g. 72 not 88).
-                -- firstCraft == false on unlearned often means "no bonus", so only count: firstCraft==true (available) or learned+firstCraft==false (consumed).
-                if type(recipeInfo.firstCraft) == "boolean" then
-                    local hasBonus = (recipeInfo.firstCraft == true) or (recipeInfo.learned == true and recipeInfo.firstCraft == false)
-                    if hasBonus then
-                        firstCraftTotalCount = firstCraftTotalCount + 1
-                        if recipeInfo.learned == true then
-                            if recipeInfo.firstCraft == false then
-                                firstCraftDoneCount = firstCraftDoneCount + 1
-                            else
-                                firstCraftAvailableCount = firstCraftAvailableCount + 1
+                    -- First Craft (Current / Total): total = only recipes that actually have a first-craft bonus (matches other addons e.g. 72 not 88).
+                    -- firstCraft == false on unlearned often means "no bonus", so only count: firstCraft==true (available) or learned+firstCraft==false (consumed).
+                    if type(recipeInfo.firstCraft) == "boolean" then
+                        local hasBonus = (recipeInfo.firstCraft == true) or (recipeInfo.learned == true and recipeInfo.firstCraft == false)
+                        if hasBonus then
+                            firstCraftTotalCount = firstCraftTotalCount + 1
+                            if recipeInfo.learned == true then
+                                if recipeInfo.firstCraft == false then
+                                    firstCraftDoneCount = firstCraftDoneCount + 1
+                                else
+                                    firstCraftAvailableCount = firstCraftAvailableCount + 1
+                                end
                             end
                         end
                     end
-                end
-                if IsRecipeFlagTrue(recipeInfo, "canSkillUp", "hasSkillUp", "isSkillUpRecipe", "isRecipePotentiallyDiscoverable") then
-                    skillUpCount = skillUpCount + 1
+                    if IsRecipeFlagTrue(recipeInfo, "canSkillUp", "hasSkillUp", "isSkillUpRecipe", "isRecipePotentiallyDiscoverable") then
+                        skillUpCount = skillUpCount + 1
+                    end
                 end
             end
         end
@@ -3355,6 +3455,7 @@ end
     Called from Core.lua on PLAYER_ENTERING_WORLD with a delay.
 ]]
 function WarbandNexus:CollectExpansionProfessionsOnLogin()
+    pcall(SanitizeAllStoredScrappedRecipes)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     if self.IsExpansionProfessionsPersistedWarm and self:IsExpansionProfessionsPersistedWarm() then

@@ -861,7 +861,10 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                     -- Sort: learned first, then alphabetical
                     local sorted = {}
                     for idx = 1, #rd.recipeList do
-                        sorted[#sorted + 1] = rd.recipeList[idx]
+                        local recipe = rd.recipeList[idx]
+                        if not (recipe and not recipe.learned and ns.IsScrappedOrUnobtainableRecipe and ns.IsScrappedOrUnobtainableRecipe(recipe.recipeID, nil, recipe.name)) then
+                            sorted[#sorted + 1] = recipe
+                        end
                     end
                     table.sort(sorted, function(a, b)
                         if a.learned ~= b.learned then return a.learned end
