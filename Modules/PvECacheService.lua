@@ -1863,7 +1863,9 @@ function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
         self.db.global.pveCache.mythicPlus.runHistory = {}
     end
 
-    local runs = C_MythicPlus.GetRunHistory(false, false)
+    -- includePreviousWeeks = false, includeIncompleteRuns = true
+    -- In WoW, untimed (completed over-time) runs count fully toward Great Vault progression.
+    local runs = C_MythicPlus.GetRunHistory(false, true)
     if not runs then
         self.db.global.pveCache.mythicPlus.runHistory[charKey] = {}
         return

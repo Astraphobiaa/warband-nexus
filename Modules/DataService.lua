@@ -1834,11 +1834,11 @@ function WarbandNexus:CollectPvEData()
             end
         end
         
-        -- Run history this week
+        -- Run history this week (include untimed/over-time runs for Great Vault parity)
         if C_MythicPlus.GetRunHistory then
-            local includeIncomplete = false
             local includePreviousWeeks = false
-            local runs = C_MythicPlus.GetRunHistory(includeIncomplete, includePreviousWeeks)
+            local includeIncomplete = true
+            local runs = C_MythicPlus.GetRunHistory(includePreviousWeeks, includeIncomplete)
             if runs then
                 pve.mythicPlus.runsThisWeek = #runs
                 -- Get highest run level for weekly best
