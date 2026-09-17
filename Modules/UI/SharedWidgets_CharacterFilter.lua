@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Character tab sort/filter flyouts and section pick menus.
     Split from SharedWidgets.lua to reduce main chunk size (Lua 5.1 local limit).
     Loaded from WarbandNexus.toc immediately after Modules/UI/SharedWidgets.lua.
@@ -724,12 +724,38 @@ function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onD
     local addon = _G.WarbandNexus or ns.WarbandNexus
     -- Resolve through the service: raw indexing misses assignments stored under the canonical key.
     local assignedGroupId = ns.CharacterService:GetCharacterCustomSectionId(addon, charKey)
+    local isCharLocked = ns.CharacterService:IsCharacterSectionLocked(addon, charKey)
+
+    local function GetLockAtlasMarkup(sz)
+        sz = sz or 12
+        if CreateAtlasMarkup then
+            local ok, markup = pcall(CreateAtlasMarkup, "communities-icon-lock", sz, sz)
+            if ok and markup and markup ~= "" then
+                return markup
+            end
+        end
+        return string.format("|TInterface\\Common\\LockIcon:%d:%d:0:0|t", sz, sz)
+    end
+
     if assignedGroupId then
+        local lockText = isCharLocked
+            and ((L and L["CUSTOM_HEADER_UNLOCK_CHAR"]) or "Unlock this character")
+            or ((L and L["CUSTOM_HEADER_LOCK_CHAR"]) or "Lock character to section")
+        rows[#rows + 1] = {
+            label = GetLockAtlasMarkup(12) .. " " .. lockText,
+            noRadio = true,
+            onPick = function()
+                ns.CharacterService:ToggleCharacterSectionLock(addon, charKey)
+            end,
+        }
+
         rows[#rows + 1] = {
             label = (L and L["CUSTOM_HEADER_REMOVE_ASSIGN"]) or "Remove from custom header",
             selected = false,
             noRadio = true,
+            disabled = isCharLocked,
             onPick = function()
+                if isCharLocked then return end
                 ns.CharacterService:SetCharacterCustomSection(addon, charKey, nil)
             end,
         }
@@ -737,10 +763,18 @@ function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onD
     local groups = profile.characterCustomGroups or {}
     for i = 1, #groups do
         local g = groups[i]
+        local isCurrent = (assignedGroupId == g.id)
+        local disabled = (not isCurrent) and isCharLocked
+        local label = g.name or g.id
+        if disabled then
+            label = label .. " " .. GetLockAtlasMarkup(12)
+        end
         rows[#rows + 1] = {
-            label = g.name or g.id,
-            selected = (assignedGroupId == g.id),
+            label = label,
+            selected = isCurrent,
+            disabled = disabled,
             onPick = function()
+                if disabled then return end
                 ns.CharacterService:SetCharacterCustomSection(addon, charKey, g.id)
             end,
         }

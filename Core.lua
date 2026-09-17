@@ -316,6 +316,10 @@ local defaults = {
         characterFavoriteCustomGroupId = nil,
         -- Custom section gold bar highlights: any number of group ids may be set ([groupId] = true).
         characterFavoriteCustomGroupIds = {},
+        -- Custom section locks: prevents accidental switching of characters to other sections ([groupId] = true).
+        characterLockedCustomGroupIds = {},
+        -- Per-character section locks: prevents accidental reassignment of specific characters ([charKey] = true).
+        characterLockedAssignments = {},
 
         -- Profession tab: which expansion to show (strict filter; only that expansion's data)
         professionExpansionFilter = "Midnight",  -- "All", "Midnight", "Khaz Algar", "Dragon Isles", etc.

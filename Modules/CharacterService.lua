@@ -931,6 +931,14 @@ function CharacterService:EnsureCustomCharacterSectionsProfile(profile)
     if type(profile.characterFavoriteCustomGroupIds) ~= "table" then
         profile.characterFavoriteCustomGroupIds = {}
     end
+    -- Locked custom headers: set[groupId] = true
+    if type(profile.characterLockedCustomGroupIds) ~= "table" then
+        profile.characterLockedCustomGroupIds = {}
+    end
+    -- Locked character assignments: set[charKey] = true
+    if type(profile.characterLockedAssignments) ~= "table" then
+        profile.characterLockedAssignments = {}
+    end
     local legacy = profile.characterFavoriteCustomGroupId
     if legacy and legacy ~= "" and not profile.characterFavoriteCustomGroupIds[legacy] then
         profile.characterFavoriteCustomGroupIds[legacy] = true
@@ -945,6 +953,11 @@ function CharacterService:EnsureCustomCharacterSectionsProfile(profile)
     for gid, _ in pairs(profile.characterFavoriteCustomGroupIds) do
         if not valid[gid] then
             profile.characterFavoriteCustomGroupIds[gid] = nil
+        end
+    end
+    for gid, _ in pairs(profile.characterLockedCustomGroupIds) do
+        if not valid[gid] then
+            profile.characterLockedCustomGroupIds[gid] = nil
         end
     end
 end
@@ -997,6 +1010,96 @@ function CharacterService:SetFavoriteCustomSectionGroupId(addon, groupId)
         return true
     end
     return self:ToggleFavoriteCustomHeaderHighlight(addon, groupId) ~= nil
+end
+
+--- Get display name for a custom section.
+function CharacterService:GetCustomSectionName(addon, groupId)
+    if not addon or not addon.db or not addon.db.profile or not groupId or groupId == "" then return nil end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local groups = profile.characterCustomGroups or {}
+    for i = 1, #groups do
+        if groups[i].id == groupId then
+            return groups[i].name or groups[i].id
+        end
+    end
+    return nil
+end
+
+--- Whether a custom section is locked against accidental reassignment.
+function CharacterService:IsCustomSectionLocked(addon, groupId)
+    if not addon or not addon.db or not addon.db.profile or not groupId or groupId == "" then return false end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    if type(profile.characterLockedCustomGroupIds) == "table" and profile.characterLockedCustomGroupIds[groupId] then
+        return true
+    end
+    return false
+end
+
+--- Toggle locked status for one custom section. Returns new locked state, or nil if groupId is invalid.
+function CharacterService:ToggleCustomSectionLock(addon, groupId)
+    if not addon or not addon.db or not addon.db.profile or not groupId or groupId == "" then return nil end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local groups = profile.characterCustomGroups or {}
+    local found = false
+    for i = 1, #groups do
+        if groups[i].id == groupId then found = true break end
+    end
+    if not found then return nil end
+    local set = profile.characterLockedCustomGroupIds
+    local now = not (set[groupId] and true or false)
+    if now then
+        set[groupId] = true
+    else
+        set[groupId] = nil
+    end
+    if addon.SendMessage then
+        addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
+    end
+    return now
+end
+
+--- Whether a character is locked to its custom section (either via individual lock or section lock).
+function CharacterService:IsCharacterSectionLocked(addon, charKey)
+    if not addon or not addon.db or not addon.db.profile or not charKey or charKey == "" then return false end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local storeKey = AssignKeyFromCharKey(charKey)
+    if type(profile.characterLockedAssignments) == "table" then
+        if storeKey and profile.characterLockedAssignments[storeKey] then
+            return true
+        end
+        if profile.characterLockedAssignments[charKey] then
+            return true
+        end
+    end
+    local gid = self:GetCharacterCustomSectionId(addon, charKey)
+    if gid and self:IsCustomSectionLocked(addon, gid) then
+        return true
+    end
+    return false
+end
+
+--- Toggle per-character lock to its current custom section.
+function CharacterService:ToggleCharacterSectionLock(addon, charKey)
+    if not addon or not addon.db or not addon.db.profile or not charKey or charKey == "" then return nil end
+    local profile = addon.db.profile
+    self:EnsureCustomCharacterSectionsProfile(profile)
+    local storeKey = AssignKeyFromCharKey(charKey) or charKey
+    local set = profile.characterLockedAssignments
+    local now = not (set[storeKey] and true or false)
+    if now then
+        set[storeKey] = true
+    else
+        set[storeKey] = nil
+        set[charKey] = nil
+    end
+    if addon.SendMessage then
+        addon:SendMessage(E.CHARACTER_UPDATED, { charKey = storeKey, dataType = "customSection" })
+    end
+    return now
 end
 
 --- Ordered custom groups. Sections always render in profile array order — the exact order the
@@ -1092,6 +1195,9 @@ function CharacterService:RemoveCustomCharacterSection(addon, groupId)
     if profile.characterFavoriteCustomGroupIds then
         profile.characterFavoriteCustomGroupIds[groupId] = nil
     end
+    if profile.characterLockedCustomGroupIds then
+        profile.characterLockedCustomGroupIds[groupId] = nil
+    end
     if profile.characterFavoriteCustomGroupId == groupId then
         profile.characterFavoriteCustomGroupId = nil
     end
@@ -1122,10 +1228,17 @@ end
 
 --- Assign a tracked character to a custom section (groupId nil = ungrouped / main list).
 --- Favorites are eligible: the section wins over the Favorites block, see ResolveRosterBucket.
-function CharacterService:SetCharacterCustomSection(addon, charKey, groupId)
+---@param force boolean If true, ignore locks (e.g. user confirmed action)
+function CharacterService:SetCharacterCustomSection(addon, charKey, groupId, force)
     if not addon or not addon.db or not addon.db.profile or not charKey or charKey == "" then return false end
     local profile = addon.db.profile
     self:EnsureCustomCharacterSectionsProfile(profile)
+    if not force and self:IsCharacterSectionLocked(addon, charKey) then
+        local currentGid = self:GetCharacterCustomSectionId(addon, charKey)
+        if currentGid ~= groupId then
+            return false
+        end
+    end
     local assign = profile.characterGroupAssignments
     local storeKey = AssignKeyFromCharKey(charKey)
     if not storeKey then return false end
@@ -1142,6 +1255,10 @@ function CharacterService:SetCharacterCustomSection(addon, charKey, groupId)
         end
     else
         ClearBothAssignKeys(assign, charKey)
+        if profile.characterLockedAssignments then
+            profile.characterLockedAssignments[storeKey] = nil
+            profile.characterLockedAssignments[charKey] = nil
+        end
     end
     if addon.SendMessage then
         addon:SendMessage(E.CHARACTER_UPDATED, { charKey = storeKey, dataType = "customSection" })

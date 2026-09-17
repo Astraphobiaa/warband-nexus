@@ -3559,7 +3559,7 @@ function WarbandNexus:OpenCustomCharacterHeaderDialog()
                 local raw = keys[i]
                 if raw then
                     local k = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(raw)) or raw
-                    ns.CharacterService:SetCharacterCustomSection(WarbandNexus, k, addedId)
+                    ns.CharacterService:SetCharacterCustomSection(WarbandNexus, k, addedId, true)
                 end
             end
         end
