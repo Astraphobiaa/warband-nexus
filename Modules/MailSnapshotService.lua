@@ -977,14 +977,203 @@ function M.BuildTooltipLines(char, isCurrent, opts)
     return lines
 end
 
+-- ============================================================================
+-- OUTGOING MAIL TRACKING (Cross-Alt & TSM Mailing Operations)
+-- Tracks mail sent to alts on this account so un-logged alts immediately
+-- show waiting mail and expiry countdowns without needing to visit their mailbox.
+-- ============================================================================
+
+local pendingOutgoingMails = {}
+local lastCapturedTime = 0
+local lastCapturedRecipient = nil
+
+local function FindAccountCharacterByRecipient(recipient)
+    if not recipient or recipient == "" then return nil, nil end
+    if issecretvalue and issecretvalue(recipient) then return nil, nil end
+
+    local db = WarbandNexus and WarbandNexus.db
+    local chars = db and db.global and db.global.characters
+    if not chars then return nil, nil end
+
+    local rName, rRealm = strsplit("-", recipient, 2)
+    if not rName or rName == "" then return nil, nil end
+    rName = rName:match("^%s*(.-)%s*$")
+    if not rName or rName == "" then return nil, nil end
+
+    local playerRealm = GetNormalizedRealmName() or ""
+    if rRealm and rRealm ~= "" then
+        rRealm = rRealm:gsub("%s+", "")
+    else
+        rRealm = playerRealm
+    end
+
+    local rNameLower = rName:lower()
+    local rRealmLower = rRealm:lower()
+
+    -- 1. Exact Name + Realm match
+    for charKey, charData in pairs(chars) do
+        if type(charData) == "table" and charData.name and charData.realm then
+            local cName = charData.name:lower()
+            local cRealm = charData.realm:lower():gsub("%s+", "")
+            if cName == rNameLower and cRealm == rRealmLower then
+                return charKey, charData
+            end
+        end
+    end
+
+    -- 2. Fallback: match by name across account if unique
+    local matchingKey, matchingData = nil, nil
+    local matchCount = 0
+    for charKey, charData in pairs(chars) do
+        if type(charData) == "table" and charData.name then
+            if charData.name:lower() == rNameLower then
+                matchingKey = charKey
+                matchingData = charData
+                matchCount = matchCount + 1
+            end
+        end
+    end
+
+    if matchCount == 1 then
+        return matchingKey, matchingData
+    end
+
+    return nil, nil
+end
+
+local function CaptureOutgoingMail(recipient, subject, body)
+    if not recipient or recipient == "" then return end
+    if issecretvalue and issecretvalue(recipient) then return end
+
+    local now = GetTime()
+    if (now - lastCapturedTime) < 0.05 and lastCapturedRecipient == recipient then
+        -- Prevent duplicate capture if both global SendMail and C_Mail.SendMail fired in same call
+        return
+    end
+    lastCapturedTime = now
+    lastCapturedRecipient = recipient
+
+    local money = (GetSendMailMoney and GetSendMailMoney()) or 0
+    local cod = (GetSendMailCOD and GetSendMailCOD()) or 0
+    local maxAttach = _G.ATTACHMENTS_MAX_SEND or 12
+    local items = {}
+
+    if GetSendMailItem then
+        for slot = 1, maxAttach do
+            local ok, arg1, arg2, arg3, arg4, arg5 = pcall(GetSendMailItem, slot)
+            if ok and arg1 then
+                local name, itemID, texture, count, quality
+                if type(arg2) == "number" then
+                    name, itemID, texture, count, quality = arg1, arg2, arg3, arg4, arg5
+                else
+                    name, texture, count, quality = arg1, arg2, arg3, arg4
+                end
+                local link = GetSendMailItemLink and GetSendMailItemLink(slot)
+                local resolvedItemID = SafeMailNumber(itemID)
+                if not resolvedItemID and link then
+                    resolvedItemID = tonumber(link:match("item:(%d+)"))
+                end
+                items[#items + 1] = {
+                    name = SafeMailString(name),
+                    count = NormalizeStackCount(count, resolvedItemID),
+                    itemID = resolvedItemID,
+                    icon = texture,
+                    quality = ResolveItemQuality(resolvedItemID, link, quality),
+                    link = link,
+                    ilvl = ResolveMailItemIlvl(resolvedItemID, link),
+                    kind = ClassifyMailItemKind(resolvedItemID),
+                }
+            end
+        end
+    end
+
+    pendingOutgoingMails[#pendingOutgoingMails + 1] = {
+        recipient = recipient,
+        subject = SafeMailString(subject),
+        money = SafeMailNumber(money) or 0,
+        cod = SafeMailNumber(cod) or 0,
+        items = (#items > 0) and items or nil,
+        sentAt = time(),
+    }
+end
+
+local function OnMailSendSuccess()
+    if #pendingOutgoingMails == 0 then return end
+    local out = table.remove(pendingOutgoingMails, 1)
+    if not out or not out.recipient then return end
+
+    local targetCharKey, targetChar = FindAccountCharacterByRecipient(out.recipient)
+    if not targetCharKey or not targetChar then return end
+
+    -- Check if target character is tracked
+    if targetChar.isTracked == false then
+        targetChar.hasMail = true
+        return
+    end
+
+    local senderName = UnitName("player") or "Unknown"
+    local senderRealm = GetNormalizedRealmName()
+    local senderFull = senderName .. (senderRealm and ("-" .. senderRealm) or "")
+
+    local subject = out.subject
+    if not subject or subject == "" then
+        if out.items and out.items[1] and out.items[1].name then
+            subject = out.items[1].name
+        else
+            subject = nil
+        end
+    end
+
+    local newMsg = {
+        sender = senderFull,
+        subject = subject,
+        money = out.money,
+        cod = out.cod,
+        daysLeft = 30,
+        expiresAt = time() + (30 * 86400),
+        items = out.items,
+        isOutgoingTracked = true,
+    }
+
+    targetChar.hasMail = true
+    if not targetChar.mailSnapshot or type(targetChar.mailSnapshot) ~= "table" then
+        targetChar.mailSnapshot = {
+            version = MAIL_SNAPSHOT_VERSION,
+            scannedAt = time(),
+            count = 0,
+            messages = {},
+        }
+    end
+
+    local snap = targetChar.mailSnapshot
+    snap.messages = snap.messages or {}
+    table.insert(snap.messages, 1, newMsg)
+    snap.count = (snap.count or 0) + 1
+    snap.scannedAt = time()
+
+    local msgKey = ResolveMessageKey(targetCharKey)
+    if WarbandNexus and WarbandNexus.SendMessage and E and E.CHARACTER_UPDATED then
+        WarbandNexus:SendMessage(E.CHARACTER_UPDATED, { charKey = msgKey, dataType = "mail" })
+    end
+end
+
+local function OnMailSendFailed()
+    if #pendingOutgoingMails > 0 then
+        table.remove(pendingOutgoingMails, 1)
+    end
+end
+
 function WarbandNexus:InitializeMailSnapshotService()
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_SHOW", OnMailboxOpened)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_INBOX_UPDATE", function()
         M.ScheduleScan(WarbandNexus, true)
     end)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_CLOSED", function()
+        wipe(pendingOutgoingMails)
         M.ScheduleScan(WarbandNexus, true)
     end)
+    WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_SEND_SUCCESS", OnMailSendSuccess)
+    WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_FAILED", OnMailSendFailed)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "PLAYER_ENTERING_WORLD", function()
         C_Timer.After(2, function()
             if WarbandNexus and WarbandNexus.ScanCurrentCharacterMailSnapshot then
@@ -992,4 +1181,12 @@ function WarbandNexus:InitializeMailSnapshotService()
             end
         end)
     end)
+
+    -- Hook SendMail to capture outgoing mail details before delivery
+    if SendMail then
+        hooksecurefunc("SendMail", CaptureOutgoingMail)
+    end
+    if C_Mail and C_Mail.SendMail then
+        pcall(hooksecurefunc, C_Mail, "SendMail", CaptureOutgoingMail)
+    end
 end
