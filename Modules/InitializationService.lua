@@ -485,6 +485,9 @@ function InitializationService:InitializeBackgroundServices(addon)
             if addon and addon.InitializeGoldManagementService then
                 addon:InitializeGoldManagementService()
             end
+            if addon and addon.InitializeReagentDepositService then
+                addon:InitializeReagentDepositService()
+            end
             if addon and addon.InitializeCharacterBankMoneyLogService then
                 addon:InitializeCharacterBankMoneyLogService()
             end

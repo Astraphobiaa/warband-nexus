@@ -229,13 +229,15 @@ Modules\UI\GearUI.lua
 Modules\UI\GearUI_Layout.lua
 Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
+Modules\UI\WarbandBankDepositPopup.lua
 Modules\UI\CharacterBankMoneyLogPopup.lua
 Modules\UI\UI_RefreshRouter.lua
 Modules\UI.lua
 Modules\UI\UI_MainShell.lua
 Modules\UI\UI_TabHost.lua
 
-# Gold Management (MUST load after UI modules)
+# Gold & Bank Management (MUST load after UI modules)
 Modules\GoldManagementService.lua
+Modules\WarbandBankDepositService.lua
 Modules\CharacterBankMoneyLogService.lua
 Modules\MailSnapshotService.lua

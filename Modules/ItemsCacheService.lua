@@ -1819,6 +1819,13 @@ function WarbandNexus:OnBankOpened()
             self:TriggerGoldManagement()
         end)
     end
+
+    -- REAGENT & WARBAND DEPOSIT: Trigger auto deposit if enabled
+    if self.TriggerReagentDeposit then
+        C_Timer.After(0.3, function()
+            self:TriggerReagentDeposit(false)
+        end)
+    end
     
     -- GUARD: Only process if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then

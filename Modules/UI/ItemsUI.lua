@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Items tab (Bags / Bank: virtual list; Warband: Personal + Warband tree; Guild: guild > category tree).
 
     WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton`; classic mode uses shared
@@ -1374,6 +1374,25 @@ function WarbandNexus:DrawItemList(parent)
     })
     if moneyLogsBtn and goldMgrBtn then
         ns.UI_ChainTitleToolbarControl(titleCard, moneyLogsBtn, goldMgrBtn)
+    end
+
+    local depositMgrBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        preset = "action",
+        autoWidth = true,
+        text = (ns.L and ns.L["REAGENT_DEPOSIT_BTN"]) or "Reagents",
+        onClick = function()
+            if self.ShowReagentDepositPopup then
+                self:ShowReagentDepositPopup()
+            end
+        end,
+    })
+    if depositMgrBtn then
+        local rightAnchor = moneyLogsBtn or goldMgrBtn
+        if rightAnchor then
+            ns.UI_ChainTitleToolbarControl(titleCard, depositMgrBtn, rightAnchor)
+        else
+            ns.UI_AnchorTitleToolbarControlRight(titleCard, depositMgrBtn)
+        end
     end
 
     if ns.UI_HideTitleCardExpandCollapseControls then

@@ -574,6 +574,8 @@ local defaults = {
         lastKnownGold = 0,
         -- Per-character gold management override (nil = use profile settings)
         goldManagement = nil,
+        -- Per-character reagent deposit override (nil = use profile settings)
+        reagentDeposit = nil,
     },
 }
 
