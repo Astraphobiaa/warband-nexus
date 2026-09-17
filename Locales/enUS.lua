@@ -1228,21 +1228,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V358"] = [=[v3.5.8 (2026-09-10)
+L["CHANGELOG_V359"] = [=[v3.5.9 (2026-09-17)
 
-Warband concentration tracking, strategic alt staging, keystone synergy tools, and Great Vault improvements.
+Bank auto-deposit management, outgoing alt mail tracking, roster custom section locks, and profession recipe cleanup.
 
 Added:
-- Concentration recovery and time-to-cap countdowns are now tracked across all characters, with alerts before a profession caps.
-- The try counter now recommends the nearest eligible alt staged in the zone or resting in a nearby hub for collectible attempts.
-- Great Vault Mythic+ slots now highlight warband alts holding keystones that can upgrade your vault or boost your rating.
-- Added a Great Vault dead run tracker showing the exact run level floor where additional runs stop improving your vault rewards.
-- Added a crafting order shopping list generator that reconciles missing materials with your bags and warband bank.
+- Added an automatic deposit manager for Warband and Reagent banks with customizable category rules and destination tooltips.
+- Outgoing mail sent to warband alts is now tracked from both the standard mail interface and TradeSkillMaster (TSM).
+- The character roster picker now displays each character's assigned custom section and allows locking sections against auto-sorting.
 
 Fixed:
-- Corrected drop conditions for Timewalking dungeons, flexible raids, and legacy bosses in the try counter.
-- Prevented interface taint issues caused by custom tooltip layouts when hiding widgets.
-- Equipment upgrade arrows on paperdoll slots now update immediately upon receiving crests or upgrading gear.
+- Included untimed Mythic+ dungeon completions in run history for accurate Great Vault progression tracking.
+- Filtered deprecated PTR recipes and developer placeholder tags across all profession overviews.
 
 CurseForge: Warband Nexus]=]
 
