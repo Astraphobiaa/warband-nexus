@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Notification changelog / What's New (ops-035 slice)
     Loaded before NotificationManager.lua.
 ]]

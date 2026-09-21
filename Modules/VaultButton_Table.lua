@@ -50,6 +50,8 @@ function M.AddEscCloseFrame(frameName)
     table.insert(UISpecialFrames, frameName)
 end
 
+local HideTable, RefreshTable
+
 local RebuildTableFrame = function()
     local wasShown = S.tableFrame and S.tableFrame:IsShown()
     if wasShown and S.tableFrame then
@@ -172,7 +174,7 @@ function M.ApplyButtonVisibility(isMouseOver)
 end
 
 -- Table frame
-local HideTable = function()
+HideTable = function()
     if S.tableFrame then S.tableFrame:Hide() end
     if S.optionsFrame then S.optionsFrame:Hide() end
 end
@@ -406,7 +408,7 @@ function M.VBSyncVaultTableScrollBar(list, content, contentH)
     vf:UpdateScrollBarVisibility(S.tableScroll)
 end
 
-local RefreshTable = function()
+RefreshTable = function()
     BuildTableFrame()
     local VF = ns.UI.Factory
     local tableW = GetTableWidth()

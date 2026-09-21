@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Gold Management Popup
     Configures deposit/withdraw targets; monitors balances and notifies (no API to move gold).
 ]]

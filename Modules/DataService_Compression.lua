@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - LibSerialize/LibDeflate collection + session cache compression helpers.
     Split from DataService.lua (Lua 5.1 local limit).
     Loaded before Modules/DataService.lua.

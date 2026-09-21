@@ -9,5 +9,3 @@ Modules/TryCounterService.lua|emitFn
 Modules/UI/PlanCardFactory_Expanded.lua|expandCallback
 Modules/UI/ReputationUI.lua|IsExpanded
 Modules/UI/ReputationUI.lua|ToggleExpand
-Modules/VaultButton_Table.lua|HideTable
-Modules/VaultButton_Table.lua|RefreshTable

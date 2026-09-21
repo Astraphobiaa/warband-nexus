@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Professions Tab
 
     Layout: Single row per character, two profession lines stacked vertically.

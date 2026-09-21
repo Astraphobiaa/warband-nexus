@@ -378,12 +378,9 @@ local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageT
     local charName = (charData and charData.name) or sourceCharKey
 
     if storageType == "warband" then
-        -- Warband Bank: storage is account-wide, but recommendations stay BoE / warband-bound only.
+        -- Warband Bank: storage is account-wide; Blizzard engine restricts bank to BoE / Warbound / WuE only.
         local rawWB = GetRawItemBindType(item)
-        if rawWB == LE_ITEM_BIND_ON_ACQUIRE or rawWB == 1 or rawWB == LE_ITEM_BIND_QUEST or rawWB == 4 then
-            return nil, nil
-        end
-        if rawWB == ITEM_BIND_ON_USE then
+        if rawWB == LE_ITEM_BIND_QUEST or rawWB == 4 then
             return nil, nil
         end
         local wbCat = GetBindingType(item)

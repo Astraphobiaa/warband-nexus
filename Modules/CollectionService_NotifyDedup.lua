@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Collection notification dedup (ring buffer + persistent DB layers).
     Split from CollectionService.lua to reduce main chunk size (Lua 5.1 local limit).
     Loaded from WarbandNexus.toc immediately before Modules/CollectionService.lua.

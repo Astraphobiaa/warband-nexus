@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Currency Tab
     Display all currencies across characters with Blizzard API headers
     

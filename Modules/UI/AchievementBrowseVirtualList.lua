@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Shared achievement category browser: ONE flat absolute-Y layout model, headers and rows both
     virtualized against it. Used by Collections ▸ Achievements and Plans ▸ To-Do browse.
 

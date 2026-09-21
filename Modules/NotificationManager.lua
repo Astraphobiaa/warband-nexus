@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Notification Manager
     Handles in-game notifications and reminders
 

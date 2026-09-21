@@ -40,54 +40,32 @@ local HideTooltip = ns.UI_HideTooltip
 
 -- Import shared UI components (always get fresh reference)
 local COLORS = ns.UI_COLORS
-local GetQualityHex = ns.UI_GetQualityHex
-local CreateCard = ns.UI_CreateCard
-local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
-local GetTypeIcon = ns.UI_GetTypeIcon
-local DrawEmptyState = ns.UI_DrawEmptyState
-local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
-local HideEmptyStateCard = ns.UI_HideEmptyStateCard
-local AcquireItemRow = ns.UI_AcquireItemRow
-local ReleaseItemRow = ns.UI_ReleaseItemRow
-local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
-local CreateThemedButton = ns.UI_CreateThemedButton
-local CreateStatsBar = ns.UI_CreateStatsBar
-local CreateResultsContainer = ns.UI_CreateResultsContainer
-local UpdateBorderColor = ns.UI_UpdateBorderColor
-local FormatNumber = ns.UI_FormatNumber
-local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
-local GetItemTypeName = ns.UI_GetItemTypeName
-local GetItemClassID = ns.UI_GetItemClassID
-local ResolveItemCategoryName = ns.UI_ResolveItemCategoryName
-local ResolveItemCategoryIcon = ns.UI_ResolveItemCategoryIcon
-local ReleasePooledRowsInSubtree = ns.UI_ReleasePooledRowsInSubtree
-local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
-local AcquireStorageRow = ns.UI_AcquireStorageRow
-local ReleaseStorageRow = ns.UI_ReleaseStorageRow
+local GetQualityHex, CreateCard = ns.UI_GetQualityHex, ns.UI_CreateCard
+local CreateCollapsibleHeader, BuildCollapsibleSectionOpts = ns.UI_CreateCollapsibleHeader, ns.UI_BuildCollapsibleSectionOpts
+local GetTypeIcon, DrawEmptyState = ns.UI_GetTypeIcon, ns.UI_DrawEmptyState
+local CreateEmptyStateCard, HideEmptyStateCard = ns.UI_CreateEmptyStateCard, ns.UI_HideEmptyStateCard
+local AcquireItemRow, ReleaseItemRow = ns.UI_AcquireItemRow, ns.UI_ReleaseItemRow
+local ReleaseAllPooledChildren, CreateThemedButton = ns.UI_ReleaseAllPooledChildren, ns.UI_CreateThemedButton
+local CreateStatsBar, CreateResultsContainer = ns.UI_CreateStatsBar, ns.UI_CreateResultsContainer
+local UpdateBorderColor, FormatNumber = ns.UI_UpdateBorderColor, ns.UI_FormatNumber
+local NormalizeColonLabelSpacing, GetItemTypeName = ns.UI_NormalizeColonLabelSpacing, ns.UI_GetItemTypeName
+local GetItemClassID, ResolveItemCategoryName = ns.UI_GetItemClassID, ns.UI_ResolveItemCategoryName
+local ResolveItemCategoryIcon, ReleasePooledRowsInSubtree = ns.UI_ResolveItemCategoryIcon, ns.UI_ReleasePooledRowsInSubtree
+local ChainSectionFrameBelow, AcquireStorageRow, ReleaseStorageRow = ns.UI_ChainSectionFrameBelow, ns.UI_AcquireStorageRow, ns.UI_ReleaseStorageRow
 
 -- Import shared UI layout constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
-local BASE_INDENT = GetLayout().BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
-local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
-local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
+local BASE_INDENT, SUBROW_EXTRA_INDENT = GetLayout().BASE_INDENT or 15, GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN, TOP_MARGIN, ROW_HEIGHT = GetLayout().SIDE_MARGIN or 10, GetLayout().TOP_MARGIN or 8, GetLayout().ROW_HEIGHT or 26
 --- Storage tree leaf rows only (FramePoolFactory AcquireStorageRow); body-font glyphs need > ROW_HEIGHT so descenders clear the next row background.
 local STORAGE_ROW_HEIGHT = GetLayout().STORAGE_ROW_HEIGHT or GetLayout().storageRowHeight or ROW_HEIGHT
---- WN-PERF (`WN-PERF-warband-nexus`): Personal/Warband aggregate leaf tables exceed sync cap â†’ `C_Timer.After(0)` chunks + paint generation cancel.
-local STORAGE_LEAF_ROW_CHUNK = 40
-local STORAGE_LEAF_ROW_SYNC_MAX = 40
---- Items > Warband embed: lower sync cap + staged type headers (personal â†’ warband sub-tab spike).
-local STORAGE_LEAF_ROW_SYNC_MAX_EMBED = 12
-local STORAGE_WARBAND_TYPE_CHUNK_EMBED = 2
-local STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED = 3
-local STORAGE_WARBAND_TYPE_CHUNK = 4
-local STORAGE_WARBAND_TYPE_SYNC_MAX = 8
-local STORAGE_CHAR_CHUNK_EMBED = 2
-local STORAGE_CHAR_SYNC_MAX_EMBED = 3
-local STORAGE_CHAR_CHUNK = 4
-local STORAGE_CHAR_SYNC_MAX = 6
+--- WN-PERF (`WN-PERF-warband-nexus`): Personal/Warband aggregate leaf tables exceed sync cap -> `C_Timer.After(0)` chunks + paint generation cancel.
+local STORAGE_LEAF_ROW_CHUNK, STORAGE_LEAF_ROW_SYNC_MAX = 40, 40
+--- Items > Warband embed: lower sync cap + staged type headers (personal -> warband sub-tab spike).
+local STORAGE_LEAF_ROW_SYNC_MAX_EMBED, STORAGE_WARBAND_TYPE_CHUNK_EMBED, STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED = 12, 2, 3
+local STORAGE_WARBAND_TYPE_CHUNK, STORAGE_WARBAND_TYPE_SYNC_MAX = 4, 8
+local STORAGE_CHAR_CHUNK_EMBED, STORAGE_CHAR_SYNC_MAX_EMBED = 2, 3
+local STORAGE_CHAR_CHUNK, STORAGE_CHAR_SYNC_MAX = 4, 6
 --- Bags / Bank / Guild virtual list rows: same stride as storage leaves (BuildItemsVirtualFlatList + VirtualListModule + AcquireItemRow).
 local ITEMS_VIRTUAL_ROW_HEIGHT = STORAGE_ROW_HEIGHT
 local function DataRowGap()
@@ -97,9 +75,7 @@ local ITEMS_ROW_GAP = DataRowGap()
 local ITEMS_ROW_STRIDE = ITEMS_VIRTUAL_ROW_HEIGHT + ITEMS_ROW_GAP
 local STORAGE_ROW_GAP = DataRowGap()
 local STORAGE_ROW_STRIDE = STORAGE_ROW_HEIGHT + STORAGE_ROW_GAP
-local ROW_SPACING = GetLayout().ROW_SPACING or 26
-local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
-local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local ROW_SPACING, HEADER_SPACING, SECTION_SPACING = GetLayout().ROW_SPACING or 26, GetLayout().HEADER_SPACING or 44, GetLayout().SECTION_SPACING or 8
 -- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
 
 local ItemsResultsTopGap = ns.UI_ItemsResultsTopGap
