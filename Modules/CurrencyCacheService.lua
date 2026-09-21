@@ -1205,6 +1205,21 @@ local function BuildHierarchyFromAPI()
 
     local currencyDataCollector = {}
 
+    -- Capture initially collapsed headers before scanning alters the list
+    local initialCollapsedHeaders = {}
+    local hasCollapsedState = false
+    local initSize = (C_CurrencyInfo.GetCurrencyListSize and C_CurrencyInfo.GetCurrencyListSize()) or 0
+    for idx = 1, initSize do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(idx)
+        if info and info.isHeader and not info.isHeaderExpanded then
+            local name = info.name
+            if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+                initialCollapsedHeaders[name] = true
+                hasCollapsedState = true
+            end
+        end
+    end
+
     -- Phase 1: Collapse ALL visible headers for a clean slate
     local collapseChanged = true
     local collapseSafety = 0
@@ -1254,7 +1269,7 @@ local function BuildHierarchyFromAPI()
         i = i + 1
     end
 
-    -- Phase 3: Expand all headers back (restore normal WoW UI state)
+    -- Phase 3: Expand all headers back (for the flat walk in Phase 4)
     local expandChanged = true
     local expandSafety = 0
     while expandChanged and expandSafety < 300 do
@@ -1286,6 +1301,20 @@ local function BuildHierarchyFromAPI()
                 local currencyID = tonumber(link:match("currency:(%d+)"))
                 if currencyID and currencyID > 0 then
                     apiListed[currencyID] = true
+                end
+            end
+        end
+    end
+
+    -- Phase 5: Restore the player's original collapsed header states.
+    -- (Iterate backwards so collapsing a header does not invalidate earlier header indices).
+    if hasCollapsedState then
+        local currentListSize = C_CurrencyInfo.GetCurrencyListSize()
+        for k = currentListSize, 1, -1 do
+            local info = C_CurrencyInfo.GetCurrencyListInfo(k)
+            if info and info.isHeader and info.name and not (issecretvalue and issecretvalue(info.name)) and initialCollapsedHeaders[info.name] then
+                if info.isHeaderExpanded then
+                    C_CurrencyInfo.ExpandCurrencyList(k, false)
                 end
             end
         end

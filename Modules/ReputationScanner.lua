@@ -249,6 +249,61 @@ end
 
 local FETCH_BUDGET_MS = 4  -- max milliseconds per batch frame
 
+---Capture currently collapsed faction headers before expanding for a scan.
+---@return table|nil Map of collapsed header identifiers [factionID or name] = true
+function ReputationScanner.CaptureCollapsedHeaders()
+    if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
+        return nil
+    end
+    local numFactions = C_Reputation.GetNumFactions() or 0
+    if numFactions == 0 then return nil end
+    local collapsed = {}
+    local hasAny = false
+    for i = 1, numFactions do
+        local okData, data = pcall(C_Reputation.GetFactionDataByIndex, i)
+        if okData and data and data.isHeader and data.isCollapsed then
+            if data.factionID and data.factionID > 0 then
+                collapsed[data.factionID] = true
+                hasAny = true
+            end
+            local name = data.name
+            if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+                collapsed[name] = true
+                hasAny = true
+            end
+        end
+    end
+    return hasAny and collapsed or nil
+end
+
+---Restore collapsed state of faction headers after a scan.
+---Iterates backwards so collapsing does not shift indices of preceding rows.
+---@param collapsed table|nil Map of collapsed header identifiers
+function ReputationScanner.RestoreCollapsedHeaders(collapsed)
+    if not collapsed or (not C_Reputation.CollapseFactionHeader and not CollapseFactionHeader) then
+        return
+    end
+    local numFactions = (C_Reputation.GetNumFactions and C_Reputation.GetNumFactions()) or 0
+    for i = numFactions, 1, -1 do
+        local okData, data = pcall(C_Reputation.GetFactionDataByIndex, i)
+        if okData and data and data.isHeader and not data.isCollapsed then
+            local shouldCollapse = false
+            if data.factionID and collapsed[data.factionID] then
+                shouldCollapse = true
+            elseif data.name and not (issecretvalue and issecretvalue(data.name)) and collapsed[data.name] then
+                shouldCollapse = true
+            end
+            if shouldCollapse then
+                if C_Reputation.CollapseFactionHeader then
+                    pcall(C_Reputation.CollapseFactionHeader, i)
+                elseif CollapseFactionHeader then
+                    pcall(CollapseFactionHeader, i)
+                end
+            end
+        end
+    end
+end
+
 ---Fetch all factions asynchronously with time-budgeted batching.
 ---Calls callback(factions) when complete. Spreads work across frames (max 4ms each).
 ---@param callback function Called with array of raw faction data when done
@@ -259,12 +314,16 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
         return
     end
     
+    local savedCollapsed = ReputationScanner.CaptureCollapsedHeaders and ReputationScanner.CaptureCollapsedHeaders()
     if C_Reputation.ExpandAllFactionHeaders then
         C_Reputation.ExpandAllFactionHeaders()
     end
     
     local numFactions = C_Reputation.GetNumFactions()
     if not numFactions or numFactions == 0 then
+        if ReputationScanner.RestoreCollapsedHeaders then
+            ReputationScanner.RestoreCollapsedHeaders(savedCollapsed)
+        end
         callback({})
         return
     end
@@ -342,6 +401,9 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
             end
         end
         if P then P:StopAsync("FetchAllFactions") end
+        if ReputationScanner.RestoreCollapsedHeaders then
+            ReputationScanner.RestoreCollapsedHeaders(savedCollapsed)
+        end
         callback(factions)
     end
     ScanBatch()

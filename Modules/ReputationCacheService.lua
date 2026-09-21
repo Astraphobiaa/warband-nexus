@@ -659,6 +659,7 @@ function ReputationCache:BuildSnapshot(silent)
         return
     end
     
+    local savedCollapsed = Scanner and Scanner.CaptureCollapsedHeaders and Scanner.CaptureCollapsedHeaders()
     if C_Reputation.ExpandAllFactionHeaders then
         C_Reputation.ExpandAllFactionHeaders()
     end
@@ -672,6 +673,9 @@ function ReputationCache:BuildSnapshot(silent)
     end
     
     self:_FinalizeSnapshot()
+    if Scanner and Scanner.RestoreCollapsedHeaders then
+        Scanner.RestoreCollapsedHeaders(savedCollapsed)
+    end
 end
 
 ---Time-budgeted BuildSnapshot: spreads faction iteration across frames (max 4ms each).
@@ -686,6 +690,7 @@ function ReputationCache:BuildSnapshotAsync()
     local P = ns.Profiler
     if P then P:StartAsync("BuildSnapshot") end
     
+    local savedCollapsed = Scanner and Scanner.CaptureCollapsedHeaders and Scanner.CaptureCollapsedHeaders()
     if C_Reputation.ExpandAllFactionHeaders then
         C_Reputation.ExpandAllFactionHeaders()
     end
@@ -707,6 +712,9 @@ function ReputationCache:BuildSnapshotAsync()
                 C_Timer.After(0, SnapshotBatch)
                 return
             end
+        end
+        if Scanner and Scanner.RestoreCollapsedHeaders then
+            Scanner.RestoreCollapsedHeaders(savedCollapsed)
         end
         cache._snapshot = newSnapshot
         cache._nameToID = newNameToID
@@ -1123,6 +1131,7 @@ function ReputationCache:RegisterEventListeners()
         end
         -- Map miss — rebuild from API (faction discovered after last snapshot)
         if C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetFactionDataByIndex then
+            local savedCollapsed = Scanner and Scanner.CaptureCollapsedHeaders and Scanner.CaptureCollapsedHeaders()
             if C_Reputation.ExpandAllFactionHeaders then
                 C_Reputation.ExpandAllFactionHeaders()
             end
@@ -1136,6 +1145,9 @@ function ReputationCache:RegisterEventListeners()
                 if data and data.factionID and data.factionID > 0 and safeName and safeName ~= "" and not data.isHeader then
                     ReputationCache._nameToID[safeName] = data.factionID
                 end
+            end
+            if Scanner and Scanner.RestoreCollapsedHeaders then
+                Scanner.RestoreCollapsedHeaders(savedCollapsed)
             end
             -- Re-apply guild alias after rebuild
             if GetGuildInfo then
