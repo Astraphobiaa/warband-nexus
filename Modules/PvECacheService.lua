@@ -530,16 +530,20 @@ local function BuildPvESignature(pveCache, charKey)
 
     local wbN = 0
     if lo and lo.worldBosses and type(lo.worldBosses[charKey]) == "table" then
-        for _ in pairs(lo.worldBosses[charKey]) do wbN = wbN + 1 end
+        for k in pairs(lo.worldBosses[charKey]) do
+            if type(k) == "number" then wbN = wbN + 1 end
+        end
     end
 
     local delveChar = delves and delves.characters and delves.characters[charKey]
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    local isDelveStale = resetStart and resetStart > 0 and (delveChar and delveChar.lastUpdate or 0) < resetStart
     local delveSig = tostring(delves and delves.season or 0)
-        .. ":" .. ((delveChar and delveChar.bountifulComplete) and "1" or "0")
-        .. ":" .. ((delveChar and delveChar.crackedKeystoneComplete) and "1" or "0")
-        .. ":" .. ((delveChar and delveChar.nightmareTaskComplete) and "1" or "0")
-        .. ":" .. ((delveChar and delveChar.purgingVaultsComplete) and "1" or "0")
-        .. ":" .. tostring(delveChar and delveChar.gildedStashes or -1)
+        .. ":" .. ((delveChar and not isDelveStale and delveChar.bountifulComplete) and "1" or "0")
+        .. ":" .. ((delveChar and not isDelveStale and delveChar.crackedKeystoneComplete) and "1" or "0")
+        .. ":" .. ((delveChar and not isDelveStale and delveChar.nightmareTaskComplete) and "1" or "0")
+        .. ":" .. ((delveChar and not isDelveStale and delveChar.purgingVaultsComplete) and "1" or "0")
+        .. ":" .. tostring((not isDelveStale and delveChar and delveChar.gildedStashes) or (isDelveStale and 0) or -1)
         .. ":" .. tostring(delves and delves.companion and delves.companion.renownLevel or 0)
 
     return table.concat({
@@ -615,6 +619,106 @@ local function PruneExpiredKeystonesForWeeklyReset()
     end
     return removed
 end
+
+---Prune world boss kills that belong to a previous weekly cycle.
+---Runs on init/update so stale kills never survive a weekly reset.
+local function PruneExpiredWorldBossesForWeeklyReset()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.pveCache then
+        return 0
+    end
+    local lo = WarbandNexus.db.global.pveCache.lockouts
+    if not lo or not lo.worldBosses then return 0 end
+
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    local removed = 0
+    for charKey, data in pairs(lo.worldBosses) do
+        local stamp = type(data) == "table" and data.lastUpdate or nil
+        local stale = false
+        if resetStart and resetStart > 0 then
+            stale = type(stamp) ~= "number" or stamp < resetStart
+        elseif WarbandNexus.HasWeeklyResetOccurredSince then
+            stale = type(stamp) ~= "number" or WarbandNexus:HasWeeklyResetOccurredSince(stamp)
+        end
+        if stale then
+            lo.worldBosses[charKey] = nil
+            removed = removed + 1
+        end
+    end
+    return removed
+end
+
+---Prune Delve weekly progress (bounties, weekly quests, gilded stashes) for a new weekly cycle.
+local function PruneExpiredDelvesForWeeklyReset()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.pveCache then
+        return 0
+    end
+    local d = WarbandNexus.db.global.pveCache.delves
+    if not d or not d.characters then return 0 end
+
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    local updated = 0
+    for charKey, delveChar in pairs(d.characters) do
+        if type(delveChar) == "table" then
+            local stamp = delveChar.lastUpdate
+            local stale = false
+            if resetStart and resetStart > 0 then
+                stale = type(stamp) ~= "number" or stamp < resetStart
+            elseif WarbandNexus.HasWeeklyResetOccurredSince then
+                stale = type(stamp) ~= "number" or WarbandNexus:HasWeeklyResetOccurredSince(stamp)
+            end
+            if stale then
+                delveChar.bountifulComplete = false
+                delveChar.gildedStashes = 0
+                delveChar.crackedKeystoneComplete = false
+                delveChar.nightmareTaskComplete = false
+                delveChar.purgingVaultsComplete = false
+                updated = updated + 1
+            end
+        end
+    end
+    return updated
+end
+
+---Prune Mythic+ run history that belongs to a previous weekly cycle.
+local function PruneExpiredRunHistoryForWeeklyReset()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.pveCache then
+        return 0
+    end
+    local mp = WarbandNexus.db.global.pveCache.mythicPlus
+    if not mp or not mp.runHistory then return 0 end
+
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    local removed = 0
+    local weeks = mp.runHistoryWeek or {}
+    for charKey in pairs(mp.runHistory) do
+        local weekRecorded = weeks[charKey]
+        local stale = false
+        if resetStart and resetStart > 0 then
+            stale = type(weekRecorded) ~= "number" or weekRecorded < (resetStart - 60)
+        elseif WarbandNexus.HasWeeklyResetOccurredSince then
+            stale = type(weekRecorded) ~= "number" or WarbandNexus:HasWeeklyResetOccurredSince(weekRecorded)
+        end
+        if stale then
+            mp.runHistory[charKey] = nil
+            weeks[charKey] = nil
+            removed = removed + 1
+        end
+    end
+    mp.runHistoryWeek = weeks
+    return removed
+end
+
+local function PruneAllPvEWeeklyData()
+    local count = 0
+    count = count + (PruneExpiredKeystonesForWeeklyReset() or 0)
+    count = count + (PruneExpiredWorldBossesForWeeklyReset() or 0)
+    count = count + (PruneExpiredDelvesForWeeklyReset() or 0)
+    count = count + (PruneExpiredRunHistoryForWeeklyReset() or 0)
+    return count
+end
+
+WarbandNexus.PruneAllPvEWeeklyData = PruneAllPvEWeeklyData
+ns.PruneAllPvEWeeklyData = PruneAllPvEWeeklyData
 
 ---Drop Mythic+ score buckets when the season rolls over.
 ---Scores are season-scoped: C_MythicPlus.GetSeasonBestForMap only ever reports runs from the
@@ -1004,8 +1108,8 @@ function WarbandNexus:InitializePvECache()
     cache.version = CACHE_VERSION
     cache.lastUpdate = cache.lastUpdate or 0
 
-    -- Weekly hygiene: do not keep stale pre-reset keystones across sessions.
-    PruneExpiredKeystonesForWeeklyReset()
+    -- Weekly hygiene: do not keep stale pre-reset data across sessions.
+    PruneAllPvEWeeklyData()
     
     -- Validate and clear corrupted vault data
     -- Each character should have max 3 activities per type (raids, mythicPlus, pvp, world)
@@ -1843,7 +1947,9 @@ function WarbandNexus:UpdateWorldBossKills(charKey)
         self.db.global.pveCache.lockouts.worldBosses = {}
     end
     
-    self.db.global.pveCache.lockouts.worldBosses[charKey] = {}
+    self.db.global.pveCache.lockouts.worldBosses[charKey] = {
+        lastUpdate = time(),
+    }
     
     for i = 1, #worldBossQuests do
         local questID = worldBossQuests[i]
@@ -1893,6 +1999,8 @@ function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
     table.sort(history, function(a, b) return a.level > b.level end)
 
     self.db.global.pveCache.mythicPlus.runHistory[charKey] = history
+    self.db.global.pveCache.mythicPlus.runHistoryWeek = self.db.global.pveCache.mythicPlus.runHistoryWeek or {}
+    self.db.global.pveCache.mythicPlus.runHistoryWeek[charKey] = time()
 end
 
 -- DELVES DATA
@@ -2085,8 +2193,8 @@ function WarbandNexus:UpdatePvEData()
 
     local beforeSig = BuildPvESignature(self.db.global.pveCache, charKey)
 
-    -- Ensure weekly reset stale keys are pruned even if affix event did not fire this session.
-    PruneExpiredKeystonesForWeeklyReset()
+    -- Ensure weekly reset stale keys/lockouts are pruned even if affix event did not fire this session.
+    PruneAllPvEWeeklyData()
 
     -- Update all PvE data (API > DB)
     self:UpdateMythicPlusAffixes()
@@ -2240,8 +2348,27 @@ function WarbandNexus:GetPvEData(charKey)
             }
         end
         local worldBosses = PveSub(dbCache.lockouts and dbCache.lockouts.worldBosses)
-        local delveCharacter = PveSub(dbCache.delves and dbCache.delves.characters) or {}
-        local runHistory = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.runHistory) or {}
+        local rawDelveCharacter = PveSub(dbCache.delves and dbCache.delves.characters) or {}
+        local rawRunHistory = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.runHistory) or {}
+        local runHistoryWeek = dbCache.mythicPlus and dbCache.mythicPlus.runHistoryWeek
+        local weekRecorded = runHistoryWeek and (LookupPvECacheSubtable(runHistoryWeek, charKey) or runHistoryWeek[charKey])
+        local resetStart = GetCurrentWeeklyResetStartTime()
+        local runHistory = rawRunHistory
+        if resetStart and resetStart > 0 and (type(weekRecorded) ~= "number" or weekRecorded < (resetStart - 60)) then
+            runHistory = {}
+        end
+        local delveCharacter = rawDelveCharacter
+        if resetStart and resetStart > 0 and (delveCharacter.lastUpdate or 0) < resetStart then
+            delveCharacter = {
+                bountifulComplete = false,
+                gildedStashes = 0,
+                gildedStashesMax = delveCharacter.gildedStashesMax,
+                crackedKeystoneComplete = false,
+                nightmareTaskComplete = false,
+                purgingVaultsComplete = false,
+                lastUpdate = delveCharacter.lastUpdate,
+            }
+        end
         local returnData = {
             keystone = keystoneData,
             bestRuns = bestRuns,
@@ -3421,7 +3548,7 @@ function WarbandNexus:RegisterPvECacheEvents()
         if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
             if WarbandNexus.db.global.pveCache.mythicPlus then
                 WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
-                PruneExpiredKeystonesForWeeklyReset()
+                PruneAllPvEWeeklyData()
             end
             
             WarbandNexus:SavePvECache()

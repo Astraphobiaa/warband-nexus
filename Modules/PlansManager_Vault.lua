@@ -849,6 +849,10 @@ end
 function WarbandNexus:CheckWeeklyReset()
     local resetTime = self:GetWeeklyResetTime()
 
+    if self.PruneAllPvEWeeklyData then
+        self:PruneAllPvEWeeklyData()
+    end
+
     if not self.db or not self.db.global or not self.db.global.plans then
         return
     end

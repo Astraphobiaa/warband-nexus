@@ -267,6 +267,10 @@ function M.GetBountyStatus(charKey)
     local delveChar = pveCache.delves and pveCache.delves.characters
         and LookupPveCacheSubtable(pveCache.delves.characters, charKey)
     if not delveChar then return nil end
+    local resetStart = ns.GetCurrentWeeklyResetStartTime and ns.GetCurrentWeeklyResetStartTime()
+    if resetStart and resetStart > 0 and (delveChar.lastUpdate or 0) < resetStart then
+        return false
+    end
     return delveChar.bountifulComplete
 end
 
@@ -276,12 +280,21 @@ function M.GetGildedStashData(charKey)
     local delveChar = pveCache.delves and pveCache.delves.characters
         and LookupPveCacheSubtable(pveCache.delves.characters, charKey)
     if not delveChar then return nil end
+    local maxCount = tonumber(delveChar.gildedStashesMax)
+        or (ns.Constants and ns.Constants.PVE_GILDED_STASH_WEEKLY_MAX) or 4
+    local resetStart = ns.GetCurrentWeeklyResetStartTime and ns.GetCurrentWeeklyResetStartTime()
+    if resetStart and resetStart > 0 and (delveChar.lastUpdate or 0) < resetStart then
+        return {
+            current = 0,
+            max = maxCount,
+            unknown = false,
+        }
+    end
     local current = tonumber(delveChar.gildedStashes)
     if current == nil then return nil end
     return {
         current = current,
-        max = tonumber(delveChar.gildedStashesMax)
-            or (ns.Constants and ns.Constants.PVE_GILDED_STASH_WEEKLY_MAX) or 4,
+        max = maxCount,
         unknown = current < 0,
     }
 end

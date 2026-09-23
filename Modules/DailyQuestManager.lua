@@ -1443,9 +1443,11 @@ function WarbandNexus:GetWeeklyDashboard()
                     and ns.LookupPvECacheSubtable(pveCache.lockouts.worldBosses, charKey)
                     or pveCache.lockouts.worldBosses[charKey]
                 if wb then
-                    for _ in pairs(wb) do
-                        entry.worldBoss = true
-                        break
+                    for k in pairs(wb) do
+                        if type(k) == "number" then
+                            entry.worldBoss = true
+                            break
+                        end
                     end
                 end
             end
