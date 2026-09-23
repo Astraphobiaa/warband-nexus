@@ -1631,11 +1631,18 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             end
         end)
         
-        -- Core P1 (T+5s): Expansion sub-profession data (tracked only)
+        -- Core P1 (T+5s): Expansion sub-profession data (tracked only) + knowledge reset sweep
         C_Timer.After(5, function()
+            local P = ns.Profiler
+            local labK = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectMidnightKnowledge")
+            if P and P.enabled and labK then P:Start(labK) end
+            if self and self.CollectMidnightKnowledgeOnLogin then
+                self:CollectMidnightKnowledgeOnLogin()
+            end
+            if P and P.enabled and labK then P:Stop(labK) end
+
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
-                local P = ns.Profiler
                 local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectExpansionProfessions")
                 if P and P.enabled and lab then P:Start(lab) end
                 if self and self.CollectExpansionProfessionsOnLogin

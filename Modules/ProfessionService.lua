@@ -1652,6 +1652,69 @@ local WEEKLY_PROGRESS_KEYS = {
     "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp",
 }
 
+local RECURRING_WEEKLY_PROGRESS_KEYS = {
+    "weeklyQuest", "treatise", "treasure", "gathering",
+}
+
+local WEEK_SECONDS = 7 * 86400
+
+local function HasWeeklyResetOccurredForTimestamp(timestamp)
+    if not timestamp or timestamp == 0 then return true end
+    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+        local ok, secs = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
+        if ok and type(secs) == "number" and secs > 0 and secs <= WEEK_SECONDS then
+            local lastResetTime = time() + secs - WEEK_SECONDS
+            return timestamp < lastResetTime
+        end
+    end
+    if WarbandNexus and WarbandNexus.HasWeeklyResetOccurredSince then
+        return WarbandNexus:HasWeeklyResetOccurredSince(timestamp)
+    end
+    return (time() - timestamp) >= WEEK_SECONDS
+end
+
+local function SanitizeWeeklyKnowledgeProgress(progress)
+    if not progress or type(progress) ~= "table" then return nil end
+    local lastUpdate = progress.lastUpdate or 0
+    if HasWeeklyResetOccurredForTimestamp(lastUpdate) then
+        for i = 1, #RECURRING_WEEKLY_PROGRESS_KEYS do
+            local key = RECURRING_WEEKLY_PROGRESS_KEYS[i]
+            local entry = progress[key]
+            if entry and type(entry) == "table" and (entry.current or 0) > 0 then
+                entry.current = 0
+            end
+        end
+    end
+    return progress
+end
+
+function WarbandNexus:HasWeeklyResetOccurredForTimestamp(timestamp)
+    return HasWeeklyResetOccurredForTimestamp(timestamp)
+end
+
+function WarbandNexus:SanitizeWeeklyKnowledgeProgress(progress)
+    return SanitizeWeeklyKnowledgeProgress(progress)
+end
+
+function WarbandNexus:GetCharacterWeeklyKnowledge(charData, skillLineID)
+    if not charData or not skillLineID then return nil end
+    local progressData = nil
+    if charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[skillLineID] then
+        progressData = charData.professionData.bySkillLine[skillLineID].weeklyKnowledge
+    end
+    if not progressData and charData.professionWeeklyKnowledge then
+        progressData = charData.professionWeeklyKnowledge[skillLineID]
+    end
+    if progressData then
+        return SanitizeWeeklyKnowledgeProgress(progressData)
+    end
+    return nil
+end
+
+ns.GetCharacterWeeklyKnowledge = function(charData, skillLineID)
+    return WarbandNexus:GetCharacterWeeklyKnowledge(charData, skillLineID)
+end
+
 local function ProgressEntryEqual(a, b)
     if not a and not b then return true end
     if not a or not b then return false end
@@ -1714,6 +1777,12 @@ local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineI
     }
 
     if WeeklyKnowledgeProgressEqual(bucket.weeklyKnowledge, progress) then
+        if bucket.weeklyKnowledge then
+            bucket.weeklyKnowledge.lastUpdate = progress.lastUpdate or time()
+        end
+        if charData.professionWeeklyKnowledge and charData.professionWeeklyKnowledge[skillLineID] then
+            charData.professionWeeklyKnowledge[skillLineID].lastUpdate = progress.lastUpdate or time()
+        end
         return false
     end
 
@@ -3447,6 +3516,68 @@ function WarbandNexus:CollectConcentrationOnLogin()
 
     if self.SendMessage then
         self:SendMessage(E.CONCENTRATION_UPDATED, charKey)
+    end
+end
+
+--[[
+    Collect midnight knowledge & sweep weekly reset expiration on login/reload.
+    Called from Core.lua on PLAYER_ENTERING_WORLD with a delay.
+]]
+function WarbandNexus:CollectMidnightKnowledgeOnLogin()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not self.db or not self.db.global or not self.db.global.characters then return end
+
+    local anyAltSanitized = false
+    local chars = self.db.global.characters
+    for cKey, cData in pairs(chars) do
+        if cData and cData.professionData and cData.professionData.bySkillLine then
+            for slID, bucket in pairs(cData.professionData.bySkillLine) do
+                if bucket and bucket.weeklyKnowledge then
+                    local wk = bucket.weeklyKnowledge
+                    local lastUpdate = wk.lastUpdate or 0
+                    if HasWeeklyResetOccurredForTimestamp(lastUpdate) then
+                        for i = 1, #RECURRING_WEEKLY_PROGRESS_KEYS do
+                            local rk = RECURRING_WEEKLY_PROGRESS_KEYS[i]
+                            local entry = wk[rk]
+                            if entry and type(entry) == "table" and (entry.current or 0) > 0 then
+                                entry.current = 0
+                                anyAltSanitized = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if cData and cData.professionWeeklyKnowledge then
+            for slID, wk in pairs(cData.professionWeeklyKnowledge) do
+                if wk then
+                    local lastUpdate = wk.lastUpdate or 0
+                    if HasWeeklyResetOccurredForTimestamp(lastUpdate) then
+                        for i = 1, #RECURRING_WEEKLY_PROGRESS_KEYS do
+                            local rk = RECURRING_WEEKLY_PROGRESS_KEYS[i]
+                            local entry = wk[rk]
+                            if entry and type(entry) == "table" and (entry.current or 0) > 0 then
+                                entry.current = 0
+                                anyAltSanitized = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local activeRefreshed = 0
+    local charKey = ResolveTrackedCharactersTableKey()
+    local charData = charKey and chars[charKey]
+    if charData and IsCurrentCharacterTracked() then
+        activeRefreshed = RefreshAllMidnightKnowledgeProgressForCharacter(charData)
+    end
+
+    if activeRefreshed > 0 and charKey then
+        NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
+    elseif anyAltSanitized and self.SendMessage then
+        self:SendMessage(E.PROFESSION_DATA_UPDATED, charKey or "all")
     end
 end
 

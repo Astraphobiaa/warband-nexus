@@ -2103,12 +2103,16 @@ function PUI.GetCharSortValue(char, col)
                     val = (recipeData.knownCount or 0) / recipeData.totalCount
                 end
             elseif PROGRESS_KEY_MAP[col] then
-                local progressData = nil
-                if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
-                    progressData = char.professionData.bySkillLine[slID].weeklyKnowledge
-                end
-                if not progressData and slID and char.professionWeeklyKnowledge then
-                    progressData = char.professionWeeklyKnowledge[slID]
+                local progressData = ns.GetCharacterWeeklyKnowledge and ns.GetCharacterWeeklyKnowledge(char, slID)
+                if not progressData then
+                    if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
+                        progressData = char.professionData.bySkillLine[slID].weeklyKnowledge
+                    elseif slID and char.professionWeeklyKnowledge then
+                        progressData = char.professionWeeklyKnowledge[slID]
+                    end
+                    if progressData and ns.ProfessionService and ns.ProfessionService.SanitizeWeeklyKnowledgeProgress then
+                        progressData = ns.ProfessionService:SanitizeWeeklyKnowledgeProgress(progressData)
+                    end
                 end
                 local pd = progressData and progressData[PROGRESS_KEY_MAP[col]]
                 if pd then
@@ -3085,12 +3089,16 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         if not recipeData and PUI.GetExpansionFilter() == "All" and char.recipes then
             recipeData = PUI.GetRecipeDataForProfessionAllMode(char, profName)
         end
-        local progressData = nil
-        if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
-            progressData = char.professionData.bySkillLine[slID].weeklyKnowledge
-        end
-        if not progressData and slID and char.professionWeeklyKnowledge then
-            progressData = char.professionWeeklyKnowledge[slID]
+        local progressData = ns.GetCharacterWeeklyKnowledge and ns.GetCharacterWeeklyKnowledge(char, slID)
+        if not progressData then
+            if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
+                progressData = char.professionData.bySkillLine[slID].weeklyKnowledge
+            elseif slID and char.professionWeeklyKnowledge then
+                progressData = char.professionWeeklyKnowledge[slID]
+            end
+            if progressData and ns.ProfessionService and ns.ProfessionService.SanitizeWeeklyKnowledgeProgress then
+                progressData = ns.ProfessionService:SanitizeWeeklyKnowledgeProgress(progressData)
+            end
         end
 
         -- First Craft: only show when data is from Midnight (avoid TWW/DF recipe counts mixing in).

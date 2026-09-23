@@ -887,10 +887,16 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     local weeklyData = {}
     for sli = 1, #relevantSkillLines do
         local slID = relevantSkillLines[sli]
-        local bucket = charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[slID]
-        local progress = bucket and bucket.weeklyKnowledge
-        if not progress and charData.professionWeeklyKnowledge then
-            progress = charData.professionWeeklyKnowledge[slID]
+        local progress = ns.GetCharacterWeeklyKnowledge and ns.GetCharacterWeeklyKnowledge(charData, slID)
+        if not progress then
+            local bucket = charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[slID]
+            progress = bucket and bucket.weeklyKnowledge
+            if not progress and charData.professionWeeklyKnowledge then
+                progress = charData.professionWeeklyKnowledge[slID]
+            end
+            if progress and ns.ProfessionService and ns.ProfessionService.SanitizeWeeklyKnowledgeProgress then
+                progress = ns.ProfessionService:SanitizeWeeklyKnowledgeProgress(progress)
+            end
         end
         if progress then
             weeklyData[slID] = progress
