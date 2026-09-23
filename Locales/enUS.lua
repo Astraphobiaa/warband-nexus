@@ -1230,18 +1230,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V359"] = [=[v3.5.9 (2026-09-17)
+L["CHANGELOG_V3510"] = [=[v3.5.10 (2026-09-24)
 
-Bank auto-deposit management, outgoing alt mail tracking, roster custom section locks, and profession recipe cleanup.
+Weekly reset synchronization for PvE and professions, bank auto-deposit protections, and collapsed header preservation.
 
 Added:
-- Added an automatic deposit manager for Warband and Reagent banks with customizable category rules and destination tooltips.
-- Outgoing mail sent to warband alts is now tracked from both the standard mail interface and TradeSkillMaster (TSM).
-- The character roster picker now displays each character's assigned custom section and allows locking sections against auto-sorting.
+- Added an option in the bank deposit manager to protect raid/dungeon consumables and food from auto-deposits.
 
 Fixed:
-- Included untimed Mythic+ dungeon completions in run history for accurate Great Vault progression tracking.
-- Filtered deprecated PTR recipes and developer placeholder tags across all profession overviews.
+- Delve weekly tasks, world boss lockouts, and Mythic+ weekly run history now automatically clear upon weekly reset.
+- Weekly profession quests and weekly knowledge point tracking now accurately reset on weekly reset.
+- Preserved Blizzard UI collapsed header states across reputation and currency panels during background scans.
+- Resolved an infinite notification loop and stale cache issue caused by expired mail.
+- Refined Warbound-until-Equipped bank deposit filtering to prevent depositing non-matching equipment.
+- Resolved a Lua error when generating Great Vault and PvE change signatures.
 
 CurseForge: Warband Nexus]=]
 

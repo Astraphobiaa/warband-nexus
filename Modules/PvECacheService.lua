@@ -462,6 +462,27 @@ local function BuildRunsSignature(runHistory)
     return table.concat(parts, "|")
 end
 
+local WEEK_SECONDS = 7 * 86400
+
+---Best-effort weekly reset start timestamp (epoch seconds).
+---@return number|nil
+local function GetCurrentWeeklyResetStartTime()
+    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and GetServerTime then
+        local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
+        if secsUntil ~= nil and secsUntil >= 0 then
+            return GetServerTime() + secsUntil - WEEK_SECONDS
+        end
+    end
+    if WarbandNexus and WarbandNexus.GetWeeklyResetTime then
+        local nextReset = WarbandNexus:GetWeeklyResetTime()
+        if nextReset and nextReset > 0 then
+            return nextReset - WEEK_SECONDS
+        end
+    end
+    return nil
+end
+ns.GetCurrentWeeklyResetStartTime = GetCurrentWeeklyResetStartTime
+
 ---Build a compact change signature for current character PvE UI payload.
 ---@return string
 local function BuildPvESignature(pveCache, charKey)
@@ -563,27 +584,6 @@ local function BuildPvESignature(pveCache, charKey)
         runSig,
     }, ";")
 end
-
-local WEEK_SECONDS = 7 * 86400
-
----Best-effort weekly reset start timestamp (epoch seconds).
----@return number|nil
-local function GetCurrentWeeklyResetStartTime()
-    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and GetServerTime then
-        local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
-        if secsUntil ~= nil and secsUntil >= 0 then
-            return GetServerTime() + secsUntil - WEEK_SECONDS
-        end
-    end
-    if WarbandNexus and WarbandNexus.GetWeeklyResetTime then
-        local nextReset = WarbandNexus:GetWeeklyResetTime()
-        if nextReset and nextReset > 0 then
-            return nextReset - WEEK_SECONDS
-        end
-    end
-    return nil
-end
-ns.GetCurrentWeeklyResetStartTime = GetCurrentWeeklyResetStartTime
 
 ---Prune keystones that belong to a previous weekly cycle.
 ---Runs on init/update so stale keys never survive a weekly reset.
