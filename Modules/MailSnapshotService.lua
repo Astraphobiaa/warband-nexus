@@ -293,22 +293,65 @@ function M.GetMailReminderLevel(secondsLeft)
     return "safe"
 end
 
+--- Prune expired messages from a snapshot. Since WoW deletes mail once its timer reaches 0,
+--- retaining expired messages in persistent snapshots leads to ghost data.
+---@param snap table
+---@return boolean changed
+function M.PruneExpiredMessages(snap)
+    if not snap or type(snap) ~= "table" then return false end
+    local messages = snap.messages
+    if not messages or #messages == 0 then return false end
+
+    local now = time()
+    local scannedAt = snap.scannedAt
+    local valid = {}
+    local changed = false
+
+    for i = 1, #messages do
+        local msg = messages[i]
+        local at = M.ResolveMessageExpiresAt(msg, scannedAt)
+        if at and at <= now then
+            changed = true
+        else
+            valid[#valid + 1] = msg
+        end
+    end
+
+    if changed then
+        snap.messages = valid
+        snap.count = #valid
+    end
+    return changed
+end
+
 --- Soonest expiry across a character's snapshot messages.
+--- Prioritizes the soonest future expiry; falls back to past expiry only if all are expired.
 ---@return number|nil expiresAt, number|nil secondsLeft
 function M.GetSoonestMailExpiry(char)
     local snap = char and char.mailSnapshot
     local messages = snap and snap.messages
-    if not messages then return nil end
+    if not messages or #messages == 0 then return nil end
     local scannedAt = snap.scannedAt
-    local soonest
+    local now = time()
+    local soonestFuture
+    local soonestPast
     for i = 1, #messages do
         local at = M.ResolveMessageExpiresAt(messages[i], scannedAt)
-        if at and (not soonest or at < soonest) then
-            soonest = at
+        if at then
+            if at > now then
+                if not soonestFuture or at < soonestFuture then
+                    soonestFuture = at
+                end
+            else
+                if not soonestPast or at < soonestPast then
+                    soonestPast = at
+                end
+            end
         end
     end
-    if not soonest then return nil end
-    return soonest, soonest - time()
+    local chosen = soonestFuture or soonestPast
+    if not chosen then return nil end
+    return chosen, chosen - now
 end
 
 --- Reminder level for a whole inbox. nil when no dated mail is known (pending-only flag
@@ -321,9 +364,10 @@ function M.GetCharacterMailReminderLevel(char)
 end
 
 --- Warband-wide rollup of mail that is close to expiring, for the login reminder toast.
---- Counts every message already in the "soon" or "urgent" bucket (a week or less left)
+--- Counts messages currently in the "soon" or "urgent" bucket (under a week remaining, strictly > 0)
 --- across tracked characters. Untracked characters carry no mail snapshot, so they never
 --- contribute here. Reads persisted snapshots only — no API calls, no mailbox needed.
+--- Past-due expired mail (<= 0) is excluded and pruned to prevent endless reminder loops.
 ---@param addon table WarbandNexus
 ---@return number count, number|nil soonestSecondsLeft, string|nil soonestCharName
 function M.GetExpiringMailSummary(addon)
@@ -331,19 +375,21 @@ function M.GetExpiringMailSummary(addon)
     local characters = db and db.global and db.global.characters
     if not characters then return 0 end
 
+    local now = time()
     local count, soonestLeft, soonestName = 0, nil, nil
     for _, char in pairs(characters) do
-        if type(char) == "table" and char.isTracked ~= false then
+        if type(char) == "table" and char.isTracked == true then
             local snap = char.mailSnapshot
-            local messages = snap and snap.messages
-            if messages then
+            if snap and snap.messages then
+                M.PruneExpiredMessages(snap)
+                local messages = snap.messages
                 local scannedAt = snap.scannedAt
                 for i = 1, #messages do
                     local at = M.ResolveMessageExpiresAt(messages[i], scannedAt)
-                    if at then
-                        local left = at - time()
+                    if at and at > now then
+                        local left = at - now
                         local level = M.GetMailReminderLevel(left)
-                        if level == "soon" or level == "urgent" or level == "expired" then
+                        if level == "soon" or level == "urgent" then
                             count = count + 1
                             if not soonestLeft or left < soonestLeft then
                                 soonestLeft = left
@@ -389,6 +435,7 @@ end
 
 function M.NormalizeMailSnapshot(snap)
     if not snap or type(snap) ~= "table" then return snap end
+    M.PruneExpiredMessages(snap)
     if snap.version == MAIL_SNAPSHOT_VERSION then
         return snap
     end
@@ -584,6 +631,13 @@ function M.CharHasPendingMail(char)
     if not char then return false end
     if char.mailSnapshot then
         M.NormalizeMailSnapshot(char.mailSnapshot)
+        local snapMessages = char.mailSnapshot.messages
+        if not snapMessages or #snapMessages == 0 then
+            char.mailSnapshot = nil
+            if not char.isCurrentCharacter then
+                char.hasMail = false
+            end
+        end
     end
     if char.hasMail then return true end
     local snap = char.mailSnapshot
@@ -641,6 +695,9 @@ function WarbandNexus:ScanCurrentCharacterMailSnapshot(opts)
     -- data (the envelope column in CharactersUI SetupCharacterMailColumn) and is maintained
     -- separately by DataService:UpdateMailStatus.
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        if row.mailSnapshot then
+            row.mailSnapshot = nil
+        end
         return false
     end
 
@@ -652,6 +709,9 @@ function WarbandNexus:ScanCurrentCharacterMailSnapshot(opts)
         elseif row.mailSnapshot then
             M.NormalizeMailSnapshot(row.mailSnapshot)
             row.hasMail = ResolveHasMailFlag(false, row.mailSnapshot.count or 0, row.mailSnapshot.messages)
+            if not row.hasMail then
+                row.mailSnapshot = nil
+            end
         else
             row.hasMail = false
         end
@@ -1163,7 +1223,30 @@ local function OnMailSendFailed()
     end
 end
 
+--- One-pass sweep across all account characters to prune expired messages from snapshots.
+--- Called on addon initialization to clean up stale/ghost snapshots left from previous sessions.
+---@param addon table WarbandNexus
+function M.SweepAllExpiredMail(addon)
+    local db = addon and addon.db
+    local characters = db and db.global and db.global.characters
+    if not characters then return end
+
+    for _, char in pairs(characters) do
+        if type(char) == "table" and char.mailSnapshot then
+            M.PruneExpiredMessages(char.mailSnapshot)
+            local messages = char.mailSnapshot.messages
+            if not messages or #messages == 0 then
+                char.mailSnapshot = nil
+                if not char.isCurrentCharacter then
+                    char.hasMail = false
+                end
+            end
+        end
+    end
+end
+
 function WarbandNexus:InitializeMailSnapshotService()
+    M.SweepAllExpiredMail(self)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_SHOW", OnMailboxOpened)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_INBOX_UPDATE", function()
         M.ScheduleScan(WarbandNexus, true)

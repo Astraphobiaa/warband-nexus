@@ -3491,7 +3491,7 @@ function WarbandNexus:ShowExpiringMailReminder()
     if not (MS and MS.GetExpiringMailSummary) then return false end
 
     local count, soonestLeft, soonestName = MS.GetExpiringMailSummary(self)
-    if not count or count < 1 then return false end
+    if not count or count < 1 or not soonestLeft or soonestLeft <= 0 then return false end
 
     local L = ns.L
     local timeText = soonestLeft and MS.FormatMailTimeRemaining and MS.FormatMailTimeRemaining(time() + soonestLeft)

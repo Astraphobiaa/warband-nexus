@@ -657,6 +657,7 @@ function WarbandNexus:ShowMailDetailsPopup(char)
         Factory:UpdateScrollBarVisibility(scroll)
     end
 
+    dialog._wnMailChar = char
     dialog:Show()
 end
 
@@ -664,4 +665,26 @@ ns.UI_ShowMailDetailsPopup = function(char)
     if WarbandNexus and WarbandNexus.ShowMailDetailsPopup then
         WarbandNexus:ShowMailDetailsPopup(char)
     end
+end
+
+local MailPopupMsgListeners = {}
+local E = ns.Constants and ns.Constants.EVENTS
+if WarbandNexus and WarbandNexus.RegisterMessage and E and E.CHARACTER_UPDATED then
+    WarbandNexus.RegisterMessage(MailPopupMsgListeners, E.CHARACTER_UPDATED, function(_, payload)
+        if not payload or payload.dataType ~= "mail" then return end
+        local dialog = _G["WarbandNexus_MailDetailsPopup"]
+        if not dialog or not dialog.IsShown or not dialog:IsShown() then return end
+        local activeChar = dialog._wnMailChar
+        if not activeChar then return end
+
+        local MailSnapshot = ns.MailSnapshot
+        if not MailSnapshot or not MailSnapshot.CharHasPendingMail(activeChar) then
+            dialog:Hide()
+            return
+        end
+
+        if WarbandNexus.ShowMailDetailsPopup then
+            WarbandNexus:ShowMailDetailsPopup(activeChar)
+        end
+    end)
 end

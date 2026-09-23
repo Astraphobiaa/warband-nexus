@@ -38,6 +38,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     local profileDefaults = {
         enabled           = true,
         autoDepositOnOpen = false,
+        ignoreFood        = true,
         destination       = "warband",
         categories        = WarbandNexus:GetDefaultReagentCategories(),
     }
@@ -55,13 +56,16 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     if not settings.categories then
         settings.categories = CopyTable(profileDefaults.categories)
     end
+    if settings.ignoreFood == nil then
+        settings.ignoreFood = true
+    end
 
     local dialog, contentFrame, header = CreateExternalWindow({
         name = "WarbandBankDepositPopup",
         title = (L and L["REAGENT_DEPOSIT_TITLE"]) or "Reagent Deposit Manager",
         icon = "Interface\\Icons\\INV_Misc_Bag_08",
         width = 460,
-        height = 538,
+        height = 566,
         preventDuplicates = true,
         onClose = function()
             if self.SendMessage then
@@ -102,6 +106,24 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
         GameTooltip:Show()
     end)
     autoCB:SetScript("OnLeave", GameTooltip_Hide)
+
+    yOffset = yOffset + 28
+
+    -- Ignore Food & Drinks Checkbox (including Warbound hearty meals)
+    local ignoreFoodCB = CreateThemedCheckbox(contentFrame, settings.ignoreFood ~= false)
+    ignoreFoodCB:SetPoint("TOPLEFT", PADDING, -yOffset)
+
+    local ignoreFoodLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+    ignoreFoodLabel:SetPoint("LEFT", ignoreFoodCB, "RIGHT", 8, 0)
+    ignoreFoodLabel:SetText((L and L["REAGENT_DEPOSIT_IGNORE_FOOD"]) or "Ignore Food & Drinks (including Warbound)")
+    ns.UI_SetTextColorRole(ignoreFoodLabel, "Bright")
+
+    ignoreFoodCB:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText((L and L["REAGENT_DEPOSIT_IGNORE_FOOD_DESC"]) or "Never automatically deposit food, drinks, feasts, or hearty meals into the bank, keeping your raid and dungeon consumables safe.", 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    ignoreFoodCB:SetScript("OnLeave", GameTooltip_Hide)
 
     yOffset = yOffset + 28
 
@@ -342,6 +364,12 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
         settings.autoDepositOnOpen = checked
     end)
 
+    ignoreFoodCB:SetScript("OnClick", function(self)
+        local checked = self:GetChecked() and true or false
+        if self.checkTexture then self.checkTexture:SetShown(checked) end
+        settings.ignoreFood = checked
+    end)
+
     perCharCB:SetScript("OnClick", function(self)
         local checked = self:GetChecked() and true or false
         if self.checkTexture then self.checkTexture:SetShown(checked) end
@@ -362,6 +390,9 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
         if enabledCB.checkTexture then enabledCB.checkTexture:SetShown(settings.enabled) end
         autoCB:SetChecked(settings.autoDepositOnOpen)
         if autoCB.checkTexture then autoCB.checkTexture:SetShown(settings.autoDepositOnOpen) end
+        local foodIgnored = (settings.ignoreFood ~= false)
+        ignoreFoodCB:SetChecked(foodIgnored)
+        if ignoreFoodCB.checkTexture then ignoreFoodCB.checkTexture:SetShown(foodIgnored) end
         if settings.destination == "reagent" then
             reagentRadio.innerDot:Show()
             warbandRadio.innerDot:Hide()
