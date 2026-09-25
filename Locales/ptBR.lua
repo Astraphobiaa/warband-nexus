@@ -873,6 +873,9 @@ L["LOCK_MINIMAP_TOOLTIP"] = "Trave o botão do minimapa no lugar para que não p
 L["SCROLL_SPEED_TOOLTIP"] = "Multiplicador para velocidade de rolagem (1,0x = 28 px por etapa)"
 L["UI_SCALE"] = "Escala da interface"
 L["UI_SCALE_TOOLTIP"] = "Redimensione toda a janela do add-on. Reduza se ocupar muito espaço na tela."
+L["SETTINGS_AUTO_FIT_UI_SCALE"] = "Auto-Fit Scale"
+L["SETTINGS_AUTO_FIT_UI_SCALE_DESC"] = "Automatically detect display resolution and apply the recommended UI scale for this screen."
+L["RESET_TO_DEFAULT_TOOLTIP"] = "Reset UI Scale to 100%."
 
 -- Settings - Tab Filtering
 L["IGNORE_WARBAND_TAB_FORMAT"] = "Ignorar guia banco do bando de guerra %d da verificação automática"
@@ -1231,15 +1234,19 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V3511"] = [=[v3.5.11 (2026-09-25)
+L["CHANGELOG_V3512"] = [=[v3.5.12 (2026-09-25)
 
-Hotfix addressing a PvE cache subtable lookup error during window refresh.
+Display scaling improvements for MacBook and laptop screens, UI scale slider stabilization, and external window viewport clamping.
+
+Added:
+- Added an Auto-Fit Scale option in Settings to automatically adapt UI scale to MacBook and laptop resolutions.
+- Added a Reset to 100% quick action for UI Scale in Settings.
 
 Fixed:
-- Resolved a Lua error in PvE cache retrieval when reading weekly Mythic+ run history during UI refresh.
-- Improved character subtable lookup safety across weekly reset state checks.
-- Prevented window population failures when opening or switching between main interface tabs.
-- Ensured consistent fallback behavior when character weekly reset timestamps are queried.
+- Resolved violent flickering, thumb jumping, and constant UI refreshes when adjusting the UI Scale slider.
+- Corrected screen category classification on high-DPI Retina laptop screens (such as 14" and 16" MacBooks).
+- Reduced default window footprint and minimum resize dimensions on smaller and laptop displays.
+- Clamped external popup windows so they never exceed available viewport height.
 
 CurseForge: Warband Nexus]=]
 

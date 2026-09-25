@@ -170,6 +170,9 @@ L["LOCK_MINIMAP_TOOLTIP"] = "Minimap düğmesini sürüklenemeyecek şekilde yer
 L["SCROLL_SPEED_TOOLTIP"] = "Kaydırma hızı çarpanı (1.0x = adım başına 28 piksel)"
 L["UI_SCALE"] = "Arayüz Ölçeği"
 L["UI_SCALE_TOOLTIP"] = "Tüm eklenti penceresini ölçeklendirin. Pencere ekranda çok yer kaplıyorsa küçültün."
+L["SETTINGS_AUTO_FIT_UI_SCALE"] = "Auto-Fit Scale"
+L["SETTINGS_AUTO_FIT_UI_SCALE_DESC"] = "Automatically detect display resolution and apply the recommended UI scale for this screen."
+L["RESET_TO_DEFAULT_TOOLTIP"] = "Reset UI Scale to 100%."
 L["IGNORE_WARBAND_TAB_FORMAT"] = "Warband Bankası Sekmesi %d'i otomatik taramanın dışında tut"
 L["IGNORE_SCAN_FORMAT"] = "%s'i otomatik taramanın dışında tut"
 
@@ -2259,15 +2262,19 @@ L["SOURCE_TYPE_PVP"] = "PvP"
 L["DIFFICULTY_NORMAL"] = "Normal"
 L["DIFFICULTY_HEROIC"] = "Heroic"
 L["DIFFICULTY_MYTHIC"] = "Mythic"
-L["CHANGELOG_V3511"] = [=[v3.5.11 (2026-09-25)
+L["CHANGELOG_V3512"] = [=[v3.5.12 (2026-09-25)
 
-Hotfix addressing a PvE cache subtable lookup error during window refresh.
+Display scaling improvements for MacBook and laptop screens, UI scale slider stabilization, and external window viewport clamping.
+
+Added:
+- Added an Auto-Fit Scale option in Settings to automatically adapt UI scale to MacBook and laptop resolutions.
+- Added a Reset to 100% quick action for UI Scale in Settings.
 
 Fixed:
-- Resolved a Lua error in PvE cache retrieval when reading weekly Mythic+ run history during UI refresh.
-- Improved character subtable lookup safety across weekly reset state checks.
-- Prevented window population failures when opening or switching between main interface tabs.
-- Ensured consistent fallback behavior when character weekly reset timestamps are queried.
+- Resolved violent flickering, thumb jumping, and constant UI refreshes when adjusting the UI Scale slider.
+- Corrected screen category classification on high-DPI Retina laptop screens (such as 14" and 16" MacBooks).
+- Reduced default window footprint and minimum resize dimensions on smaller and laptop displays.
+- Clamped external popup windows so they never exceed available viewport height.
 
 CurseForge: Warband Nexus]=]
 

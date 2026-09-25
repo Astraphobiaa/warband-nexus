@@ -872,6 +872,9 @@ L["LOCK_MINIMAP_TOOLTIP"] = "锁定小地图按钮位置，无法拖动"
 L["SCROLL_SPEED_TOOLTIP"] = "滚动速度倍数（1.0x = 每步 28 像素）"
 L["UI_SCALE"] = "界面缩放"
 L["UI_SCALE_TOOLTIP"] = "缩放整个插件窗口。如果窗口占用太多空间，请减小此值。"
+L["SETTINGS_AUTO_FIT_UI_SCALE"] = "Auto-Fit Scale"
+L["SETTINGS_AUTO_FIT_UI_SCALE_DESC"] = "Automatically detect display resolution and apply the recommended UI scale for this screen."
+L["RESET_TO_DEFAULT_TOOLTIP"] = "Reset UI Scale to 100%."
 
 -- Settings - Tab Filtering
 L["IGNORE_WARBAND_TAB_FORMAT"] = "忽略标签页 %d"
@@ -1228,15 +1231,19 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V3511"] = [=[v3.5.11 (2026-09-25)
+L["CHANGELOG_V3512"] = [=[v3.5.12 (2026-09-25)
 
-Hotfix addressing a PvE cache subtable lookup error during window refresh.
+Display scaling improvements for MacBook and laptop screens, UI scale slider stabilization, and external window viewport clamping.
+
+Added:
+- Added an Auto-Fit Scale option in Settings to automatically adapt UI scale to MacBook and laptop resolutions.
+- Added a Reset to 100% quick action for UI Scale in Settings.
 
 Fixed:
-- Resolved a Lua error in PvE cache retrieval when reading weekly Mythic+ run history during UI refresh.
-- Improved character subtable lookup safety across weekly reset state checks.
-- Prevented window population failures when opening or switching between main interface tabs.
-- Ensured consistent fallback behavior when character weekly reset timestamps are queried.
+- Resolved violent flickering, thumb jumping, and constant UI refreshes when adjusting the UI Scale slider.
+- Corrected screen category classification on high-DPI Retina laptop screens (such as 14" and 16" MacBooks).
+- Reduced default window footprint and minimum resize dimensions on smaller and laptop displays.
+- Clamped external popup windows so they never exceed available viewport height.
 
 CurseForge: Warband Nexus]=]
 
