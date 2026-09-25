@@ -1236,9 +1236,10 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 L["CHANGELOG_V3513"] = [=[v3.5.13 (2026-09-25)
 
-Hotfix for Retina and laptop display typography, Settings UI scale buttons, and summary card layout.
+Hotfix for PvE cache lookups, Retina display typography, Settings UI scale buttons, and summary card layout.
 
 Fixed:
+- Resolved a Lua error in PvE cache retrieval (nil function call) when reading weekly Mythic+ and delve run history.
 - Fixed non-functional and blank Auto-Fit Scale and Reset action buttons in Settings.
 - Resolved bloated typography on MacBook Liquid Retina displays by bounding resolution normalization to usable UI canvas.
 - Fixed text truncation in character rows (gold, mythic+ keystone, and guild names) caused by inflated font sizes on compact viewports.
