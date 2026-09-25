@@ -212,8 +212,8 @@ local CHAR_GOLD_ROW_MIN_WIDTH = 500
 local GOLD_CARD_STD_HEIGHT = 90
 local GOLD_CARD_TALL_HEIGHT = 108
 -- Side-by-side Total Gold | Token needs room for two icons + two long money strings;
--- at 300 the value texts met in the middle (now clamped, but stack earlier anyway).
-local GOLD_TOKEN_MIN_SPLIT_WIDTH = 340
+-- on compact/laptop screens (<380 card width), stack vertically to grant full card width.
+local GOLD_TOKEN_MIN_SPLIT_WIDTH = 380
 
 local CHAR_GOLD_STACK_HYSTERESIS = 24
 

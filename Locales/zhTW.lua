@@ -1233,19 +1233,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "過濾「總遊戲時間」與「本�
 
 
 
-L["CHANGELOG_V3512"] = [=[v3.5.12 (2026-09-25)
+L["CHANGELOG_V3513"] = [=[v3.5.13 (2026-09-25)
 
-Display scaling improvements for MacBook and laptop screens, UI scale slider stabilization, and external window viewport clamping.
-
-Added:
-- Added an Auto-Fit Scale option in Settings to automatically adapt UI scale to MacBook and laptop resolutions.
-- Added a Reset to 100% quick action for UI Scale in Settings.
+Hotfix for Retina and laptop display typography, Settings UI scale buttons, and summary card layout.
 
 Fixed:
-- Resolved violent flickering, thumb jumping, and constant UI refreshes when adjusting the UI Scale slider.
-- Corrected screen category classification on high-DPI Retina laptop screens (such as 14" and 16" MacBooks).
-- Reduced default window footprint and minimum resize dimensions on smaller and laptop displays.
-- Clamped external popup windows so they never exceed available viewport height.
+- Fixed non-functional and blank Auto-Fit Scale and Reset action buttons in Settings.
+- Resolved bloated typography on MacBook Liquid Retina displays by bounding resolution normalization to usable UI canvas.
+- Fixed text truncation in character rows (gold, mythic+ keystone, and guild names) caused by inflated font sizes on compact viewports.
+- Expanded summary card text containers to use full card width, preventing gold value truncation.
+- Improved Total Gold and WoW Token card layout on laptop displays to stack cleanly without text collisions.
 
 CurseForge: Warband Nexus]=]
 

@@ -287,19 +287,29 @@ end
 local cachedFontResNorm = nil
 local function GetFontResolutionNormalization()
     if cachedFontResNorm then return cachedFontResNorm end
-    local physH = 1080
-    if GetPhysicalScreenSize then
-        local _, h = GetPhysicalScreenSize()
-        if h and h > 0 then physH = h end
-    else
-        local resolution = GetCVar("gxWindowedResolution") or "1920x1080"
-        local _, h = string.match(resolution, "(%d+)x(%d+)")
-        h = tonumber(h)
-        if h and h > 0 then physH = h end
+    -- In WoW, layouts and frame widths are specified in UIParent virtual coordinates.
+    -- On High-DPI / Retina displays (e.g. MacBook Pro 14"/16", 4K laptops), physical pixel
+    -- counts are large (1964p, 2234p), but the usable layout canvas (UIParent) is compact (<= 1080p).
+    -- If fonts are scaled up based on physical pixels (math.sqrt(physH / 1080) = ~1.35x-1.45x) while
+    -- frames and columns remain in compact UIParent points, typography balloons and severely
+    -- truncates with ellipses ("...").
+    -- Therefore, when usable canvas is standard or compact (uiH <= 1080 or uiW <= 1920),
+    -- resolution normalization must remain strictly 1.0.
+    local uiW = UIParent and UIParent:GetWidth() or 1920
+    local uiH = UIParent and UIParent:GetHeight() or 1080
+    if uiH <= 1080 or uiW <= 1920 then
+        cachedFontResNorm = 1.0
+        return 1.0
     end
-    if physH <= 0 then physH = 1080 end
-    cachedFontResNorm = math.sqrt(physH / 1080)
+
+    -- On true high-resolution desktop viewports without UI scaling (uiH > 1080 and uiW > 1920):
+    -- scale moderately with the virtual canvas height, capped at 1.25x so columns don't overflow.
+    cachedFontResNorm = math.min(1.25, math.sqrt(uiH / 1080))
     return cachedFontResNorm
+end
+
+function FontManager:ResetFontResolutionCache()
+    cachedFontResNorm = nil
 end
 
 -- FONT WARM-UP (forces GPU to rasterize custom fonts before use)

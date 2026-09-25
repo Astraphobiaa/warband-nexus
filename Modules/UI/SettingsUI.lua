@@ -748,7 +748,9 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
     -- Calculate dynamic columns
     local containerWidth = explicitWidth or parent:GetWidth() or 640
     local minWidth = minButtonWidth or MIN_ITEM_WIDTH  -- Use custom min width if provided
-    local itemsPerRow = math.max(2, math.floor((containerWidth + GRID_SPACING) / (minWidth + GRID_SPACING)))
+    local maxItemsPerRow = (#buttons > 0) and #buttons or 2
+    local itemsPerRow = math.min(maxItemsPerRow, math.max(1, math.floor((containerWidth + GRID_SPACING) / (minWidth + GRID_SPACING))))
+    itemsPerRow = math.max(1, itemsPerRow)
     local buttonWidth = (containerWidth - (GRID_SPACING * (itemsPerRow - 1))) / itemsPerRow
     local buttonHeight = SETTINGS_BTN_H
     
@@ -778,7 +780,8 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         -- Button text
         local buttonText = FontManager:CreateFontString(button, "body", "OVERLAY")
         buttonText:SetPoint("CENTER")
-        buttonText:SetText(btnData.label)
+        local labelText = btnData.label or btnData.text or ""
+        buttonText:SetText(labelText)
         buttonText:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
 
         if isPreset then
@@ -787,9 +790,10 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         end
         
         -- OnClick
+        local clickFunc = btnData.func or btnData.onClick
         button:SetScript("OnClick", function()
-            if btnData.func then
-                btnData.func()
+            if clickFunc then
+                clickFunc()
             end
         end)
         
@@ -2128,9 +2132,21 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
         cy = CreateButtonGrid(inner, {
             {
+                label = (ns.L and ns.L["SETTINGS_AUTO_FIT_UI_SCALE"]) or "Auto-Fit Scale",
                 text = (ns.L and ns.L["SETTINGS_AUTO_FIT_UI_SCALE"]) or "Auto-Fit Scale",
                 tooltip = (ns.L and ns.L["SETTINGS_AUTO_FIT_UI_SCALE_DESC"])
                     or "Automatically detect display resolution and apply the recommended UI scale for this screen.",
+                func = function()
+                    local rec = WarbandNexus.API_GetRecommendedUIScale and WarbandNexus:API_GetRecommendedUIScale() or 1.0
+                    WarbandNexus.db.profile.uiScale = rec
+                    if WarbandNexus.ApplyUIScale then
+                        WarbandNexus:ApplyUIScale(rec)
+                    end
+                    if uiScaleSlider then
+                        if uiScaleSlider.SetValue then uiScaleSlider:SetValue(rec) end
+                        if uiScaleSlider.UpdateLabel then uiScaleSlider.UpdateLabel(rec) end
+                    end
+                end,
                 onClick = function()
                     local rec = WarbandNexus.API_GetRecommendedUIScale and WarbandNexus:API_GetRecommendedUIScale() or 1.0
                     WarbandNexus.db.profile.uiScale = rec
@@ -2144,8 +2160,19 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 end,
             },
             {
+                label = (ns.L and ns.L["RESET_DEFAULT"]) or "Reset (100%)",
                 text = (ns.L and ns.L["RESET_DEFAULT"]) or "Reset (100%)",
                 tooltip = (ns.L and ns.L["RESET_TO_DEFAULT_TOOLTIP"]) or "Reset UI Scale to 100%.",
+                func = function()
+                    WarbandNexus.db.profile.uiScale = 1.0
+                    if WarbandNexus.ApplyUIScale then
+                        WarbandNexus:ApplyUIScale(1.0)
+                    end
+                    if uiScaleSlider then
+                        if uiScaleSlider.SetValue then uiScaleSlider:SetValue(1.0) end
+                        if uiScaleSlider.UpdateLabel then uiScaleSlider.UpdateLabel(1.0) end
+                    end
+                end,
                 onClick = function()
                     WarbandNexus.db.profile.uiScale = 1.0
                     if WarbandNexus.ApplyUIScale then

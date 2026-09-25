@@ -4594,7 +4594,10 @@ local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, la
     
     -- Create container for text group
     local textContainer = CreateFrame("Frame", nil, parent)
-    textContainer:SetSize(200, 40)
+    textContainer:SetHeight(40)
+    textContainer:SetPoint("LEFT", iconFrame, "RIGHT", 12, 0)
+    textContainer:SetPoint("RIGHT", parent, "RIGHT", -12, 0)
+    textContainer:SetPoint("CENTER", parent, "CENTER", 0, 0)
     
     -- Create label (centered in container)
     local label = FontManager:CreateFontString(textContainer, labelFont, "OVERLAY")
@@ -4631,10 +4634,6 @@ local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, la
         label:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
     end
     label:SetWordWrap(false)
-    
-    -- Position container: LEFT from icon, CENTER vertically to CARD
-    textContainer:SetPoint("LEFT", iconFrame, "RIGHT", 12, 0)
-    textContainer:SetPoint("CENTER", parent, "CENTER", 0, 0)  -- Center to card!
     
     return {
         icon = iconFrame,
