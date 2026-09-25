@@ -72,13 +72,17 @@ function WarbandNexus:API_GetScreenInfo()
 
     local aspectRatio = physW / math.max(physH, 1)
     local category = "normal"
-    if physW < 1600 then
+
+    -- High-DPI / Retina (MacBooks, 4K laptops) have large physical pixel counts,
+    -- but their usable layout canvas (UIParent) is compact. Sizing in WoW is
+    -- always in UIParent coordinate units, so UI dimensions must govern tiering.
+    if uiWidth < 1550 or uiHeight < 880 or physW < 1600 then
         category = "small"
-    elseif aspectRatio >= 2.2 then
+    elseif aspectRatio >= 2.1 and uiWidth >= 2000 then
         category = "ultrawide"
-    elseif physW >= 3840 then
+    elseif physW >= 3840 and uiWidth >= 2560 and uiHeight >= 1350 then
         category = "xlarge"
-    elseif physW >= 2560 then
+    elseif physW >= 2560 and uiWidth >= 1900 and uiHeight >= 1050 then
         category = "large"
     end
 
@@ -90,6 +94,26 @@ function WarbandNexus:API_GetScreenInfo()
         physHeight = physH,
         category = category,
     }
+end
+
+--- Recommended UI scale based on available UIParent layout height/width.
+--- On laptops (e.g. MacBook 14", 1080p laptops), scaling to 85%-90% makes all panels fit naturally.
+---@return number Recommended scale (0.75 - 1.0)
+function WarbandNexus:API_GetRecommendedUIScale()
+    local screen = self:API_GetScreenInfo()
+    local h = screen.height or 1080
+    local w = screen.width or 1920
+    if h <= 768 or w <= 1366 then
+        return 0.80
+    elseif h <= 864 or w <= 1440 then
+        return 0.85
+    elseif h <= 960 or w <= 1600 then
+        return 0.90
+    elseif h <= 1080 then
+        return 0.95
+    else
+        return 1.0
+    end
 end
 
 --[[

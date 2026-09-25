@@ -183,19 +183,19 @@ local UI_SPACING = {
         --- If numeric for category, replaces aspect-ratio-based default width pct in `API_CalculateOptimalWindowSize`.
         --- `small`: use most of usable width on laptops (`physWidth < 1600`).
         DEFAULT_WIDTH_SCREEN_PCT_BY_CATEGORY = {
-            small = 0.88,
+            small = 0.72,
         },
         --- Min resize / default-floor width and height (`SetResizeBounds`). Scroll handles overflow for wider tab chrome.
         MIN_WIDTH_HEIGHT_BY_CATEGORY = {
-            small = { w = 680, h = 460 },
-            normal = { w = 840, h = 520 },
-            ultrawide = { w = 860, h = 520 },
-            large = { w = 960, h = 560 },
-            xlarge = { w = 1024, h = 580 },
+            small = { w = 640, h = 420 },
+            normal = { w = 780, h = 480 },
+            ultrawide = { w = 840, h = 500 },
+            large = { w = 920, h = 540 },
+            xlarge = { w = 1000, h = 560 },
         },
         --- Used when MAIN_WINDOW or category row is unavailable (preload / recovery).
-        FALLBACK_MIN_CONTENT_WIDTH = 840,
-        FALLBACK_MIN_CONTENT_HEIGHT = 520,
+        FALLBACK_MIN_CONTENT_WIDTH = 780,
+        FALLBACK_MIN_CONTENT_HEIGHT = 480,
 
         --- `profile.mainWindowDensity == "compact"`: tighter mins + modest default-size shrink (`API_*` wrappers).
         COMPACT_MIN_DIMENSION_MULT = 0.92,

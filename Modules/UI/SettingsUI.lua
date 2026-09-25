@@ -1396,8 +1396,8 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     ns.UI_SetTextColorRole(label, "Bright")
     
     local optionName = type(option.name) == "function" and option.name() or option.name
-    local function UpdateLabel()
-        local currentValue = option.get and option.get() or (option.min or 0)
+    local function UpdateLabel(val)
+        local currentValue = val or (option.get and option.get()) or (option.min or 0)
         local displayValue = (option.valueFormat and option.valueFormat(currentValue)) or string.format("%.1f", currentValue)
         label:SetText(string.format("%s: %s%s|r", optionName, AccentInlineHex(), displayValue))
     end
@@ -1405,19 +1405,35 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     UpdateLabel()
     
     -- Slider (single source of truth: Factory:CreateThemedSlider)
-    local slider = ns.UI.Factory:CreateThemedSlider(parent, {
+    local sliderOpts = {
         min = option.min or 0,
         max = option.max or 1,
         step = option.step or 0.1,
         value = option.get and option.get() or nil,
         height = 20,
-        onChange = function(value)
+    }
+
+    if option.applyOnRelease then
+        sliderOpts.onLiveChange = function(value)
+            UpdateLabel(value)
+        end
+        sliderOpts.onCommit = function(value)
+            if option.set then
+                option.set(nil, value)
+                UpdateLabel(value)
+            end
+        end
+    else
+        sliderOpts.onChange = function(value)
             if option.set then
                 option.set(nil, value)  -- AceConfig pattern: (info, value)
-                UpdateLabel()
+                UpdateLabel(value)
             end
-        end,
-    })
+        end
+    end
+
+    local slider = ns.UI.Factory:CreateThemedSlider(parent, sliderOpts)
+    slider.UpdateLabel = UpdateLabel
     slider:SetPoint("TOPLEFT", 0, yOffset - 25)
     slider:SetPoint("TOPRIGHT", 0, yOffset - 25)
 
@@ -1435,7 +1451,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
         slider:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
     
-    return yOffset - 65
+    return yOffset - 65, slider
 end
 
 -- Track subtitle elements for theme refresh
@@ -2091,12 +2107,14 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             valueFormat = function(v) return string.format("%.1fx", v) end,
         }, cy, sliderElements)
 
-        cy = CreateSliderWidget(inner, {
+        local uiScaleSlider
+        cy, uiScaleSlider = CreateSliderWidget(inner, {
             name = (ns.L and ns.L["UI_SCALE"]) or "UI Scale",
             desc = (ns.L and ns.L["UI_SCALE_TOOLTIP"]) or "Scale the entire addon window. Reduce if the window takes up too much screen space.",
             min = 0.6,
             max = 1.5,
             step = 0.05,
+            applyOnRelease = true,
             get = function() return WarbandNexus.db.profile.uiScale or 1.0 end,
             set = function(_, value)
                 value = math.floor(value * 20 + 0.5) / 20
@@ -2107,6 +2125,39 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             end,
             valueFormat = function(v) return string.format("%d%%", v * 100) end,
         }, cy, sliderElements)
+
+        cy = CreateButtonGrid(inner, {
+            {
+                text = (ns.L and ns.L["SETTINGS_AUTO_FIT_UI_SCALE"]) or "Auto-Fit Scale",
+                tooltip = (ns.L and ns.L["SETTINGS_AUTO_FIT_UI_SCALE_DESC"])
+                    or "Automatically detect display resolution and apply the recommended UI scale for this screen.",
+                onClick = function()
+                    local rec = WarbandNexus.API_GetRecommendedUIScale and WarbandNexus:API_GetRecommendedUIScale() or 1.0
+                    WarbandNexus.db.profile.uiScale = rec
+                    if WarbandNexus.ApplyUIScale then
+                        WarbandNexus:ApplyUIScale(rec)
+                    end
+                    if uiScaleSlider then
+                        if uiScaleSlider.SetValue then uiScaleSlider:SetValue(rec) end
+                        if uiScaleSlider.UpdateLabel then uiScaleSlider.UpdateLabel(rec) end
+                    end
+                end,
+            },
+            {
+                text = (ns.L and ns.L["RESET_DEFAULT"]) or "Reset (100%)",
+                tooltip = (ns.L and ns.L["RESET_TO_DEFAULT_TOOLTIP"]) or "Reset UI Scale to 100%.",
+                onClick = function()
+                    WarbandNexus.db.profile.uiScale = 1.0
+                    if WarbandNexus.ApplyUIScale then
+                        WarbandNexus:ApplyUIScale(1.0)
+                    end
+                    if uiScaleSlider then
+                        if uiScaleSlider.SetValue then uiScaleSlider:SetValue(1.0) end
+                        if uiScaleSlider.UpdateLabel then uiScaleSlider.UpdateLabel(1.0) end
+                    end
+                end,
+            },
+        }, cy, iw, 150)
 
         cy = select(1, CreateCheckboxGrid(inner, {
             {

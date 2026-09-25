@@ -93,6 +93,17 @@ local function CreateExternalWindow(config)
     local globalName = "WarbandNexus_" .. config.name
     local width = config.width or 400
     local height = config.height or 300
+
+    -- Clamp external window size to ensure it never exceeds laptop or small display bounds
+    local screenW = UIParent:GetWidth() or 1920
+    local screenH = UIParent:GetHeight() or 1080
+    local scale = (ns.UI_GetAddonUIScale and ns.UI_GetAddonUIScale()) or 1.0
+    if not scale or scale <= 0 then scale = 1.0 end
+    local maxAvailW = math.floor((screenW * 0.95) / scale)
+    local maxAvailH = math.floor((screenH * 0.92) / scale)
+    if width > maxAvailW then width = maxAvailW end
+    if height > maxAvailH then height = maxAvailH end
+
     local preventDuplicates = (config.preventDuplicates ~= false) -- default true
     local mainShellLayout = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
     local extDlgHeaderH = mainShellLayout.HEADER_BAR_HEIGHT or mainShellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT or 40
@@ -123,6 +134,7 @@ local function CreateExternalWindow(config)
     -- Dialog shell (Factory container; borders from ApplyVisuals below)
     dialog = Factory:CreateContainer(UIParent, width, height, false, globalName)
     if not dialog then return nil end
+    dialog:SetClampedToScreen(true)
     -- Remember the last dragged spot instead of always re-centering.
     local posKey = globalName
     if not (ns.WindowManager and ns.WindowManager.RestorePosition

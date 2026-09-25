@@ -2516,7 +2516,9 @@ end
 ---@param newScale number Scale value (0.6 - 1.5)
 function WarbandNexus:ApplyUIScale(newScale)
     if not mainFrame then return end
-    if ns.UI_GetAddonUIScale then
+    if newScale ~= nil then
+        newScale = math.max(0.6, math.min(1.5, tonumber(newScale) or 1.0))
+    elseif ns.UI_GetAddonUIScale then
         newScale = ns.UI_GetAddonUIScale()
     else
         newScale = math.max(0.6, math.min(1.5, newScale or 1.0))
@@ -2538,16 +2540,16 @@ function WarbandNexus:ApplyUIScale(newScale)
     NormalizeFramePosition(mainFrame)
     SaveWindowGeometry(mainFrame)
 
-    -- The re-layout / content repopulate below is expensive. Dragging the UI Scale slider fires
-    -- ApplyUIScale on every step, and running the full rebuild each step flickers/corrupts the
-    -- view (it settles only on release). The live SetScale above already previews the new scale,
-    -- so debounce the heavy settle to run once ~0.15s after the slider stops moving.
+    -- Debounce heavy layout settle.
+    -- When the user is on the Settings tab, do NOT call PopulateContent() because
+    -- SetScale already scales all settings controls smoothly and rebuilding the view
+    -- destroys the active widgets and causes flickering.
     local function SettleUIScale()
         if not mainFrame then return end
         local LC = ns.UI_LayoutCoordinator
         if LC and LC.OnAddonUIScaleChanged then
             LC:OnAddonUIScaleChanged(mainFrame)
-        elseif mainFrame:IsShown() then
+        elseif mainFrame:IsShown() and mainFrame.currentTab ~= "settings" then
             self:PopulateContent()
         end
     end

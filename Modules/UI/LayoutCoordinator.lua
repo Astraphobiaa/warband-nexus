@@ -335,7 +335,7 @@ function LayoutCoordinator:OnMainFrameMetricsChanged(frame, reason)
             frame._wnResizeFreezeScrollChildW = nil
             ApplyShellChromeFull(frame, reason)
             local handled = RunTabCommitAdapter(frame, contentWidth)
-            if not handled then
+            if not handled and not (reason == "ui_scale_addon" and frame.currentTab == "settings") then
                 ScheduleCommitPopulate(frame)
             end
             local sh = LayoutCoordinator._shell

@@ -2166,19 +2166,28 @@ local function SnapThemedSliderValue(raw, opts)
     return v
 end
 
---- Wire onChange without SetValue feedback during thumb drag (click-only worked; drag broke).
+--- Wire onChange/onCommit without SetValue feedback during thumb drag (click-only worked; drag broke).
 local function AttachThemedSliderOnChange(slider, opts)
-    if not slider or not opts or not opts.onChange then return end
+    if not slider or not opts or (not opts.onChange and not opts.onCommit and not opts.onLiveChange) then return end
     slider:SetScript("OnValueChanged", function(self, value, userInput)
         if userInput == false then return end
-        opts.onChange(SnapThemedSliderValue(value, opts))
+        local snapped = SnapThemedSliderValue(value, opts)
+        if opts.onLiveChange then
+            opts.onLiveChange(snapped)
+        elseif opts.onChange and not opts.onCommit then
+            opts.onChange(snapped)
+        end
     end)
     slider:SetScript("OnMouseUp", function(self)
         local snapped = SnapThemedSliderValue(self:GetValue(), opts)
         if math.abs(self:GetValue() - snapped) > 0.0001 then
             self:SetValue(snapped)
         end
-        opts.onChange(snapped)
+        if opts.onCommit then
+            opts.onCommit(snapped)
+        elseif opts.onChange then
+            opts.onChange(snapped)
+        end
     end)
 end
 
