@@ -2351,7 +2351,7 @@ function WarbandNexus:GetPvEData(charKey)
         local rawDelveCharacter = PveSub(dbCache.delves and dbCache.delves.characters) or {}
         local rawRunHistory = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.runHistory) or {}
         local runHistoryWeek = dbCache.mythicPlus and dbCache.mythicPlus.runHistoryWeek
-        local weekRecorded = runHistoryWeek and (LookupPvECacheSubtable(runHistoryWeek, charKey) or runHistoryWeek[charKey])
+        local weekRecorded = runHistoryWeek and (PveSub(runHistoryWeek) or runHistoryWeek[charKey])
         local resetStart = GetCurrentWeeklyResetStartTime()
         local runHistory = rawRunHistory
         if resetStart and resetStart > 0 and (type(weekRecorded) ~= "number" or weekRecorded < (resetStart - 60)) then
