@@ -1231,20 +1231,15 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V3510"] = [=[v3.5.10 (2026-09-24)
+L["CHANGELOG_V3511"] = [=[v3.5.11 (2026-09-25)
 
-Weekly reset synchronization for PvE and professions, bank auto-deposit protections, and collapsed header preservation.
-
-Added:
-- Added an option in the bank deposit manager to protect raid/dungeon consumables and food from auto-deposits.
+Hotfix addressing a PvE cache subtable lookup error during window refresh.
 
 Fixed:
-- Delve weekly tasks, world boss lockouts, and Mythic+ weekly run history now automatically clear upon weekly reset.
-- Weekly profession quests and weekly knowledge point tracking now accurately reset on weekly reset.
-- Preserved Blizzard UI collapsed header states across reputation and currency panels during background scans.
-- Resolved an infinite notification loop and stale cache issue caused by expired mail.
-- Refined Warbound-until-Equipped bank deposit filtering to prevent depositing non-matching equipment.
-- Resolved a Lua error when generating Great Vault and PvE change signatures.
+- Resolved a Lua error in PvE cache retrieval when reading weekly Mythic+ run history during UI refresh.
+- Improved character subtable lookup safety across weekly reset state checks.
+- Prevented window population failures when opening or switching between main interface tabs.
+- Ensured consistent fallback behavior when character weekly reset timestamps are queried.
 
 CurseForge: Warband Nexus]=]
 
