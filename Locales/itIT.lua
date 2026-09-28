@@ -1234,17 +1234,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V3513"] = [=[v3.5.13 (2026-09-25)
+L["CHANGELOG_V3514"] = [=[v3.5.14 (2026-09-28)
 
-Hotfix for PvE cache lookups, Retina display typography, Settings UI scale buttons, and summary card layout.
+Fixes for profession weekly treatise tracking on alts and dungeon boss try counter attribution.
 
 Fixed:
-- Resolved a Lua error in PvE cache retrieval (nil function call) when reading weekly Mythic+ and delve run history.
-- Fixed non-functional and blank Auto-Fit Scale and Reset action buttons in Settings.
-- Resolved bloated typography on MacBook Liquid Retina displays by bounding resolution normalization to usable UI canvas.
-- Fixed text truncation in character rows (gold, mythic+ keystone, and guild names) caused by inflated font sizes on compact viewports.
-- Expanded summary card text containers to use full card width, preventing gold value truncation.
-- Improved Total Gold and WoW Token card layout on laptop displays to stack cleanly without text collisions.
+- Resolved an issue where using profession treatises or contracts failed to update weekly knowledge on alts.
+- Fixed profession knowledge progress skipping characters that had not yet opened their crafting window.
+- Added real-time tracking for profession knowledge gains from item consumption, bag updates, and quest log changes.
+- Ensured weekly profession knowledge and treatise completions are saved immediately on character logout.
+- Fixed an issue where trash mob pulls after killing a dungeon boss incorrectly incremented the boss attempt counter.
+- Hardened encounter try counting against secret values and comparison errors in Midnight secure instances.
+- Resolved missing Midnight profession column data when alt expansion details were not yet cached.
 
 CurseForge: Warband Nexus]=]
 
