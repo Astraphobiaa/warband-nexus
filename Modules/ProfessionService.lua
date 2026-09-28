@@ -1593,6 +1593,75 @@ for slID, source in pairs(MIDNIGHT_WEEKLY_SOURCES) do
     end
 end
 
+local MIDNIGHT_SKILLLINE_TO_PARENT = {
+    [2906] = 171, -- Alchemy
+    [2907] = 164, -- Blacksmithing
+    [2909] = 333, -- Enchanting
+    [2910] = 202, -- Engineering
+    [2912] = 182, -- Herbalism
+    [2913] = 773, -- Inscription
+    [2914] = 755, -- Jewelcrafting
+    [2915] = 165, -- Leatherworking
+    [2916] = 186, -- Mining
+    [2917] = 393, -- Skinning
+    [2918] = 197, -- Tailoring
+}
+
+local function CharacterHasMidnightSkillLine(charData, skillLineID)
+    if not charData or not skillLineID then return false end
+    if charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[skillLineID] then
+        return true
+    end
+    if charData.professionWeeklyKnowledge and charData.professionWeeklyKnowledge[skillLineID] then
+        return true
+    end
+    if (charData.recipes and charData.recipes[skillLineID])
+        or (charData.knowledgeData and charData.knowledgeData[skillLineID])
+        or (charData.concentration and charData.concentration[skillLineID]) then
+        return true
+    end
+    if charData.discoveredSkillLines then
+        for _, list in pairs(charData.discoveredSkillLines) do
+            if type(list) == "table" then
+                for i = 1, #list do
+                    if list[i] and list[i].id == skillLineID then return true end
+                end
+            end
+        end
+    end
+    if charData.professionExpansions then
+        for _, list in pairs(charData.professionExpansions) do
+            if type(list) == "table" then
+                for i = 1, #list do
+                    if list[i] and list[i].skillLineID == skillLineID then return true end
+                end
+            end
+        end
+    end
+    local parentSkillLine = MIDNIGHT_SKILLLINE_TO_PARENT[skillLineID]
+    if charData.professions and parentSkillLine then
+        for _, prof in pairs(charData.professions) do
+            if type(prof) == "table" and prof.skillLine == parentSkillLine then
+                return true
+            end
+        end
+    end
+    if GetProfessions then
+        local p1, p2 = GetProfessions()
+        local pairsToCheck = { p1, p2 }
+        for i = 1, #pairsToCheck do
+            local idx = pairsToCheck[i]
+            if idx then
+                local _, _, _, _, _, _, sl = GetProfessionInfo(idx)
+                if sl and sl == parentSkillLine then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 --- True if the quest counts as "done" for UI: flagged complete, in-log complete, or ready to turn in.
 --- Matches DailyQuestManager so weekly profession rows update before the flag bit catches up.
 local function QuestProgressComplete(questID)
@@ -1798,11 +1867,8 @@ local function RefreshAllMidnightKnowledgeProgressForCharacter(charData)
     if not charData then return 0 end
     local refreshed = 0
     for skillLineID in pairs(MIDNIGHT_WEEKLY_SOURCES) do
-        local hasData = (charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[skillLineID])
-            or (charData.recipes and charData.recipes[skillLineID])
-            or (charData.knowledgeData and charData.knowledgeData[skillLineID])
-            or (charData.concentration and charData.concentration[skillLineID])
-        if hasData and CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, nil, "Midnight") then
+        if CharacterHasMidnightSkillLine(charData, skillLineID)
+            and CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, nil, "Midnight") then
             refreshed = refreshed + 1
         end
     end
@@ -2521,7 +2587,38 @@ function WarbandNexus:OnNewRecipeLearned()
     end)
 end
 
-function WarbandNexus:OnProfessionQuestProgressChanged()
+local professionQuestProgressDebounceTimer = nil
+
+function WarbandNexus:OnProfessionQuestProgressChanged(immediate)
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
+
+    local function run()
+        if professionQuestProgressDebounceTimer then
+            professionQuestProgressDebounceTimer:Cancel()
+            professionQuestProgressDebounceTimer = nil
+        end
+        if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+        local charKey = ResolveTrackedCharactersTableKey()
+        if not charKey then return end
+        local charData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+        if not charData then return end
+        if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 then
+            NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
+        end
+    end
+
+    if immediate or not (C_Timer and C_Timer.NewTimer) then
+        run()
+    else
+        if professionQuestProgressDebounceTimer then
+            professionQuestProgressDebounceTimer:Cancel()
+        end
+        professionQuestProgressDebounceTimer = C_Timer.NewTimer(0.35, run)
+    end
+end
+
+function WarbandNexus:RefreshCurrentCharacterKnowledgeProgress()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     local charKey = ResolveTrackedCharactersTableKey()
@@ -3928,6 +4025,17 @@ end
 function WarbandNexus:FlushProfessionOnLogout()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
+
+    if professionQuestProgressDebounceTimer then
+        professionQuestProgressDebounceTimer:Cancel()
+        professionQuestProgressDebounceTimer = nil
+    end
+
+    local charKey = ResolveTrackedCharactersTableKey()
+    local charData = charKey and self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
+    if charData and IsCurrentCharacterTracked() then
+        RefreshAllMidnightKnowledgeProgressForCharacter(charData)
+    end
 
     local windowOpen = false
     if C_TradeSkillUI and C_TradeSkillUI.IsTradeSkillReady then

@@ -34,6 +34,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
     ProfUI.ResetEquipResolveCache()
     SyncProfessionColumnOrder(WarbandNexus.db and WarbandNexus.db.profile)
 
+    if ns.Utilities and ns.Utilities:IsModuleEnabled("professions") and WarbandNexus.RefreshCurrentCharacterKnowledgeProgress then
+        WarbandNexus:RefreshCurrentCharacterKnowledgeProgress()
+    end
+
     RegisterProfessionEvents(parent)
     HideEmptyStateCard(parent, "professions")
     -- PopulateContent already released pooled rows on full-tab renders; skip duplicate walk (heavy tab switch).

@@ -390,6 +390,31 @@ function WarbandNexus:InitializeEventManager()
             end
         end
     end)
+
+    -- Item-consumed quests (treatises, knowledge treasures, gathering items) complete without
+    -- firing QUEST_TURNED_IN. Listen to QUEST_LOG_UPDATE and spec currency events to refresh.
+    self:RegisterEvent("QUEST_LOG_UPDATE", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
+        if WarbandNexus.OnProfessionQuestProgressChanged then
+            WarbandNexus:OnProfessionQuestProgressChanged()
+        end
+    end)
+
+    self:RegisterEvent("TRAIT_TREE_CURRENCY_INFO_UPDATED", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
+        if WarbandNexus.OnProfessionQuestProgressChanged then
+            WarbandNexus:OnProfessionQuestProgressChanged()
+        end
+    end)
+
+    if E and E.BAGS_UPDATED then
+        WarbandNexus.RegisterMessage(EventManagerEvents, E.BAGS_UPDATED, function()
+            if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
+            if WarbandNexus.OnProfessionQuestProgressChanged then
+                WarbandNexus:OnProfessionQuestProgressChanged()
+            end
+        end)
+    end
     
     -- Concentration: piggyback on CurrencyCacheService's output
     -- WN_CURRENCY_UPDATED fires with currencyID when a single currency changes.

@@ -356,6 +356,20 @@ local MIDNIGHT_MOXIE_CURRENCY = {
     [2918] = 3266,  -- Tailoring
 }
 
+local MIDNIGHT_PARENT_TO_SKILLLINE = {
+    [171] = 2906,  -- Alchemy
+    [164] = 2907,  -- Blacksmithing
+    [333] = 2909,  -- Enchanting
+    [202] = 2910,  -- Engineering
+    [182] = 2912,  -- Herbalism
+    [773] = 2913,  -- Inscription
+    [755] = 2914,  -- Jewelcrafting
+    [165] = 2915,  -- Leatherworking
+    [186] = 2916,  -- Mining
+    [393] = 2917,  -- Skinning
+    [197] = 2918,  -- Tailoring
+}
+
 function PUI.IsMidnightSkillLineID(skillLineID)
     return type(skillLineID) == "number" and MIDNIGHT_MOXIE_CURRENCY[skillLineID] ~= nil
 end
@@ -1687,8 +1701,22 @@ function PUI.GetSkillLineIDForFilter(char, profName)
         end
     end
 
+    -- Secondary fallback for Midnight: resolve via character's base profession
+    if filter == "Midnight" and profName and char.professions then
+        for _, prof in pairs(char.professions) do
+            if type(prof) == "table" and prof.name == profName then
+                if prof.skillLine and MIDNIGHT_PARENT_TO_SKILLLINE[prof.skillLine] then
+                    return MIDNIGHT_PARENT_TO_SKILLLINE[prof.skillLine]
+                end
+            end
+        end
+    end
+
     return nil
 end
+
+ProfUI.GetSkillLineIDForFilter = PUI.GetSkillLineIDForFilter
+ProfUI.IsMidnightSkillLineID = PUI.IsMidnightSkillLineID
 
 -- FORMAT HELPERS (all return white text, colored where meaningful)
 
