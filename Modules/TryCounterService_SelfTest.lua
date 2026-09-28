@@ -1249,6 +1249,105 @@ function WarbandNexus:RunTryCounterSelfTest()
             if not ok then error(err) end
         end)
     end)
+    probe("CHAT: trash mob loot after boss kill never increments encounter try count", function()
+        withRestoredState(function()
+            local bossNpcID = 52151
+            local dropItem = 68823
+            local oldDrops = RT.npcDropDB[bossNpcID]
+            local oldEligible = RT.tryCounterNpcEligible[bossNpcID]
+            local oldTCCount = WN:GetTryCount("item", dropItem) or 0
+            local bossGuid = "Creature-0-0-0-0-52151-0000000001"
+
+            RT.npcDropDB[bossNpcID] = {
+                { type = "item", itemID = dropItem, repeatable = true, name = "Armored Razzashi Raptor" },
+            }
+            RT.tryCounterNpcEligible[bossNpcID] = true
+            RT.recentKills[bossGuid] = {
+                time = GetTime(),
+                isEncounter = true,
+                npcID = bossNpcID,
+            }
+            V.lastTryCountSourceKey = nil
+            V.lastTryCountSourceTime = 0
+
+            -- Chat message with junk/trash item (not in drop table, e.g. Netherweave Cloth 21877)
+            WN:OnTryCounterChatMsgLoot("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:21877:0:0:0:0:0:0:0:0:0:0:0:0:0|h[Netherweave Cloth]|h|r.", "Player", "")
+
+            local newCount = WN:GetTryCount("item", dropItem) or 0
+            -- Clean up
+            RT.npcDropDB[bossNpcID] = oldDrops
+            RT.tryCounterNpcEligible[bossNpcID] = oldEligible
+            RT.recentKills[bossGuid] = nil
+            WN:SetTryCount("item", dropItem, oldTCCount)
+
+            if newCount ~= oldTCCount then
+                error("expected try count to remain unchanged after trash chat loot, but changed from " .. oldTCCount .. " to " .. newCount)
+            end
+        end)
+    end)
+    probe("LOOT: trash mob corpse after boss kill never resolves to encounter", function()
+        withRestoredState(function()
+            local bossNpcID = 52151
+            local dropItem = 68823
+            local oldDrops = RT.npcDropDB[bossNpcID]
+            local oldEligible = RT.tryCounterNpcEligible[bossNpcID]
+            local oldTCCount = WN:GetTryCount("item", dropItem) or 0
+            local bossGuid = "Creature-0-0-0-0-52151-0000000001"
+            local trashGuid = "Creature-0-0-0-0-52156-0000000002"
+
+            if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                Fns.SetTryCounterSelfTestSlotOutcomeEnv({
+                    instance = { inInstance = true, instanceType = "party", difficulty = 2 },
+                })
+            end
+
+            RT.npcDropDB[bossNpcID] = {
+                { type = "item", itemID = dropItem, repeatable = true, name = "Armored Razzashi Raptor" },
+            }
+            RT.tryCounterNpcEligible[bossNpcID] = true
+            RT.recentKills[bossGuid] = {
+                time = GetTime(),
+                isEncounter = true,
+                npcID = bossNpcID,
+            }
+            RT.currentEncounterCache.encounterID = 1177
+            RT.currentEncounterCache.encounterName = "Bloodlord Mandokir"
+            RT.currentEncounterCache.startTime = GetTime()
+            RT.currentEncounterCache.consumed = false
+
+            Fns.ResetLootSession()
+            RT.lootSession.sourceGUIDs = { trashGuid }
+            RT.lootSession.targetGUID = trashGuid
+            RT.lootSession.numLoot = 0
+            wipe(RT.lootSession.slotData)
+            RT.lootSession.opened = true
+
+            WN:ProcessNPCLoot("opened")
+
+            local pending = RT.pendingLootSessionFinalize
+            Fns.ClearDeferredLootSession()
+
+            -- Clean up
+            RT.npcDropDB[bossNpcID] = oldDrops
+            RT.tryCounterNpcEligible[bossNpcID] = oldEligible
+            RT.recentKills[bossGuid] = nil
+            RT.currentEncounterCache.encounterID = nil
+            RT.currentEncounterCache.encounterName = nil
+            RT.currentEncounterCache.startTime = 0
+            if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+            end
+
+            if pending then
+                error("expected trash corpse not to resolve to encounter drops, but pending session was created: " .. tostring(pending.matchedNpcID))
+            end
+            local newCount = WN:GetTryCount("item", dropItem) or 0
+            WN:SetTryCount("item", dropItem, oldTCCount)
+            if newCount ~= oldTCCount then
+                error("expected try count to remain unchanged after opening trash corpse, but changed from " .. oldTCCount .. " to " .. newCount)
+            end
+        end)
+    end)
     probe("ShouldDeferLootOutcomeUntilClose(opened)", function()
         if Fns.ShouldDeferLootOutcomeUntilClose("opened") ~= true then error("expected true") end
         if Fns.ShouldDeferLootOutcomeUntilClose("closed") ~= false then error("expected false") end

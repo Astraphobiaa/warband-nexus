@@ -602,6 +602,7 @@ local currentEncounterCache = {
     groupSize = nil,            -- number|nil
     startTime = 0,              -- GetTime() at ENCOUNTER_START
     instanceID = nil,           -- GetInstanceInfo()[8] snapshot for scope checks
+    consumed = false,
 }
 local ENCOUNTER_CACHE_TTL = 1200  -- 20 minutes (covers long wipes, phase-heavy fights, AFK loot)
 local tryCounterInstanceEntryAnnounced = {}
@@ -1068,6 +1069,7 @@ function Fns.BuildTryCounterNpcEligible()
     end
 
     for npcID in pairs(static.rares or {}) do mark(npcID) end
+    for npcID in pairs(lockoutQuestsDB or {}) do mark(npcID) end
 
     for _, list in pairs(encounterDB or {}) do
         if type(list) == "table" then
@@ -1096,12 +1098,14 @@ function Fns.BuildTryCounterNpcEligible()
             tryCounterNpcEligible[npcID] = true
         elseif drops.dropDifficulty then
             tryCounterNpcEligible[npcID] = true
+        elseif lockoutQuestsDB and lockoutQuestsDB[npcID] then
+            tryCounterNpcEligible[npcID] = true
         else
-            -- World / zone farm mounts (BfA Bloodfeaster, Goldenmane, Dune Scavenger, etc.): repeatable=true
-            -- only — no statisticIds or dropDifficulty on the NPC. They must still drive loot-window try counts.
+            -- World / zone farm mounts and collectibles: repeatable, dropDifficulty, or mount/pet/toy
+            -- even when lacking statisticIds. They must drive loot-window try counts.
             for i = 1, #drops do
                 local d = drops[i]
-                if type(d) == "table" and (d.dropDifficulty or d.repeatable) then
+                if type(d) == "table" and (d.dropDifficulty or d.repeatable or d.type == "mount" or d.type == "pet" or d.type == "toy") then
                     tryCounterNpcEligible[npcID] = true
                     break
                 end
@@ -3396,6 +3400,9 @@ function Fns.NotifyLootTryOutcomeCommitted(sourceKey, npcID)
         RT.lastLootTryOutcomeCommittedAt = GetTime()
         RT.lastLootTryOutcomeCommittedKey = sourceKey
     end
+    if RT.currentEncounterCache then
+        RT.currentEncounterCache.consumed = true
+    end
     if Fns.CancelEncounterLootlessMissFallback then
         Fns.CancelEncounterLootlessMissFallback()
     end
@@ -4122,6 +4129,15 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
     local npcID = ctx.matchedNpcID or ctx.slotBossNpcID
     if npcID and Fns.IsLockoutDuplicate(npcID) then return false end
 
+    local tryCountSourceKey = ctx.slotOutcomeSourceKey
+        or Fns.BuildTryCountSourceKey(ctx.matchedEncounterID, ctx.matchedNpcID, ctx.lastMatchedObjectID, ctx.dedupGUID)
+    local now = GetTime()
+    local encounterDedupTtl = 15
+    if tryCountSourceKey and V.lastTryCountSourceKey == tryCountSourceKey
+        and (now - (V.lastTryCountSourceTime or 0)) < encounterDedupTtl then
+        return false
+    end
+
     local missed = {}
     for i = 1, #ctx.trackable do
         local d = ctx.trackable[i]
@@ -4133,7 +4149,6 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
     if #missed == 0 then return false end
 
     local kind = ctx.kind or "npc"
-    local now = GetTime()
     if kind == "fishing" then
         V.lastTryCountSourceKey = "fishing_open"
         V.lastTryCountSourceTime = now
@@ -4141,8 +4156,6 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
         V.lastTryCountSourceKey = "container_" .. tostring(ctx.containerItemID)
         V.lastTryCountSourceTime = now
     else
-        local tryCountSourceKey = ctx.slotOutcomeSourceKey
-            or Fns.BuildTryCountSourceKey(ctx.matchedEncounterID, ctx.matchedNpcID, ctx.lastMatchedObjectID, ctx.dedupGUID)
         if tryCountSourceKey then
             V.lastTryCountSourceKey = tryCountSourceKey
             V.lastTryCountSourceTime = now
@@ -4156,8 +4169,7 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
         sync = true,
         attemptTimes = 1,
     })
-    local committedKey = ctx.slotOutcomeSourceKey
-        or Fns.BuildTryCountSourceKey(ctx.matchedEncounterID, ctx.matchedNpcID, ctx.lastMatchedObjectID, ctx.dedupGUID)
+    local committedKey = tryCountSourceKey
     Fns.NotifyLootTryOutcomeCommitted(committedKey, ctx.matchedNpcID or ctx.slotBossNpcID)
     Fns.MarkLootSourceGuidsProcessed(ctx.dedupGUID, ctx.allSourceGUIDs, nil)
     return true
@@ -4432,10 +4444,6 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
 
     local tryCountSourceKey = Fns.BuildTryCountSourceKey(matchedEncounterID, matchedNpcID, lastMatchedObjectID, dedupGUID)
     local encounterDedupTtl = 15
-    if tryCountSourceKey and type(tryCountSourceKey) == "string" and tryCountSourceKey:match("^encounter_")
-        and V.lastTryCountSourceKey == tryCountSourceKey then
-        encounterDedupTtl = ENCOUNTER_OBJECT_TTL
-    end
     if #dropsToIncrement > 0 and tryCountSourceKey
         and V.lastTryCountSourceKey == tryCountSourceKey and (now - V.lastTryCountSourceTime) < encounterDedupTtl then
         local statBackedOnly = {}
@@ -5186,6 +5194,7 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
         currentEncounterCache.groupSize = nil
         currentEncounterCache.startTime = 0
         currentEncounterCache.instanceID = nil
+        currentEncounterCache.consumed = false
         currentEncounterCache._graceTimer = nil
         for guid, data in pairs(recentKills) do
             if data.isEncounter then

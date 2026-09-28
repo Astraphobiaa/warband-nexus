@@ -649,16 +649,16 @@ function Fns.ScheduleEncounterLootlessMissFallback(npcID, difficultyID, encounte
     local function tryOnce()
         if serial ~= RT.statState.encounterLootlessMissSerial then return true end
         if not Fns.IsAutoTryCounterEnabled() or not Fns.EnsureDB() then return true end
-        local V = RT.vars
-        if V and encounterKey and V.lastTryCountSourceKey == encounterKey
-            and (GetTime() - (V.lastTryCountSourceTime or 0)) < 120 then
-            return true
-        end
-        if Fns.IsLootSessionPendingOrRecent and Fns.IsLootSessionPendingOrRecent(12) then
-            return false
-        end
         local _, killData = Fns.GetFreshEncounterKillForNpc(npcID)
         if not killData then return true end
+        local V = RT.vars
+        if V and encounterKey and V.lastTryCountSourceKey == encounterKey
+            and (V.lastTryCountSourceTime or 0) >= killData.time then
+            return true
+        end
+        if Fns.IsLootSessionPendingOrRecent and Fns.IsLootSessionPendingOrRecent(3) then
+            return false
+        end
         local inInst = IsInInstance()
         if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
         local encDiff = Fns.ResolveEncounterDifficultyForLootGating(inInst, killData.difficultyID or safeDiff, nil)
@@ -681,6 +681,9 @@ function Fns.ScheduleEncounterLootlessMissFallback(npcID, difficultyID, encounte
         Fns.ProcessMissedDrops(missed, drops.statisticIds, { attemptTimes = 1 })
         if Fns.ClearEncounterRecentKillsForNpcId then
             Fns.ClearEncounterRecentKillsForNpcId(npcID)
+        end
+        if RT.currentEncounterCache then
+            RT.currentEncounterCache.consumed = true
         end
         return true
     end

@@ -208,7 +208,15 @@ env.C_Map = {
         return { mapID = id, name = "Map" .. tostring(id), parentMapID = M.uiMapParents[id] }
     end,
 }
-env.C_QuestLog = { IsQuestFlaggedCompleted = function() return false end }
+env.C_QuestLog = {
+    IsQuestFlaggedCompleted = function(qid)
+        return M.world.completedQuests and M.world.completedQuests[qid] == true or false
+    end
+}
+function M.SetQuestCompleted(qid, completed)
+    if not M.world.completedQuests then M.world.completedQuests = {} end
+    M.world.completedQuests[qid] = (completed ~= false)
+end
 env.C_MountJournal = {
     GetMountInfoByID = function(id) return "Mount" .. tostring(id) end,
     GetMountFromItem = function() return nil end,

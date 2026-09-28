@@ -67,6 +67,11 @@ function WarbandNexus:OnTryCounterEncounterStart(event, encounterID, encounterNa
         Fns.FlushDeferredTryCounterIncrementAnnounces()
     end
 
+    if RT.currentEncounterCache and RT.currentEncounterCache._graceTimer then
+        RT.currentEncounterCache._graceTimer:Cancel()
+        RT.currentEncounterCache._graceTimer = nil
+    end
+
     -- Filter secrets: partial capture is still useful (e.g. have difficultyID + name but not ID).
     local safeEncID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
     local safeName  = (type(encounterName) == "string" and encounterName ~= ""
@@ -84,6 +89,7 @@ function WarbandNexus:OnTryCounterEncounterStart(event, encounterID, encounterNa
     RT.currentEncounterCache.groupSize     = safeSize
     RT.currentEncounterCache.startTime     = GetTime()
     RT.currentEncounterCache.instanceID    = iid
+    RT.currentEncounterCache.consumed      = false
 
     -- Feed tooltip service so it can surface encounter context (mirrors ENCOUNTER_END path).
     if self.Tooltip and self.Tooltip._feedEncounterKill and safeName then
@@ -135,6 +141,10 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
 
     -- On WIPE (success != 1) we still clear the ENCOUNTER_START cache so the next pull starts fresh.
     -- Kept in-line (not deferred) because there's no loot/chat path that needs the cached values.
+    -- Midnight 12.0: success can be a secret value in secure combat; guard before comparing.
+    if issecretvalue and issecretvalue(success) then
+        return
+    end
     if success ~= 1 then
         if RT.currentEncounterCache._graceTimer then RT.currentEncounterCache._graceTimer:Cancel() end
         RT.currentEncounterCache.encounterID = nil
@@ -143,6 +153,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         RT.currentEncounterCache.groupSize = nil
         RT.currentEncounterCache.startTime = 0
         RT.currentEncounterCache.instanceID = nil
+        RT.currentEncounterCache.consumed = false
         RT.currentEncounterCache._graceTimer = nil
         return
     end
@@ -354,6 +365,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         RT.currentEncounterCache.groupSize = nil
         RT.currentEncounterCache.startTime = 0
         RT.currentEncounterCache.instanceID = nil
+        RT.currentEncounterCache.consumed = false
         RT.currentEncounterCache._graceTimer = nil
     end)
 end
@@ -586,8 +598,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
 
     -- Fast bail: junk loot (e.g. zone mats) must not walk RT.recentKills / drop tables (100ms+ spikes).
     if not RT.repeatableItemDrops[itemID] then
-        if RT.chatLootItemToNpc[itemID] == false then return end
-        if not RT.chatLootItemToNpc[itemID] and not RT.chatLootTrackedItems[itemID] then
+        if not RT.chatLootTrackedItems[itemID] and not RT.chatLootItemToNpc[itemID] then
             local fishingMaybe = RT.fishingCtx.active
                 and (now - RT.fishingCtx.castTime) <= RT.FISHING_CAST_CONTEXT_TTL
                 and Fns.IsInTrackableFishingZone()
@@ -654,8 +665,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
 
     -- Path 2: Exact item→NPC match (RT.chatLootItemToNpc built from eligible NPC + object sources)
     local npcID = RT.chatLootItemToNpc[itemID]
-    if npcID == false then return end
-    if npcID then
+    if npcID and type(npcID) == "number" then
         local inInst = IsInInstance()
         if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
         local killDiff = Fns.ResolveChatPath2KillDifficulty(npcID, itemID, inInst)
@@ -666,7 +676,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
 
     -- Path 3 fast: single eligible npc owner (no RT.chatLootItemToNpc mapping — chest-only items)
     local uniqueNpc = RT.chatLootItemUniqueNpc[itemID]
-    if uniqueNpc and not RT.chatLootItemToNpc[itemID] then
+    if uniqueNpc and not (type(npcID) == "number") then
         local killGuid, killData = Fns.GetFreshEncounterKillForNpc(uniqueNpc)
         if killData then
             local diff = killData.difficultyID
@@ -695,7 +705,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                 local encTtl = RT.ENCOUNTER_OBJECT_TTL or 300
                 local encFresh = killData.isEncounter and killData.time
                     and (now - killData.time) <= encTtl
-                if itemMatches or encFresh then
+                if itemMatches and encFresh then
                     local diff = killData.difficultyID
                     if issecretvalue and diff and issecretvalue(diff) then diff = nil end
                     if Fns.ProcessChatLootEncounterForNpc(self, itemID, killData.npcID, diff, now, guid) then

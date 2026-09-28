@@ -264,15 +264,32 @@ function Fns.ResolveFromZone(ctx, inInstance, addon)
     end
 end
 
-function Fns.GuidAllowsEncounterRecentKillFallback(guid)
+function Fns.GuidAllowsEncounterRecentKillFallback(guid, encounterNpcID)
     if not guid or type(guid) ~= "string" then return true end
     if issecretvalue and issecretvalue(guid) then return true end
     if guid:match("^Player%-") then return true end
-    local nid = Fns.GetNPCIDFromGUID(guid)
-    if nid and RT.tryCounterNpcEligible[nid] and RT.npcDropDB[nid] then return false end
-    local oid = Fns.GetObjectIDFromGUID(guid)
-    if oid and RT.objectDropDB[oid] then return false end
-    return true
+    if guid:match("^GameObject") then
+        local oid = Fns.GetObjectIDFromGUID(guid)
+        if oid and RT.objectDropDB[oid] then return false end
+        return true
+    end
+    -- Creatures / Vehicles: only allowed if the creature is an eligible encounter NPC.
+    -- Ordinary dungeon trash mobs must NEVER fall back to a recent boss encounter kill.
+    if guid:match("^Creature") or guid:match("^Vehicle") then
+        local nid = Fns.GetNPCIDFromGUID(guid)
+        if encounterNpcID and nid == encounterNpcID then return true end
+        if encounterNpcID then
+            local encID = RT.npcIDToEncounterID[encounterNpcID]
+            local encNpcs = encID and RT.encounterDB[encID]
+            if encNpcs then
+                for i = 1, #encNpcs do
+                    if encNpcs[i] == nid then return true end
+                end
+            end
+        end
+        return false
+    end
+    return false
 end
 
 function Fns.ResolveFromRecentKills(ctx, inInstance)
@@ -283,15 +300,44 @@ function Fns.ResolveFromRecentKills(ctx, inInstance)
         if not RT.processedGUIDs[guid] and killData.isEncounter then
             local alive = (now - killData.time < RT.ENCOUNTER_OBJECT_TTL)
             -- Allow linking encounter kill when: no loot GUID yet, chest-shaped sources, or P1's
-            -- first unprocessed GUID is not a row we already resolve (Player tokens / random mobs).
+            -- first unprocessed GUID is not a row we already resolve (Player tokens / chests / secret GUIDs).
             local canMatch = (not ctx.dedupGUID) or ctx.sourceIsGameObject
-                or Fns.GuidAllowsEncounterRecentKillFallback(ctx.dedupGUID)
+                or Fns.GuidAllowsEncounterRecentKillFallback(ctx.dedupGUID, killData.npcID)
             if alive and canMatch then
                 local nid = killData.npcID
                 if nid and RT.tryCounterNpcEligible[nid] and RT.npcDropDB[nid] then
-                    if not bestKill or killData.time > bestKill.time then
-                        bestKill = killData
-                        bestGuid = guid
+                    -- Verify loot session sources do not contain known non-encounter creatures (trash mobs)
+                    local sources = RT.lootSession and RT.lootSession.sourceGUIDs
+                    local hasTrashCreature = false
+                    if sources and #sources > 0 then
+                        local encID = RT.npcIDToEncounterID[nid]
+                        local encNpcs = encID and RT.encounterDB[encID]
+                        for s = 1, #sources do
+                            local g = sources[s]
+                            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) then
+                                if g:match("^Creature") or g:match("^Vehicle") then
+                                    local srcNpcID = Fns.GetNPCIDFromGUID(g)
+                                    if srcNpcID and srcNpcID ~= nid then
+                                        local inEnc = false
+                                        if encNpcs then
+                                            for j = 1, #encNpcs do
+                                                if encNpcs[j] == srcNpcID then inEnc = true; break end
+                                            end
+                                        end
+                                        if not inEnc then
+                                            hasTrashCreature = true
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if not hasTrashCreature then
+                        if not bestKill or killData.time > bestKill.time then
+                            bestKill = killData
+                            bestGuid = guid
+                        end
                     end
                 end
             end
@@ -308,7 +354,7 @@ function Fns.ResolveFromEncounterCache(ctx, inInstance)
     if ctx.drops then return end
     if not inInstance then return end
     local encCache = RT.currentEncounterCache
-    if not encCache or encCache.startTime == 0 then return end
+    if not encCache or encCache.consumed or encCache.startTime == 0 then return end
     if (GetTime() - encCache.startTime) > (RT.ENCOUNTER_CACHE_TTL or 1200) then return end
 
     -- Try encounter ID path first (authoritative), then name path.
@@ -322,6 +368,38 @@ function Fns.ResolveFromEncounterCache(ctx, inInstance)
         dedupTag = "enc_cache_name_" .. encCache.encounterName
     end
     if not npcIDs or #npcIDs == 0 then return end
+    if dedupTag and RT.processedGUIDs[dedupTag] then return end
+
+    -- Disallow if loot session contains known non-encounter creatures (trash mobs)
+    local allSources = RT.lootSession and RT.lootSession.sourceGUIDs
+    if allSources and #allSources > 0 then
+        local npcSet = {}
+        for i = 1, #npcIDs do npcSet[npcIDs[i]] = true end
+        for i = 1, #allSources do
+            local g = allSources[i]
+            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) then
+                if g:match("^Creature") or g:match("^Vehicle") then
+                    local nid = Fns.GetNPCIDFromGUID(g)
+                    if nid and not npcSet[nid] then
+                        return
+                    end
+                end
+            end
+        end
+    end
+
+    -- Disallow if target or mouseover unit is a known non-encounter creature
+    local targetGUID = RT.lootSession and (RT.lootSession.targetGUID or RT.lootSession.mouseoverGUID)
+    if targetGUID and type(targetGUID) == "string" and not (issecretvalue and issecretvalue(targetGUID)) then
+        if targetGUID:match("^Creature") or targetGUID:match("^Vehicle") then
+            local targetNpcID = Fns.GetNPCIDFromGUID(targetGUID)
+            local npcSet = {}
+            for i = 1, #npcIDs do npcSet[npcIDs[i]] = true end
+            if targetNpcID and not npcSet[targetNpcID] then
+                return
+            end
+        end
+    end
 
     -- Pick the first eligible NPC that has a drop table. Multi-NPC encounters (e.g. council fights)
     -- share the same encounterID, so first-eligible is correct for attribution.
@@ -331,10 +409,15 @@ function Fns.ResolveFromEncounterCache(ctx, inInstance)
             ctx.drops = RT.npcDropDB[nid]
             ctx.matchedNpcID = nid
             ctx.dedupGUID = dedupTag
+            encCache.consumed = true
+            if dedupTag then
+                RT.processedGUIDs[dedupTag] = GetTime()
+            end
             return
         end
     end
 end
+
 
 function Fns.ResolveSylvanasMythicChestFromRaidGameObject(ctx, inInstance, sourceGUIDs)
     if ctx.drops or not inInstance or not sourceGUIDs or #sourceGUIDs == 0 then return end
