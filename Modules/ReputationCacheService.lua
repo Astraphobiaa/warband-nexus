@@ -184,6 +184,43 @@ local function GetDB()
     return WarbandNexus.db.global.reputationData
 end
 
+-- WoD Garrison Bodyguards / Follower Reputations (placed after Classic in Blizzard API)
+local WOD_GARRISON_FOLLOWER_FACTIONS = {
+    [1733] = true, -- Delvar Ironfist (Alliance)
+    [1735] = true, -- Barracks Bodyguards
+    [1736] = true, -- Tormmok
+    [1737] = true, -- Talonpriest Ishaal
+    [1738] = true, -- Defender Illona (Alliance)
+    [1739] = true, -- Vivianne (Horde)
+    [1740] = true, -- Aeda Brightdawn (Horde)
+    [1741] = true, -- Leorajh
+}
+
+local function GetWoDHeaderName()
+    local db = GetDB()
+    if db and db.factionInfo then
+        for _, fi in pairs(db.factionInfo) do
+            local pn = type(fi) == "table" and fi.pn
+            if pn and type(pn) == "string" and not (issecretvalue and issecretvalue(pn)) and pn:find("Draenor") then
+                return pn
+            end
+        end
+    end
+    if db and db.headers then
+        for i = 1, #db.headers do
+            local h = db.headers[i]
+            local hName = h and h.name
+            if hName and not (issecretvalue and issecretvalue(hName)) and hName:find("Draenor") then
+                return hName
+            end
+        end
+    end
+    if _G.EXPANSION_NAME5 and type(_G.EXPANSION_NAME5) == "string" and _G.EXPANSION_NAME5 ~= "" then
+        return _G.EXPANSION_NAME5
+    end
+    return (ns.L and ns.L["REMINDER_ZONE_CAT_WOD"]) or "Warlords of Draenor"
+end
+
 --- Subsidiary `reputationData.characters` bucket key for the online character (GUID-backed after migration).
 local function CurrentReputationSubsidiaryKey()
     local CS = ns.CharacterService
@@ -529,6 +566,29 @@ function ReputationCache:Initialize()
     -- Migrate old structure if needed
     MigrateDB()
     
+    -- Fix legacy/existing cached WoD follower reputations that were stored under Classic
+    if db.factionInfo then
+        local fixedAny = false
+        local wodName = GetWoDHeaderName()
+        for fid in pairs(WOD_GARRISON_FOLLOWER_FACTIONS) do
+            local numFID = tonumber(fid) or fid
+            local entry = db.factionInfo[numFID] or db.factionInfo[tostring(numFID)]
+            local pn = type(entry) == "table" and entry.pn
+            if entry and (not pn or pn == "" or (type(pn) == "string" and not (issecretvalue and issecretvalue(pn)) and pn:find("Classic"))) then
+                if type(entry) == "table" then
+                    entry.pn = wodName
+                    entry.pid = nil
+                else
+                    db.factionInfo[numFID] = { pn = wodName, pid = nil }
+                end
+                fixedAny = true
+            end
+        end
+        if fixedAny then
+            self:BuildHeaders()
+        end
+    end
+
     -- Load metadata
     self.lastFullScan = db.lastScan or 0
     
@@ -1688,7 +1748,13 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
     
     -- Store faction-level info once per factionID (not per char)
     db.factionInfo = db.factionInfo or {}
-    if normalizedData.parentFactionName or normalizedData.parentFactionID then
+    local numFid = tonumber(factionID) or factionID
+    if WOD_GARRISON_FOLLOWER_FACTIONS[numFid] then
+        db.factionInfo[numFid] = {
+            pn = GetWoDHeaderName(),
+            pid = nil,
+        }
+    elseif normalizedData.parentFactionName or normalizedData.parentFactionID then
         db.factionInfo[factionID] = {
             pn = normalizedData.parentFactionName,
             pid = normalizedData.parentFactionID,
@@ -1747,7 +1813,12 @@ function ReputationCache:UpdateAll(normalizedDataArray)
             end
             
             -- Store faction-level info in shared factionInfo (once per factionID)
-            if data.parentFactionName or data.parentFactionID then
+            if WOD_GARRISON_FOLLOWER_FACTIONS[numFactionID] then
+                db.factionInfo[numFactionID] = {
+                    pn = GetWoDHeaderName(),
+                    pid = nil,
+                }
+            elseif data.parentFactionName or data.parentFactionID then
                 db.factionInfo[numFactionID] = {
                     pn = data.parentFactionName,
                     pid = tonumber(data.parentFactionID) or data.parentFactionID,
@@ -1799,6 +1870,55 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     return true
 end
 
+---Canonical expansion order rankings (newest to oldest).
+local EXPANSION_ORDER_RANKS = {
+    [11] = 1,  -- Midnight (12.x)
+    [10] = 2,  -- The War Within (11.x)
+    [9]  = 3,  -- Dragonflight (10.x)
+    [8]  = 4,  -- Shadowlands (9.x)
+    [7]  = 5,  -- Battle for Azeroth (8.x)
+    [6]  = 6,  -- Legion (7.x)
+    [5]  = 7,  -- Warlords of Draenor (6.x)
+    [4]  = 8,  -- Mists of Pandaria (5.x)
+    [3]  = 9,  -- Cataclysm (4.x)
+    [2]  = 10, -- Wrath of the Lich King (3.x)
+    [1]  = 11, -- The Burning Crusade (2.x)
+    [0]  = 12, -- Classic (1.x)
+}
+
+local function GetHeaderExpansionSortRank(headerName)
+    if not headerName or type(headerName) ~= "string" then return 99 end
+    if issecretvalue and issecretvalue(headerName) then return 99 end
+    
+    -- Check exact match with EXPANSION_NAME globals
+    for expID = 11, 0, -1 do
+        local globalName = _G["EXPANSION_NAME" .. expID]
+        if globalName and type(globalName) == "string" and globalName ~= "" then
+            if headerName == globalName then
+                return EXPANSION_ORDER_RANKS[expID] or (100 - expID)
+            end
+        end
+    end
+    
+    -- Substring matching for cross-locale / fallback resilience
+    local lower = headerName:lower()
+    if lower:find("midnight") then return 1 end
+    if lower:find("war within") then return 2 end
+    if lower:find("dragonflight") then return 3 end
+    if lower:find("shadowlands") then return 4 end
+    if lower:find("azeroth") then return 5 end
+    if lower:find("legion") then return 6 end
+    if lower:find("draenor") then return 7 end
+    if lower:find("pandaria") then return 8 end
+    if lower:find("cataclysm") then return 9 end
+    if lower:find("lich king") then return 10 end
+    if lower:find("burning crusade") or lower:find("crusade") then return 11 end
+    if lower:find("classic") then return 12 end
+    if lower:find("guild") then return 90 end
+    
+    return 95
+end
+
 ---Build headers from DB data (for UI grouping).
 ---Uses factionInfo lookup for parentFactionName (stored once per factionID, not per char).
 function ReputationCache:BuildHeaders()
@@ -1840,6 +1960,9 @@ function ReputationCache:BuildHeaders()
         local numID = tonumber(factionID) or factionID
         local fi = factionInfo[numID] or factionInfo[factionID]
         local parentName = (type(fi) == "table" and fi.pn) or (type(fi) == "string" and fi) or nil
+        if WOD_GARRISON_FOLLOWER_FACTIONS[numID] then
+            parentName = GetWoDHeaderName()
+        end
         if parentName and parentName ~= "" then
             if not headerMap[parentName] then
                 headerMap[parentName] = {
@@ -1852,7 +1975,7 @@ function ReputationCache:BuildHeaders()
         end
     end
     
-    -- Calculate MinIndex for each header (for sorting)
+    -- Calculate sort key for each header based on canonical expansion order + minIndex tiebreak
     for _, headerData in pairs(headerMap) do
         local minIndex = 99999
         local facList = headerData.factions
@@ -1863,9 +1986,11 @@ function ReputationCache:BuildHeaders()
                 minIndex = data._scanIndex
             end
         end
-        headerData.sortKey = minIndex
         
-        -- Sort factions within header by scanIndex
+        local expRank = GetHeaderExpansionSortRank(headerData.name)
+        headerData.sortKey = (expRank * 10000) + math.min(minIndex, 9999)
+        
+        -- Sort factions within header by scanIndex (preserving in-game Blizzard ordering)
         table.sort(headerData.factions, function(a, b)
             local dataA = FindCompactData(a)
             local dataB = FindCompactData(b)

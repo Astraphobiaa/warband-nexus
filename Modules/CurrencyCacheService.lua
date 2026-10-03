@@ -1366,8 +1366,16 @@ local function MergeOldCurrencyIDs(newHeaders, oldLookup, apiListed)
                 newSet[cid] = true
             end
             for cid in pairs(old) do
-                if not newSet[cid] and (not apiListed or apiListed[cid]) then
-                    table.insert(h.currencies, cid)
+                if not newSet[cid] then
+                    -- Carry over previously discovered currencies across characters.
+                    -- An alt's apiListed only contains what that alt has unlocked, so
+                    -- we must NOT discard valid currencies discovered by other characters.
+                    local meta = ResolveCurrencyMetadata(cid)
+                    if meta and meta.name and meta.name ~= "" then
+                        table.insert(h.currencies, cid)
+                        newSet[cid] = true
+                        MarkCurrencyVisible(cid)
+                    end
                 end
             end
         end
@@ -1531,20 +1539,19 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         local _, clientBuild = GetBuildInfo()
         if clientBuild then db.clientBuild = clientBuild end
 
-        -- The panel mirrors Blizzard's list, so the notification whitelist must too: drop IDs
-        -- Blizzard no longer lists (retired season currencies) instead of accumulating forever.
-        -- Stored quantities in db.currencies / db.totalEarned are left untouched — this only
-        -- controls what is rendered and what the event path is allowed to announce.
-        if apiListed and db.visibleCurrencyIDs then
+        -- Whitelist accumulates across characters and scans. Only prune IDs that
+        -- no longer exist in the game client at all (e.g. removed in a major patch).
+        if db.visibleCurrencyIDs then
             local dropped = 0
             for currencyID in pairs(db.visibleCurrencyIDs) do
-                if not apiListed[currencyID] then
+                local meta = ResolveCurrencyMetadata(currencyID)
+                if not meta or not meta.name or meta.name == "" then
                     db.visibleCurrencyIDs[currencyID] = nil
                     dropped = dropped + 1
                 end
             end
             if dropped > 0 then
-                DebugPrint("|cff9370DB[CurrencyCache]|r Pruned " .. dropped .. " currency IDs no longer listed by Blizzard")
+                DebugPrint("|cff9370DB[CurrencyCache]|r Pruned " .. dropped .. " invalid currency IDs")
             end
         end
     end

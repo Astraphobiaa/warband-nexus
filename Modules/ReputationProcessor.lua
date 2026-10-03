@@ -40,6 +40,22 @@ ns.STANDING_COLORS = STANDING_COLORS
 ns.RENOWN_COLOR = {r = 1.0, g = 0.82, b = 0.0}   -- Gold (Renown & Friendship)
 ns.PARAGON_COLOR = {r = 0, g = 0.5, b = 1}         -- Blue (Paragon)
 
+-- WoD Garrison Bodyguards / Follower Reputations (placed after Classic in Blizzard API)
+local WOD_GARRISON_FOLLOWER_FACTIONS = {
+    [1733] = true, -- Delvar Ironfist (Alliance)
+    [1735] = true, -- Barracks Bodyguards
+    [1736] = true, -- Tormmok
+    [1737] = true, -- Talonpriest Ishaal
+    [1738] = true, -- Defender Illona (Alliance)
+    [1739] = true, -- Vivianne (Horde)
+    [1740] = true, -- Aeda Brightdawn (Horde)
+    [1741] = true, -- Leorajh
+}
+
+local function GetWoDHeaderName()
+    return _G.EXPANSION_NAME5 or (ns.L and ns.L["REMINDER_ZONE_CAT_WOD"]) or "Warlords of Draenor"
+end
+
 -- Debug print helper
 local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cffff00ff[RepProcessor]|r"))
     or ns.DebugPrint
@@ -92,6 +108,16 @@ function ReputationProcessor:Process(rawData)
         _scanSource = rawData._scanSource or "unknown",
         _scanIndex = rawData._scanIndex,  -- Used for Blizzard UI ordering
     }
+    
+    -- WoD Garrison Bodyguards / Follower Reputations override (ensure they group under WoD, never Classic)
+    if rawData.factionID and WOD_GARRISON_FOLLOWER_FACTIONS[rawData.factionID] then
+        local pName = normalized.parentFactionName
+        if not pName or pName == "" or (type(pName) == "string" and pName:find("Classic")) then
+            local targetWoD = GetWoDHeaderName()
+            normalized.parentFactionName = targetWoD
+            normalized.parentHeaders = { targetWoD }
+        end
+    end
     
     -- Determine faction type and process accordingly
     -- type = base system (renown/friendship/classic)
@@ -225,6 +251,14 @@ function ReputationProcessor:Process(rawData)
     
     -- Preserve parentHeaders from Scanner (needed for BuildHeaders)
     normalized.parentHeaders = rawData.parentHeaders or {}
+    if rawData.factionID and WOD_GARRISON_FOLLOWER_FACTIONS[rawData.factionID] then
+        local pName = normalized.parentFactionName
+        if not pName or pName == "" or (type(pName) == "string" and pName:find("Classic")) then
+            local targetWoD = GetWoDHeaderName()
+            normalized.parentFactionName = targetWoD
+            normalized.parentHeaders = { targetWoD }
+        end
+    end
     
     return normalized
 end

@@ -38,6 +38,18 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00ff00[
     or ns.DebugPrint
     or function() end
 
+-- WoD Garrison Bodyguards / Follower Reputations (placed after Classic in Blizzard API)
+local WOD_GARRISON_FOLLOWER_FACTIONS = {
+    [1733] = true, -- Delvar Ironfist (Alliance)
+    [1735] = true, -- Barracks Bodyguards
+    [1736] = true, -- Tormmok
+    [1737] = true, -- Talonpriest Ishaal
+    [1738] = true, -- Defender Illona (Alliance)
+    [1739] = true, -- Vivianne (Horde)
+    [1740] = true, -- Aeda Brightdawn (Horde)
+    [1741] = true, -- Leorajh
+}
+
 -- REPUTATION SCANNER (Pure API Layer)
 
 local ReputationScanner = {}
@@ -334,6 +346,7 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
     local factions = {}
     local headerStack = {}
     local expansionHeaders = {}
+    local lastWoDHeaderName = nil
     local scanIdx = 1
     local scanner = self
     local charKey = CurrentScannerCharacterKey()
@@ -359,7 +372,13 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
             completeData._chatName = factionData.name
         end
         
+        -- Track WoD expansion header name for garrison follower reps
+        if completeData.name and not (issecretvalue and issecretvalue(completeData.name)) and completeData.name:find("Draenor") then
+            lastWoDHeaderName = completeData.name
+        end
+
         if completeData.isHeader and completeData.isHeaderWithRep then
+            -- Faction header that has its own rep bar and child subfactions (e.g. The Tillers)
             if #headerStack > 0 then table.remove(headerStack) end
             headerStack[#headerStack + 1] = { factionID = completeData.factionID, name = completeData.name }
             completeData.parentFactionID = nil
@@ -367,12 +386,25 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
             for hi = 1, #expansionHeaders do
                 completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
             end
-        elseif completeData.isHeader and not completeData.isHeaderWithRep then
-            if #headerStack > 0 then table.remove(headerStack) end
-            expansionHeaders = {completeData.name}
-            completeData.parentFactionID = nil
-            completeData.parentHeaders = {}
+        elseif completeData.isHeader and not completeData.isHeaderWithRep and completeData.factionID ~= 1735 then
+            if not completeData.isChild then
+                -- ROOT EXPANSION HEADER (e.g. "Dragonflight", "The Burning Crusade", "Classic")
+                if #headerStack > 0 then table.remove(headerStack) end
+                expansionHeaders = { completeData.name }
+                completeData.parentFactionID = nil
+                completeData.parentHeaders = {}
+            else
+                -- SUB-HEADER WITHIN EXPANSION (e.g. "Shattrath City", "Alliance Forces", "Steamwheedle Cartel")
+                if #headerStack > 0 then table.remove(headerStack) end
+                completeData.parentFactionID = nil
+                completeData.parentHeaders = {}
+                for hi = 1, #expansionHeaders do
+                    completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
+                end
+                completeData.parentHeaders[#completeData.parentHeaders + 1] = completeData.name
+            end
         else
+            -- NORMAL FACTION
             if completeData.isChild and #headerStack > 0 then
                 completeData.parentFactionID = headerStack[#headerStack].factionID
             else
@@ -382,6 +414,13 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
             for hi = 1, #expansionHeaders do
                 completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
             end
+        end
+
+        -- Ensure WoD Garrison follower reputations are always grouped under Warlords of Draenor (not Classic)
+        if WOD_GARRISON_FOLLOWER_FACTIONS[completeData.factionID] then
+            local targetWoD = lastWoDHeaderName or _G.EXPANSION_NAME5 or (ns.L and ns.L["REMINDER_ZONE_CAT_WOD"]) or "Warlords of Draenor"
+            completeData.parentFactionID = nil
+            completeData.parentHeaders = { targetWoD }
         end
         
         completeData._characterKey = charKey

@@ -2269,10 +2269,12 @@ local function RepositionReputationFixedHeader(hdrCache, headerParent, chrome, h
         titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
     titleCard:Show()
+    local titleH = titleCard:GetHeight()
+    if not titleH or titleH <= 0 then titleH = 64 end
     if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleH)
     else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        headerYOffset = headerYOffset + titleH + (GetLayout().afterElement or 8)
     end
     local searchBox = hdrCache.searchBox
     if searchBox then
@@ -2281,7 +2283,7 @@ local function RepositionReputationFixedHeader(hdrCache, headerParent, chrome, h
         searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
         searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
         searchBox:Show()
-        headerYOffset = headerYOffset + searchH + GetLayout().afterElement
+        headerYOffset = headerYOffset + searchH + (GetLayout().afterElement or 8)
     end
     return headerYOffset
 end
@@ -2344,7 +2346,10 @@ end
 local function RefreshReputationTabData(parent, animateResults)
     if not parent then return end
     InvalidateRepDrawCaches()
-    if parent.resultsContainer then
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local fh = mf and mf.fixedHeader
+    local fhHeight = (fh and fh:GetHeight()) or 0
+    if parent.resultsContainer and fhHeight >= 100 then
         if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
             SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
         end
@@ -2448,7 +2453,8 @@ function WarbandNexus:DrawReputationTab(parent)
         local titleH = (metricsEarly and metricsEarly.titleCardHeight) or 64
         local blockGap = (metricsEarly and metricsEarly.blockGap) or 8
         local topM = (metricsEarly and metricsEarly.topMargin) or 0
-        local headerH = topM + titleH + blockGap
+        local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+        local headerH = topM + titleH + blockGap + searchH + blockGap
         local fixedHeaderEarly = mfEarly and mfEarly.fixedHeader
         if ns.UI_CommitTabFixedHeader then
             ns.UI_CommitTabFixedHeader(mfEarly, headerH)
@@ -2566,10 +2572,12 @@ function WarbandNexus:DrawReputationTab(parent)
         ns.UI_HideTitleCardExpandCollapseControls(parent)
     end
     
+    local titleH = (titleCard and titleCard:GetHeight()) or 0
+    if titleH <= 0 then titleH = 64 end
     if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleH)
     else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        headerYOffset = headerYOffset + titleH + (GetLayout().afterElement or 8)
     end
 
     local CreateSearchBox = ns.UI_CreateSearchBox
@@ -2584,7 +2592,7 @@ function WarbandNexus:DrawReputationTab(parent)
     
     searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
     searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    headerYOffset = headerYOffset + searchH + GetLayout().afterElement
+    headerYOffset = headerYOffset + searchH + (GetLayout().afterElement or 8)
 
     if not hdrCache then
         hdrCache = {}

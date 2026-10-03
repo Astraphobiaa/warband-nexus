@@ -512,6 +512,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         if charKey then charLookup[charKey] = char end
     end
     
+    local processedCurrencyIDs = {}
+    
     -- Recursive function to process header tree
     local function ProcessHeader(header)
         local warbandHeaderCurrencies = {}
@@ -522,6 +524,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         for hci = 1, #hdrCurrencies do
             local currencyID = hdrCurrencies[hci]
             currencyID = tonumber(currencyID) or currencyID
+            processedCurrencyIDs[currencyID] = true
             local currData = globalCurrencies[currencyID]
             
             if currData then
@@ -670,6 +673,85 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         end
     else
         DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
+    end
+
+    -- Capture any unmapped / orphaned currencies that exist in globalCurrencies (e.g. from alt sync)
+    local unmappedWarband = {}
+    local unmappedChar = {}
+    for currencyID, currData in pairs(globalCurrencies) do
+        local numCID = tonumber(currencyID) or currencyID
+        if not processedCurrencyIDs[numCID] and currData then
+            -- Apply search filter
+            local matchesSearch
+            if not searchText or (issecretvalue and issecretvalue(searchText)) or searchText == "" then
+                matchesSearch = true
+            else
+                local cname = currData.name
+                matchesSearch = cname and not (issecretvalue and issecretvalue(cname))
+                    and cname:lower():find(searchText, 1, true)
+            end
+            
+            if matchesSearch then
+                local totalAmount, bestAmount, bestCharKey, anyCharHasIt =
+                    SummarizeCurrencyAcrossTrackedChars(currData, characters, charLookup)
+
+                if currData.isAccountWide or currData.isAccountTransferable then
+                    local sessionKey, sessionChar = ResolveSessionCharacterKey(charLookup, characters)
+                    local sessionAmount = sessionKey
+                        and GetCurrencyCharQuantityFromSnapshot(currData, sessionKey) or 0
+                    local displayTotal = totalAmount
+                    if currData.isAccountWide then
+                        displayTotal = currData.value or totalAmount
+                    end
+
+                    if showZero or sessionAmount > 0 or displayTotal > 0 or anyCharHasIt then
+                        table.insert(unmappedWarband, {
+                            id = numCID,
+                            data = currData,
+                            quantity = sessionAmount,
+                            sessionAmount = sessionAmount,
+                            totalQuantity = displayTotal,
+                            sessionCharacter = sessionChar,
+                            sessionCharacterKey = sessionKey,
+                        })
+                    end
+                else
+                    if (showZero or totalAmount > 0 or anyCharHasIt) and bestCharKey and charLookup[bestCharKey] then
+                        table.insert(unmappedChar, {
+                            id = numCID,
+                            data = currData,
+                            quantity = totalAmount,
+                            bestAmount = bestAmount,
+                            bestCharacter = charLookup[bestCharKey],
+                            bestCharacterKey = bestCharKey,
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    if #unmappedWarband > 0 then
+        local otherTitle = (ns.L and ns.L["CURRENCY_OTHER"]) or "Other"
+        table.insert(result.warbandTransferable, {
+            name = otherTitle,
+            currencies = unmappedWarband,
+            depth = 0,
+            children = {},
+            hasDescendants = false,
+            count = #unmappedWarband,
+        })
+    end
+    if #unmappedChar > 0 then
+        local otherTitle = (ns.L and ns.L["CURRENCY_OTHER"]) or "Other"
+        table.insert(result.characterSpecific, {
+            name = otherTitle,
+            currencies = unmappedChar,
+            depth = 0,
+            children = {},
+            hasDescendants = false,
+            count = #unmappedChar,
+        })
     end
 
     return result
