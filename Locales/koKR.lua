@@ -1233,18 +1233,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "총 플레이 시간·이 레벨 플�
 
 
 
-L["CHANGELOG_V3514"] = [=[v3.5.14 (2026-09-28)
+L["CHANGELOG_V3515"] = [=[v3.5.15 (2026-10-05)
 
-Fixes for profession weekly treatise tracking on alts and dungeon boss try counter attribution.
+Container try counter enhancements, multi-event loot tracking, and hierarchy ordering fixes.
+
+Added:
+- Added container try count support for holiday chests, paragon caches, and reward bags with drop percentage display.
+- Added comprehensive drop tracking for Keg-Shaped Treasure Chest items including the Brewfest Barrel Bomber, Great Brewfest Kodo, and Swift Brewfest Ram.
 
 Fixed:
-- Resolved an issue where using profession treatises or contracts failed to update weekly knowledge on alts.
-- Fixed profession knowledge progress skipping characters that had not yet opened their crafting window.
-- Added real-time tracking for profession knowledge gains from item consumption, bag updates, and quest log changes.
-- Ensured weekly profession knowledge and treatise completions are saved immediately on character logout.
-- Fixed an issue where trash mob pulls after killing a dungeon boss incorrectly incremented the boss attempt counter.
-- Hardened encounter try counting against secret values and comparison errors in Midnight secure instances.
-- Resolved missing Midnight profession column data when alt expansion details were not yet cached.
+- Fixed container try counting failing when items or currencies unpack directly into bags without opening a loot window.
+- Fixed an issue where container drops were filtered out by chat loot fast-bail checks.
+- Fixed faction hierarchy ordering to ensure follower reputations and sub-factions group correctly under their parent headers.
+- Fixed visual overlap in the currency view between the search bar and category header text.
+- Fixed warband bank reagent deposit filtering to exclude soulbound and non-reagent items.
 
 CurseForge: Warband Nexus]=]
 
