@@ -1389,6 +1389,17 @@ function Fns.BuildReverseIndices()
             end
         end
     end
+    for _, containerData in pairs(containerDropDB) do
+        local drops = containerData.drops or containerData
+        if type(drops) == "table" then
+            for i = 1, #drops do
+                local drop = drops[i]
+                if drop and drop.itemID then
+                    chatLootTrackedItems[drop.itemID] = true
+                end
+            end
+        end
+    end
     for itemID, owners in pairs(itemNpcOwners) do
         local count, sole = 0, nil
         for nid in pairs(owners) do
@@ -1802,6 +1813,26 @@ function WarbandNexus:SetTryCount(collectibleType, id, count)
     end
 
     Fns.SchedulePlansTryCountUIUpdate()
+end
+
+---Resolve teach-item / source item ID for a collectible (e.g. mountID -> itemID).
+---@param collectibleType string "mount"|"pet"|"toy"|"item"
+---@param id number mountID, speciesID, or itemID
+---@return number|nil itemID
+function WarbandNexus:GetItemIDForCollectible(collectibleType, id)
+    if not collectibleType or not id then return nil end
+    local idNum = tonumber(id)
+    if not idNum then return nil end
+    if collectibleType == "toy" or collectibleType == "item" then
+        return idNum
+    end
+    if collectibleType == "mount" and resolvedIDsReverse and resolvedIDsReverse[idNum] then
+        return resolvedIDsReverse[idNum]
+    end
+    if collectibleType == "mount" and ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetItemIDForMount then
+        return ns.CollectibleSourceDB.GetItemIDForMount(idNum)
+    end
+    return nil
 end
 
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
@@ -4599,6 +4630,12 @@ function Fns.ApplyContainerLootOutcomes(self, opts)
     local found = opts.found or {}
     local baselineTryCounts = opts.baselineTryCounts
     local earlyMissApplied = opts.earlyMissApplied
+    local containerItemID = opts.containerItemID
+    local now = GetTime()
+    if containerItemID then
+        V.lastTryCountSourceKey = "container_" .. tostring(containerItemID)
+        V.lastTryCountSourceTime = now
+    end
 
     local function preResetForDrop(drop)
         local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
@@ -4655,7 +4692,7 @@ function Fns.ApplyContainerLootOutcomes(self, opts)
     if earlyMissApplied then
         Fns.EmitEarlyMissIncrementAnnounce(trackable, found, baselineTryCounts)
     else
-        Fns.ProcessMissedDrops(missed)
+        Fns.ProcessMissedDrops(missed, nil, { sync = true })
     end
 end
 
@@ -5761,14 +5798,89 @@ function Fns.TryProcessTrackedObjectCurrencyFallback(self)
     })
 end
 
+function Fns.ScheduleContainerOpenAttempt(cItemID, bagID, slotID)
+    if not cItemID or not containerDropDB[cItemID] then return end
+    V.lastContainerItemID = cItemID
+    V.lastContainerItemTime = GetTime()
+    V.lastContainerItemBag = bagID
+    V.lastContainerItemSlot = slotID
+
+    -- Safety fallback timer: if no LOOT_OPENED, CHAT_MSG_LOOT, or CHAT_MSG_CURRENCY fired
+    -- within 0.75s (e.g. silent unpack or slow client event dispatch), commit attempt if the
+    -- container item was indeed consumed from that slot.
+    C_Timer.After(0.75, function()
+        if V.lastContainerItemID == cItemID and (GetTime() - (V.lastContainerItemTime or 0)) <= 3.0 then
+            local now = GetTime()
+            local containerSourceKey = "container_" .. tostring(cItemID)
+            if V.lastTryCountSourceKey ~= containerSourceKey or (now - (V.lastTryCountSourceTime or 0)) >= CHAT_LOOT_DEBOUNCE then
+                local isConsumed = true
+                if bagID and slotID and C_Container and C_Container.GetContainerItemID then
+                    local currentID = C_Container.GetContainerItemID(bagID, slotID)
+                    if currentID == cItemID then
+                        isConsumed = false -- Still sitting in the exact same bag slot unconsumed
+                    end
+                end
+                if isConsumed then
+                    V.lastContainerItemID = nil
+                    V.lastContainerItemTime = 0
+                    V.lastTryCountSourceKey = containerSourceKey
+                    V.lastTryCountSourceTime = now
+                    local cData = containerDropDB[cItemID]
+                    local cDrops = cData and (cData.drops or cData)
+                    if cDrops and type(cDrops) == "table" and #cDrops > 0 then
+                        local trackable = {}
+                        for i = 1, #cDrops do
+                            local d = cDrops[i]
+                            if d.repeatable or not Fns.IsCollectibleCollected(d) then
+                                trackable[#trackable + 1] = d
+                            end
+                        end
+                        if #trackable > 0 then
+                            Fns.TryCounterLootDebugDropLines(WarbandNexus, "Container-Direct-Fallback", trackable)
+                            Fns.ProcessMissedDrops(trackable, nil, { sync = true })
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
 ---CHAT_MSG_CURRENCY / CHAT_MSG_MONEY fallback logic.
----In WoW, when gathering objects (like Overflowing Dumpster) that ONLY drop currency/money,
----LOOT_OPENED may not fire or closes instantly. This attributes currency to:
---- Reserved for future try-count attribution from currency (e.g. zone objects). Currently no-op.
+---In WoW, when opening containers (like Keg-Shaped Treasure Chest for Brewfest Prize Tokens)
+---or gathering objects (like Overflowing Dumpster) that ONLY drop currency/money.
 ---@param event string
 ---@param message string
 function WarbandNexus:OnTryCounterChatMsgCurrency(event, message)
     if not Fns.IsAutoTryCounterEnabled() then return end
+    local now = GetTime()
+    if V.lastContainerItemID and containerDropDB[V.lastContainerItemID]
+        and (now - (V.lastContainerItemTime or 0)) < 15 then
+        local cItemID = V.lastContainerItemID
+        local cData = containerDropDB[cItemID]
+        local cDrops = cData and (cData.drops or cData)
+        if cDrops and type(cDrops) == "table" and #cDrops > 0 then
+            local trackable = {}
+            for i = 1, #cDrops do
+                local d = cDrops[i]
+                if d.repeatable or not Fns.IsCollectibleCollected(d) then
+                    trackable[#trackable + 1] = d
+                end
+            end
+            local containerSourceKey = "container_" .. tostring(cItemID)
+            if V.lastTryCountSourceKey ~= containerSourceKey or (now - (V.lastTryCountSourceTime or 0)) >= CHAT_LOOT_DEBOUNCE then
+                V.lastContainerItemID = nil
+                V.lastContainerItemTime = 0
+                V.lastTryCountSourceKey = containerSourceKey
+                V.lastTryCountSourceTime = now
+                if #trackable > 0 then
+                    Fns.TryCounterLootDebugDropLines(self, "Chat-Container-Currency", trackable)
+                    Fns.ProcessMissedDrops(trackable, nil, { sync = true })
+                end
+                return
+            end
+        end
+    end
     Fns.TryProcessTrackedObjectCurrencyFallback(self)
 end
 
@@ -5781,10 +5893,6 @@ end
 function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
     if not bagID or not slotID then return end
     if issecretvalue and (issecretvalue(bagID) or issecretvalue(slotID)) then return end
-    -- Reagent bag is BagID 5 on Midnight (warcraft.wiki.gg/wiki/BagID, verified 2026-08-18). The old
-    -- 0..4 range ignored any container item kept there, so V.lastContainerItemID stayed nil and
-    -- ProcessContainerLoot fell through to its passive "container not identified" scan -- which counts
-    -- nothing at all. Enum first, literal fallback, matching how the rest of the addon reads bag ids.
     local maxCarriedBagID = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
     if bagID < 0 or bagID > maxCarriedBagID then return end
     if not C_Container or not C_Container.GetContainerItemID then return end
@@ -5794,8 +5902,7 @@ function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
     if issecretvalue and issecretvalue(itemID) then return end
     if not containerDropDB[itemID] then return end
 
-    V.lastContainerItemID = itemID
-    V.lastContainerItemTime = GetTime()
+    Fns.ScheduleContainerOpenAttempt(itemID, bagID, slotID)
 end
 
 Fns.GetSafeMapID = function()
@@ -6125,7 +6232,7 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     local safeIsFromItem = isFromItem
     if issecretvalue and safeIsFromItem and issecretvalue(safeIsFromItem) then safeIsFromItem = nil end
     if not safeIsFromItem then
-        safeIsFromItem = V.lastContainerItemID and containerDropDB[V.lastContainerItemID] and (now - V.lastContainerItemTime) < 3
+        safeIsFromItem = V.lastContainerItemID and containerDropDB[V.lastContainerItemID] and (now - V.lastContainerItemTime) < 15
     end
     if safeIsFromItem then return "container" end
 
@@ -6947,26 +7054,73 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Set V.lastContainerItemID before LOOT_OPENED: hook UseContainerItem so we know which
     -- container was opened even when LOOT_OPENED fires before ITEM_LOCK_CHANGED (e.g. Pinnacle Cache).
-    if not self.useContainerItemHooked and _G.UseContainerItem and C_Container and C_Container.GetContainerItemID then
-        local hookSelf = self
-        local ok = pcall(function()
-            hookSelf:RawHook("UseContainerItem", function(bagID, slotIndex)
+    if not self.useContainerItemHooked and C_Container and C_Container.UseContainerItem and C_Container.GetContainerItemID then
+        local maxCarriedBagID = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
+        pcall(function()
+            hooksecurefunc(C_Container, "UseContainerItem", function(bagID, slotIndex)
                 if bagID and slotIndex then
                     local safeBag = not (issecretvalue and issecretvalue(bagID)) and bagID or nil
                     local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and slotIndex or nil
-                    if safeBag and safeSlot and safeBag >= 0 and safeBag <= 4 then
+                    if safeBag and safeSlot and safeBag >= 0 and safeBag <= maxCarriedBagID then
                         local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
                         if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
-                            V.lastContainerItemID = itemID
-                            V.lastContainerItemTime = GetTime()
+                            Fns.ScheduleContainerOpenAttempt(itemID, safeBag, safeSlot)
                         end
                     end
                 end
-                local orig = hookSelf.hooks["UseContainerItem"]
-                if orig then return orig(bagID, slotIndex) end
             end)
         end)
-        if ok then self.useContainerItemHooked = true end
+        self.useContainerItemHooked = true
+    end
+
+    if not self.legacyUseContainerItemHooked and _G.UseContainerItem and C_Container and C_Container.GetContainerItemID then
+        local maxCarriedBagID = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
+        pcall(function()
+            hooksecurefunc("UseContainerItem", function(bagID, slotIndex)
+                if bagID and slotIndex then
+                    local safeBag = not (issecretvalue and issecretvalue(bagID)) and bagID or nil
+                    local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and slotIndex or nil
+                    if safeBag and safeSlot and safeBag >= 0 and safeBag <= maxCarriedBagID then
+                        local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
+                        if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
+                            Fns.ScheduleContainerOpenAttempt(itemID, safeBag, safeSlot)
+                        end
+                    end
+                end
+            end)
+        end)
+        self.legacyUseContainerItemHooked = true
+    end
+
+    if not self.useItemByGUIDHooked and C_Container and C_Container.UseItemByGUID and C_Item and C_Item.GetItemIDByGUID then
+        pcall(function()
+            hooksecurefunc(C_Container, "UseItemByGUID", function(itemGUID)
+                if itemGUID and not (issecretvalue and issecretvalue(itemGUID)) then
+                    local itemID = C_Item.GetItemIDByGUID(itemGUID)
+                    if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
+                        Fns.ScheduleContainerOpenAttempt(itemID, nil, nil)
+                    end
+                end
+            end)
+        end)
+        self.useItemByGUIDHooked = true
+    end
+
+    if not self.useItemByNameHooked and C_Item and C_Item.UseItemByName then
+        pcall(function()
+            hooksecurefunc(C_Item, "UseItemByName", function(nameOrID)
+                if nameOrID and not (issecretvalue and issecretvalue(nameOrID)) then
+                    local itemID = tonumber(nameOrID)
+                    if not itemID and type(nameOrID) == "string" and C_Item.GetItemInfoInstant then
+                        itemID = C_Item.GetItemInfoInstant(nameOrID)
+                    end
+                    if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
+                        Fns.ScheduleContainerOpenAttempt(itemID, nil, nil)
+                    end
+                end
+            end)
+        end)
+        self.useItemByNameHooked = true
     end
 
     -- Build reverse lookup indices for O(1) Is*Collectible() queries.
@@ -7780,6 +7934,7 @@ ns.TryCounterService = {
     IsRepeatableCollectible = function(_, ct, id) return WarbandNexus:IsRepeatableCollectible(ct, id) end,
     IsDropSourceCollectible = function(_, ct, id) return WarbandNexus:IsDropSourceCollectible(ct, id) end,
     ShouldShowTryCountInUI = function(_, ct, id) return WarbandNexus:ShouldShowTryCountInUI(ct, id) end,
+    GetItemIDForCollectible = function(_, ct, id) return WarbandNexus:GetItemIDForCollectible(ct, id) end,
     -- CRUD API for Track Item DB
     AddCustomDrop = function(_, st, sid, drop, stats) return WarbandNexus:AddCustomDrop(st, sid, drop, stats) end,
     RemoveCustomDrop = function(_, st, sid, iid) return WarbandNexus:RemoveCustomDrop(st, sid, iid) end,

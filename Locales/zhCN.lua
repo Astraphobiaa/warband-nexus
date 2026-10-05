@@ -1953,6 +1953,8 @@ L["ADDED_TO_FAVORITES"] = "已添加到收藏："
 L["REMOVED_FROM_FAVORITES"] = "已从收藏移除："
 
 -- Tooltip: Collectible Drop Lines
+L["DROP_CHANCE"] = "掉落几率"
+L["CUMULATIVE_CHANCE"] = "累计获得期望"
 L["TOOLTIP_ATTEMPTS"] = "次尝试"
 L["TOOLTIP_100_DROP"] = "100% 掉落"
 L["TOOLTIP_UNKNOWN"] = "未知"

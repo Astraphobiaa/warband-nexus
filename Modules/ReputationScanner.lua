@@ -316,6 +316,38 @@ function ReputationScanner.RestoreCollapsedHeaders(collapsed)
     end
 end
 
+local function IsRootExpansionHeader(name)
+    if not name or type(name) ~= "string" or name == "" then return false end
+    if issecretvalue and issecretvalue(name) then return false end
+    
+    for expID = 11, 0, -1 do
+        local globalName = _G["EXPANSION_NAME" .. expID]
+        if globalName and type(globalName) == "string" and globalName ~= "" then
+            if name == globalName then return true end
+        end
+    end
+    
+    local guildStr = _G.GUILD or "Guild"
+    if name == guildStr then return true end
+    
+    local lower = name:lower()
+    if lower:find("midnight") then return true end
+    if lower:find("war within") then return true end
+    if lower:find("dragonflight") then return true end
+    if lower:find("shadowlands") then return true end
+    if lower:find("azeroth") then return true end
+    if lower:find("legion") then return true end
+    if lower:find("draenor") then return true end
+    if lower:find("pandaria") then return true end
+    if lower:find("cataclysm") then return true end
+    if lower:find("lich king") then return true end
+    if lower:find("burning crusade") or lower:find("crusade") or lower == "outland" then return true end
+    if lower:find("classic") then return true end
+    if lower:find("guild") then return true end
+    
+    return false
+end
+
 ---Fetch all factions asynchronously with time-budgeted batching.
 ---Calls callback(factions) when complete. Spreads work across frames (max 4ms each).
 ---@param callback function Called with array of raw faction data when done
@@ -346,6 +378,7 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
     local factions = {}
     local headerStack = {}
     local expansionHeaders = {}
+    local currentSubHeaderName = nil
     local lastWoDHeaderName = nil
     local scanIdx = 1
     local scanner = self
@@ -386,22 +419,29 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
             for hi = 1, #expansionHeaders do
                 completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
             end
+            if currentSubHeaderName then
+                completeData.parentHeaders[#completeData.parentHeaders + 1] = currentSubHeaderName
+                completeData.subHeader = currentSubHeaderName
+            end
         elseif completeData.isHeader and not completeData.isHeaderWithRep and completeData.factionID ~= 1735 then
-            if not completeData.isChild then
+            if IsRootExpansionHeader(completeData.name) then
                 -- ROOT EXPANSION HEADER (e.g. "Dragonflight", "The Burning Crusade", "Classic")
                 if #headerStack > 0 then table.remove(headerStack) end
                 expansionHeaders = { completeData.name }
+                currentSubHeaderName = nil
                 completeData.parentFactionID = nil
                 completeData.parentHeaders = {}
             else
-                -- SUB-HEADER WITHIN EXPANSION (e.g. "Shattrath City", "Alliance Forces", "Steamwheedle Cartel")
+                -- SUB-HEADER WITHIN EXPANSION (e.g. "Shattrath City", "Alliance", "Steamwheedle Cartel")
                 if #headerStack > 0 then table.remove(headerStack) end
+                currentSubHeaderName = completeData.name
                 completeData.parentFactionID = nil
                 completeData.parentHeaders = {}
                 for hi = 1, #expansionHeaders do
                     completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
                 end
                 completeData.parentHeaders[#completeData.parentHeaders + 1] = completeData.name
+                completeData.subHeader = completeData.name
             end
         else
             -- NORMAL FACTION
@@ -413,6 +453,10 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
             completeData.parentHeaders = {}
             for hi = 1, #expansionHeaders do
                 completeData.parentHeaders[#completeData.parentHeaders + 1] = expansionHeaders[hi]
+            end
+            if currentSubHeaderName then
+                completeData.parentHeaders[#completeData.parentHeaders + 1] = currentSubHeaderName
+                completeData.subHeader = currentSubHeaderName
             end
         end
 

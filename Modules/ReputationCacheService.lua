@@ -1887,7 +1887,7 @@ local EXPANSION_ORDER_RANKS = {
 }
 
 local function GetHeaderExpansionSortRank(headerName)
-    if not headerName or type(headerName) ~= "string" then return 99 end
+    if not headerName or type(headerName) ~= "string" or headerName == "" then return 99 end
     if issecretvalue and issecretvalue(headerName) then return 99 end
     
     -- Check exact match with EXPANSION_NAME globals
@@ -1899,6 +1899,9 @@ local function GetHeaderExpansionSortRank(headerName)
             end
         end
     end
+    
+    local guildStr = _G.GUILD or "Guild"
+    if headerName == guildStr then return 90 end
     
     -- Substring matching for cross-locale / fallback resilience
     local lower = headerName:lower()
@@ -1912,7 +1915,7 @@ local function GetHeaderExpansionSortRank(headerName)
     if lower:find("pandaria") then return 8 end
     if lower:find("cataclysm") then return 9 end
     if lower:find("lich king") then return 10 end
-    if lower:find("burning crusade") or lower:find("crusade") then return 11 end
+    if lower:find("burning crusade") or lower:find("crusade") or lower == "outland" then return 11 end
     if lower:find("classic") then return 12 end
     if lower:find("guild") then return 90 end
     

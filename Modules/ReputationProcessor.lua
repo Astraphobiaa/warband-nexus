@@ -96,6 +96,7 @@ function ReputationProcessor:Process(rawData)
         -- BuildHeaders() uses parentFactionName (first expansion header) for grouping
         parentFactionName = (rawData.parentHeaders and rawData.parentHeaders[1]) or nil,
         parentHeaders = rawData.parentHeaders,  -- Keep original array for reference
+        subHeader = rawData.subHeader,
         
         -- Base standing
         reaction = rawData.reaction or 4, -- Default: Neutral

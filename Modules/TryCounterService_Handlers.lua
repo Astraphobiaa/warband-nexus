@@ -599,11 +599,13 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     -- Fast bail: junk loot (e.g. zone mats) must not walk RT.recentKills / drop tables (100ms+ spikes).
     if not RT.repeatableItemDrops[itemID] then
         if not RT.chatLootTrackedItems[itemID] and not RT.chatLootItemToNpc[itemID] then
+            local containerRecent = V.lastContainerItemID and RT.containerDropDB[V.lastContainerItemID]
+                and (now - (V.lastContainerItemTime or 0)) < 15
             local fishingMaybe = RT.fishingCtx.active
                 and (now - RT.fishingCtx.castTime) <= RT.FISHING_CAST_CONTEXT_TTL
                 and Fns.IsInTrackableFishingZone()
                 and not Fns.CurrentUnitsHaveMobLootContext()
-            if not fishingMaybe then
+            if not containerRecent and not fishingMaybe then
                 return
             end
         end
@@ -655,6 +657,71 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             Fns.MarkObtainOutcomeApplied(tcType, tryKey, repDrop)
         end
         return
+    end
+
+    -- Path 1.5: Container loot chat fallback (when container was used within TTL or direct item unpacking)
+    if V.lastContainerItemID and RT.containerDropDB[V.lastContainerItemID]
+        and (now - (V.lastContainerItemTime or 0)) < 15 then
+        local cItemID = V.lastContainerItemID
+        local cData = RT.containerDropDB[cItemID]
+        local cDrops = cData and (cData.drops or cData)
+        if cDrops and type(cDrops) == "table" and #cDrops > 0 then
+            local trackable = {}
+            local foundDrop = nil
+            for i = 1, #cDrops do
+                local d = cDrops[i]
+                if d.itemID == itemID then
+                    foundDrop = d
+                end
+                if d.repeatable or not Fns.IsCollectibleCollected(d) then
+                    trackable[#trackable + 1] = d
+                end
+            end
+
+            if foundDrop then
+                V.lastContainerItemID = nil
+                V.lastContainerItemTime = 0
+                if not foundDrop.repeatable and foundDrop.type == "item" then Fns.MarkItemObtained(foundDrop.itemID) end
+                local tcType, tryKey = Fns.GetTryCountTypeAndKey(foundDrop)
+                if tryKey and not Fns.IsObtainOutcomeApplied(tcType, tryKey, foundDrop) then
+                    Fns.MarkDropObtainedThisKill(tcType, tryKey, foundDrop)
+                    local preResetCount = self:GetTryCount(tcType, tryKey) or 0
+                    local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, foundDrop)
+                    if didReset then
+                        self:ResetTryCount(tcType, tryKey)
+                    end
+                    V.lastTryCountSourceKey = "container_" .. tostring(cItemID)
+                    V.lastTryCountSourceTime = now
+                    local itemLink = Fns.GetDropItemLink(foundDrop)
+                    local chatKey = didReset and "TRYCOUNTER_CONTAINER_RESET" or "TRYCOUNTER_CONTAINER"
+                    local chatFallback = didReset and "Obtained %s from container! Try counter reset." or "Obtained %s from container!"
+                    Fns.TryChat(Fns.BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
+                    local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+                    local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(foundDrop.itemID)
+                    SendTryCounterCollectibleObtained(self, {
+                        type = tcType,
+                        id = (foundDrop.type == "item") and foundDrop.itemID or tryKey,
+                        name = itemName or foundDrop.name or "Unknown", icon = itemIcon,
+                        preResetTryCount = preResetCount, fromTryCounter = true,
+                    }, foundDrop.itemID)
+                    Fns.MarkObtainOutcomeApplied(tcType, tryKey, foundDrop)
+                end
+                return
+            end
+
+            local containerSourceKey = "container_" .. tostring(cItemID)
+            if V.lastTryCountSourceKey ~= containerSourceKey or (now - (V.lastTryCountSourceTime or 0)) >= RT.CHAT_LOOT_DEBOUNCE then
+                V.lastContainerItemID = nil
+                V.lastContainerItemTime = 0
+                V.lastTryCountSourceKey = containerSourceKey
+                V.lastTryCountSourceTime = now
+                if #trackable > 0 then
+                    Fns.TryCounterLootDebugDropLines(self, "Chat-Container", trackable)
+                    Fns.ProcessMissedDrops(trackable, nil, { sync = true })
+                end
+                return
+            end
+        end
     end
 
     -- Paths 2-4: suppress full chat fallback when loot window is active; still mark session obtains.

@@ -318,6 +318,27 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
                 hintR, hintG, hintB = 1, 1, 1
             end
             GameTooltip:AddLine(hint, hintR, hintG, hintB, true)
+            if self._wnTryType and self._wnTryID and ns.CollectibleSourceDB then
+                local itemID = WarbandNexus and WarbandNexus.GetItemIDForCollectible and WarbandNexus:GetItemIDForCollectible(self._wnTryType, self._wnTryID)
+                if itemID and ns.CollectibleSourceDB.GetDropRate then
+                    local rate = ns.CollectibleSourceDB.GetDropRate(itemID)
+                    if rate then
+                        local tries = (WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(self._wnTryType, self._wnTryID)) or 0
+                        local rateStr = ns.CollectibleSourceDB.FormatDropRate and ns.CollectibleSourceDB.FormatDropRate(rate)
+                        local cumP = (tries > 0 and ns.CollectibleSourceDB.GetCumulativeProbability) and ns.CollectibleSourceDB.GetCumulativeProbability(itemID, tries)
+                        local cumStr = cumP and ns.CollectibleSourceDB.FormatCumulativeProbability and ns.CollectibleSourceDB.FormatCumulativeProbability(cumP)
+                        GameTooltip:AddLine(" ")
+                        local dropChanceLabel = (ns.L and ns.L["DROP_CHANCE"]) or "Drop Chance"
+                        local cumLabel = (ns.L and ns.L["CUMULATIVE_CHANCE"]) or "Expected by now"
+                        if rateStr then
+                            GameTooltip:AddDoubleLine(dropChanceLabel .. ":", rateStr, 0.8, 0.8, 0.8, 1, 0.82, 0)
+                        end
+                        if cumStr then
+                            GameTooltip:AddDoubleLine(cumLabel .. ":", cumStr, 0.8, 0.8, 0.8, 0.3, 1, 0.3)
+                        end
+                    end
+                end
+            end
             if WarbandNexus and WarbandNexus.FindNearestEligibleAlt and self._wnTryID then
                 local res = WarbandNexus:FindNearestEligibleAlt(self._wnTryID)
                 if res and res.bestAlt then
@@ -357,7 +378,20 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
         end
         local count = (WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(collectibleType, collectibleID)) or 0
         local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-        self.text:SetText((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r " .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. tostring(count) .. "|r")
+        local pctSuffix = ""
+        if count > 0 and WarbandNexus and WarbandNexus.GetItemIDForCollectible and ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetCumulativeProbability then
+            local itemID = WarbandNexus:GetItemIDForCollectible(collectibleType, collectibleID)
+            if itemID then
+                local cumP = ns.CollectibleSourceDB.GetCumulativeProbability(itemID, count)
+                if cumP then
+                    local cumStr = ns.CollectibleSourceDB.FormatCumulativeProbability and ns.CollectibleSourceDB.FormatCumulativeProbability(cumP)
+                    if cumStr then
+                        pctSuffix = " |cff88cc88(" .. cumStr .. ")|r"
+                    end
+                end
+            end
+        end
+        self.text:SetText((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r " .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. tostring(count) .. "|r" .. pctSuffix)
         self:Show()
     end
 

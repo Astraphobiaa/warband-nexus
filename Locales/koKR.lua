@@ -1955,6 +1955,8 @@ L["ADDED_TO_FAVORITES"] = "즐겨찾기에 추가됨:"
 L["REMOVED_FROM_FAVORITES"] = "즐겨찾기에서 제거됨:"
 
 -- Tooltip: Collectible Drop Lines
+L["DROP_CHANCE"] = "획득 확률"
+L["CUMULATIVE_CHANCE"] = "누적 기대치"
 L["TOOLTIP_ATTEMPTS"] = "시도"
 L["TOOLTIP_100_DROP"] = "100% 드롭"
 L["TOOLTIP_UNKNOWN"] = "알 수 없음"

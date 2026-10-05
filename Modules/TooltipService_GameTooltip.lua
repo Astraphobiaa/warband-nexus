@@ -259,6 +259,22 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             end
         end
 
+        -- Drop rate & cumulative probability
+        local rateStr = nil
+        local cumStr = nil
+        if drop.itemID and ns.CollectibleSourceDB then
+            local dropRate = ns.CollectibleSourceDB.GetDropRate and ns.CollectibleSourceDB.GetDropRate(drop.itemID)
+            if dropRate then
+                rateStr = ns.CollectibleSourceDB.FormatDropRate and ns.CollectibleSourceDB.FormatDropRate(dropRate)
+                if tryCount > 0 and ns.CollectibleSourceDB.GetCumulativeProbability then
+                    local cumP = ns.CollectibleSourceDB.GetCumulativeProbability(drop.itemID, tryCount)
+                    if cumP then
+                        cumStr = ns.CollectibleSourceDB.FormatCumulativeProbability and ns.CollectibleSourceDB.FormatCumulativeProbability(cumP)
+                    end
+                end
+            end
+        end
+
         -- Build right-side status text
         -- Collected items: green checkmark prepended to item name, no right text.
         -- Repeatable items: always show try counter on the right.
@@ -270,20 +286,23 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         local guaranteedWord = (ns.L and ns.L["TOOLTIP_100_DROP"]) or "100% Drop"
         if isRepeatable then
             local attemptsColor = isLockedOut and "666666" or "ffff00"
-            rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. "|r"
-            -- collected status is shown via inline checkmark on the item line
+            local pctPart = cumStr and (" (" .. cumStr .. ")") or (rateStr and (" (" .. rateStr .. ")") or "")
+            rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. pctPart .. "|r"
         elseif isLockedOut and not collected then
             local attemptsColor = isLockedOut and "666666" or "888888"
-            rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. "|r"
+            local pctPart = cumStr and (" (" .. cumStr .. ")") or ""
+            rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. pctPart .. "|r"
         elseif collected then
             rightText = ""
         elseif isGuaranteed then
             rightText = "|cff00ff00" .. guaranteedWord .. "|r"
         elseif tryCount > 0 then
-            rightText = "|cffffff00" .. tryCount .. " " .. attemptsWord .. "|r"
+            local pctPart = cumStr and (" (" .. cumStr .. ")") or (rateStr and (" (" .. rateStr .. ")") or "")
+            rightText = "|cffffff00" .. tryCount .. " " .. attemptsWord .. pctPart .. "|r"
         else
             -- Default 0 when no try count (non-repeatable, not collected, not guaranteed)
-            rightText = "|cff8888880 " .. attemptsWord .. "|r"
+            local pctPart = rateStr and (" (" .. rateStr .. ")") or ""
+            rightText = "|cff8888880 " .. attemptsWord .. pctPart .. "|r"
         end
 
         -- When locked out and not collected, dim the item link to gray

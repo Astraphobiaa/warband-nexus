@@ -1955,6 +1955,8 @@ L["ADDED_TO_FAVORITES"] = "Ajouté aux favoris :"
 L["REMOVED_FROM_FAVORITES"] = "Retiré des favoris :"
 
 -- Tooltip: Collectible Drop Lines
+L["DROP_CHANCE"] = "Chances de butin"
+L["CUMULATIVE_CHANCE"] = "Attendu jusqu'ici"
 L["TOOLTIP_ATTEMPTS"] = "tentatives"
 L["TOOLTIP_100_DROP"] = "100% Butin"
 L["TOOLTIP_UNKNOWN"] = "Inconnu"

@@ -2732,120 +2732,370 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
 end
 
 -- Drop rates LUT (per-kill/per-attempt community-documented rates).
--- Keyed by mount teach-item itemID. Values are probabilities in [0,1].
--- Used for "What a grind" messaging: cumulative P = 1 - (1-rate)^tries.
--- Rates are approximate community baselines as of 2026-04; refine with in-game
--- experience. Wrong rates only cause missed/false grind messages — gameplay safe.
--- Omit an entry to disable the grind-check for that mount.
+-- Keyed by collectible itemID. Values are probabilities in (0, 1].
+-- Used for "What a grind" messaging, tooltips, and cumulative probability calculation:
+-- Cumulative P(obtained by N tries) = 1 - (1 - rate)^tries.
 ns.CollectibleSourceDB.dropRates = {
     -- Classic / Vanilla
-    [13335]  = 0.01,    -- Deathcharger's Reins (Baron Rivendare, Strat)
-    [18767]  = 0.02,    -- Swift Razzashi Raptor (Bloodlord Mandokir, ZG)
-    [19872]  = 0.01,    -- Swift Zulian Tiger (High Priest Thekal, ZG)
-    [21176]  = 0.01,    -- Black Qiraji Resonating Crystal (AQ40) — legacy gated
-    [30480]  = 0.007,   -- Fiery Warhorse's Reins (Attumen, Karazhan)
+    [13335] = 0.01, -- Deathcharger's Reins (Baron Rivendare, Stratholme)
+    [21218] = 0.1, -- Yellow Qiraji Resonating Crystal (AQ40 trash)
+    [21219] = 0.1, -- Blue Qiraji Resonating Crystal (AQ40 trash)
+    [21220] = 0.1, -- Green Qiraji Resonating Crystal (AQ40 trash)
+    [21321] = 0.015, -- Red Qiraji Resonating Crystal (AQ40 rare drop)
+    [30480] = 0.007, -- Fiery Warhorse's Reins (Attumen the Huntsman, Karazhan)
     -- TBC
-    [32458]  = 0.013,   -- Ashes of Al'ar (Kael'thas, Tempest Keep)
-    [32768]  = 0.013,   -- Reins of the Raven Lord (Anzu, Sethekk Halls H)
-    [29228]  = 0.013,   -- Swift White Hawkstrider (Kael'thas, Magisters' Terrace H)
-    [35513]  = 0.013,   -- Blue Drake (Malygos 10)
-    -- Holiday / Event
-    [37012]  = 0.005,   -- Headless Horseman's Reins (Hallow's End)
-    [71665]  = 0.0003,  -- Big Love Rocket (Apothecary Hummel, Love is in the Air)
+    [32458] = 0.013, -- Ashes of Al'ar (Kael'thas Sunstrider, Tempest Keep)
+    [32768] = 0.013, -- Reins of the Raven Lord (Anzu, Sethekk Halls Heroic)
+    [35513] = 0.013, -- Swift White Hawkstrider (Kael'thas Sunstrider, Magisters' Terrace Heroic)
     -- WotLK
-    [43951]  = 0.04,    -- Reins of the Bronze Drake (CoS timed)
-    [43952]  = 0.04,    -- Reins of the Azure Drake (Malygos 10)
-    [43953]  = 0.04,    -- Reins of the Twilight Drake (Sartharion+3)
-    [43986]  = 0.005,   -- Reins of the Blue Drake (Malygos 10, legacy)
-    [44168]  = 0.0003,  -- Reins of the Time-Lost Proto-Drake (Storm Peaks rare)
-    [44177]  = 0.01,    -- Reins of the Ice Mammoth (legacy rare)
-    [44689]  = 0.02,    -- Reins of the Blue Drake (alt)
-    [45693]  = 0.01,    -- Mimiron's Head (Yogg-Saron 0-keeper 25)
-    [46109]  = 0.00014, -- Reins of the Sea Turtle (fishing)
-    [50818]  = 0.009,   -- Reins of the Crimson Deathcharger — Invincible (LK25H)
-    [49636]  = 0.04,    -- Reins of the Onyxian Drake (Onyxia 25)
+    [37012] = 0.005, -- The Horseman's Reins (Headless Horseman, Hallow's End)
+    [37828] = 0.03, -- Great Brewfest Kodo (Coren Direbrew, Brewfest)
+    [33977] = 0.03, -- Swift Brewfest Ram (Coren Direbrew, Brewfest)
+    [43698] = 0.001, -- Giant Sewer Rat (Dalaran Sewers Fishing)
+    [43952] = 0.04, -- Reins of the Azure Drake (Malygos, Eye of Eternity)
+    [43953] = 0.04, -- Reins of the Blue Drake (Malygos, Eye of Eternity)
+    [43954] = 0.04, -- Reins of the Twilight Drake (Sartharion 3D, Obsidian Sanctum)
+    [43959] = 0.01, -- Reins of the Grand Black War Mammoth (Vault of Archavon Alliance)
+    [43962] = 0.01, -- Reins of the White Polar Bear (Hyldnir Spoils container)
+    [44083] = 0.01, -- Reins of the Grand Black War Mammoth (Vault of Archavon Horde)
+    [44151] = 0.013, -- Reins of the Blue Proto-Drake (Skadi the Ruthless, Utgarde Pinnacle)
+    [44707] = 0.02, -- Reins of the Green Proto-Drake (Mysterious Egg container)
+    [45693] = 0.01, -- Mimiron's Head (Yogg-Saron 0-Keepers, Ulduar)
+    [46109] = 0.00014, -- Sea Turtle (Northrend / Retail Fishing pools)
+    [49636] = 0.015, -- Reins of the Onyxian Drake (Onyxia, Onyxia's Lair)
+    [43986] = 0.04, -- Reins of the Black Drake (Sartharion 3D 10-man)
+    [50250] = 0.0003, -- Big Love Rocket (Apothecary Hummel, Love is in the Air)
+    [50818] = 0.01, -- Invincible's Reins (The Lich King 25H, Icecrown Citadel)
     -- Cataclysm
-    [63231]  = 0.01,    -- Flametalon of Alysrazor (Firelands)
-    [63040]  = 0.01,    -- Smoldering Egg of Millagazor (Ragnaros)
-    [63043]  = 0.01,    -- Life-Binder's Handmaiden (Deathwing H)
-    [63042]  = 0.0001,  -- Reins of the Phosphorescent Stone Drake (Aeonaxx rare)
-    [67151]  = 0.0002,  -- Reins of Poseidus (rare world serpent)
-    [69230]  = 0.03,    -- Amani Battle Bear (ZA timed, legacy)
-    [78919]  = 0.005,   -- Experiment 12-B (Ultraxion LFR/N)
+    [63040] = 0.01, -- Reins of the Drake of the North Wind (Altairus, Vortex Pinnacle)
+    [63041] = 0.01, -- Reins of the Drake of the South Wind (Al'Akir, Throne of the Four Winds)
+    [63043] = 0.01, -- Reins of the Vitreous Stone Drake (Slabhide, Stonecore)
+    [68823] = 0.01, -- Armored Razzashi Raptor (Bloodlord Mandokir, Zul'Gurub)
+    [68824] = 0.01, -- Swift Zulian Panther (High Priestess Kilnara, Zul'Gurub)
+    [69224] = 0.01, -- Smoldering Egg of Millagazor (Ragnaros, Firelands)
+    [71665] = 0.01, -- Flametalon of Alysrazor (Alysrazor, Firelands)
+    [77067] = 0.01, -- Reins of the Blazing Drake (Madness of Deathwing, Dragon Soul)
+    [77069] = 0.01, -- Life-Binder's Handmaiden (Madness of Deathwing Heroic, Dragon Soul)
+    [78919] = 0.01, -- Experiment 12-B (Ultraxion, Dragon Soul)
     -- MoP
-    [87771]  = 0.01,    -- Reins of the Heavenly Crimson Cloud Serpent (Sha of Anger)
-    [87777]  = 0.009,   -- Reins of the Astral Cloud Serpent (Elegon)
-    [89783]  = 0.01,    -- Son of Galleon's Saddle (Galleon rare)
-    [93666]  = 0.015,   -- Clutch of Ji-Kun (Ji-Kun, Throne of Thunder)
-    [94228]  = 0.01,    -- Spawn of Horridon (Horridon, ToT)
-    [95059]  = 0.01,    -- Kor'kron Juggernaut (Garrosh H, SoO)
-    [104253] = 0.01,    -- Reins of the Thundering Ruby Cloud Serpent (Alani)
+    [87771] = 0.01, -- Reins of the Heavenly Onyx Cloud Serpent (Sha of Anger, Kun-Lai)
+    [87777] = 0.01, -- Reins of the Astral Cloud Serpent (Elegon, Mogu'shan Vaults)
+    [89783] = 0.01, -- Son of Galleon's Saddle (Galleon, Valley of the Four Winds)
+    [93666] = 0.01, -- Spawn of Horridon (Horridon, Throne of Thunder)
+    [94228] = 0.01, -- Reins of the Cobalt Primordial Direhorn (Oondasta, Isle of Giants)
+    [94229] = 0.05, -- Reins of the Slate Primordial Direhorn (Zandalari Warbringer)
+    [94230] = 0.05, -- Reins of the Amber Primordial Direhorn (Zandalari Warbringer)
+    [94231] = 0.05, -- Reins of the Jade Primordial Direhorn (Zandalari Warbringer)
+    [95057] = 0.01, -- Reins of the Thundering Cobalt Cloud Serpent (Nalak, Isle of Thunder)
+    [95059] = 0.01, -- Clutch of Ji-Kun (Ji-Kun, Throne of Thunder)
+    [104253] = 0.01, -- Kor'kron Juggernaut (Garrosh Hellscream Mythic, Siege of Orgrimmar)
+    [104269] = 0.01, -- Reins of the Thundering Onyx Cloud Serpent (Huolon, Timeless Isle)
     -- WoD
-    [116775] = 0.015,   -- Giant Coldsnout (Draenor zone rare cluster)
-    [116669] = 0.01,    -- Garn Nighthowl (Nok-Karosh type, Frostfire rare)
-    [127156] = 0.01,    -- Trained Rocktusk
-    [128671] = 0.005,   -- Ironhoof Destroyer (Blackhand M)
-    [130965] = 0.01,    -- Felsteel Annihilator (Archimonde M)
+    [116658] = 0.05, -- Tundra Icehoof (Cera rare, Frostfire Ridge)
+    [116660] = 0.01, -- Ironhoof Destroyer (Blackhand Mythic, Blackrock Foundry)
+    [116663] = 0.03, -- Shadowhide Pearltusk (Garrison Invasion Strongbox)
+    [116669] = 0.03, -- Armored Razorback (Garrison Invasion Strongbox)
+    [116673] = 0.03, -- Giant Coldsnout (Garrison Invasion Strongbox)
+    [116771] = 0.01, -- Solar Spirehawk (Rukhmar, Spires of Arak)
+    [116779] = 0.03, -- Garn Steelmaw (Garrison Invasion Strongbox)
+    [116780] = 0.05, -- Warsong Direfang (Nakk the Thunderer type / Nagrand rares)
+    [116786] = 0.03, -- Smoky Direwolf (Garrison Invasion Strongbox)
+    [123890] = 0.01, -- Felsteel Annihilator (Archimonde Mythic, Hellfire Citadel)
+    [129149] = 0.02, -- Skin of the Soulflayer (Rare toy, Tanaan Jungle)
     -- Legion
-    [137574] = 0.01,    -- Midnight's Eternal Reins (Kara Nightbane)
-    [137615] = 0.005,   -- Abyss Worm (Mistress Sassz'ine M)
-    [142236] = 0.005,   -- Antoran Charhound (Felhounds of Sargeras M)
-    [147899] = 0.005,   -- Shackled Ur'zul (Argus M)
-    [152844] = 0.005,   -- Fiendish Hellfire Core (Jaina M, BoD)
-    [152912] = 0.00025, -- Pond Nettle (fishing, Legion)
-    [152815] = 0.02,    -- Highmountain Elderhorn (legacy)
+    [137574] = 0.01, -- Living Infernal Core (Gul'dan Mythic, Nighthold)
+    [137575] = 0.01, -- Fiendish Hellfire Core (Gul'dan Normal/Heroic, Nighthold)
+    [138201] = 0.01, -- Fathom Dweller (Kosumoth the Hungering, Eye of Azshara)
+    [140261] = 0.02, -- Hungering Claw (Kosumoth the Hungering)
+    [142236] = 0.01, -- Midnight's Eternal Reins (Attumen the Huntsman, Return to Karazhan)
+    [142552] = 0.2, -- Smoldering Ember Wyrm (Nightbane, Return to Karazhan)
+    [143643] = 0.01, -- Abyss Worm (Mistress Sassz'ine, Tomb of Sargeras)
+    [143764] = 0.05, -- Leywoven Flying Carpet (Nightfallen Paragon Cache)
+    [147804] = 0.05, -- Wild Dreamrunner (Dreamweavers Paragon Cache)
+    [147805] = 0.05, -- Valarjar Stormwing (Valarjar Paragon Cache)
+    [147806] = 0.05, -- Cloudwing Hippogryph (Farondis Paragon Cache)
+    [147807] = 0.05, -- Highmountain Elderhorn (Highmountain Paragon Cache)
+    [152789] = 0.01, -- Shackled Ur'zul (Argus the Unmaker Mythic, Antorus)
+    [152790] = 0.03, -- Vile Fiend (Houndmaster Kerrax rare, Antoran Wastes)
+    [152814] = 0.03, -- Maddened Chaosrunner (Wrangler Kravos rare, Mac'Aree)
+    [152816] = 0.01, -- Antoran Charhound (Felhounds of Sargeras, Antorus)
+    [152840] = 0.05, -- Scintillating Mana Ray (Fel-Spotted Egg)
+    [152841] = 0.05, -- Felglow Mana Ray (Fel-Spotted Egg)
+    [152842] = 0.05, -- Vibrant Mana Ray (Fel-Spotted Egg)
+    [152843] = 0.05, -- Darkspore Mana Ray (Fel-Spotted Egg)
+    [152844] = 0.05, -- Lambent Mana Ray (Fel-Spotted Egg)
+    [152903] = 0.03, -- Biletooth Gnasher (Puscilla rare, Antoran Wastes)
+    [152904] = 0.03, -- Acid Belcher (Skreeg the Devourer rare, Mac'Aree)
+    [152905] = 0.03, -- Crimson Slavermaw (Blistermaw rare, Antoran Wastes)
+    [152912] = 0.00025, -- Pond Nettle (Argus / Legion Fishing)
+    [153042] = 0.05, -- Glorious Felcrusher (Army of the Light Paragon Cache)
+    [153043] = 0.05, -- Blessed Felcrusher (Army of the Light Paragon Cache)
+    [153044] = 0.05, -- Avenging Felcrusher (Army of the Light Paragon Cache)
     -- BfA
-    [163131] = 0.0002,  -- Great Sea Ray (fishing, BfA)
-    [163575] = 0.005,   -- Glacial Tidestorm (Jaina M)
-    [166518] = 0.005,   -- G.M.O.D. (Mekkatorque M)
-    [166705] = 0.005,   -- Bloodflank Charger (Stormwall Blockade M)
-    [168832] = 0.005,   -- Awakened Mindborer (Queen Azshara M)
-    [174859] = 0.005,   -- Ankoan Waverider (Uu'nat M, Crucible)
-    [175836] = 0.005,   -- Ny'alothan Ta'etheral (N'Zoth M)
+    [159842] = 0.01, -- Sharkbait's Favorite Crackers (Harlan Sweete, Freehold)
+    [159921] = 0.01, -- Mummified Raptor Skull (King Dazar, Kings' Rest)
+    [160829] = 0.01, -- Underrot Crawg Harness (Unbound Abomination, Underrot)
+    [163131] = 0.0002, -- Great Sea Ray (BfA Open Water Fishing)
+    [163573] = 0.0003, -- Goldenmane's Reins (Stormsong Valley World Drop BoE)
+    [163574] = 0.0003, -- Chewed-On Reins of the Terrified Pack Mule (Nazmir World Drop BoE)
+    [163575] = 0.0003, -- Reins of a Tamed Bloodfeaster (Nazmir World Drop BoE)
+    [163576] = 0.0003, -- Captured Dune Scavenger (Vol'dun World Drop BoE)
+    [163578] = 0.03, -- Broken Highland Mustang (Knight-Captain Aldrin rare, Arathi Highlands)
+    [163579] = 0.03, -- Highland Mustang (Doomrider Helgrim rare, Arathi Highlands)
+    [163644] = 0.03, -- Swift Albino Raptor (Beastcaller Kraz rare, Arathi Highlands)
+    [163645] = 0.03, -- Skullripper (Skullripper rare, Arathi Highlands)
+    [163646] = 0.03, -- Lil' Donkey (Overseer Krix rare, Arathi Highlands)
+    [163706] = 0.03, -- Witherbark Direwing (Nimar the Slayer rare, Arathi Highlands)
+    [166428] = 0.03, -- Blackpaw (Agathe Wyrmwood rare, Darkshore)
+    [166432] = 0.03, -- Ashenvale Chimaera (Alash'anir rare, Darkshore)
+    [166434] = 0.03, -- Captured Umber Nightsaber (Athil Dewfire rare, Darkshore)
+    [166435] = 0.03, -- Kaldorei Nightsaber (Shadowclaw rare, Darkshore)
+    [166437] = 0.03, -- Captured Kaldorei Nightsaber (Croz Bloodrage rare, Darkshore)
+    [166438] = 0.03, -- Caged Bear (Morbent Fel type / Darkshore rares)
+    [166518] = 0.01, -- G.M.O.D. (High Tinker Mekkatorque / Opulence, Battle of Dazar'alor)
+    [166705] = 0.01, -- Glacial Tidestorm (Lady Jaina Proudmoore Mythic, Battle of Dazar'alor)
+    [166803] = 0.03, -- Umber Nightsaber (Magram rare, Darkshore)
+    [168370] = 0.005, -- Rusted Keys to the Junkheap Drifter (Rustfeather rare, Mechagon)
+    [168823] = 0.005, -- Rusty Mechanocrawler (Arachnoid Harvester rare, Mechagon)
+    [168826] = 0.01, -- Mechagon Peacekeeper (HK-8 Aerial Oppression Unit, Operation: Mechagon)
+    [169163] = 0.005, -- Silent Glider (Soundless rare, Nazjatar)
+    [169198] = 0.03, -- Royal Snapdragon (Nazjatar Paragon Cache)
+    [173887] = 0.03, -- Clutch of Ha-Li (Ha-Li rare, Vale of Eternal Blossoms)
+    [174641] = 0.03, -- Reins of the Drake of the Four Winds (Ishak of the Four Winds rare, Uldum)
+    [174653] = 0.01, -- Mail Muncher (Mailbox rare event, Horrific Visions)
+    [174753] = 0.03, -- Waste Marauder (Vulture rare, Uldum Assaults)
+    [174769] = 0.03, -- Malevolent Drone (Corpse Eater rare, Uldum Assaults)
+    [174840] = 0.03, -- Xinlao (Anh-De the Loyal rare, Vale of Eternal Blossoms)
+    [174841] = 0.03, -- Ren's Stalwart Hound (Houndmaster Ren rare, Vale of Eternal Blossoms)
+    [174842] = 0.03, -- Slightly Damp Pile of Fur (Dunegorger Kraulok rare, Vol'dun)
+    [174872] = 0.01, -- Ny'alotha Allseer (N'Zoth the Corruptor Mythic, Ny'alotha)
     -- Shadowlands
-    [180725] = 0.01,    -- Arboreal Gulper (Gormtamer Tizo rare, Ardenweald)
-    [186656] = 0.005,   -- Soultwisted Deathwalker (Sylvanas M)
-    [190177] = 0.005,   -- Vengeance (Jailer M)
+    [180461] = 0.02, -- Horrid Dredwing (Harika the Horrid rare, Revendreth)
+    [180581] = 0.02, -- Hopecrusher Gargon (Hopecrusher rare, Revendreth)
+    [180582] = 0.02, -- Endmire Flyer Tether (Famu the Infinite rare, Revendreth)
+    [180583] = 0.02, -- Impressionable Gorger Spawn (Worldedge Gorger rare, Revendreth)
+    [180730] = 0.02, -- Wild Glimmerfur Prowler (Valfir the Unrelenting rare, Ardenweald)
+    [180773] = 0.02, -- Sundancer (Sundancer rare, Bastion)
+    [181815] = 0.02, -- Armored Bonehoof Tauralus (Tahonta rare, Maldraxxus)
+    [181819] = 0.01, -- Marrowfang's Reins (Nalthor the Simecaller, Necrotic Wake)
+    [182075] = 0.02, -- Bonehoof Tauralus (Tahonta rare, Maldraxxus)
+    [182079] = 0.02, -- Slime-Covered Reins of the Hulking Deathroc (Violet Mistake rare, Maldraxxus)
+    [182080] = 0.02, -- Predatory Plagueroc (Gieger rare, Maldraxxus)
+    [182081] = 0.02, -- Reins of the Colossal Slaughterclaw (Necroray / Theater of Pain rares)
+    [182084] = 0.02, -- Gorespine (Nerissa Heartless rare, Maldraxxus)
+    [182085] = 0.02, -- Blisterback Bloodtusk (Warbringer Mal'Korak rare, Maldraxxus)
+    [182650] = 0.02, -- Unusual Ally (Wildseed / Ardenweald rares)
+    [183800] = 0.03, -- Amber Ardenmoth (Wild Hunt Paragon Cache)
+    [184062] = 0.02, -- Gnawed Reins of the Battle-Bound Warhound (Theater of Pain rare elites)
+    [184160] = 0.03, -- Bulbous Necroray (Oozing Necroray Egg container)
+    [184161] = 0.03, -- Infested Necroray (Oozing Necroray Egg container)
+    [184162] = 0.03, -- Pestilent Necroray (Oozing Necroray Egg container)
+    [184167] = 0.01, -- Mawsworn Soulhunter (Gorged Shadehound rare, The Maw)
+    [185996] = 0.03, -- Harvester's Dredwing Saddle (Court of Harvesters Paragon Cache)
+    [186000] = 0.03, -- Legsplitter War Harness (Undying Army Paragon Cache)
+    [186103] = 0.03, -- Undying Darkhound's Harness (Undying Army Paragon Cache)
+    [186489] = 0.02, -- Bound Shadehound (Craven Crying / Maw Rift rares)
+    [186638] = 0.01, -- Cartel Master's Gearglider (So'leah, Tazavesh the Veiled Market)
+    [186641] = 0.03, -- Tamed Mauler Harness (Death's Advance Paragon Cache)
+    [186642] = 0.01, -- Vengeance's Reins (Sylvanas Windrunner Mythic, Sanctum of Domination)
+    [186644] = 0.03, -- Beryl Shardhide (Death's Advance Supplies container)
+    [186645] = 0.02, -- Crimson Shardhide (Malbog rare, Korthia)
+    [186649] = 0.03, -- Fierce Razorwing (Death's Advance Supplies container)
+    [186652] = 0.02, -- Garnet Razorwing (Reliwik the Defiant rare, Korthia)
+    [186656] = 0.01, -- Sanctum Gloomcharger's Reins (The Nine, Sanctum of Domination)
+    [186657] = 0.03, -- Soulbound Gloomcharger's Reins (Maw / Korthia Supply Cache)
+    [186659] = 0.01, -- Fallen Charger's Reins (Fallen Charger rare, The Maw)
+    [187183] = 0.02, -- Rampaging Mauler (Konthrogz the Obliterator rare, Korthia)
+    [187282] = 0.02, -- Rampaging Worldcracker (Mor'geth World Boss, Korthia)
+    [187283] = 0.02, -- Stygian Stonecrusher (Korthia rare elites)
+    [187662] = 0.001, -- Strange Goop (Zereth Mortis Fishing)
+    [187676] = 0.02, -- Deepstar Polyp (Hirukon rare, Zereth Mortis)
+    [190765] = 0.02, -- Iska's Mawrat Leash (Rhuv the Gorger / ZM rares)
+    [190768] = 0.01, -- Fractal Cypher of the Zereth Overseer (The Jailer Mythic, Sepulcher)
     -- Dragonflight
-    [201098] = 0.01,    -- Renewed Proto-Drake: Reins of Wrathion's Steed
-    [204729] = 0.005,   -- Shadowflame Reaver (Raszageth M)
-    [210600] = 0.005,   -- Cobalt Pyreclaw (Fyrakk M)
-    [220267] = 0.005,   -- Ashen Predator (Nymue M)
-    -- War Within S1-S2
-    [224147] = 0.008,   -- Sureki Skyrazor (Queen Ansurek M)
-    [236960] = 0.03,    -- Prototype A.S.M.R. (Gallywix M, Nerub-ar / Liberation)
-    -- Midnight 12.0
-    [246590] = 0.5,     -- Ashes of Belo'ren (March on Quel'Danas — Midnight Falls Mythic; per-player ~50%)
-    [260916] = 0.0001,  -- Nether-Warped Drake (fishing, Midnight)
-    -- Midnight 12.1 (Curse of Ula'tek)
-    [275658] = 0.5,     -- Primeval Skyfriend (Ula'tek Mythic; per-player ~50%)
-    [276804] = 0.008,   -- The Writhing Brood (Zul'jan Mythic dungeon)
-    [275659] = 0.01,    -- Hexflame Reaver (Ral'kala public event)
-    [276549] = 0.01,    -- Topaz Skyfang (Coiled Isle daily rares)
-    [276803] = 0.01,    -- Ruby Writhe (Coiled Isle daily rares)
+    [192764] = 0.02, -- Verdant Skitterfly (Dragon Isles Expedition / World Object)
+    [192772] = 0.02, -- Ancient Salamanther (Dragon Isles Cave rares)
+    [192791] = 0.03, -- Plainswalker Bearer (Maruuk Centaur Paragon Cache)
+    [201440] = 0.02, -- Reins of the Liberated Slyvern (Breezebiter rare, The Azure Span)
+    [201790] = 0.01, -- Renewed Proto-Drake: Embodiment of the Storm-Eater (Raszageth Mythic, Vault of the Incarnates)
+    [205203] = 0.02, -- Cobalt Shalewing (Karokta rare, Zaralek Cavern)
+    [205876] = 0.01, -- Highland Drake: Embodiment of the Hellforged (Scalecommander Sarkareth Mythic, Aberrus)
+    [208216] = 0.01, -- Reins of the Quantum Courser (Chrono-Lord Deios, Dawn of the Infinite)
+    [210061] = 0.01, -- Reins of Anu'relos, Flame's Guidance (Fyrakk Mythic, Amirdrassil)
+    [210976] = 0.0003, -- X-45 Heartbreaker (Apothecary Hummel Heart-Shaped Box)
+    [212645] = 0.02, -- Clayscale Hornstrider (Emerald Dream rare vignettes)
+    -- The War Within & Season 1-2
+    [221765] = 0.01, -- Stonevault Mechsuit (Speaker Brokk / E.D.N.A., The Stonevault)
+    [223270] = 0.01, -- Alunira (Alunira / Storm Vessel, Isle of Dorn)
+    [223315] = 0.03, -- Beledar's Spawn (Beledar's Spawn rare, Hallowfall)
+    [223318] = 0.03, -- Dauntless Imperial Lynx (Hallowfall Arathi Supplies container)
+    [223501] = 0.03, -- Regurgitated Mole Reins (The Ringing Deeps rare vignettes)
+    [224025] = 0.01, -- Crackling Shard (Isle of Dorn Rares)
+    [224147] = 0.01, -- Reins of the Sureki Skyrazor (Queen Ansurek Mythic, Nerub-ar Palace)
+    [224150] = 0.01, -- Siesbarg (Tka'ktath rare, Azj-Kahet)
+    [225548] = 0.01, -- Wick's Lead (The Darkness, Darkflame Cleft)
+    [225952] = 0.01, -- Vial of Tka'ktath's Blood (Tka'ktath rare, Azj-Kahet)
+    [226683] = 0.01, -- Malfunctioning Mechsuit (The Stonevault)
+    [229937] = 0.03, -- Blackwater Bonecrusher (Undermine Blackwater Supply container)
+    [229941] = 0.01, -- Innovation Investigator (Undermine Dungeon / Gallagio rare)
+    [229943] = 0.03, -- Steamwheedle Supplier (Steamwheedle Supply container)
+    [229949] = 0.03, -- Personalized Goblin S.C.R.A.Per (Undermine S.C.R.A.P. container)
+    [229951] = 0.03, -- Venture Co-ordinator (Venture Co. Supply container)
+    [229952] = 0.01, -- Asset Advocator (Undermine Encounter drop)
+    [229953] = 0.03, -- Salvaged Goblin Gazillionaire's Flying Machine (Undermine rare drops)
+    [229954] = 0.01, -- Margin Manipulator (Undermine Encounter drop)
+    [229955] = 0.03, -- Darkfuse Spy-Eye (Undermine rare drops)
+    [229957] = 0.03, -- Bilgewater Bombardier (Bilgewater Supply container)
+    [232840] = 0.02, -- Mechagopher (Undermine Rare Pet)
+    [232841] = 0.02, -- Professor Punch (Undermine Rare Pet)
+    [232842] = 0.02, -- Crimson Mechasaur (Undermine Rare Pet)
+    [232846] = 0.02, -- Steamwheedle Flunkie (Undermine Rare Pet)
+    [232849] = 0.02, -- Venture Companyman (Undermine Rare Pet)
+    [232850] = 0.02, -- Blackwater Kegmover (Undermine Rare Pet)
+    [233064] = 0.03, -- Bronze Goblin Waveshredder (Undermine Waveshredder container)
+    [234741] = 0.02, -- Miscellaneous Mechanica (Undermine Quest/Starter item)
+    [235658] = 0.01, -- Spring Butterfly (Brightly Colored Egg, Noblegarden)
+    [235823] = 0.01, -- Love Witch's Sweeper (Heart-Shaped Box, Love is in the Air)
+    [236960] = 0.03, -- Prototype A.S.M.R. (Chrome King Gallywix, Liberation of Undermine)
+    [239563] = 0.03, -- Void-Scarred Lynx (Hallowfall 11.1.5 Supply container)
+    [242734] = 0.03, -- Curious Slateback (Karesh Curious Cache container)
+    [246067] = 0.03, -- Pearlescent Krolusk (Karesh World Rare drop)
+    [246160] = 0.03, -- Sthaarbs's Last Lunch (Karesh Sthaarbs rare)
+    [246590] = 0.5, -- Ashes of Belo'ren (Midnight Falls Mythic raid, ~50% per-player)
+    [246735] = 0.01, -- Rootstalker Grimlynx (Zul'Aman / Midnight dungeon drop)
+    [247721] = 0.01, -- The Headless Horseman's Ghoulish Charger (Hallow's End modern box)
+    [248761] = 0.015, -- Brewfest Barrel Bomber (Coren Direbrew Keg-Shaped Chest)
+    [252012] = 0.01, -- Vibrant Petalwing (Midnight Encounter drop)
+    [256424] = 0.03, -- Echo of Aln'sharan (Quel'Thalas Void Rare)
+    [257085] = 0.01, -- Augmented Stormray (Midnight Encounter drop)
+    [257147] = 0.01, -- Cobalt Dragonhawk (Midnight Encounter drop)
+    [257152] = 0.01, -- Amani Sharptalon (Midnight Encounter drop)
+    [257156] = 0.01, -- Cerulean Hawkstrider (Midnight Encounter drop)
+    [257176] = 0.03, -- Duskbrute Harrower (Voidstorm Paragon container)
+    [257178] = 0.03, -- Kai (Voidstorm Paragon Pet container)
+    [257180] = 0.03, -- Reins of the Contained Stormarion Defender (Stormarion Pinnacle Cache)
+    [257200] = 0.01, -- Escaped Witherbark Pango (Midnight Encounter drop)
+    [260231] = 0.03, -- Lucent Hawkstrider (Quel'Thalas Sunstrider rare)
+    [260635] = 0.01, -- Sanguine Harrower (Midnight Encounter drop)
+    [260916] = 0.0001, -- Nether-Warped Drake (Midnight Fishing pools)
+    [262914] = 0.03, -- Spectral Hawkstrider (Ghostlands / Sunwell rare)
+    [268730] = 0.01, -- Nether-Warped Egg (Midnight rare drop)
+    [275464] = 0.03, -- Sun Festival's Painted Roc (Sun Festival event container)
+    [275658] = 0.5, -- Primeval Skyfriend (Ula'tek Mythic raid, ~50% per-player)
+    [275659] = 0.01, -- Hexflame Reaver (Ral'kala public event)
+    [276207] = 0.02, -- Preyhunter's Masquerade (Midnight Rare Toy)
+    [276234] = 0.03, -- Vibrant Venomfang (Midnight Coiled Isle Pet container)
+    [276549] = 0.01, -- Topaz Skyfang (Coiled Isle daily rares)
+    [276803] = 0.01, -- Ruby Writhe (Coiled Isle daily rares)
+    [276804] = 0.008, -- The Writhing Brood (Zul'jan Mythic dungeon)
+    [278572] = 0.02, -- Pale Hexscale (Midnight Rare Pet)
+    [280305] = 0.02, -- Soulcoil Remnant (Midnight Boss Pet drop)
+    [280540] = 0.02, -- Lil' Mon (Midnight Rare Pet)
 }
 
--- Returns the known per-attempt drop rate for a mount item, or nil.
--- @param itemID number mount teach-item itemID
--- @return number|nil rate in [0,1]
+-- Returns the teach-item itemID for a given mountID, or nil.
+-- Resolves either from explicit mountID in sources or via C_MountJournal.GetMountFromItem.
+function ns.CollectibleSourceDB.GetItemIDForMount(mountID)
+    if not mountID or type(mountID) ~= "number" then return nil end
+    local db = ns.CollectibleSourceDB
+    if not db then return nil end
+    if not db._mountItemIDByMountID then
+        local idx = {}
+        local function addDrop(drop)
+            if not drop then return end
+            if drop.type == "mount" and drop.itemID then
+                if drop.mountID then
+                    idx[drop.mountID] = drop.itemID
+                elseif C_MountJournal and C_MountJournal.GetMountFromItem then
+                    local mID = C_MountJournal.GetMountFromItem(drop.itemID)
+                    if mID and not (issecretvalue and issecretvalue(mID)) then
+                        idx[mID] = drop.itemID
+                    end
+                end
+            end
+            if drop.yields and type(drop.yields) == "table" then
+                for i = 1, #drop.yields do
+                    addDrop(drop.yields[i])
+                end
+            end
+            if drop.questStarters and type(drop.questStarters) == "table" then
+                for i = 1, #drop.questStarters do
+                    addDrop(drop.questStarters[i])
+                end
+            end
+        end
+        if db.sources and type(db.sources) == "table" then
+            for s = 1, #db.sources do
+                local src = db.sources[s]
+                if src and src.drops and type(src.drops) == "table" then
+                    for d = 1, #src.drops do
+                        addDrop(src.drops[d])
+                    end
+                end
+            end
+        end
+        db._mountItemIDByMountID = idx
+    end
+    return db._mountItemIDByMountID[mountID]
+end
+
+-- Returns the known per-attempt drop rate for a collectible item, or nil.
+-- @param itemID number collectible itemID
+-- @return number|nil rate in (0, 1]
 function ns.CollectibleSourceDB.GetDropRate(itemID)
     if not itemID then return nil end
     local id = tonumber(itemID)
     if not id then return nil end
     local rate = ns.CollectibleSourceDB.dropRates[id]
-    if type(rate) ~= "number" or rate <= 0 or rate >= 1 then return nil end
+    if type(rate) ~= "number" or rate <= 0 or rate > 1 then return nil end
     return rate
 end
 
 -- Cumulative probability of obtaining a drop in N independent attempts.
 -- P(obtained by N tries) = 1 - (1 - rate)^tries
--- @param itemID number mount teach-item itemID
+-- @param itemID number collectible itemID
 -- @param tries number number of attempts (>= 0)
--- @return number|nil P in [0,1], or nil when rate unknown
+-- @return number|nil P in [0, 1], or nil when rate unknown
 function ns.CollectibleSourceDB.GetCumulativeProbability(itemID, tries)
     local rate = ns.CollectibleSourceDB.GetDropRate(itemID)
     if not rate then return nil end
     local n = tonumber(tries) or 0
     if n <= 0 then return 0 end
     return 1 - (1 - rate) ^ n
+end
+
+-- Formats a per-attempt drop rate as a clean percentage string (e.g. 0.01 -> "1%", 0.0003 -> "0.03%").
+-- @param rate number rate in (0, 1]
+-- @return string|nil
+function ns.CollectibleSourceDB.FormatDropRate(rate)
+    if type(rate) ~= "number" or rate <= 0 then return nil end
+    local pct = rate * 100
+    if pct >= 1 then
+        if pct == math.floor(pct) then
+            return string.format("%d%%", pct)
+        else
+            return string.format("%.1f%%", pct)
+        end
+    elseif pct >= 0.01 then
+        return string.format("%.2f%%", pct)
+    else
+        return string.format("%.3f%%", pct)
+    end
+end
+
+-- Formats cumulative probability as percentage string (e.g. 0.14 -> "~14%").
+-- @param cumP number probability in [0, 1]
+-- @return string|nil
+function ns.CollectibleSourceDB.FormatCumulativeProbability(cumP)
+    if type(cumP) ~= "number" or cumP < 0 then return nil end
+    local pct = cumP * 100
+    if pct >= 99.9 then
+        return ">99.9%"
+    elseif pct >= 1 then
+        return string.format("~%d%%", math.floor(pct + 0.5))
+    elseif pct > 0 then
+        return string.format("~%.1f%%", pct)
+    else
+        return "0%"
+    end
 end
