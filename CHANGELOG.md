@@ -5,6 +5,7 @@ Reagent deposit accuracy, profession tracking on alts, and container try counter
 ### Updated
 
 - Improved container try counting when a container is consumed instantly or opened from a stack.
+- Improved Simplified Chinese translations for PvE columns and the Reagent Deposit Manager (thanks to Maple Saint).
 
 ### Fixed
 
