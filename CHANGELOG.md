@@ -1,16 +1,16 @@
-## v3.5.15 (2026-10-05)
+## v3.5.16 (2026-10-08)
 
-Container try counter enhancements, multi-event loot tracking, and hierarchy ordering fixes.
+Reagent deposit accuracy, profession tracking on alts, and container try counter improvements.
 
-### Added
+### Updated
 
-- Added container try count support for holiday chests, paragon caches, and reward bags with drop percentage display.
-- Added comprehensive drop tracking for Keg-Shaped Treasure Chest items including the Brewfest Barrel Bomber, Great Brewfest Kodo, and Swift Brewfest Ram.
+- Improved container try counting when a container is consumed instantly or opened from a stack.
 
 ### Fixed
 
-- Fixed container try counting failing when items or currencies unpack directly into bags without opening a loot window.
-- Fixed an issue where container drops were filtered out by chat loot fast-bail checks.
-- Fixed faction hierarchy ordering to ensure follower reputations and sub-factions group correctly under their parent headers.
-- Fixed visual overlap in the currency view between the search bar and category header text.
-- Fixed warband bank reagent deposit filtering to exclude soulbound and non-reagent items.
+- Fixed the Reagent Deposit Manager moving weapon oils, whetstones and other usable items to the bank. Food, flasks, phials and potions always stay in your bags.
+- Fixed bind-on-equip two-handed swords and warglaives being deposited as Warbound Gear, while real Warbound-until-equipped gear was skipped.
+- Fixed keystones being picked up by reagent deposits.
+- Fixed profession skill levels not updating for characters that are not logged in, including skill-ups gained with the profession window closed or right before logging out.
+- Fixed Midnight profession skill not being tracked on characters that never opened their profession window.
+- Fixed saved profession data being wiped when the game reported professions late during login.
