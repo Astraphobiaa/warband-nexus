@@ -611,8 +611,14 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
         end
     end
 
-    -- Global debounce: any route that already ran within the window blocks all CHAT paths.
-    if V.lastTryCountSourceKey and (now - V.lastTryCountSourceTime) < RT.CHAT_LOOT_DEBOUNCE then
+    local isContainerLoot = (V.lastContainerItemID and RT.containerDropDB[V.lastContainerItemID]
+        and (now - (V.lastContainerItemTime or 0)) < 15)
+        or (V.lastObservedContainerItemID and RT.containerDropDB[V.lastObservedContainerItemID]
+        and (now - (V.lastObservedContainerItemTime or 0)) < 15)
+
+    -- Global debounce: any route that already ran within the window blocks generic NPC/fishing CHAT paths,
+    -- but container unpacking from bags (different source) must not be suppressed by an earlier boss loot.
+    if not isContainerLoot and V.lastTryCountSourceKey and (now - V.lastTryCountSourceTime) < RT.CHAT_LOOT_DEBOUNCE then
         return
     end
 
@@ -660,9 +666,12 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     end
 
     -- Path 1.5: Container loot chat fallback (when container was used within TTL or direct item unpacking)
-    if V.lastContainerItemID and RT.containerDropDB[V.lastContainerItemID]
-        and (now - (V.lastContainerItemTime or 0)) < 15 then
-        local cItemID = V.lastContainerItemID
+    local activeContainerID = V.lastContainerItemID
+    if not activeContainerID and V.lastObservedContainerItemID and (now - (V.lastObservedContainerItemTime or 0)) < 15 then
+        activeContainerID = V.lastObservedContainerItemID
+    end
+    if activeContainerID and RT.containerDropDB[activeContainerID] then
+        local cItemID = activeContainerID
         local cData = RT.containerDropDB[cItemID]
         local cDrops = cData and (cData.drops or cData)
         if cDrops and type(cDrops) == "table" and #cDrops > 0 then
@@ -681,6 +690,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             if foundDrop then
                 V.lastContainerItemID = nil
                 V.lastContainerItemTime = 0
+                V.lastObservedContainerItemID = nil
                 if not foundDrop.repeatable and foundDrop.type == "item" then Fns.MarkItemObtained(foundDrop.itemID) end
                 local tcType, tryKey = Fns.GetTryCountTypeAndKey(foundDrop)
                 if tryKey and not Fns.IsObtainOutcomeApplied(tcType, tryKey, foundDrop) then
@@ -713,6 +723,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             if V.lastTryCountSourceKey ~= containerSourceKey or (now - (V.lastTryCountSourceTime or 0)) >= RT.CHAT_LOOT_DEBOUNCE then
                 V.lastContainerItemID = nil
                 V.lastContainerItemTime = 0
+                V.lastObservedContainerItemID = nil
                 V.lastTryCountSourceKey = containerSourceKey
                 V.lastTryCountSourceTime = now
                 if #trackable > 0 then

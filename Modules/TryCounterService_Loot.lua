@@ -1107,8 +1107,15 @@ end
 ---was opened, enabling targeted try count increment on miss.
 function WarbandNexus:ProcessContainerLoot(lootRouteSource)
     lootRouteSource = lootRouteSource or "opened"
+    local now = GetTime()
     local containerItemID = V.lastContainerItemID
+    if not containerItemID and V.lastObservedContainerItemID and (now - (V.lastObservedContainerItemTime or 0)) < 15 then
+        containerItemID = V.lastObservedContainerItemID
+    end
     V.lastContainerItemID = nil  -- Consume immediately to prevent stale data
+    -- The observed fallback is single-use: once a container route runs, later loot (e.g. a mob kill
+    -- inside the 15s window) must not be attributed to the same container again.
+    V.lastObservedContainerItemID = nil
 
     -- If we know which container was opened, do targeted detection
     if containerItemID and RT.containerDropDB[containerItemID] then

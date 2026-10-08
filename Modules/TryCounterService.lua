@@ -631,6 +631,10 @@ V.isProfessionLooting = false -- set on profession spell cast, cleared on LOOT_C
 isBlockingInteractionOpen = false -- true when bank/vendor/AH/mail/trade UI is open
 V.lastContainerItemID = nil  -- set on container use
 V.lastContainerItemTime = 0  -- timestamp when container use/lock was observed (for LOOT_CLOSED fallback)
+V.lastObservedContainerItemID = nil -- persistent container ID from recent use/lock (fallback if lastContainerItemID cleared early)
+V.lastObservedContainerItemTime = 0
+V.lastContainerItemCount = 1
+V.bagSlotItemCache = {}  -- [slotKey] = itemID : caches itemID before consume/destruction (on V: main chunk is near the 200-local cap)
 local resolvedIDs = {}       -- [itemID] = { type, collectibleID } - runtime resolved mount/pet IDs
 local resolvedIDsReverse = {} -- [collectibleID] = itemID - reverse lookup for O(1) IndexLookup
 local lockoutAttempted = {}  -- [questID] = true : tracks which lockout quests we've already counted this reset period
@@ -5800,31 +5804,46 @@ end
 
 function Fns.ScheduleContainerOpenAttempt(cItemID, bagID, slotID)
     if not cItemID or not containerDropDB[cItemID] then return end
+    local now = GetTime()
     V.lastContainerItemID = cItemID
-    V.lastContainerItemTime = GetTime()
+    V.lastContainerItemTime = now
+    V.lastObservedContainerItemID = cItemID
+    V.lastObservedContainerItemTime = now
     V.lastContainerItemBag = bagID
     V.lastContainerItemSlot = slotID
+    if bagID and slotID and C_Container and C_Container.GetContainerItemInfo then
+        local info = C_Container.GetContainerItemInfo(bagID, slotID)
+        V.lastContainerItemCount = (info and info.stackCount) or 1
+    else
+        V.lastContainerItemCount = 1
+    end
 
     -- Safety fallback timer: if no LOOT_OPENED, CHAT_MSG_LOOT, or CHAT_MSG_CURRENCY fired
     -- within 0.75s (e.g. silent unpack or slow client event dispatch), commit attempt if the
     -- container item was indeed consumed from that slot.
     C_Timer.After(0.75, function()
         if V.lastContainerItemID == cItemID and (GetTime() - (V.lastContainerItemTime or 0)) <= 3.0 then
-            local now = GetTime()
+            local nowTimer = GetTime()
             local containerSourceKey = "container_" .. tostring(cItemID)
-            if V.lastTryCountSourceKey ~= containerSourceKey or (now - (V.lastTryCountSourceTime or 0)) >= CHAT_LOOT_DEBOUNCE then
+            if V.lastTryCountSourceKey ~= containerSourceKey or (nowTimer - (V.lastTryCountSourceTime or 0)) >= CHAT_LOOT_DEBOUNCE then
                 local isConsumed = true
                 if bagID and slotID and C_Container and C_Container.GetContainerItemID then
                     local currentID = C_Container.GetContainerItemID(bagID, slotID)
                     if currentID == cItemID then
-                        isConsumed = false -- Still sitting in the exact same bag slot unconsumed
+                        local info = C_Container.GetContainerItemInfo and C_Container.GetContainerItemInfo(bagID, slotID)
+                        local currentCount = (info and info.stackCount) or 1
+                        local prevCount = V.lastContainerItemCount or 1
+                        if currentCount >= prevCount then
+                            isConsumed = false -- Still sitting in the exact same bag slot unconsumed
+                        end
                     end
                 end
                 if isConsumed then
                     V.lastContainerItemID = nil
                     V.lastContainerItemTime = 0
+                    V.lastObservedContainerItemID = nil
                     V.lastTryCountSourceKey = containerSourceKey
-                    V.lastTryCountSourceTime = now
+                    V.lastTryCountSourceTime = nowTimer
                     local cData = containerDropDB[cItemID]
                     local cDrops = cData and (cData.drops or cData)
                     if cDrops and type(cDrops) == "table" and #cDrops > 0 then
@@ -5871,6 +5890,7 @@ function WarbandNexus:OnTryCounterChatMsgCurrency(event, message)
             if V.lastTryCountSourceKey ~= containerSourceKey or (now - (V.lastTryCountSourceTime or 0)) >= CHAT_LOOT_DEBOUNCE then
                 V.lastContainerItemID = nil
                 V.lastContainerItemTime = 0
+                V.lastObservedContainerItemID = nil
                 V.lastTryCountSourceKey = containerSourceKey
                 V.lastTryCountSourceTime = now
                 if #trackable > 0 then
@@ -5897,7 +5917,14 @@ function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
     if bagID < 0 or bagID > maxCarriedBagID then return end
     if not C_Container or not C_Container.GetContainerItemID then return end
 
+    local slotKey = bagID * 100 + slotID
     local itemID = C_Container.GetContainerItemID(bagID, slotID)
+    if itemID and not (issecretvalue and issecretvalue(itemID)) then
+        V.bagSlotItemCache[slotKey] = itemID
+    else
+        itemID = V.bagSlotItemCache[slotKey]
+        V.bagSlotItemCache[slotKey] = nil
+    end
     if not itemID then return end
     if issecretvalue and issecretvalue(itemID) then return end
     if not containerDropDB[itemID] then return end
@@ -7062,7 +7089,13 @@ function WarbandNexus:InitializeTryCounter()
                     local safeBag = not (issecretvalue and issecretvalue(bagID)) and bagID or nil
                     local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and slotIndex or nil
                     if safeBag and safeSlot and safeBag >= 0 and safeBag <= maxCarriedBagID then
+                        local slotKey = safeBag * 100 + safeSlot
                         local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
+                        if itemID and not (issecretvalue and issecretvalue(itemID)) then
+                            V.bagSlotItemCache[slotKey] = itemID
+                        else
+                            itemID = V.bagSlotItemCache[slotKey]
+                        end
                         if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
                             Fns.ScheduleContainerOpenAttempt(itemID, safeBag, safeSlot)
                         end
@@ -7081,7 +7114,13 @@ function WarbandNexus:InitializeTryCounter()
                     local safeBag = not (issecretvalue and issecretvalue(bagID)) and bagID or nil
                     local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and slotIndex or nil
                     if safeBag and safeSlot and safeBag >= 0 and safeBag <= maxCarriedBagID then
+                        local slotKey = safeBag * 100 + safeSlot
                         local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
+                        if itemID and not (issecretvalue and issecretvalue(itemID)) then
+                            V.bagSlotItemCache[slotKey] = itemID
+                        else
+                            itemID = V.bagSlotItemCache[slotKey]
+                        end
                         if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
                             Fns.ScheduleContainerOpenAttempt(itemID, safeBag, safeSlot)
                         end
