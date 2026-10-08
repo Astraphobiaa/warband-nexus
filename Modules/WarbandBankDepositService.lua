@@ -77,115 +77,30 @@ local function GetEffectiveDepositSettings()
     return DEFAULT_SETTINGS
 end
 
----Check if an item is consumable food or drink (including Warbound hearty feasts/meals)
-local function IsFoodItem(itemID, bagID, slot)
-    if not itemID then return false end
+-- Item class / subclass IDs (verified against Blizzard_APIDocumentationGenerated
+-- ItemConstantsDocumentation 12.1.0 (69933) and warcraft.wiki.gg/wiki/ItemType, 2026-10-08).
+-- classID/subClassID come from C_Item.GetItemInfoInstant, which is locale-independent and
+-- works for uncached items, so no tooltip or spell-name heuristics are needed.
+local ITEM_CLASS_CONSUMABLE  = (Enum.ItemClass and Enum.ItemClass.Consumable) or 0
+local ITEM_CLASS_REAGENT     = (Enum.ItemClass and Enum.ItemClass.Reagent) or 5
+local ITEM_CLASS_ENHANCEMENT = (Enum.ItemClass and Enum.ItemClass.ItemEnhancement) or 8
+local CONSUMABLE_SUBCLASS_FOOD = (Enum.ItemConsumableSubclass and Enum.ItemConsumableSubclass.Fooddrink) or 5
+-- Reagent class (5): only subclass 0 is a crafting reagent; 1 = Keystone, 2 = Context Token
+local REAGENT_SUBCLASS_REAGENT = (Enum.ItemReagentSubclass and Enum.ItemReagentSubclass.Reagent) or 0
 
-    -- 1. Check item class and subclass via instant query
-    if C_Item and C_Item.GetItemInfoInstant then
-        local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
-        -- Enum.ItemClass.Consumable is 0, subclass 5 is Food & Drink
-        local consumableClass = (Enum.ItemClass and Enum.ItemClass.Consumable) or 0
-        local foodSubclass = (Enum.ItemConsumableSubclass and Enum.ItemConsumableSubclass.FoodAndDrink) or 5
-        if classID == consumableClass and subClassID == foodSubclass then
-            return true
-        end
-    end
-
-    -- 2. Check full GetItemInfo if available (fallback)
-    if C_Item and C_Item.GetItemInfo then
-        local ok, _, _, _, _, _, _, _, _, _, _, classID, subClassID = pcall(C_Item.GetItemInfo, itemID)
-        if ok and classID then
-            local consumableClass = (Enum.ItemClass and Enum.ItemClass.Consumable) or 0
-            local foodSubclass = (Enum.ItemConsumableSubclass and Enum.ItemConsumableSubclass.FoodAndDrink) or 5
-            if classID == consumableClass and subClassID == foodSubclass then
-                return true
-            end
-        end
-    end
-
-    -- 3. Check item spell / effect (food buff check)
-    if C_Item and C_Item.GetItemSpell then
-        local ok, spellName = pcall(C_Item.GetItemSpell, itemID)
-        if ok and spellName and not (issecretvalue and issecretvalue(spellName)) and type(spellName) == "string" then
-            local lower = spellName:lower()
-            if lower:find("food") or lower:find("feast") or lower:find("well fed") or lower:find("eating") then
-                return true
-            end
-        end
-    end
-
-    -- 4. Tooltip scan if bag and slot are provided
-    if bagID and slot and C_TooltipInfo and C_TooltipInfo.GetBagItem then
-        local ok, tipData = pcall(C_TooltipInfo.GetBagItem, bagID, slot)
-        if ok and tipData and tipData.lines then
-            for i = 1, #tipData.lines do
-                local line = tipData.lines[i]
-                local lt = line and line.leftText
-                if lt and not (issecretvalue and issecretvalue(lt)) and type(lt) == "string" then
-                    if lt:find("Well Fed", 1, true) or lt:find("Must remain seated while eating", 1, true) then
-                        return true
-                    end
-                end
-            end
-        end
-    end
-
-    return false
+---Check if an item is food or drink (Consumable > Food & Drink, including Warbound hearty meals)
+local function IsFoodItem(itemID)
+    if not itemID or not C_Item or not C_Item.GetItemInfoInstant then return false end
+    local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
+    return classID == ITEM_CLASS_CONSUMABLE and subClassID == CONSUMABLE_SUBCLASS_FOOD
 end
 
----Check if an item is a combat enhancement or raid consumable (Weapon Oils, Sharpening Stones, Armor Kits, Augment Runes, Flasks, Potions)
-local function IsCombatEnhancementItem(itemID, bagID, slot)
-    if not itemID then return false end
-
-    -- 1. Check item class
-    local consumableClass = (Enum.ItemClass and Enum.ItemClass.Consumable) or 0
-    local enhancementClass = (Enum.ItemClass and Enum.ItemClass.ItemEnhancement) or 8
-
-    if C_Item and C_Item.GetItemInfoInstant then
-        local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
-        if classID == enhancementClass or classID == consumableClass then
-            return true
-        end
-    end
-
-    if C_Item and C_Item.GetItemInfo then
-        local ok, _, _, _, _, _, _, _, _, _, _, classID = pcall(C_Item.GetItemInfo, itemID)
-        if ok and (classID == enhancementClass or classID == consumableClass) then
-            return true
-        end
-    end
-
-    -- 2. Check item spell / effect (e.g. oils, sharpening stones, runes)
-    if C_Item and C_Item.GetItemSpell then
-        local ok, spellName = pcall(C_Item.GetItemSpell, itemID)
-        if ok and spellName and not (issecretvalue and issecretvalue(spellName)) and type(spellName) == "string" then
-            local lower = spellName:lower()
-            if lower:find("oil") or lower:find("whetstone") or lower:find("weightstone")
-                or lower:find("armor kit") or lower:find("rune") or lower:find("enchant") then
-                return true
-            end
-        end
-    end
-
-    -- 3. Tooltip check for applied enhancement wording
-    if bagID and slot and C_TooltipInfo and C_TooltipInfo.GetBagItem then
-        local ok, tipData = pcall(C_TooltipInfo.GetBagItem, bagID, slot)
-        if ok and tipData and tipData.lines then
-            for i = 1, #tipData.lines do
-                local line = tipData.lines[i]
-                local lt = line and line.leftText
-                if lt and not (issecretvalue and issecretvalue(lt)) and type(lt) == "string" then
-                    local lower = lt:lower()
-                    if lower:find("apply to weapon") or lower:find("apply to armor") or lower:find("temporary item enhancement") then
-                        return true
-                    end
-                end
-            end
-        end
-    end
-
-    return false
+---Check if an item is a finished consumable or item enhancement (food, potions, flasks, phials,
+---weapon oils, sharpening stones, armor kits, augment runes, curios). These are never deposited.
+local function IsFinishedConsumableItem(itemID)
+    if not itemID or not C_Item or not C_Item.GetItemInfoInstant then return false end
+    local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
+    return classID == ITEM_CLASS_CONSUMABLE or classID == ITEM_CLASS_ENHANCEMENT
 end
 
 ---Check if an item is equipment / gear (Weapons, Armor, Shields, Trinkets, Rings, Profession Tools)
@@ -222,11 +137,6 @@ local function IsWarboundGearItem(bagID, slot, itemID)
         return false
     end
 
-    -- 2. Must NOT be food or consumable
-    if IsFoodItem(itemID, bagID, slot) then
-        return false
-    end
-
     -- 3. Must NOT be part of a saved player equipment set
     if C_Container and C_Container.GetContainerItemEquipmentSetInfo then
         local ok, inSet = pcall(C_Container.GetContainerItemEquipmentSetInfo, bagID, slot)
@@ -236,48 +146,33 @@ local function IsWarboundGearItem(bagID, slot, itemID)
     end
 
     -- 4. Must be allowed in Account Bank (not soulbound to current character)
-    if C_Bank and C_Bank.IsItemAllowedInBankType and ItemLocation and ItemLocation.CreateFromBagAndSlot then
-        local itemLocation = ItemLocation:CreateFromBagAndSlot(bagID, slot)
-        if itemLocation and itemLocation.IsValid and itemLocation:IsValid() then
-            local ok, allowed = pcall(C_Bank.IsItemAllowedInBankType, Enum.BankType.Account, itemLocation)
-            if not ok or not allowed then
-                return false
-            end
+    local itemLocation
+    if ItemLocation and ItemLocation.CreateFromBagAndSlot then
+        itemLocation = ItemLocation:CreateFromBagAndSlot(bagID, slot)
+        if itemLocation and not (itemLocation.IsValid and itemLocation:IsValid()) then
+            itemLocation = nil
+        end
+    end
+    if itemLocation and C_Bank and C_Bank.IsItemAllowedInBankType then
+        local ok, allowed = pcall(C_Bank.IsItemAllowedInBankType, Enum.BankType.Account, itemLocation)
+        if not ok or not allowed then
+            return false
         end
     end
 
-    -- 5. Check raw bind type from item info
+    -- 5. Live bind state of this exact item ("Warbound until equipped" and not yet equipped)
+    if itemLocation and C_Item and C_Item.IsBoundToAccountUntilEquip then
+        local ok, isWuE = pcall(C_Item.IsBoundToAccountUntilEquip, itemLocation)
+        if ok and isWuE then
+            return true
+        end
+    end
+
+    -- 6. Template bind type (Enum.ItemBind: 7 ToWoWAccount, 8 ToBnetAccount, 9 ToBnetAccountUntilEquipped)
     if C_Item and C_Item.GetItemInfo then
-        local ok, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(C_Item.GetItemInfo, itemID)
-        if ok and bindType then
-            -- 9 = ITEM_BIND_BNET_UNTIL_EQUIPPED ("Warbound until equipped")
-            -- 8 = LE_ITEM_BIND_TO_BNETACCOUNT ("Binds to Battle.net Account")
-            if bindType == 9 or bindType == 8 or bindType == (ITEM_BIND_WARBAND or 10) then
-                return true
-            end
-        end
-    end
-
-    -- 6. Check tooltip lines for Warbound markers
-    if C_TooltipInfo and C_TooltipInfo.GetBagItem then
-        local ok, tipData = pcall(C_TooltipInfo.GetBagItem, bagID, slot)
-        if ok and tipData and tipData.lines then
-            local strWuE = _G.ITEM_ACCOUNTBOUND_UNTIL_EQUIP or "Warbound until equipped"
-            local strWB1 = _G.ITEM_BIND_TO_BNETACCOUNT or "Binds to Battle.net Account"
-            local strWB2 = _G.ITEM_BIND_TO_ACCOUNT or "Binds to Account"
-            local strWB3 = _G.ITEM_BIND_TO_WARBAND or "Binds to Warband"
-            local strWB4 = "Warbound"
-
-            for li = 1, #tipData.lines do
-                local lt = tipData.lines[li] and tipData.lines[li].leftText
-                if lt and not (issecretvalue and issecretvalue(lt)) and type(lt) == "string" then
-                    if lt:find(strWuE, 1, true) or lt:find("until equipped", 1, true)
-                        or lt:find(strWB3, 1, true) or lt:find(strWB1, 1, true)
-                        or lt:find(strWB2, 1, true) or lt:find(strWB4, 1, true) then
-                        return true
-                    end
-                end
-            end
+        local ok, _, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(C_Item.GetItemInfo, itemID)
+        if ok and (bindType == 7 or bindType == 8 or bindType == 9) then
+            return true
         end
     end
 
@@ -296,13 +191,12 @@ local function GetItemReagentCategory(itemID)
 
     -- Finished Consumables (Food, Drinks, Potions, Flasks, Elixirs, Bandages) and Item Enhancements
     -- (Weapon Oils, Sharpening Stones, Armor Kits, Enchant Scrolls, Augment Runes) are NEVER crafting reagents
-    local consumableClass = (Enum.ItemClass and Enum.ItemClass.Consumable) or 0
-    local enhancementClass = (Enum.ItemClass and Enum.ItemClass.ItemEnhancement) or 8
-    if classID == consumableClass or classID == enhancementClass then
+    if classID == ITEM_CLASS_CONSUMABLE or classID == ITEM_CLASS_ENHANCEMENT then
         return nil
     end
 
-    if IsCombatEnhancementItem(itemID) then
+    -- Reagent class: Keystones and Context Tokens are not crafting reagents
+    if classID == ITEM_CLASS_REAGENT and subClassID ~= REAGENT_SUBCLASS_REAGENT then
         return nil
     end
 
@@ -324,10 +218,20 @@ local function GetItemReagentCategory(itemID)
         return "gems"
     end
 
+    -- Usable items outside Trade Goods / Gems are finished goods, not reagents. Midnight weapon
+    -- oils and whetstones are Miscellaneous > Other (15/4), e.g. Thalassian Mana Oil 259201 and
+    -- Thalassian Whetstone 259190 (wago.tools Item DB2, 2026-10-08), so the class check misses them.
+    if C_Item.GetItemSpell then
+        local okSpell, _, useSpellID = pcall(C_Item.GetItemSpell, itemID)
+        if okSpell and useSpellID then
+            return nil
+        end
+    end
+
     -- Check isCraftingReagent via GetItemInfo if available (only for non-consumable, non-gear items)
     if C_Item.GetItemInfo then
-        local isReagent = select(17, C_Item.GetItemInfo(itemID))
-        if isReagent then
+        local ok, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, isReagent = pcall(C_Item.GetItemInfo, itemID)
+        if ok and isReagent then
             return "general"
         end
     end
@@ -348,17 +252,14 @@ local function CollectDepositItems(bankType, categories, ignoreFood)
         for slot = 1, numSlots do
             local info = C_Container.GetContainerItemInfo(bagID, slot)
             if info and info.itemID and not info.isLocked then
-                -- Food & raid enhancement check: food/drink/feasts/oils/enhancements are fundamentally excluded
-                local isFood = IsFoodItem(info.itemID, bagID, slot)
-                local isEnhance = IsCombatEnhancementItem(info.itemID, bagID, slot)
-                if not (ignoreFood and isFood) and not isEnhance then
+                -- Food, potions, flasks, oils and other finished consumables are never deposited.
+                -- ignoreFood is kept as an explicit guard; food is already a finished consumable.
+                local isFood = IsFoodItem(info.itemID)
+                if not (ignoreFood and isFood) and not IsFinishedConsumableItem(info.itemID) then
                     local matched = false
                     local cat = GetItemReagentCategory(info.itemID)
                     if cat and categories[cat] then
-                        -- Double-check safety: food/enhancements are never deposited as a reagent
-                        if not isFood and not isEnhance then
-                            matched = true
-                        end
+                        matched = true
                     elseif checkWarboundGear and IsWarboundGearItem(bagID, slot, info.itemID) then
                         matched = true
                     end

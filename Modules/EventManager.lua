@@ -97,7 +97,8 @@ end
     Updates basic profession data, expansion data, and detects profession changes.
 ]]
 function WarbandNexus:OnSkillLinesChanged()
-    Throttle("SKILL_UPDATE", 2.0, function()
+    -- Debounce (trailing edge): a leading-edge throttle dropped the last skill-up of a gathering burst.
+    Debounce("SKILL_UPDATE", 2.0, function()
         -- Delegate to ProfessionService ONLY if module is enabled
         -- (data collection, stale data cleanup, expansion refresh)
         if ns.Utilities and ns.Utilities:IsModuleEnabled("professions") then

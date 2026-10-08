@@ -1193,6 +1193,26 @@ local function CollectExpansionFromOpenProfession()
     return parentName, expansions
 end
 
+local MIDNIGHT_SKILLLINE_TO_PARENT = {
+    [2906] = 171, -- Alchemy
+    [2907] = 164, -- Blacksmithing
+    [2909] = 333, -- Enchanting
+    [2910] = 202, -- Engineering
+    [2912] = 182, -- Herbalism
+    [2913] = 773, -- Inscription
+    [2914] = 755, -- Jewelcrafting
+    [2915] = 165, -- Leatherworking
+    [2916] = 186, -- Mining
+    [2917] = 393, -- Skinning
+    [2918] = 197, -- Tailoring
+}
+
+-- Base profession skillLine -> Midnight child skillLine (inverse of the table above).
+local MIDNIGHT_PARENT_TO_SKILLLINE = {}
+for childID, parentID in pairs(MIDNIGHT_SKILLLINE_TO_PARENT) do
+    MIDNIGHT_PARENT_TO_SKILLLINE[parentID] = childID
+end
+
 --[[
     Collect expansion sub-profession data.
     
@@ -1257,6 +1277,36 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
     -- This works on login without the profession frame being open
     if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionInfoBySkillLineID then return end
 
+    -- Seed the Midnight skill line for primary professions that were never opened in the
+    -- profession window on this character; otherwise the expansion skill is never tracked.
+    if GetProfessions and GetProfessionInfo then
+        local p1, p2 = GetProfessions()
+        local primaries = { p1, p2 }
+        for pi = 1, 2 do
+            local idx = primaries[pi]
+            if idx then
+                local okInfo, baseName, _, _, _, _, _, baseSkillLine = pcall(GetProfessionInfo, idx)
+                local safeName = okInfo and SafeAPIString(baseName) or nil
+                local childID = okInfo and baseSkillLine and MIDNIGHT_PARENT_TO_SKILLLINE[baseSkillLine]
+                if safeName and childID then
+                    local list = charData.discoveredSkillLines[safeName]
+                    local known = false
+                    if type(list) == "table" then
+                        for li = 1, #list do
+                            if list[li] and list[li].id == childID then known = true break end
+                        end
+                    else
+                        list = {}
+                        charData.discoveredSkillLines[safeName] = list
+                    end
+                    if not known then
+                        list[#list + 1] = { id = childID }
+                    end
+                end
+            end
+        end
+    end
+
     for profName, skillLines in pairs(charData.discoveredSkillLines) do
         if skillLines and #skillLines > 0 then
             local expansions = {}
@@ -1275,7 +1325,8 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
                         skillLineID   = sl.id,
                     }
                     local bucket = EnsureSkillLineBucket(charData, sl.id, profName, updatedName)
-                    if bucket then
+                    -- 0/0 means the profession system is not loaded yet; keep the stored skill.
+                    if bucket and (maxSkillLevel > 0 or not bucket.skill) then
                         bucket.skill = {
                             current = skillLevel,
                             max = maxSkillLevel,
@@ -1592,20 +1643,6 @@ for slID, source in pairs(MIDNIGHT_WEEKLY_SOURCES) do
         catchUpCurrencyToSkillLine[cid] = slID
     end
 end
-
-local MIDNIGHT_SKILLLINE_TO_PARENT = {
-    [2906] = 171, -- Alchemy
-    [2907] = 164, -- Blacksmithing
-    [2909] = 333, -- Enchanting
-    [2910] = 202, -- Engineering
-    [2912] = 182, -- Herbalism
-    [2913] = 773, -- Inscription
-    [2914] = 755, -- Jewelcrafting
-    [2915] = 165, -- Leatherworking
-    [2916] = 186, -- Mining
-    [2917] = 393, -- Skinning
-    [2918] = 197, -- Tailoring
-}
 
 local function CharacterHasMidnightSkillLine(charData, skillLineID)
     if not charData or not skillLineID then return false end
@@ -3694,6 +3731,10 @@ end
 
 ---@return boolean
 function WarbandNexus:IsExpansionProfessionsPersistedWarm()
+    -- Never skip the login refresh: stored rows say nothing about freshness, so a warm skip froze
+    -- expansion skill for alts (skill-ups made with the profession window closed were never re-read)
+    -- and blocked seeding of the Midnight skill line. The refresh is a handful of cheap API reads.
+    do return false end
     if not self.db or not self.db.global then return false end
     local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return false end
@@ -4030,6 +4071,12 @@ function WarbandNexus:FlushProfessionOnLogout()
         professionQuestProgressDebounceTimer:Cancel()
         professionQuestProgressDebounceTimer = nil
     end
+
+    -- Persist the latest skill levels: a pending SKILL_UPDATE debounce dies with the session.
+    if self.UpdateProfessionData then
+        pcall(self.UpdateProfessionData, self)
+    end
+    pcall(CollectAllExpansionProfessions, false)
 
     local charKey = ResolveTrackedCharactersTableKey()
     local charData = charKey and self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]

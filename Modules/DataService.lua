@@ -999,11 +999,10 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     
     -- Collect Profession data (only if new character or professions don't exist)
     local professionData = nil
+    -- _professionDataReady is set only from a live collection: it lets an empty GetProfessions()
+    -- result overwrite saved rows, so preserved (stale) data must not arm it.
     if lightOnly then
         professionData = existingEntry and existingEntry.professions
-        if professionData and next(professionData) then
-            ns._professionDataReady = true
-        end
     elseif isNew or not existingSnapshot or not existingSnapshot.professions then
         professionData = self:CollectProfessionData()
         if professionData and next(professionData) then
@@ -1012,9 +1011,6 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     else
         -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
         professionData = existingSnapshot.professions
-        if professionData and next(professionData) then
-            ns._professionDataReady = true
-        end
     end
     
     -- Average item level: ALWAYS fresh from the API, light path included.
