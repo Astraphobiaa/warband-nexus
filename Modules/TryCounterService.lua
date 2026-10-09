@@ -4168,6 +4168,8 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
 
     local npcID = ctx.matchedNpcID or ctx.slotBossNpcID
     if npcID and Fns.IsLockoutDuplicate(npcID) then return false end
+    -- Already counted by the ENCOUNTER_END lootless fallback; the outcome pass consumes the mark.
+    if npcID and Fns.HasLootlessMissForNpc(npcID) then return false end
 
     local tryCountSourceKey = ctx.slotOutcomeSourceKey
         or Fns.BuildTryCountSourceKey(ctx.matchedEncounterID, ctx.matchedNpcID, ctx.lastMatchedObjectID, ctx.dedupGUID)
@@ -4466,6 +4468,10 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
         if not found[d.itemID] and not Fns.ShouldSkipMissIncrementForDrop(d) then
             dropsToIncrement[#dropsToIncrement + 1] = d
         end
+    end
+    -- The lootless fallback already counted this kill; obtain detection above still ran.
+    if matchedNpcID and Fns.ConsumeLootlessMissForNpc(matchedNpcID) then
+        dropsToIncrement = {}
     end
 
     local now = GetTime()

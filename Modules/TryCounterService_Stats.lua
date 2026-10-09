@@ -633,6 +633,23 @@ end
 
 local ENCOUNTER_LOOTLESS_MISS_DELAYS = { 4, 10 }
 
+-- [npcID] = GetTime() when the lootless fallback counted that boss. The fallback clears the kill's
+-- recent-kill entry, and its source key only blocks loot for 15s, so a corpse looted later (adds, RP,
+-- walking back) was matched by GUID and counted the same kill a second time. One loot consumes it.
+RT.lootlessMissCountedAt = RT.lootlessMissCountedAt or {}
+
+function Fns.HasLootlessMissForNpc(npcID)
+    local t = npcID and RT.lootlessMissCountedAt[npcID]
+    return t ~= nil and (GetTime() - t) < (RT.ENCOUNTER_OBJECT_TTL or 300)
+end
+
+function Fns.ConsumeLootlessMissForNpc(npcID)
+    if not npcID then return false end
+    local had = Fns.HasLootlessMissForNpc(npcID)
+    RT.lootlessMissCountedAt[npcID] = nil
+    return had
+end
+
 --- Invalidate pending ENCOUNTER_END lootless miss timers (loot path already counted this boss).
 function Fns.CancelEncounterLootlessMissFallback()
     RT.statState.encounterLootlessMissSerial = (RT.statState.encounterLootlessMissSerial or 0) + 1
@@ -685,6 +702,7 @@ function Fns.ScheduleEncounterLootlessMissFallback(npcID, difficultyID, encounte
         end
         Fns.TryCounterLootDebugDropLines(WarbandNexus, "EncounterLootless", missed, 1)
         Fns.ProcessMissedDrops(missed, drops.statisticIds, { attemptTimes = 1 })
+        RT.lootlessMissCountedAt[npcID] = GetTime()
         if Fns.ClearEncounterRecentKillsForNpcId then
             Fns.ClearEncounterRecentKillsForNpcId(npcID)
         end

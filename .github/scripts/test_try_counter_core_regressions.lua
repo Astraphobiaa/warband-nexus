@@ -411,6 +411,43 @@ end
 check(BossKill(false) == 1, "control: ENCOUNTER_END alone counts once")
 check(BossKill(true, 0) == 1, "BOSS_KILL in the same frame: still counts once")
 check(BossKill(true, 0.1) == 1, "BOSS_KILL 0.1s later: still counts once")
+print("phase 4h: a boss corpse looted after the lootless fallback is not counted again")
+for _, walk in ipairs({ 2, 6, 20, 60 }) do
+    stub.Advance(60)
+    stub.Reset()
+    local before = WN:GetTryCount("mount", RAPTOR) or 0
+    stub.Fire("ENCOUNTER_START", MANDOKIR_ENC, "Bloodlord Mandokir", 2, 5)
+    stub.Advance(30)
+    stub.Fire("ENCOUNTER_END", MANDOKIR_ENC, "Bloodlord Mandokir", 2, 5, 1)
+    stub.Advance(walk)
+    stub.world.lootSlots = { { hasItem = true, link = "|Hitem:69605::::::::::::::::|h[Sword]|h" } }
+    stub.world.lootSources = { { ("Creature-0-0-0-0-%d-%012d"):format(52151, 500 + walk), 1 } }
+    stub.Fire("LOOT_READY", false)
+    stub.Fire("LOOT_OPENED", false, false)
+    stub.Advance(0.05)
+    stub.Fire("LOOT_CLOSED")
+    stub.Advance(30)
+    local delta = (WN:GetTryCount("mount", RAPTOR) or 0) - before
+    check(delta == 1, ("corpse looted %ds after the kill: counted once (got %d)"):format(walk, delta))
+end
+stub.Advance(60)
+stub.Reset()
+stub.Fire("ENCOUNTER_START", MANDOKIR_ENC, "Bloodlord Mandokir", 2, 5)
+stub.Advance(30)
+stub.Fire("ENCOUNTER_END", MANDOKIR_ENC, "Bloodlord Mandokir", 2, 5, 1)
+stub.Advance(20)
+stub.world.lootSlots = { { hasItem = true, link = "|Hitem:" .. RAPTOR .. "::::::::::::::::|h[Raptor]|h" } }
+stub.world.lootSources = { { ("Creature-0-0-0-0-%d-%012d"):format(52151, 777), 1 } }
+stub.Fire("LOOT_READY", false)
+stub.Fire("LOOT_OPENED", false, false)
+stub.Advance(0.05)
+stub.Fire("LOOT_CLOSED")
+stub.Advance(30)
+local gotLine = false
+for i = 1, #stub.chat do
+    if stub.chat[i]:find("You got", 1, true) or stub.chat[i]:find("Obtained", 1, true) then gotLine = true end
+end
+check(gotLine, "the mount on a late-looted corpse is still detected as obtained")
 stub.world.inInstance = false
 stub.world.instanceType = "none"
 

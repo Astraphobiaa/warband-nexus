@@ -71,6 +71,9 @@ function WarbandNexus:OnTryCounterEncounterStart(event, encounterID, encounterNa
         RT.currentEncounterCache._graceTimer:Cancel()
         RT.currentEncounterCache._graceTimer = nil
     end
+    -- A new pull starts a new kill: a lootless-miss mark left by an earlier kill (instance reset and
+    -- re-farm inside its TTL) must not swallow this kill's corpse loot.
+    if RT.lootlessMissCountedAt then wipe(RT.lootlessMissCountedAt) end
 
     -- Filter secrets: partial capture is still useful (e.g. have difficultyID + name but not ID).
     local safeEncID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
