@@ -216,6 +216,56 @@ stub.Advance(30)
 stub.Fire("UNIT_SPELLCAST_SENT", "player", nil, "Cast-3", 8613)      -- Skinning that succeeds
 check(KillRare(1) == 0, "skinning loot right after the cast is still skipped")
 
+print("phase 4c: a living targeted rare is never the loot source")
+local function OpenLoot(sources, gap)
+    stub.Advance(gap or 30)
+    stub.Reset()
+    stub.world.mapID = 1527
+    stub.world.isFishingLoot = false
+    stub.world.lootSlots = { { hasItem = true, link = "|Hitem:2589::::::::::::::::|h[Linen]|h" } }
+    stub.world.lootSources = sources
+    local before = RareCount()
+    stub.Fire("LOOT_READY", true)
+    stub.Advance(0.05)
+    stub.Fire("LOOT_CLOSED")   -- fast auto-loot: no LOOT_OPENED
+    stub.Advance(3)
+    return RareCount() - before
+end
+UNITS.target = "Creature-0-0-0-0-" .. RARE .. "-000000000301"
+check(OpenLoot({ { "GameObject-0-0-0-0-310000-000000000077", 1 } }) == 0,
+    "untracked chest looted with a living rare targeted: no try")
+check(OpenLoot({}) == 0, "empty-source auto-loot with a living rare targeted: no try")
+DEAD.target = true
+check(OpenLoot({}) == 1, "empty-source auto-loot of the dead rare on target still counts")
+UNITS.target, DEAD.target = nil, nil
+
+print("phase 4d: a creature beside the bobber is never learned as a bobber")
+local DRAKE_MOUNT, VOIDSTORM, TRASH = 260916, 2405, 99991
+local function DrakeCount() return WN:GetTryCount("mount", DRAKE_MOUNT) or 0 end
+local function Fish(sources, gap)
+    stub.Advance(gap or 30)
+    stub.Reset()
+    stub.world.mapID = VOIDSTORM
+    stub.world.isFishingLoot = true
+    stub.world.lootSlots = { { hasItem = true, link = "|Hitem:6303::::::::::::::::|h[Fish]|h" } }
+    stub.world.lootSources = sources
+    local before = DrakeCount()
+    stub.Fire("LOOT_READY", true)
+    stub.Fire("LOOT_OPENED", true, false)
+    stub.Advance(0.05)
+    stub.Fire("LOOT_CLOSED")
+    stub.Advance(5)
+    return DrakeCount() - before
+end
+Fish({ { "GameObject-0-0-0-0-777777-000000000001", 1, "Creature-0-0-0-0-" .. TRASH .. "-000000000009", 1 } })
+check(not Fns.IsFishingBobberNpcId(TRASH), "creature sharing a fishing session is not learned")
+check((WN.db.global.discoveredFishingBobbers or {})[TRASH] == nil, "and is not persisted")
+UNITS.target = "Creature-0-0-0-0-" .. TRASH .. "-000000000011"
+DEAD.target = true
+check(Fish({ { "GameObject-0-0-0-0-777777-000000000002", 1 } }) == 1,
+    "catch with a dead mob on target still counts as fishing")
+UNITS.target, DEAD.target = nil, nil
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 

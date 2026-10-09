@@ -396,8 +396,8 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
         if link and issecretvalue and issecretvalue(link) then link = nil end
         RT.lootReady.slotData[i] = { hasItem = not not hasItem, link = link }
     end
-    RT.lootReady.mouseoverGUID = Fns.SafeGetMouseoverGUID()
-    RT.lootReady.targetGUID = Fns.SafeGetTargetGUID()
+    RT.lootReady.mouseoverGUID = Fns.SafeGetLootedUnitGUID("mouseover")
+    RT.lootReady.targetGUID = Fns.SafeGetLootedUnitGUID("target")
     RT.lootReady.npcGUID = Fns.SafeGetUnitGUID("npc")
     RT.lootReady.time = GetTime()
     RT.lootReady.lastSeenAt = RT.lootReady.time

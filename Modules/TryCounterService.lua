@@ -5743,6 +5743,18 @@ Fns.SafeGetMouseoverGUID = function()
     return Fns.SafeGetUnitGUID("mouseover")
 end
 
+---GUID of a unit as a loot source: a living Creature/Vehicle is never what the window looted, only
+---what the player happens to have selected (a rare targeted while opening a chest, node or bag).
+---UnitIsDead(unit) -> isDead (warcraft.wiki.gg API_UnitIsDead, checked 2026-10-09).
+Fns.SafeGetLootedUnitGUID = function(unit)
+    local guid = Fns.SafeGetUnitGUID(unit)
+    if not guid or not UnitIsDead then return guid end
+    if not (guid:match("^Creature") or guid:match("^Vehicle")) then return guid end
+    local ok, dead = pcall(UnitIsDead, unit)
+    if not ok or (issecretvalue and issecretvalue(dead)) then return nil end
+    return dead == true and guid or nil
+end
+
 Fns.SafeGuardGUID = function(rawGUID)
     if not rawGUID then return nil end
     if type(rawGUID) ~= "string" then return nil end
@@ -6189,8 +6201,8 @@ end
 
 Fns.CaptureLootSessionState = function()
     Fns.ResetLootSession()
-    lootSession.mouseoverGUID = Fns.SafeGetMouseoverGUID()
-    lootSession.targetGUID = Fns.SafeGetTargetGUID()
+    lootSession.mouseoverGUID = Fns.SafeGetLootedUnitGUID("mouseover")
+    lootSession.targetGUID = Fns.SafeGetLootedUnitGUID("target")
     lootSession.npcGUID = Fns.SafeGetUnitGUID("npc")
     lootSession.numLoot = (GetNumLootItems and GetNumLootItems()) or 0
 
@@ -6315,29 +6327,6 @@ Fns.ClassifyLootSession = function(source, isFromItem)
         end
     end
     
-    -- Dynamically learn toy/oversized bobber NPC IDs when the API confirms it is fishing.
-    -- Uses existing Midnight-safe GUID helpers (UnitGuidLooksLikeMobCorpse + GetNPCIDFromGUID).
-    if fishingLootAPI and lootSession.sourceGUIDs then
-        for i = 1, #lootSession.sourceGUIDs do
-            local g = lootSession.sourceGUIDs[i]
-            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) then
-                if g:match("^Creature") then
-                    local nid = Fns.GetNPCIDFromGUID(g)
-                    if nid and not FISHING_BOBBER_NPC_IDS[nid] then
-                        Fns.RememberFishingBobberNpcId(nid)
-                    end
-                elseif g:match("^GameObject") then
-                    -- The live bobber is a GameObject, so this is the branch that actually fires
-                    -- while fishing. Scanning only "^Creature" here is why nothing was ever learned
-                    -- and the structural route stayed permanently dead.
-                    local oid = Fns.GetObjectIDFromGUID(g)
-                    if oid and not FISHING_BOBBER_OBJECT_IDS[oid] then
-                        Fns.RememberFishingBobberObjectId(oid)
-                    end
-                end
-            end
-        end
-    end
     local fishingContextFresh = fishingCtx.active and (now - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
     local sourceCompatible = fishingContextFresh and Fns.IsFishingSourceCompatible(lootSession.sourceGUIDs)
 
@@ -6358,7 +6347,10 @@ Fns.ClassifyLootSession = function(source, isFromItem)
         -- frames — target/mouseover often stays on a nearby corpse while reeling in.
         local corpsePresent = fishingLootAPI and corpseInSources
             or (not fishingLootAPI and (corpseInSources or corpseFromUnits))
-        if not corpsePresent then return "fishing" end
+        if not corpsePresent then
+            if fishingLootAPI then Fns.LearnFishingBobbersFromSources(lootSession.sourceGUIDs) end
+            return "fishing"
+        end
     end
     -- Clear stale fishing context when source GUIDs point to a tracked NPC/object
     if fishingContextFresh and not sourceCompatible then
@@ -6369,6 +6361,40 @@ Fns.ClassifyLootSession = function(source, isFromItem)
 
     -- 4. NPC / Object / Zone / Encounter
     return "npc"
+end
+
+---Learn bobber ids from a session already routed to fishing with IsFishingLoot() confirmation.
+---Runs only after the corpse guard: learning first let a mob that shared the session be persisted as
+---a "bobber", after which every kill of it read as fishing loot. A Creature is learned only when it
+---is the lone Creature source (toy / oversized bobbers); GameObjects are the normal bobber shape.
+function Fns.LearnFishingBobbersFromSources(sourceGUIDs)
+    if not sourceGUIDs then return end
+    local creatureCount = 0
+    for i = 1, #sourceGUIDs do
+        local g = sourceGUIDs[i]
+        if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g:match("^Creature") then
+            creatureCount = creatureCount + 1
+        end
+    end
+    for i = 1, #sourceGUIDs do
+        local g = sourceGUIDs[i]
+        if type(g) == "string" and not (issecretvalue and issecretvalue(g)) then
+            if g:match("^Creature") then
+                local nid = Fns.GetNPCIDFromGUID(g)
+                if creatureCount == 1 and nid and not FISHING_BOBBER_NPC_IDS[nid] then
+                    Fns.RememberFishingBobberNpcId(nid)
+                end
+            elseif g:match("^GameObject") then
+                -- The live bobber is a GameObject, so this is the branch that actually fires
+                -- while fishing. Scanning only "^Creature" here is why nothing was ever learned
+                -- and the structural route stayed permanently dead.
+                local oid = Fns.GetObjectIDFromGUID(g)
+                if oid and not FISHING_BOBBER_OBJECT_IDS[oid] then
+                    Fns.RememberFishingBobberObjectId(oid)
+                end
+            end
+        end
+    end
 end
 
 local function ScheduleLootRouteProcessor(addon, route, source)
@@ -6521,31 +6547,28 @@ Fns.GetAllLootSourceGUIDs = function()
     end
 
     -- Method 2: UnitGUID when slots are empty (instant autoloot) or GetLootSourceInfo missed a source.
-    -- When Method 1 already reported a mob corpse, do NOT add mouseover/target: a living rare on
-    -- target while looting trash adds its GUID to this list and P1 MatchGuidExact attributes the
-    -- voidstorm mount pool to the wrong NPC (false try before the rare dies).
-    -- Unit "npc" is still included (corpse interact token at LOOT_READY/OPENED).
+    -- When Method 1 reported ANY source, do NOT add mouseover/target: Method 1 is what was looted.
+    -- A rare on target while looting trash, a chest, a node, a bag item or a fishing bobber would
+    -- otherwise join this list, P1 MatchGuidExact would attribute the loot to that NPC, and a fishing
+    -- catch would be read as mob loot. Unit "npc" is still included (corpse interact token).
     local unitTokens
-    if slotCreatureCount > 0 then
+    if #uniqueGUIDs > 0 then
         unitTokens = { "npc" }
     else
         unitTokens = { "npc", "mouseover", "target" }
     end
     for u = 1, #unitTokens do
-        local okU, unitGuid = pcall(UnitGUID, unitTokens[u])
-        if okU and unitGuid then
-            local safeGUID = Fns.SafeGuardGUID(unitGuid)
-            if safeGUID and not seen[safeGUID] then
-                local pfx = safeGUID:match("^(%a+)")
-                if pfx == "Creature" or pfx == "Vehicle" or Fns.GetNPCIDFromGUID(safeGUID) then
+        local safeGUID = Fns.SafeGetLootedUnitGUID(unitTokens[u])
+        if safeGUID and not seen[safeGUID] then
+            local pfx = safeGUID:match("^(%a+)")
+            if pfx == "Creature" or pfx == "Vehicle" or Fns.GetNPCIDFromGUID(safeGUID) then
+                seen[safeGUID] = true
+                uniqueGUIDs[#uniqueGUIDs + 1] = safeGUID
+            elseif pfx == "GameObject" and objectDropDB then
+                local oid = Fns.GetObjectIDFromGUID(safeGUID)
+                if oid and (objectDropDB[oid] or inRaidForGo) then
                     seen[safeGUID] = true
                     uniqueGUIDs[#uniqueGUIDs + 1] = safeGUID
-                elseif pfx == "GameObject" and objectDropDB then
-                    local oid = Fns.GetObjectIDFromGUID(safeGUID)
-                    if oid and (objectDropDB[oid] or inRaidForGo) then
-                        seen[safeGUID] = true
-                        uniqueGUIDs[#uniqueGUIDs + 1] = safeGUID
-                    end
                 end
             end
         end
