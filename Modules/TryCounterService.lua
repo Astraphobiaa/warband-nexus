@@ -635,7 +635,6 @@ V.lastContainerItemID = nil  -- set on container use
 V.lastContainerItemTime = 0  -- timestamp when container use/lock was observed (for LOOT_CLOSED fallback)
 V.lastObservedContainerItemID = nil -- persistent container ID from recent use/lock (fallback if lastContainerItemID cleared early)
 V.lastObservedContainerItemTime = 0
-V.lastContainerItemCount = 1
 V.bagSlotItemCache = {}  -- [slotKey] = itemID : caches itemID before consume/destruction (on V: main chunk is near the 200-local cap)
 local resolvedIDs = {}       -- [itemID] = { type, collectibleID } - runtime resolved mount/pet IDs
 local resolvedIDsReverse = {} -- [collectibleID] = itemID - reverse lookup for O(1) IndexLookup
@@ -4584,7 +4583,9 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
                     didReset and "Caught %s! Try counter reset." or "Caught %s!",
                     itemLink, preResetCount))
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-                local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(drop.itemID)
+                -- `a and f()` keeps only f's first return; itemIcon (10th) was always nil.
+                local itemName, _, _, _, _, _, _, _, _, itemIcon
+                if GetItemInfoFn then itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID) end
                 SendTryCounterCollectibleObtained(WarbandNexus, {
                     type = tcType, id = tryKey, name = itemName or drop.name or "Unknown", icon = itemIcon,
                     preResetTryCount = preResetCount, fromTryCounter = true,
@@ -4606,7 +4607,9 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
                 local itemLink = Fns.GetDropItemLink(drop)
                 Fns.TryChat(Fns.BuildObtainedChat("TRYCOUNTER_CAUGHT", "Caught %s!", itemLink, preResetCount))
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-                local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(drop.itemID)
+                -- `a and f()` keeps only f's first return; itemIcon (10th) was always nil.
+                local itemName, _, _, _, _, _, _, _, _, itemIcon
+                if GetItemInfoFn then itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID) end
                 SendTryCounterCollectibleObtained(WarbandNexus, {
                     type = tcType, id = tryKey, name = itemName or drop.name or "Unknown", icon = itemIcon,
                     preResetTryCount = preResetCount, fromTryCounter = true,
@@ -4662,6 +4665,11 @@ function Fns.ApplyContainerLootOutcomes(self, opts)
         if found[drop.itemID] then
             if not drop.repeatable and drop.type == "item" then Fns.MarkItemObtained(drop.itemID) end
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+            -- Same guard as the NPC path: the CHAT_MSG_LOOT container path may already have announced
+            -- and reset this obtain, and a second pass would print a contradictory count.
+            if tryKey and Fns.IsObtainOutcomeApplied(tcType, tryKey, drop) then
+                tryKey = nil
+            end
             if tryKey then
                 Fns.ResolveCollectibleID(drop)
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
@@ -4684,13 +4692,16 @@ function Fns.ApplyContainerLootOutcomes(self, opts)
                 local chatFallback = didReset and "Obtained %s from container! Try counter reset." or "Obtained %s from container!"
                 Fns.TryChat(Fns.BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                 local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-                local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(drop.itemID)
+                -- `a and f()` keeps only f's first return; itemIcon (10th) was always nil.
+                local itemName, _, _, _, _, _, _, _, _, itemIcon
+                if GetItemInfoFn then itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID) end
                 SendTryCounterCollectibleObtained(WarbandNexus, {
                     type = tcType,
                     id = (drop.type == "item") and drop.itemID or tryKey,
                     name = itemName or drop.name or "Unknown", icon = itemIcon,
                     preResetTryCount = preResetCount, fromTryCounter = true,
                 }, drop.itemID)
+                Fns.MarkObtainOutcomeApplied(tcType, tryKey, drop)
             end
         end
     end
@@ -5838,62 +5849,81 @@ function Fns.TryProcessTrackedObjectCurrencyFallback(self)
     })
 end
 
+---Bag count of a container item (carried bags only; C_Item.GetItemCount defaults exclude banks).
+---C_Item.GetItemCount(itemInfo [, includeBank ...]) -> count (warcraft.wiki.gg, checked 2026-10-09).
+function Fns.GetCarriedContainerCount(itemID)
+    if not (C_Item and C_Item.GetItemCount) then return nil end
+    local ok, count = pcall(C_Item.GetItemCount, itemID)
+    if not ok or type(count) ~= "number" or (issecretvalue and issecretvalue(count)) then return nil end
+    return count
+end
+
 function Fns.ScheduleContainerOpenAttempt(cItemID, bagID, slotID)
     if not cItemID or not containerDropDB[cItemID] then return end
+    -- Merchant / bank / mail / trade: a right-click or drag there sells, stores or hands the cache over.
+    if isBlockingInteractionOpen then return end
     local now = GetTime()
     V.lastContainerItemID = cItemID
     V.lastContainerItemTime = now
     V.lastObservedContainerItemID = cItemID
     V.lastObservedContainerItemTime = now
-    V.lastContainerItemBag = bagID
-    V.lastContainerItemSlot = slotID
-    if bagID and slotID and C_Container and C_Container.GetContainerItemInfo then
-        local info = C_Container.GetContainerItemInfo(bagID, slotID)
-        V.lastContainerItemCount = (info and info.stackCount) or 1
-    else
-        V.lastContainerItemCount = 1
-    end
+
+    -- One check per action. A drag or a use fires ITEM_LOCK_CHANGED for the lock and again for the
+    -- unlock (and for both slots of a move); the later events must not replace the baseline count,
+    -- which is taken while the item is still in the bags (hooks and the lock event run before the
+    -- server consumes it).
+    local pending = V.pendingContainerCheck
+    if pending and pending.itemID == cItemID and (now - pending.time) < 0.75 then return end
+    local baseline = Fns.GetCarriedContainerCount(cItemID)
+    pending = { itemID = cItemID, time = now }
+    V.pendingContainerCheck = pending
 
     -- Safety fallback timer: if no LOOT_OPENED, CHAT_MSG_LOOT, or CHAT_MSG_CURRENCY fired
-    -- within 0.75s (e.g. silent unpack or slow client event dispatch), commit attempt if the
-    -- container item was indeed consumed from that slot.
+    -- within 0.75s (e.g. silent unpack or slow client event dispatch), commit the attempt if the
+    -- container was really consumed. "Consumed" is the carried count dropping: a slot that merely
+    -- changed is a move, sort or bag swap, not an open.
     C_Timer.After(0.75, function()
+        if V.pendingContainerCheck == pending then V.pendingContainerCheck = nil end
+        local consumed
+        local nowCount = baseline and Fns.GetCarriedContainerCount(cItemID)
+        if baseline and nowCount then
+            consumed = baseline - nowCount
+        elseif bagID and slotID and C_Container and C_Container.GetContainerItemID then
+            consumed = (C_Container.GetContainerItemID(bagID, slotID) == cItemID) and 0 or 1
+        else
+            consumed = 0   -- no evidence either way (UseItemByName / GUID with no count API)
+        end
+        if consumed <= 0 then
+            -- Not an open: stop the CHAT_MSG_* container paths from claiming the next loot for it.
+            if V.lastContainerItemID == cItemID then
+                V.lastContainerItemID = nil
+                V.lastContainerItemTime = 0
+            end
+            if V.lastObservedContainerItemID == cItemID then V.lastObservedContainerItemID = nil end
+            return
+        end
         if V.lastContainerItemID == cItemID and (GetTime() - (V.lastContainerItemTime or 0)) <= 3.0 then
             local nowTimer = GetTime()
             local containerSourceKey = "container_" .. tostring(cItemID)
             if V.lastTryCountSourceKey ~= containerSourceKey or (nowTimer - (V.lastTryCountSourceTime or 0)) >= CHAT_LOOT_DEBOUNCE then
-                local isConsumed = true
-                if bagID and slotID and C_Container and C_Container.GetContainerItemID then
-                    local currentID = C_Container.GetContainerItemID(bagID, slotID)
-                    if currentID == cItemID then
-                        local info = C_Container.GetContainerItemInfo and C_Container.GetContainerItemInfo(bagID, slotID)
-                        local currentCount = (info and info.stackCount) or 1
-                        local prevCount = V.lastContainerItemCount or 1
-                        if currentCount >= prevCount then
-                            isConsumed = false -- Still sitting in the exact same bag slot unconsumed
+                V.lastContainerItemID = nil
+                V.lastContainerItemTime = 0
+                V.lastObservedContainerItemID = nil
+                V.lastTryCountSourceKey = containerSourceKey
+                V.lastTryCountSourceTime = nowTimer
+                local cData = containerDropDB[cItemID]
+                local cDrops = cData and (cData.drops or cData)
+                if cDrops and type(cDrops) == "table" and #cDrops > 0 then
+                    local trackable = {}
+                    for i = 1, #cDrops do
+                        local d = cDrops[i]
+                        if d.repeatable or not Fns.IsCollectibleCollected(d) then
+                            trackable[#trackable + 1] = d
                         end
                     end
-                end
-                if isConsumed then
-                    V.lastContainerItemID = nil
-                    V.lastContainerItemTime = 0
-                    V.lastObservedContainerItemID = nil
-                    V.lastTryCountSourceKey = containerSourceKey
-                    V.lastTryCountSourceTime = nowTimer
-                    local cData = containerDropDB[cItemID]
-                    local cDrops = cData and (cData.drops or cData)
-                    if cDrops and type(cDrops) == "table" and #cDrops > 0 then
-                        local trackable = {}
-                        for i = 1, #cDrops do
-                            local d = cDrops[i]
-                            if d.repeatable or not Fns.IsCollectibleCollected(d) then
-                                trackable[#trackable + 1] = d
-                            end
-                        end
-                        if #trackable > 0 then
-                            Fns.TryCounterLootDebugDropLines(WarbandNexus, "Container-Direct-Fallback", trackable)
-                            Fns.ProcessMissedDrops(trackable, nil, { sync = true })
-                        end
+                    if #trackable > 0 then
+                        Fns.TryCounterLootDebugDropLines(WarbandNexus, "Container-Direct-Fallback", trackable)
+                        Fns.ProcessMissedDrops(trackable, nil, { sync = true, attemptTimes = consumed })
                     end
                 end
             end
@@ -6444,8 +6474,17 @@ local function ScheduleLootRouteProcessor(addon, route, source)
         end
 
         Fns.ApplyLootSessionState(liveSession)
-        V.lastContainerItemID = liveContainerItemID
-        V.lastContainerItemTime = liveContainerItemTime
+        -- A container route that consumed the container id must not get it back: restoring it kept the
+        -- container "active", and CHAT_MSG_LOOT / CHAT_MSG_MONEY during the open window counted it again.
+        local containerConsumed = route == "container" and containerItemIDSnapshot ~= nil
+            and V.lastContainerItemID == nil and liveContainerItemID == containerItemIDSnapshot
+        if containerConsumed then
+            V.lastContainerItemID = nil
+            V.lastContainerItemTime = 0
+        else
+            V.lastContainerItemID = liveContainerItemID
+            V.lastContainerItemTime = liveContainerItemTime
+        end
         V.isProfessionLooting = liveProfessionLooting
         V.lootRouteWindowAlreadyClosed = prevWindowClosed
 

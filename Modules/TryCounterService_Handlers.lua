@@ -667,7 +667,9 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     end
 
     -- Path 1.5: Container loot chat fallback (when container was used within TTL or direct item unpacking)
+    -- Same 15s TTL as isContainerLoot above: an id left behind with no TTL claimed loot minutes later.
     local activeContainerID = V.lastContainerItemID
+    if activeContainerID and (now - (V.lastContainerItemTime or 0)) >= 15 then activeContainerID = nil end
     if not activeContainerID and V.lastObservedContainerItemID and (now - (V.lastObservedContainerItemTime or 0)) < 15 then
         activeContainerID = V.lastObservedContainerItemID
     end
@@ -708,7 +710,9 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     local chatFallback = didReset and "Obtained %s from container! Try counter reset." or "Obtained %s from container!"
                     Fns.TryChat(Fns.BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-                    local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(foundDrop.itemID)
+                    -- `a and f()` keeps only f's first return; itemIcon (10th) was always nil.
+                    local itemName, _, _, _, _, _, _, _, _, itemIcon
+                    if GetItemInfoFn then itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(foundDrop.itemID) end
                     SendTryCounterCollectibleObtained(self, {
                         type = tcType,
                         id = (foundDrop.type == "item") and foundDrop.itemID or tryKey,
@@ -826,7 +830,9 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                         Fns.TryChat(Fns.BuildObtainedChat(chatKey, chatFallback, itemLink, preResetCount))
                         
                         local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-                        local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn and GetItemInfoFn(caughtDrop.itemID)
+                        -- `a and f()` keeps only f's first return; itemIcon (10th) was always nil.
+                        local itemName, _, _, _, _, _, _, _, _, itemIcon
+                        if GetItemInfoFn then itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(caughtDrop.itemID) end
                         if self.SendMessage then
                             SendTryCounterCollectibleObtained(self, {
                                 type = tcType, id = tryKey,

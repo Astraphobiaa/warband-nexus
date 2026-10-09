@@ -266,6 +266,104 @@ check(Fish({ { "GameObject-0-0-0-0-777777-000000000002", 1 } }) == 1,
     "catch with a dead mob on target still counts as fishing")
 UNITS.target, DEAD.target = nil, nil
 
+print("phase 4e: only a container that was really consumed counts")
+local cid, cdrops
+for id, data in pairs(RT.containerDropDB) do
+    local d = data.drops or data
+    if type(d) == "table" and #d > 0 then
+        local ok = true
+        for i = 1, #d do if d[i].repeatable then ok = false end end
+        if ok then cid, cdrops = id, d break end
+    end
+end
+check(cid ~= nil, "found a container with non-repeatable drops")
+local function CTries()
+    local t, k = Fns.GetTryCountTypeAndKey(cdrops[1])
+    return WN:GetTryCount(t, k) or 0
+end
+local bags = {}
+local origGetID, origGetInfo = C_Container.GetContainerItemID, C_Container.GetContainerItemInfo
+C_Container.GetContainerItemID = function(b, sl) local e = bags[b * 100 + sl]; return e and e.id end
+C_Container.GetContainerItemInfo = function(b, sl) local e = bags[b * 100 + sl]; return e and { stackCount = e.n, itemID = e.id } end
+local function SetBag(slot, n)
+    bags[slot] = (n and n > 0) and { id = cid, n = n } or nil
+    local total = 0
+    for _, e in pairs(bags) do if e.id == cid then total = total + e.n end end
+    stub.world.bagCounts[cid] = total
+end
+local function Lock(slot) WN:OnTryCounterItemLockChanged("ITEM_LOCK_CHANGED", 0, slot) end
+
+stub.Advance(30); stub.Reset(); bags = {}
+SetBag(1, 1)
+local c0 = CTries()
+Lock(1); stub.Advance(0.2)
+SetBag(1, nil); SetBag(2, 1)
+Lock(1); Lock(2); stub.Advance(5)
+check(CTries() == c0, "moving the container between slots is not an attempt (got +" .. (CTries() - c0) .. ")")
+
+stub.Advance(30); stub.Reset(); bags = {}
+SetBag(3, 1)
+c0 = CTries()
+Lock(3); stub.Advance(0.1); SetBag(3, nil); stub.Advance(5)
+check(CTries() == c0 + 1, "silent open with no loot window counts once (got +" .. (CTries() - c0) .. ")")
+
+stub.Advance(30); stub.Reset(); bags = {}
+SetBag(4, 5)
+c0 = CTries()
+Lock(4); stub.Advance(0.1); SetBag(4, 4); Lock(4); stub.Advance(5)
+check(CTries() == c0 + 1, "opening one of a stack of 5 counts once (got +" .. (CTries() - c0) .. ")")
+
+stub.Advance(30); stub.Reset(); bags = {}
+SetBag(5, 1)
+c0 = CTries()
+stub.Fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 5)   -- Merchant
+Lock(5); stub.Advance(0.1); SetBag(5, nil); stub.Advance(5)
+stub.Fire("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", 5)
+check(CTries() == c0, "selling the container to a merchant is not an attempt (got +" .. (CTries() - c0) .. ")")
+
+stub.Advance(30); stub.Reset(); bags = {}
+SetBag(6, 1)
+c0 = CTries()
+Lock(6); SetBag(6, nil)
+stub.world.lootSlots = { { hasItem = true, link = "|Hitem:6303::::::::::::::::|h[Junk]|h" } }
+stub.world.lootSources = {}
+stub.Fire("LOOT_READY", false)
+stub.Fire("LOOT_OPENED", false, true)
+stub.Advance(2.5)
+WN:OnTryCounterChatMsgLoot("You receive loot: |cffffffff|Hitem:6303::::::::::::::::|h[Junk]|h|r", UnitName("player"))
+stub.Fire("LOOT_CLOSED")
+stub.Advance(5)
+check(CTries() == c0 + 1, "clicking loot 2.5s into an open container window counts once (got +"
+    .. (CTries() - c0) .. ")")
+
+stub.Advance(30); stub.Reset(); bags = {}
+SetBag(7, 1)
+local obtainSends = 0
+local origSend = WN.SendMessage
+WN.SendMessage = function(self, msg, ...)
+    if msg == "WN_COLLECTIBLE_OBTAINED" then obtainSends = obtainSends + 1 end
+    if origSend then return origSend(self, msg, ...) end
+end
+local prize = cdrops[1]
+Lock(7); SetBag(7, nil)
+stub.world.lootSlots = { { hasItem = true, link = "|Hitem:" .. prize.itemID .. "::::::::::::::::|h[Prize]|h" } }
+stub.world.lootSources = {}
+stub.Fire("LOOT_READY", false)
+stub.Fire("LOOT_OPENED", false, true)
+stub.Advance(0.5)
+WN:OnTryCounterChatMsgLoot("You receive loot: |cffa335ee|Hitem:" .. prize.itemID
+    .. "::::::::::::::::|h[Prize]|h|r", UnitName("player"))
+stub.Fire("LOOT_CLOSED")
+stub.Advance(5)
+WN.SendMessage = origSend
+local obtainLines = 0
+for i = 1, #stub.chat do
+    if stub.chat[i]:find("You got", 1, true) or stub.chat[i]:find("Obtained", 1, true) then obtainLines = obtainLines + 1 end
+end
+check(obtainLines == 1, "a container obtain is announced once (got " .. obtainLines .. ")")
+check(obtainSends <= 1, "WN_COLLECTIBLE_OBTAINED sent at most once (got " .. obtainSends .. ")")
+C_Container.GetContainerItemID, C_Container.GetContainerItemInfo = origGetID, origGetInfo
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 
