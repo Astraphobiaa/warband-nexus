@@ -2702,14 +2702,9 @@ function Fns.ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
     if recentKillDiff and not (issecretvalue and issecretvalue(recentKillDiff)) then
         return recentKillDiff
     end
-    if inInstance then
-        local raw = GetRaidDifficultyID and GetRaidDifficultyID()
-            or GetDungeonDifficultyID and GetDungeonDifficultyID()
-            or nil
-        if raw and not (issecretvalue and issecretvalue(raw)) then
-            return raw
-        end
-    end
+    -- No guess past this point. The old last resort was GetRaidDifficultyID() or GetDungeonDifficultyID(),
+    -- but the raid preference is always a number (warcraft.wiki.gg API_GetRaidDifficultyID), so inside a
+    -- 5-man it returned e.g. 14 and gated Heroic / Mythic dungeon drops out. Unknown fails closed.
     return nil
 end
 
@@ -2791,8 +2786,9 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
     -- unrelated instances (e.g. Legion Seat of the Triumvirate vs Midnight raid Midnight Falls).
     if #trackable > 0 then
         local mapInstanceID = select(8, GetInstanceInfo())
-        if mapInstanceID and type(mapInstanceID) == "number" and mapInstanceID > 0
-            and not (issecretvalue and issecretvalue(mapInstanceID)) then
+        -- issecretvalue first: comparing a secret (`> 0`) throws in tainted code.
+        if mapInstanceID and not (issecretvalue and issecretvalue(mapInstanceID))
+            and type(mapInstanceID) == "number" and mapInstanceID > 0 then
             local filtered = {}
             for ti = 1, #trackable do
                 local drop = trackable[ti]
