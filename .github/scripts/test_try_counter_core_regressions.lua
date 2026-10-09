@@ -364,6 +364,32 @@ check(obtainLines == 1, "a container obtain is announced once (got " .. obtainLi
 check(obtainSends <= 1, "WN_COLLECTIBLE_OBTAINED sent at most once (got " .. obtainSends .. ")")
 C_Container.GetContainerItemID, C_Container.GetContainerItemInfo = origGetID, origGetInfo
 
+print("phase 4f: a collected one-time mount keeps its frozen total across login seeds")
+local SEED_MOUNT, SEED_STAT = 152816, 11957
+stub.ClearStatistics()
+WN:SetTryCount("mount", SEED_MOUNT, 0)
+stub.SetStatistic(SEED_STAT, 10)
+local function Seed()
+    Fns.InvalidateMergedStatisticSeedIndex()
+    Fns.EnsureMergedStatisticSeedIndex()
+    Fns.SeedFromStatistics({})
+    stub.Advance(40)   -- past the 10s / 30s unresolved retries
+end
+Seed()
+check(WN:GetTryCount("mount", SEED_MOUNT) == 10, "uncollected: seed raises the count to the statistic")
+local realCollected = Fns.IsCollectibleCollected
+Fns.IsCollectibleCollected = function(d)
+    if d and d.itemID == SEED_MOUNT then return true end
+    return realCollected(d)
+end
+WN:SetTryCount("mount", SEED_MOUNT, 11)   -- obtained on the 11th kill, counter frozen
+stub.SetStatistic(SEED_STAT, 41)          -- 30 more farm kills afterwards
+Seed()
+Fns.IsCollectibleCollected = realCollected
+check(WN:GetTryCount("mount", SEED_MOUNT) == 11, "collected: login seed leaves the frozen 11 (got "
+    .. tostring(WN:GetTryCount("mount", SEED_MOUNT)) .. ")")
+stub.ClearStatistics()
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 

@@ -68,9 +68,15 @@ function Fns.SumStatisticSnapshotsGlobal(snapshots, tryKey)
     return globalTotal
 end
 
-function Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable)
+---@param drop table|nil when given, a collected one-time drop is left alone (see below)
+function Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable, drop)
     if not tryKey or not tcType or not Fns.EnsureDB() then return false end
     if not hadReadable then return false end
+    -- A collected one-time drop keeps its frozen "tries to obtain". The kill statistic keeps growing
+    -- with every farm kill after the obtain (and already includes the obtaining kill), so raising the
+    -- counter to it inflated the frozen total on every login. ReseedStatisticsForDrops already skips
+    -- these; the login seed and its retries did not.
+    if drop and not drop.repeatable and Fns.IsCollectibleCollected(drop) then return false end
     local WN = WarbandNexus
     -- Repeatable collectibles reset to 0 on every obtain, but the kill statistic keeps its lifetime
     -- total — applying it would resurrect the count the reset just cleared. No shipped DB row is both
@@ -462,7 +468,7 @@ function Fns.SeedFromStatistics(opts)
                     if tryKey then
                         Fns.WriteStatisticSnapshotIfReadable(charSnapshot, tryKey, thisCharTotal, hadReadable)
                         local globalTotal = Fns.SumStatisticSnapshotsGlobal(snapshots, tryKey)
-                        if Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable) then
+                        if Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable, drop) then
                             if drop.type == "item" and drop.questStarters then
                                 for j = 1, #drop.questStarters do
                                     local qs = drop.questStarters[j]
@@ -550,7 +556,7 @@ function Fns.SeedFromStatistics(opts)
                         local t, hadReadable = Fns.SumStatisticTotalsFromIds(statList)
                         Fns.WriteStatisticSnapshotIfReadable(charSnapshot, tryKey, t, hadReadable)
                         local globalTotal = Fns.SumStatisticSnapshotsGlobal(snapshots, tryKey)
-                        if Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable) then
+                        if Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable, drop) then
                             retrySeeded = retrySeeded + 1
                         end
                     else
@@ -583,7 +589,7 @@ function Fns.SeedFromStatistics(opts)
                                     Fns.WriteStatisticSnapshotIfReadable(snaps[charKey], finalKey, t, hadReadable)
                                 end
                                 local total = Fns.SumStatisticSnapshotsGlobal(snaps, finalKey)
-                                if Fns.ApplyTryCountFromStatisticTotals(tcType, finalKey, total, hadReadable) then
+                                if Fns.ApplyTryCountFromStatisticTotals(tcType, finalKey, total, hadReadable, drop) then
                                     finalSeeded = finalSeeded + 1
                                 end
                             end
