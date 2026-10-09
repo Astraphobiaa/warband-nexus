@@ -1016,6 +1016,10 @@ function Fns.LoadRuntimeSourceTables()
     encounterNameToNpcs = Fns.CopyEncounterMap(db.encounterNames or {})
     Fns.AugmentEncounterNameToNpcsFromNpcNameIndex()
     lockoutQuestsDB = Fns.CopyKeyValueMap(db.lockoutQuests or {})
+    -- Learned lockouts live in SavedVariables. Merging them only at the end of Init lost them on every
+    -- RebuildTrackDB (custom drop add/remove, builtin toggle) and ran after MergeTrackDB had already
+    -- built NPC eligibility without them.
+    if Fns.MergeDiscoveredLockoutQuests then Fns.MergeDiscoveredLockoutQuests() end
 
     wipe(instanceBossSlotOutcomeRules)
     local slotRules = db.instanceBossSlotOutcomeRules
@@ -1442,6 +1446,7 @@ function Fns.BuildReverseIndices()
     end
 
     reverseIndicesBuilt = true
+    Fns.InvalidateIndexLookupCaches()
 end
 
 function Fns.RebuildNpcIDToEncounterIndex()
@@ -1547,6 +1552,8 @@ function Fns.ScheduleDeferredJournalMirrorIndexBuild()
                     return
                 end
             end
+            -- mountID / speciesID keys exist only now; drop answers cached before they did.
+            Fns.InvalidateIndexLookupCaches()
         end
 
         ProcessBatch()
@@ -2166,7 +2173,11 @@ function Fns.ResolveCollectibleID(drop)
     -- Only cache successful resolutions; nil is NOT cached so retries are possible
     if id then
         resolvedIDs[drop.itemID] = id
-        resolvedIDsReverse[id] = drop.itemID
+        if resolvedIDsReverse[id] ~= drop.itemID then
+            resolvedIDsReverse[id] = drop.itemID
+            -- A native id that just became resolvable may have been answered "false" already.
+            Fns.InvalidateIndexLookupCaches()
+        end
     end
 
     return id
@@ -2446,6 +2457,16 @@ end
 
 -- Session cache for difficulty lookups
 local difficultyCache = {}
+
+---Is*Collectible() and GetDropDifficulty cache negative answers too. Anything that adds index keys
+---or native-id mappings must drop them, or a lookup made before (tooltip, toast in the first seconds
+---after login, a custom drop added later) stays wrong for the whole session.
+function Fns.InvalidateIndexLookupCaches()
+    wipe(guaranteedCache)
+    wipe(repeatableCache)
+    wipe(dropSourceCache)
+    wipe(difficultyCache)
+end
 
 -- Maps WoW difficultyID (from ENCOUNTER_END / GetRaidDifficultyID / GetDungeonDifficultyID)
 -- to our dropDifficulty label strings.  Complete as of Patch 12.0.5 (May 2026).

@@ -499,6 +499,22 @@ for _, mode in ipairs({ "window", "sameframe", "closed" }) do
 end
 check(MergedLoot("window", 1) == 1, "a single corpse is still +1")
 
+print("phase 4k: track-DB rebuilds keep learned lockouts and drop stale negative lookups")
+WN.db.global.trackDB.custom = WN.db.global.trackDB.custom or { npcs = {}, objects = {} }
+check(WN:IsDropSourceCollectible("toy", 999999) == false, "unknown toy is not a drop source yet (cached false)")
+WN:AddCustomDrop("npc", 123456, { type = "toy", itemID = 999999, name = "Custom Toy" })
+check(RT.npcDropDB[123456] ~= nil, "custom drop merged into npcDropDB")
+check(WN:IsDropSourceCollectible("toy", 999999) == true, "custom toy reads as a drop source after the rebuild")
+WN.db.global.discoveredLockoutQuests = WN.db.global.discoveredLockoutQuests or {}
+WN.db.global.discoveredLockoutQuests[424242] = 88888
+Fns.MergeDiscoveredLockoutQuests()
+WN:RemoveCustomDrop("npc", 123456, 999999)
+check(RT.lockoutQuestsDB[424242] == 88888, "learned lockout survives RebuildTrackDB (got "
+    .. tostring(RT.lockoutQuestsDB[424242]) .. ")")
+local mappedAfter = 0
+for _, v in pairs(RT.chatLootItemToNpc) do if type(v) == "number" then mappedAfter = mappedAfter + 1 end end
+check(mappedAfter > 0, "chat Path 2 map is still the live table after a rebuild")
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 
