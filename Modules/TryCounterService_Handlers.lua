@@ -743,7 +743,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
 
     -- Path 2: Exact item→NPC match (RT.chatLootItemToNpc built from eligible NPC + object sources)
     local npcID = RT.chatLootItemToNpc[itemID]
-    if npcID and type(npcID) == "number" then
+    if npcID and type(npcID) == "number" and Fns.ChatLootHasKillEvidenceForNpc(npcID) then
         local inInst = IsInInstance()
         if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
         local killDiff = Fns.ResolveChatPath2KillDifficulty(npcID, itemID, inInst)

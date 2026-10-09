@@ -1189,7 +1189,7 @@ function WarbandNexus:RunTryCounterSelfTest()
     -- ── CHAT_MSG_LOOT guards ──────────────────────────────────────────
     section("CHAT_MSG_LOOT paths")
     probe("CHAT: untracked junk item (early exit)", function()
-        WN:OnTryCounterChatMsgLoot("CHAT_MSG_LOOT", "You receive loot: [Junk].", "Player", "")
+        WN:OnTryCounterChatMsgLoot("You receive loot: [Junk].", "Player")
     end)
     probe("CHAT: exact boss loot cancels lootless fallback", function()
         withRestoredState(function()
@@ -1201,8 +1201,11 @@ function WarbandNexus:RunTryCounterSelfTest()
             local oldRepeatable = RT.repeatableItemDrops[chatItemID]
             local oldFakeCount = WN:GetTryCount("item", FAKE_ITEM_ID)
             local oldChatCount = WN:GetTryCount("item", chatItemID)
+            local killGuid = "Creature-0-0-0-0-" .. tostring(npcID) .. "-0000000001"
 
             local function restoreCustom()
+                RT.recentKills[killGuid] = nil
+                RT.recentKillByNpcID[npcID] = nil
                 RT.npcDropDB[npcID] = oldDrops
                 RT.chatLootItemToNpc[chatItemID] = oldNpcMap
                 RT.chatLootTrackedItems[chatItemID] = oldTracked
@@ -1229,6 +1232,10 @@ function WarbandNexus:RunTryCounterSelfTest()
                 RT.repeatableItemDrops[chatItemID] = nil
                 V.lastTryCountSourceKey = nil
                 V.lastTryCountSourceTime = 0
+                -- Path 2 now requires kill evidence; a fresh encounter kill is the boss case it serves.
+                local killData = { time = GetTime(), isEncounter = true, npcID = npcID, difficultyID = 16 }
+                RT.recentKills[killGuid] = killData
+                Fns.UpdateRecentKillByNpcIDCache(killGuid, killData)
 
                 Fns.ScheduleEncounterLootlessMissFallback(npcID, 16, "fallback_target_" .. tostring(npcID))
                 local scheduledSerial = RT.statState.encounterLootlessMissSerial or 0
@@ -1271,7 +1278,8 @@ function WarbandNexus:RunTryCounterSelfTest()
             V.lastTryCountSourceTime = 0
 
             -- Chat message with junk/trash item (not in drop table, e.g. Netherweave Cloth 21877)
-            WN:OnTryCounterChatMsgLoot("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:21877:0:0:0:0:0:0:0:0:0:0:0:0:0|h[Netherweave Cloth]|h|r.", "Player", "")
+            -- Dispatcher passes (message, author); the old leading "CHAT_MSG_LOOT" made this probe a no-op.
+            WN:OnTryCounterChatMsgLoot("You receive loot: |cffffffff|Hitem:21877:0:0:0:0:0:0:0:0:0:0:0:0:0|h[Netherweave Cloth]|h|r.", "Player")
 
             local newCount = WN:GetTryCount("item", dropItem) or 0
             -- Clean up

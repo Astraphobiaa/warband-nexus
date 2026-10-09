@@ -146,6 +146,7 @@ local tryCounterNpcEligible
 local objectDropDB
 local isBlockingInteractionOpen
 local discoveryPendingNpcID
+local discoveryPendingTime = 0 -- GetTime() when pending was set; declared here so ScheduleLockoutDiscovery binds the local
 local questLogLockoutDebounceTimer
 local QUEST_LOG_LOCKOUT_DEBOUNCE_SEC = 1.5 -- coalesce QUEST_LOG bursts during flight / zone transitions
 
@@ -1027,6 +1028,8 @@ function Fns.LoadRuntimeSourceTables()
 end
 
 --- Idempotent load for slash self-test and early bootstrap (before InitializeTryCounter).
+local reverseIndicesBuilt = false -- above EnsureTryCounterRuntimeDbLoaded so its reset binds the local
+
 function Fns.EnsureTryCounterRuntimeDbLoaded()
     if not ns.CollectibleSourceDB then return false end
     local probeObjectID = 469857 -- Overflowing Dumpster — stable self-test fixture
@@ -1133,7 +1136,6 @@ local repeatableIndex = {}    -- drop.repeatable == true
 local dropSourceIndex = {}    -- any drop entry (exists in DB at all)
 local dropDifficultyIndex = {} -- drop/NPC dropDifficulty string (e.g. "Mythic", "25H", "Heroic")
 local repeatableItemDrops = {} -- [itemID] = drop for "item" type repeatable (reset + notify when received via CHAT_MSG_LOOT if loot window was cleared by autoLoot)
-local reverseIndicesBuilt = false
 
 -- REVERSE INDEX BUILDER
 -- Called once from InitializeTryCounter after DB references are loaded.
@@ -1307,7 +1309,9 @@ function Fns.BuildReverseIndices()
     -- If two eligible NPCs share an itemID with different drop tables → false (ambiguous).
     -- Same shared table (e.g. BfA zone-drop mounts: many NPCs → one _drops array) → keep first npcID;
     -- try counts use the same drops/mount key regardless of which spawner dropped loot.
-    chatLootItemToNpc = {}
+    -- Wipe in place: RT.chatLootItemToNpc aliases this table (Handlers reads it); reassigning left RT
+    -- on the empty load-time table and chat Path 2 never matched.
+    wipe(chatLootItemToNpc)
     wipe(chatLootTrackedItems)
     wipe(chatLootItemUniqueNpc)
     local itemNpcOwners = {}
@@ -1366,7 +1370,8 @@ function Fns.BuildReverseIndices()
                 end
                 if Fns.NpcDropEntryContainsAnyItemSet(npcData, { [itemID] = true }) then
                     if proxyNpc and proxyNpc ~= npcID and npcDropDB[proxyNpc] ~= npcData then
-                        MergeChatLootItemToNpc(itemID, false)
+                        -- Ambiguous owner. MergeChatLootItemToNpc ignores a false npcID, so mark directly.
+                        chatLootItemToNpc[itemID] = false
                         return
                     end
                     proxyNpc = npcID
@@ -2911,9 +2916,9 @@ function Fns.IsMountLearnedByItemSpell(itemID)
     if not itemID or type(itemID) ~= "number" then return false end
     local spellID
     if C_Item and C_Item.GetItemSpell then
-        _, spellID = C_Item.GetItemSpell(itemID)
+        spellID = select(2, C_Item.GetItemSpell(itemID))
     elseif _G.GetItemSpell then
-        _, spellID = _G.GetItemSpell(itemID)
+        spellID = select(2, _G.GetItemSpell(itemID))
     end
     if not spellID or type(spellID) ~= "number" then return false end
     if issecretvalue and issecretvalue(spellID) then return false end
@@ -4822,8 +4827,6 @@ local DISCOVERY_QUEST_RANGES = {
 }
 
 local discoverySnapshot = {}           -- [questID] = true for quest IDs completed at snapshot time
-discoveryPendingNpcID = nil      -- NPC ID awaiting lockout quest discovery
-local discoveryPendingTime = 0         -- GetTime() when pending was set
 local DISCOVERY_PENDING_TTL = 8        -- seconds to wait for QUEST_LOG_UPDATE after loot
 
 function Fns.GetClaimedQuestIDs()

@@ -536,6 +536,29 @@ function Fns.ResolveChatPath2KillDifficulty(npcID, itemID, inInst)
     return chatP2KillDiff
 end
 
+---Chat Path 2 has no loot window, so it needs its own proof the NPC died: a fresh encounter /
+---world-boss kill, or its corpse on target/mouseover. Without it any "You receive item" line for a
+---mapped item (quest reward, vendor) would count an obtain plus misses on the NPC's other drops.
+---UnitIsDead(unit) -> isDead (warcraft.wiki.gg API_UnitIsDead, checked 2026-10-09).
+function Fns.ChatLootHasKillEvidenceForNpc(npcID)
+    if not npcID then return false end
+    local _, kd = Fns.GetFreshEncounterKillForNpc(npcID)
+    if kd then return true end
+    if not UnitGUID or not UnitIsDead then return false end
+    for i = 1, 2 do
+        local token = (i == 1) and "target" or "mouseover"
+        local ok, guid = pcall(UnitGUID, token)
+        guid = ok and Fns.SafeGuardGUID(guid) or nil
+        if guid and Fns.GetNPCIDFromGUID(guid) == npcID then
+            local okDead, dead = pcall(UnitIsDead, token)
+            if okDead and not (issecretvalue and issecretvalue(dead)) and dead == true then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function Fns.LootSourcesHaveForeignEligibleCreature(sources, bossNpcId)
     if not sources then return false end
     for i = 1, #sources do
