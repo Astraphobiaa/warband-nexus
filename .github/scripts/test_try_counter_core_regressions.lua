@@ -451,6 +451,23 @@ check(gotLine, "the mount on a late-looted corpse is still detected as obtained"
 stub.world.inInstance = false
 stub.world.instanceType = "none"
 
+print("phase 4i: increments build on the alias max, not the exact key")
+local ALIAS_ITEM, ALIAS_MOUNT = 900001, 4242
+local aliasDrop = { type = "mount", itemID = ALIAS_ITEM, name = "Alias Test Mount" }
+local realFromItem = C_MountJournal.GetMountFromItem
+C_MountJournal.GetMountFromItem = function() return nil end           -- journal cold: key = itemID
+local _, coldKey = Fns.GetTryCountTypeAndKey(aliasDrop)
+for _ = 1, 10 do WN:IncrementTryCount("mount", coldKey) end
+C_MountJournal.GetMountFromItem = function(id) if id == ALIAS_ITEM then return ALIAS_MOUNT end end
+local _, warmKey = Fns.GetTryCountTypeAndKey(aliasDrop)
+check(warmKey ~= coldKey, "journal warm-up changes the key (" .. tostring(coldKey) .. " -> " .. tostring(warmKey) .. ")")
+local seq3 = {}
+for _ = 1, 3 do seq3[#seq3 + 1] = WN:IncrementTryCount("mount", warmKey) end
+check(seq3[1] == 11 and seq3[2] == 12 and seq3[3] == 13,
+    "misses after warm-up continue 11,12,13 (got " .. table.concat(seq3, ",") .. ")")
+check(WN:AddTryCountDelta("mount", tostring(warmKey), 2) == 15, "string id is normalised to the numeric key")
+C_MountJournal.GetMountFromItem = realFromItem
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 

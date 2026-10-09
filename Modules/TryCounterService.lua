@@ -1848,15 +1848,7 @@ end
 ---@param id number
 ---@return number newCount
 function WarbandNexus:IncrementTryCount(collectibleType, id)
-    if not VALID_TYPES[collectibleType] or not id then return 0 end
-    if not Fns.EnsureDB() then return 0 end
-    
-    local stored = WarbandNexus.db.global.tryCounts[collectibleType][id]
-    local currentStored = type(stored) == "number" and stored or 0
-    local newStored = currentStored + 1
-    WarbandNexus.db.global.tryCounts[collectibleType][id] = newStored
-    
-    return WarbandNexus:GetTryCount(collectibleType, id)
+    return WarbandNexus:AddTryCountDelta(collectibleType, id, 1)
 end
 
 ---Add multiple attempts at once (AoE farm: N corpses × same repeatable mount table).
@@ -1867,11 +1859,15 @@ end
 function WarbandNexus:AddTryCountDelta(collectibleType, id, delta)
     if not VALID_TYPES[collectibleType] or not id then return 0 end
     if not Fns.EnsureDB() then return 0 end
+    local idNum = tonumber(id)
+    if idNum then id = idNum end
     delta = tonumber(delta) or 0
     if delta <= 0 then return WarbandNexus:GetTryCount(collectibleType, id) end
-    local stored = WarbandNexus.db.global.tryCounts[collectibleType][id]
-    local currentStored = type(stored) == "number" and stored or 0
-    WarbandNexus.db.global.tryCounts[collectibleType][id] = currentStored + delta
+    -- Build on what GetTryCount reports (the max across alias / quest-starter keys), not on the
+    -- exact key alone: a higher alias (itemID key written while the mount journal was cold) used to
+    -- shadow every later increment of the mountID key, so tries were silently lost.
+    local newStored = WarbandNexus:GetTryCount(collectibleType, id) + delta
+    WarbandNexus.db.global.tryCounts[collectibleType][id] = newStored
     return WarbandNexus:GetTryCount(collectibleType, id)
 end
 
