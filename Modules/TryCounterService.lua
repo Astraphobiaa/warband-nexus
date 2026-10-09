@@ -4154,6 +4154,20 @@ end
 
 --- Silent +1 at LOOT_OPENED (before loot lines): normal kill/rare flow only; stat-backed raid skips.
 ---@return boolean earlyMissApplied
+---Open-world AoE farm: one loot window can merge N corpses of the same drop table, and each corpse
+---is one attempt. Encounters, objects and statistic-backed rows always count 1.
+function Fns.ComputeFarmCorpseMultiplier(drops, matchedNpcID, matchedEncounterID, lastMatchedObjectID, allSourceGUIDs, missedDrops)
+    if not matchedNpcID or matchedEncounterID or lastMatchedObjectID then return 1 end
+    if not allSourceGUIDs or #allSourceGUIDs == 0 then return 1 end
+    if drops and Fns.NpcEntryHasStatisticIds(drops) then return 1 end
+    local tableMult = Fns.CountCorpsesSharingDropTable(allSourceGUIDs, drops)
+    local npcMult = Fns.CountUniqueLootSourcesForNpcID(allSourceGUIDs, matchedNpcID)
+    local tryItemSet = Fns.BuildItemIdSetFromDropList(missedDrops)
+    local candidateList = Fns.BuildNpcIdsEligibleForDropItemSet(tryItemSet)
+    local itemMult = Fns.CountCorpsesForMissedDropItems(allSourceGUIDs, tryItemSet, candidateList)
+    return math.max(1, tableMult, npcMult, itemMult)
+end
+
 function Fns.ApplyEarlyLootAttemptIncrement(ctx)
     if not ctx or not ctx.trackable or #ctx.trackable == 0 then return false end
     if not Fns.IsAutoTryCounterEnabled() or not Fns.EnsureDB() then return false end
@@ -4202,10 +4216,17 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
         end
     end
 
+    -- The deferred and closed routes always take this early path, so the AoE corpse multiplier has
+    -- to apply here too; it used to live only on the rare non-early path (+1 for 3 corpses).
+    local attemptTimes = 1
+    if kind == "npc" then
+        attemptTimes = Fns.ComputeFarmCorpseMultiplier(drops, ctx.matchedNpcID, ctx.matchedEncounterID,
+            ctx.lastMatchedObjectID, ctx.allSourceGUIDs, missed)
+    end
     Fns.ProcessMissedDrops(missed, statIds, {
         silentAnnounce = true,
         sync = true,
-        attemptTimes = 1,
+        attemptTimes = attemptTimes,
     })
     local committedKey = tryCountSourceKey
     Fns.NotifyLootTryOutcomeCommitted(committedKey, ctx.matchedNpcID or ctx.slotBossNpcID)
@@ -4471,18 +4492,8 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
     end
 
     local now = GetTime()
-    local farmCorpseMult = 1
-    do
-        local statBacked = drops and Fns.NpcEntryHasStatisticIds(drops)
-        if matchedNpcID and not matchedEncounterID and not lastMatchedObjectID and not statBacked then
-            local tableMult = Fns.CountCorpsesSharingDropTable(allSourceGUIDs, drops)
-            local npcMult = Fns.CountUniqueLootSourcesForNpcID(allSourceGUIDs, matchedNpcID)
-            local tryItemSet = Fns.BuildItemIdSetFromDropList(dropsToIncrement)
-            local candidateList = Fns.BuildNpcIdsEligibleForDropItemSet(tryItemSet)
-            local itemMult = Fns.CountCorpsesForMissedDropItems(allSourceGUIDs, tryItemSet, candidateList)
-            farmCorpseMult = math.max(1, tableMult, npcMult, itemMult)
-        end
-    end
+    local farmCorpseMult = Fns.ComputeFarmCorpseMultiplier(drops, matchedNpcID, matchedEncounterID,
+        lastMatchedObjectID, allSourceGUIDs, dropsToIncrement)
 
     local tryCountSourceKey = Fns.BuildTryCountSourceKey(matchedEncounterID, matchedNpcID, lastMatchedObjectID, dedupGUID)
     local encounterDedupTtl = 15
@@ -6665,9 +6676,11 @@ function Fns.CountUniqueLootSourcesForNpcID(allSourceGUIDs, npcID)
         if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and not seen[g] then
             seen[g] = true
             if not g:match("^GameObject") then
-                if Fns.GetNPCIDFromGUID(g) == npcID then
+                local nid = Fns.GetNPCIDFromGUID(g)
+                if nid == npcID then
                     n = n + 1
-                elseif (g:match("^Creature") or g:match("^Vehicle")) and g:find(needle, 1, true) then
+                elseif not nid and (g:match("^Creature") or g:match("^Vehicle")) and g:find(needle, 1, true) then
+                    -- unparsed GUID only: on a parsed one the needle can hit server/instance/zone fields
                     n = n + 1
                 end
             end

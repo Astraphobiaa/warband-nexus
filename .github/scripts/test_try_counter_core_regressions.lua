@@ -468,6 +468,37 @@ check(seq3[1] == 11 and seq3[2] == 12 and seq3[3] == 13,
 check(WN:AddTryCountDelta("mount", tostring(warmKey), 2) == 15, "string id is normalised to the numeric key")
 C_MountJournal.GetMountFromItem = realFromItem
 
+print("phase 4j: three merged corpses are three attempts on every loot route")
+local aoeSeq = 0
+local function MergedLoot(mode, corpses)
+    stub.Advance(20)
+    stub.Reset()
+    stub.world.mapID = 1527
+    stub.world.isFishingLoot = false
+    stub.world.lootSlots, stub.world.lootSources = {}, {}
+    for _ = 1, corpses do
+        aoeSeq = aoeSeq + 1
+        stub.world.lootSlots[#stub.world.lootSlots + 1] = { hasItem = true, link = "|Hitem:2589::::::::::::::::|h[Linen]|h" }
+        stub.world.lootSources[#stub.world.lootSources + 1] = { ("Creature-0-0-0-0-%d-%012d"):format(RARE, 3000 + aoeSeq), 1 }
+    end
+    local before = RareCount()
+    stub.Fire("LOOT_READY", true)
+    if mode == "window" then
+        stub.Fire("LOOT_OPENED", true, false)
+        stub.Advance(0.05)
+    elseif mode == "sameframe" then
+        stub.Fire("LOOT_OPENED", true, false)
+    end
+    stub.Fire("LOOT_CLOSED")
+    stub.Advance(3)
+    return RareCount() - before
+end
+for _, mode in ipairs({ "window", "sameframe", "closed" }) do
+    local d = MergedLoot(mode, 3)
+    check(d == 3, mode .. " route: 3 merged corpses -> +3 (got +" .. d .. ")")
+end
+check(MergedLoot("window", 1) == 1, "a single corpse is still +1")
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 

@@ -90,7 +90,9 @@ function Fns.CountCorpsesForMissedDropItems(allSourceGUIDs, itemIdSet, candidate
                         ok = true
                     end
                 end
-                if not ok and candidateNpcIds and #candidateNpcIds > 0 and (g:match("^Creature") or g:match("^Vehicle")) then
+                -- Substring fallback only for GUIDs the parser could not read: on a parsed GUID
+                -- "-<npcID>-" can also match the server / instance / zone fields of another creature.
+                if not ok and not nid and candidateNpcIds and #candidateNpcIds > 0 and (g:match("^Creature") or g:match("^Vehicle")) then
                     for c = 1, #candidateNpcIds do
                         local npcId = candidateNpcIds[c]
                         local needle = "-" .. tostring(npcId) .. "-"
