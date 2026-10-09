@@ -98,6 +98,28 @@ stub.Advance(2.5)
 local learned = (WN.db.global.discoveredLockoutQuests or {})[424244]
 check(learned == questID, "NPC 424244 learned quest " .. tostring(questID) .. " (got " .. tostring(learned) .. ")")
 
+print("phase 2b: a quest completed before the rare was targeted is never learned as its lockout")
+-- Another rare's hidden quest flips between login and this kill. Targeting the tracked rare must
+-- re-baseline, or that quest becomes the lone candidate and is persisted as this NPC's lockout.
+local rareNpc
+for npcID in pairs(RT.npcDropDB) do
+    if npcID > 1000 and RT.tryCounterNpcEligible[npcID] and not RT.lockoutQuestsDB[npcID] then rareNpc = npcID break end
+end
+local strayQuest
+for q = 94440, 94480 do
+    if q ~= questID and not claimed[q] then strayQuest = q break end
+end
+check(rareNpc ~= nil and strayQuest ~= nil, "found a tracked rare without lockout and a stray quest id")
+stub.Advance(60)
+stub.SetQuestCompleted(strayQuest, true)
+UNITS.target = "Creature-0-0-0-0-" .. rareNpc .. "-000000000007"
+stub.Fire("PLAYER_TARGET_CHANGED")
+UNITS.target = nil
+Fns.ScheduleLockoutDiscovery(rareNpc)
+stub.Advance(2.5)
+check((WN.db.global.discoveredLockoutQuests or {})[rareNpc] == nil,
+    "stray quest " .. strayQuest .. " not learned for NPC " .. tostring(rareNpc))
+
 print("phase 3: chat Path 2 map is the live table")
 local mapped = 0
 for _, v in pairs(RT.chatLootItemToNpc) do

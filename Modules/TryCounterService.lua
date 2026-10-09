@@ -313,6 +313,7 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
             if (nid and npcDropDB[nid] and tryCounterNpcEligible[nid]) or (oid and objectDropDB[oid]) then
                 RT.lastLootSourceGUID = guid
                 RT.lastLootSourceTime = GetTime()
+                if nid then Fns.MaybeRefreshDiscoverySnapshotForNpc(nid) end
             end
         else
             RT.lastLootSourceGUID = nil
@@ -4850,6 +4851,18 @@ function Fns.TakeDiscoverySnapshot()
             end
         end
     end
+end
+
+---Refresh the discovery baseline while a tracked rare with no known lockout quest is targeted,
+---i.e. before it dies. Otherwise the baseline dates from login or the last discovery, and the hidden
+---quest of any rare killed in between would become the lone candidate and be persisted as this
+---NPC's lockout, after which every kill of it reads as a lockout duplicate and stops counting.
+function Fns.MaybeRefreshDiscoverySnapshotForNpc(npcID)
+    if not npcID or lockoutQuestsDB[npcID] or discoveryPendingNpcID then return end
+    local now = GetTime()
+    if now - (V.discoverySnapshotTime or 0) < 30 then return end   -- one ~1.6k-quest scan per 30s
+    V.discoverySnapshotTime = now
+    Fns.TakeDiscoverySnapshot()
 end
 
 Fns.TryDiscoverLockoutQuest = function()
