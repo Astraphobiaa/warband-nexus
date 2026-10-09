@@ -390,6 +390,30 @@ check(WN:GetTryCount("mount", SEED_MOUNT) == 11, "collected: login seed leaves t
     .. tostring(WN:GetTryCount("mount", SEED_MOUNT)) .. ")")
 stub.ClearStatistics()
 
+print("phase 4g: ENCOUNTER_END followed by BOSS_KILL counts the kill once")
+local MANDOKIR_ENC, RAPTOR = 1179, 68823   -- Bloodlord Mandokir: no statistic, lootless fallback path
+local function BossKill(withBossKill, gap)
+    stub.Advance(60)
+    stub.Reset()
+    stub.world.inInstance = true
+    stub.world.instanceType = "party"
+    local before = WN:GetTryCount("mount", RAPTOR) or 0
+    stub.Fire("ENCOUNTER_START", MANDOKIR_ENC, "Bloodlord Mandokir", 2, 5)
+    stub.Advance(30)
+    stub.Fire("ENCOUNTER_END", MANDOKIR_ENC, "Bloodlord Mandokir", 2, 5, 1)
+    if withBossKill then
+        if gap > 0 then stub.Advance(gap) end
+        stub.Fire("BOSS_KILL", MANDOKIR_ENC, "Bloodlord Mandokir")
+    end
+    stub.Advance(20)   -- personal loot, no window: the lootless fallback commits the try
+    return (WN:GetTryCount("mount", RAPTOR) or 0) - before
+end
+check(BossKill(false) == 1, "control: ENCOUNTER_END alone counts once")
+check(BossKill(true, 0) == 1, "BOSS_KILL in the same frame: still counts once")
+check(BossKill(true, 0.1) == 1, "BOSS_KILL 0.1s later: still counts once")
+stub.world.inInstance = false
+stub.world.instanceType = "none"
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 

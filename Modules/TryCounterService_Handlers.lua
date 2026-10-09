@@ -181,6 +181,23 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         end
     end
 
+    -- ENCOUNTER_END and BOSS_KILL can both report one kill (BOSS_KILL is routed here). Handling it
+    -- twice replaced RT.recentKills[guid] while recentKillByNpcID kept the old table, so the kill
+    -- read as stale and its try was dropped. Whichever event arrives first owns the kill.
+    do
+        local dedupID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID)))
+            and encounterID or nil
+        local dedupName = (type(encounterName) == "string" and encounterName ~= ""
+            and not (issecretvalue and issecretvalue(encounterName))) and encounterName or nil
+        local last = V.lastHandledBossKill
+        local tNow = GetTime()
+        if last and (tNow - last.time) < 10
+            and ((dedupID and last.id == dedupID) or (dedupName and last.name == dedupName)) then
+            return
+        end
+        V.lastHandledBossKill = { id = dedupID, name = dedupName, time = tNow }
+    end
+
     local function TryNpcIDsFromEncounterStartCache()
         if not cacheFresh then return nil, nil end
         local eid = RT.currentEncounterCache.encounterID
