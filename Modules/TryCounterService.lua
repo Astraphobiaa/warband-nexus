@@ -5648,10 +5648,12 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
 
     if spellID and PICKPOCKET_SPELLS[spellID] then
         V.isPickpocketing = true
+        V.lootSpellFlagTime = GetTime()
         return
     end
     if spellID and PROFESSION_LOOT_SPELLS[spellID] then
         V.isProfessionLooting = true
+        V.lootSpellFlagTime = GetTime()
         return
     end
 
@@ -5701,6 +5703,12 @@ end
 function WarbandNexus:OnTryCounterSpellcastFailed(event, unit, castGUID, spellID)
     if unit ~= "player" then return end
     if issecretvalue and spellID and issecretvalue(spellID) then return end
+    -- A pickpocket / gathering cast that fails opens no loot window, so LOOT_CLOSED never clears its
+    -- skip flag and the next kill, catch or container would be dropped as profession loot.
+    if spellID and not RT.lootSession.opened then
+        if PICKPOCKET_SPELLS[spellID] then V.isPickpocketing = false end
+        if PROFESSION_LOOT_SPELLS[spellID] then V.isProfessionLooting = false end
+    end
     if not FISHING_SPELLS[spellID] then return end
     
     -- Clicking the bobber interrupts the fishing channel.
@@ -6230,8 +6238,20 @@ end
 --                   never from cast timer + empty sources alone.
 --   4. NPC/OBJECT — ProcessNPCLoot (exact GUID→ID match only)
 
+---Backstop for pickpocket / gathering casts that fail without UNIT_SPELLCAST_INTERRUPTED or
+---FAILED_QUIET (e.g. "no pockets to pick" is a plain FAILED, not registered): their loot window
+---opens right after the cast, so a flag older than this with no window open is stale.
+function Fns.ExpireStaleLootSpellFlags()
+    if not (V.isPickpocketing or V.isProfessionLooting) then return end
+    if RT.lootSession.opened then return end
+    if GetTime() - (V.lootSpellFlagTime or 0) <= 10 then return end
+    V.isPickpocketing = false
+    V.isProfessionLooting = false
+end
+
 Fns.ClassifyLootSession = function(source, isFromItem)
     -- 1. SKIP: non-combat loot sources
+    Fns.ExpireStaleLootSpellFlags()
     if V.isPickpocketing then return "skip" end
     if isBlockingInteractionOpen then return "skip" end
     if V.isProfessionLooting then return "skip" end

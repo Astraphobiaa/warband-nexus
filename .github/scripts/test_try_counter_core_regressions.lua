@@ -178,6 +178,44 @@ check((stub.chat[1] or ""):find("8 attempts", 1, true) ~= nil, "obtain line repo
     .. tostring(stub.chat[1]))
 UNITS.target, DEAD.target = nil, nil
 
+print("phase 4b: a failed pickpocket / gathering cast does not swallow the next kill")
+local RARE, RARE_ITEM = 137202, 163573   -- Goldenmane (Stormsong Valley), loot-path eligible
+local function RareCount()
+    local drops = RT.npcDropDB[RARE]
+    for i = 1, #drops do
+        if drops[i].itemID == RARE_ITEM then
+            local t, k = Fns.GetTryCountTypeAndKey(drops[i])
+            return WN:GetTryCount(t, k) or 0
+        end
+    end
+end
+local killSeq = 0
+local function KillRare(gap)
+    stub.Advance(gap)
+    stub.Reset()
+    killSeq = killSeq + 1
+    stub.world.mapID = 1527
+    stub.world.isFishingLoot = false
+    stub.world.lootSlots = { { hasItem = true, link = "|Hitem:2589::::::::::::::::|h[Linen]|h" } }
+    stub.world.lootSources = { { ("Creature-0-0-0-0-%d-%012d"):format(RARE, 900 + killSeq), 1 } }
+    local before = RareCount()
+    stub.Fire("LOOT_READY", false)
+    stub.Fire("LOOT_OPENED", false, false)
+    stub.Advance(0.05)
+    stub.Fire("LOOT_CLOSED")
+    stub.Advance(3)
+    return RareCount() - before
+end
+check(KillRare(30) == 1, "control: a plain rare kill counts")
+stub.Fire("UNIT_SPELLCAST_SENT", "player", nil, "Cast-1", 8613)      -- Skinning
+stub.Fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-1", 8613)
+check(KillRare(2) == 1, "kill 2s after an interrupted skinning cast counts")
+stub.Fire("UNIT_SPELLCAST_SENT", "player", nil, "Cast-2", 921)       -- Pick Pocket, fails silently
+check(KillRare(15) == 1, "kill 15s after a pickpocket that opened no window counts")
+stub.Advance(30)
+stub.Fire("UNIT_SPELLCAST_SENT", "player", nil, "Cast-3", 8613)      -- Skinning that succeeds
+check(KillRare(1) == 0, "skinning loot right after the cast is still skipped")
+
 print("phase 5: no errors escaped any handler or timer")
 check(#stub.errors == 0, "no runtime errors" .. (stub.errors[1] and (": " .. stub.errors[1]) or ""))
 

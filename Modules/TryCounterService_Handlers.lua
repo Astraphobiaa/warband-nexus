@@ -377,6 +377,7 @@ end
 ---We capture ALL state here (slot data + unit GUIDs) so LOOT_CLOSED can process reliably.
 ---@param autoloot boolean
 function WarbandNexus:OnTryCounterLootReady(autoloot)
+    Fns.ExpireStaleLootSpellFlags()
     -- A second LOOT_READY while the frame is open must not clear RT.lootSession.opened; otherwise
     -- LOOT_CLOSED treats the session as "OPENED missed" and runs the closed route again (duplicate flow logs / work).
     if not RT.lootSession.opened then
