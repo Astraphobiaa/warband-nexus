@@ -226,6 +226,10 @@ local _netherWarpedEgg = {
           { type = "mount", itemID = 260916, name = "Nether-Warped Drake" },
       },
       tryCountReflectsTo = { type = "mount", itemID = 260916, name = "Nether-Warped Drake" },
+      -- Oceanic Vortex (Voidstorm fishing pool, Wowhead object=524813): the egg is not on its loot
+      -- table, so a vortex cast is not an attempt. Wowhead search listing 2026-10-09; the object page
+      -- itself is region-blocked here — confirm the pool's GameObject id from a live loot source GUID.
+      excludeFishingPoolObjectIDs = { [524813] = true },
     },
 }
 

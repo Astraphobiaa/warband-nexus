@@ -83,6 +83,31 @@ check((WN.db.global.tryCounts.mount or {})[DRAKE_MOUNT] == 3,
 check((WN:GetTryCount("item", EGG_ITEM_ID) or 0) == 0,
       "no stray count under the source item key")
 
+print("phase 3b: an Oceanic Vortex cast is not a Nether-Warped Egg attempt")
+-- The egg is not on the vortex pool's loot table; a confirmed fishing cast whose loot source is that
+-- pool must leave the counter alone, while any other fishing node in the same zone still counts.
+local VORTEX_GUID = "GameObject-0-0-0-0-524813-000000000000"
+local OTHER_NODE_GUID = "GameObject-0-0-0-0-888002-000000000000"
+stub.Reset()
+stub.world.mapID = VOIDSTORM
+stub.world.isFishingLoot = true
+stub.world.lootSlots = { { hasItem = true, link = "|Hitem:" .. JUNK .. "::::::::::::::::|h[Junk]|h" } }
+stub.world.lootSources = { { VORTEX_GUID, 1 } }
+stub.Fire("LOOT_READY", true)
+stub.Fire("LOOT_OPENED", true, false)
+stub.Advance(0.05)
+stub.Fire("LOOT_CLOSED")
+stub.Advance(5)
+check(Count() == 3, "vortex cast leaves the count at 3 (got " .. Count() .. ")")
+
+local drops = Fns.CollectFishingDropsForZone()
+local junkSlots = { { hasItem = true, link = "|Hitem:" .. JUNK .. "::::::::::::::::|h[Junk]|h" } }
+local eggSlots = { { hasItem = true, link = "|Hitem:" .. EGG_ITEM_ID .. "::::::::::::::::|h[Egg]|h" } }
+check(#Fns.FilterFishingDropsForPoolSource(drops, { sourceGUIDs = { OTHER_NODE_GUID }, numLoot = 1, slotData = junkSlots }) == #drops,
+      "a non-vortex fishing node keeps the egg trackable")
+check(#Fns.FilterFishingDropsForPoolSource(drops, { sourceGUIDs = { VORTEX_GUID }, numLoot = 1, slotData = eggSlots }) == #drops,
+      "an egg actually looted from the vortex is still recorded as a catch")
+
 print("phase 4: a one-time catch keeps its total (v3.5.2)")
 local nCatch, catchText = Cast(EGG_ITEM_ID, false)
 check(nCatch == 1, "catch announces exactly one line (got " .. nCatch .. ")")

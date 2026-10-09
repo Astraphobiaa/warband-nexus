@@ -1066,6 +1066,44 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
     })
 end
 
+---Drop zone fishing entries whose excludeFishingPoolObjectIDs matches a GameObject loot source of
+---this session (Nether-Warped Egg vs. Oceanic Vortex). A drop that actually sits in the loot slots
+---is kept so a catch is still recorded.
+function Fns.FilterFishingDropsForPoolSource(trackable, session)
+    local sourceGUIDs = session and session.sourceGUIDs
+    if not sourceGUIDs or #sourceGUIDs == 0 then return trackable end
+    local poolIDs
+    for i = 1, #sourceGUIDs do
+        local oid = Fns.GetObjectIDFromGUID(sourceGUIDs[i])
+        if oid then
+            poolIDs = poolIDs or {}
+            poolIDs[#poolIDs + 1] = oid
+        end
+    end
+    if not poolIDs then return trackable end
+    local found
+    local kept = {}
+    for i = 1, #trackable do
+        local d = trackable[i]
+        local excluded = false
+        if d.excludeFishingPoolObjectIDs then
+            for j = 1, #poolIDs do
+                if d.excludeFishingPoolObjectIDs[poolIDs[j]] then excluded = true break end
+            end
+        end
+        if excluded then
+            found = found or Fns.ScanLootForItems(trackable, session.numLoot, session.slotData) or {}
+            if found[d.itemID] then excluded = false end
+        end
+        if excluded then
+            Fns.TryCounterAnnounceDebug("fishing: %s skipped, pool object excluded", tostring(d.name or d.itemID))
+        else
+            kept[#kept + 1] = d
+        end
+    end
+    return kept
+end
+
 ---Process loot already classified as fishing by ClassifyLootSession.
 ---One confirmed fishing loot open in a trackable zone = one attempt for zone fishing drops.
 function WarbandNexus:ProcessFishingLoot(lootRouteSource)
@@ -1085,6 +1123,7 @@ function WarbandNexus:ProcessFishingLoot(lootRouteSource)
         local d = drops[i]
         if d.repeatable or not Fns.IsCollectibleCollected(d) then trackable[#trackable + 1] = d end
     end
+    trackable = Fns.FilterFishingDropsForPoolSource(trackable, RT.lootSession)
     if #trackable == 0 then return end
 
     RT.fishingCtx.lootWasFishing = true
