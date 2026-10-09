@@ -7179,7 +7179,7 @@ function WarbandNexus:RebuildTrackDB()
     dropSourceIndex = {}
     dropDifficultyIndex = {}
     wipe(repeatableItemDrops)
-    difficultyCache = {}
+    wipe(difficultyCache)
 
     -- Re-load from static CollectibleSourceDB (typed sources already materialized there)
     Fns.LoadRuntimeSourceTables()
@@ -7307,8 +7307,6 @@ function WarbandNexus:InitializeTryCounter()
     Fns.InvalidateMergedStatisticSeedIndex()
     Fns.EnsureMergedStatisticSeedIndex()
 
-    -- Merge previously discovered lockout quests from SavedVariables
-    Fns.MergeDiscoveredLockoutQuests()
     Fns.MergeDiscoveredFishingBobbers()
 
     -- Sync lockout state with server quest flags (prevents false increments after /reload mid-farm)
