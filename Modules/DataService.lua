@@ -577,11 +577,14 @@ function WarbandNexus:CollectProfessionData()
         if fish then professions.fishing = getProfData(fish) end
         -- Archaeology removed: deprecated since Dragonflight, no longer relevant
         
+        if not next(professions) then
+            return nil
+        end
         return professions
     end)
     
-    if not success then
-        return {}
+    if not success or not result or not next(result) then
+        return nil
     end
     
     return result
@@ -736,7 +739,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     -- Never coerce nil → false: false is treated like "unconfirmed" by old popups and breaks (not false)==true.
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
 
-    -- Store MINIMAL data only (untracked: strip profession/gear/PvE-style fields; do not call extra collectors)
+    -- Store MINIMAL data (untracked or fallback: preserve existing values if present)
     chars[key] = {
         name = name,
         realm = realm,
@@ -752,24 +755,30 @@ function WarbandNexus:SaveMinimalCharacterData()
         race = race,
         raceFile = raceFile,
         gender = gender,
-        itemLevel = 0,
+        itemLevel = (existingEntry and existingEntry.itemLevel) or 0,
         isTracked = preserveTracked or false,
         trackingConfirmed = preserveConfirmed,
         lastSeen = time(),
-        mythicKey = nil,
-        timePlayed = nil,
-        professions = nil,
-        concentration = nil,
-        recipes = nil,
-        professionExpansions = nil,
-        discoveredSkillLines = nil,
-        knowledgeData = nil,
-        professionCooldowns = nil,
-        professionEquipment = nil,
-        cooldownRecipeIDs = nil,
-        craftingOrders = nil,
-        professionData = nil,
-        rested = nil,
+        mythicKey = existingEntry and existingEntry.mythicKey,
+        timePlayed = existingEntry and existingEntry.timePlayed,
+        professions = existingEntry and existingEntry.professions,
+        concentration = existingEntry and existingEntry.concentration,
+        recipes = existingEntry and existingEntry.recipes,
+        professionExpansions = existingEntry and existingEntry.professionExpansions,
+        discoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines,
+        knowledgeData = existingEntry and existingEntry.knowledgeData,
+        professionCooldowns = existingEntry and existingEntry.professionCooldowns,
+        professionEquipment = existingEntry and existingEntry.professionEquipment,
+        cooldownRecipeIDs = existingEntry and existingEntry.cooldownRecipeIDs,
+        craftingOrders = existingEntry and existingEntry.craftingOrders,
+        professionData = existingEntry and existingEntry.professionData,
+        rested = existingEntry and existingEntry.rested,
+        stats = existingEntry and existingEntry.stats,
+        specID = existingEntry and existingEntry.specID,
+        specName = existingEntry and existingEntry.specName,
+        specIcon = existingEntry and existingEntry.specIcon,
+        heroSpecID = existingEntry and existingEntry.heroSpecID,
+        heroSpecName = existingEntry and existingEntry.heroSpecName,
         -- GUID: never call UnitGUID here (untracked / minimal row). Preserve existing SV guid only;
         -- fresh capture happens when the user enables tracking (CharacterService:ConfirmCharacterTracking).
         guid = (function()
@@ -779,12 +788,6 @@ function WarbandNexus:SaveMinimalCharacterData()
             end
             return nil
         end)(),
-        stats = nil,
-        specID = nil,
-        specName = nil,
-        specIcon = nil,
-        heroSpecID = nil,
-        heroSpecName = nil,
     }
     RelocateLegacyCharacterSlot(self.db, key, legacyKey)
     -- Fire event for UI refresh
@@ -999,14 +1002,14 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     
     -- Collect Profession data (only if new character or professions don't exist)
     local professionData = nil
-    -- _professionDataReady is set only from a live collection: it lets an empty GetProfessions()
-    -- result overwrite saved rows, so preserved (stale) data must not arm it.
     if lightOnly then
         professionData = existingEntry and existingEntry.professions
-    elseif isNew or not existingSnapshot or not existingSnapshot.professions then
+    elseif isNew or not existingSnapshot or not existingSnapshot.professions or not next(existingSnapshot.professions) then
         professionData = self:CollectProfessionData()
         if professionData and next(professionData) then
             ns._professionDataReady = true
+        elseif existingSnapshot and existingSnapshot.professions and next(existingSnapshot.professions) then
+            professionData = existingSnapshot.professions
         end
     else
         -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
@@ -1280,18 +1283,21 @@ function WarbandNexus:UpdateProfessionData()
 
         local newData = self:CollectProfessionData()
 
-        -- Guard: Don't overwrite saved DB data with empty results on login.
-        -- GetProfessions() can return nil on login before the profession system is
-        -- fully loaded, which would destroy the previous session's saved data.
-        -- After the first successful collection, trust empty results (user may have
-        -- unlearned all professions).
-        if not newData then return end
-        if not next(newData) then
-            if not ns._professionDataReady then return end
-        else
-            ns._professionDataReady = true
+        -- Guard: NEVER overwrite saved DB data with empty results.
+        -- GetProfessions() can return nil/empty on login, logout, or zone transitions
+        -- before the profession system is loaded or during teardown, which destroys saved data.
+        if not newData or not next(newData) then return end
+
+        local existingData = self.db.global.characters[key].professions
+        -- If existing data had primary professions, do not let a collection with only
+        -- secondary professions (or empty primaries) wipe existing primary professions!
+        if existingData and type(existingData) == "table" then
+            if (existingData[1] or existingData[2]) and not (newData[1] or newData[2]) then
+                return
+            end
         end
 
+        ns._professionDataReady = true
         self.db.global.characters[key].professions = newData
         self.db.global.characters[key].lastSeen = time()
 
@@ -1374,7 +1380,13 @@ function WarbandNexus:UpdateCharacterGold()
     local copper = math.floor(totalCopper % 100)
 
     if not chars[writeKey] then
-        if self.SaveMinimalCharacterData then
+        if existingEntry and type(existingEntry) == "table" then
+            chars[writeKey] = existingEntry
+            chars[writeKey].gold = gold
+            chars[writeKey].silver = silver
+            chars[writeKey].copper = copper
+            chars[writeKey].lastSeen = time()
+        elseif self.SaveMinimalCharacterData then
             self:SaveMinimalCharacterData()
             if chars[writeKey] then
                 chars[writeKey].gold = gold
@@ -1382,12 +1394,6 @@ function WarbandNexus:UpdateCharacterGold()
                 chars[writeKey].copper = copper
                 chars[writeKey].lastSeen = time()
             end
-        elseif existingEntry and type(existingEntry) == "table" then
-            chars[writeKey] = existingEntry
-            chars[writeKey].gold = gold
-            chars[writeKey].silver = silver
-            chars[writeKey].copper = copper
-            chars[writeKey].lastSeen = time()
         else
             return false
         end

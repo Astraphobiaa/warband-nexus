@@ -418,7 +418,7 @@ local function CollectConcentrationData()
                         or prev.currencyID ~= currencyID then
                         concentrationDirty = true
                     end
-                    charData.concentration[slID] = {
+                    local concEntry = {
                         current        = newCurrent,
                         max            = newMax,
                         currencyID     = currencyID,
@@ -427,6 +427,10 @@ local function CollectConcentrationData()
                         expansionName  = expansionName,
                         lastUpdate     = time(),
                     }
+                    charData.concentration[slID] = concEntry
+                    if professionName and not charData.concentration[professionName] then
+                        charData.concentration[professionName] = concEntry
+                    end
                     local bucket = EnsureSkillLineBucket(charData, slID, professionName, expansionName)
                     if bucket then
                         bucket.concentration = {
@@ -2699,10 +2703,10 @@ function WarbandNexus:OnProfessionChanged()
     end
 
     -- Clear stale data for unlearned professions.
-    -- Only trust empty currentProfs after the first successful collection
-    -- (ns._professionDataReady set by UpdateProfessionData), otherwise
-    -- SKILL_LINES_CHANGED on login would wipe all data.
-    local canClearStale = next(currentProfs) or ns._professionDataReady
+    -- ONLY clear stale data if currentProfs has at least one detected profession!
+    -- When currentProfs is empty, GetProfessions() is either not loaded, tearing down,
+    -- or returned nil; wiping all saved data on empty currentProfs destroys user data.
+    local canClearStale = next(currentProfs) ~= nil
     if canClearStale then
         if charData.professionExpansions then
             for profName in pairs(charData.professionExpansions) do
@@ -3580,7 +3584,7 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                         expansionName = profInfo.professionName or profInfo.parentProfessionName
                                     end
                                 end
-                                charData.concentration[slID] = {
+                                local concEntry = {
                                     current        = currInfo.quantity or 0,
                                     max            = currInfo.maxQuantity or 0,
                                     currencyID     = currencyID,
@@ -3589,6 +3593,10 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                     expansionName  = expansionName,
                                     lastUpdate     = time(),
                                 }
+                                charData.concentration[slID] = concEntry
+                                if profName and not charData.concentration[profName] then
+                                    charData.concentration[profName] = concEntry
+                                end
                                 local bucket = EnsureSkillLineBucket(charData, slID, profName, expansionName)
                                 if bucket then
                                     bucket.concentration = {
@@ -3618,7 +3626,7 @@ function WarbandNexus:CollectConcentrationOnLogin()
                     if concOk and currencyID and currencyID > 0 then
                         local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
                         if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                            charData.concentration[skillLine] = {
+                            local concEntry = {
                                 current        = currInfo.quantity or 0,
                                 max            = currInfo.maxQuantity or 0,
                                 currencyID     = currencyID,
@@ -3627,6 +3635,10 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                 expansionName  = nil,
                                 lastUpdate     = time(),
                             }
+                            charData.concentration[skillLine] = concEntry
+                            if name and not charData.concentration[name] then
+                                charData.concentration[name] = concEntry
+                            end
                             local bucket = EnsureSkillLineBucket(charData, skillLine, name, nil)
                             if bucket then
                                 bucket.concentration = {
@@ -4072,10 +4084,8 @@ function WarbandNexus:FlushProfessionOnLogout()
         professionQuestProgressDebounceTimer = nil
     end
 
-    -- Persist the latest skill levels: a pending SKILL_UPDATE debounce dies with the session.
-    if self.UpdateProfessionData then
-        pcall(self.UpdateProfessionData, self)
-    end
+    -- On logout teardown, GetProfessions() returns nil, so we do NOT call UpdateProfessionData.
+    -- Live saves during gameplay already persisted latest skill levels.
     pcall(CollectAllExpansionProfessions, false)
 
     local charKey = ResolveTrackedCharactersTableKey()

@@ -1718,6 +1718,36 @@ end
 ProfUI.GetSkillLineIDForFilter = PUI.GetSkillLineIDForFilter
 ProfUI.IsMidnightSkillLineID = PUI.IsMidnightSkillLineID
 
+---Robust concentration lookup for a character profession row across all key formats and expansion modes.
+---@param char table character row
+---@param profName string|nil localized profession name
+---@param slID number|nil expansion-specific child skill line ID
+---@param prof table|nil character.professions[i] entry
+---@return table|nil concentration data table { current, max, currencyID, lastUpdate, ... }
+function PUI.GetCharacterConcentration(char, profName, slID, prof)
+    if not char or not char.concentration then return nil end
+    local conc = char.concentration
+    if slID then
+        local data = conc[slID] or conc[tonumber(slID)] or conc[tostring(slID)]
+        if data then return data end
+    end
+    if prof and prof.skillLine then
+        local data = conc[prof.skillLine] or conc[tonumber(prof.skillLine)] or conc[tostring(prof.skillLine)]
+        if data then return data end
+    end
+    if profName then
+        local data = conc[profName]
+        if data then return data end
+        for _, entry in pairs(conc) do
+            if type(entry) == "table" and entry.professionName == profName then
+                return entry
+            end
+        end
+    end
+    return nil
+end
+PUI.GetCharacterConcentrationData = PUI.GetCharacterConcentration
+
 -- FORMAT HELPERS (all return white text, colored where meaningful)
 
 ---Returns skill level for the expansion that matches the current expansion filter.
@@ -2075,10 +2105,7 @@ function PUI.GetCharSortValue(char, col)
                 cs = cs or 0; ms = ms or 0
                 val = ms > 0 and (cs / ms) or -1
             elseif col == "conc" or col == "recharge" then
-                local concData = slID and char.concentration and char.concentration[slID]
-                if not concData and filter == "All" then
-                    concData = char.concentration and char.concentration[profName]
-                end
+                local concData = PUI.GetCharacterConcentration(char, profName, slID)
                 if concData and concData.max and concData.max > 0 then
                     local est = concData.current or 0
                     if WarbandNexus.GetEstimatedConcentration then
@@ -3018,13 +3045,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             row[p.."Skill"]:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
         end
 
-        -- Concentration: keyed by skillLineID (expansion-specific).
-        -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
+        -- Concentration: resolve by child skillLineID, parent skillLineID, profName, or entry matching profession
         local slID = PUI.GetSkillLineIDForFilter(char, profName)
-        local concData = slID and char.concentration and char.concentration[slID]
-        if not concData and PUI.GetExpansionFilter() == "All" then
-            concData = char.concentration and char.concentration[profName]
-        end
+        local concData = PUI.GetCharacterConcentration(char, profName, slID, prof)
         local concCurrent, concMax = 0, 0
         local rechargeStr = ""
         if concData and concData.max and concData.max > 0 then
@@ -3332,7 +3355,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 local unspent = kdT.unspentPoints or 0
                 if unspent > 0 then lines[#lines+1] = { left = (ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent", right = tostring(unspent), leftColor = {1, 0.82, 0}, rightColor = {1, 0.82, 0} } end
             end
-            local concT = (slID and char.concentration and char.concentration[slID]) or (char.concentration and char.concentration[rowProfName])
+            local concT = PUI.GetCharacterConcentration(char, rowProfName, slID)
             if concT and concT.max and concT.max > 0 then
                 local est = concT.current or 0
                 if WarbandNexus.GetEstimatedConcentration then
