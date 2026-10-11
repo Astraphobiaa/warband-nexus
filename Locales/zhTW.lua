@@ -1233,21 +1233,19 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "過濾「總遊戲時間」與「本�
 
 
 
-L["CHANGELOG_V3516"] = [=[v3.5.16 (2026-10-08)
+L["CHANGELOG_V3517"] = [=[v3.5.17 (2026-10-11)
 
-Reagent deposit accuracy, profession tracking on alts, and container try counter improvements.
-
-Updated:
-- Improved container try counting when a container is consumed instantly or opened from a stack.
-- Improved Simplified Chinese translations for PvE columns and the Reagent Deposit Manager (thanks to Maple Saint).
+Profession and concentration tracking persistence, try counter encounter accuracy, and container counting improvements.
 
 Fixed:
-- Fixed the Reagent Deposit Manager moving weapon oils, whetstones and other usable items to the bank. Food, flasks, phials and potions always stay in your bags.
-- Fixed bind-on-equip two-handed swords and warglaives being deposited as Warbound Gear, while real Warbound-until-equipped gear was skipped.
-- Fixed keystones being picked up by reagent deposits.
-- Fixed profession skill levels not updating for characters that are not logged in, including skill-ups gained with the profession window closed or right before logging out.
-- Fixed Midnight profession skill not being tracked on characters that never opened their profession window.
-- Fixed saved profession data being wiped when the game reported professions late during login.
+- Fixed profession and concentration tracking on alt characters being wiped after logging out.
+- Fixed offline alt character concentration bars and recharge timers failing to display when the Midnight filter is active.
+- Fixed try counting for dungeon and raid bosses when encounter end and boss kill events both fire.
+- Fixed boss try counting double-counting if a boss corpse is looted after the fallback tracker already registered the kill.
+- Fixed container try counting incrementing when an item was not actually consumed.
+- Fixed login statistic sync unintentionally increasing try counts for already-collected mounts.
+- Fixed fishing casts in Oceanic Vortex incorrectly counting towards Nether-Warped Egg tries.
+- Fixed raid and dungeon lockout tracking when targeting a tracked rare or boss.
 
 CurseForge: Warband Nexus]=]
 
