@@ -1492,6 +1492,31 @@ function WarbandNexus:UpdateProfessionData()
             end
         end
 
+        local changed = false
+        if not existingData or type(existingData) ~= "table" then
+            changed = true
+        else
+            local checkKeys = { 1, 2, "cooking", "fishing" }
+            for i = 1, #checkKeys do
+                local sKey = checkKeys[i]
+                local oldSlot = existingData[sKey]
+                local newSlot = newData[sKey]
+                if (oldSlot == nil) ~= (newSlot == nil) then
+                    changed = true
+                    break
+                elseif oldSlot and newSlot then
+                    if oldSlot.name ~= newSlot.name
+                        or oldSlot.rank ~= newSlot.rank
+                        or oldSlot.maxRank ~= newSlot.maxRank
+                        or oldSlot.skill ~= newSlot.skill
+                        or oldSlot.skillLine ~= newSlot.skillLine then
+                        changed = true
+                        break
+                    end
+                end
+            end
+        end
+
         ns._professionDataReady = true
         self.db.global.characters[key].professions = newData
         if self.HealCharacterProfessions then
@@ -1501,7 +1526,7 @@ function WarbandNexus:UpdateProfessionData()
 
         local suppressCharUpdated = self.IsProfessionTradeWindowUiCoalesce
             and self:IsProfessionTradeWindowUiCoalesce()
-        if not suppressCharUpdated then
+        if changed and not suppressCharUpdated then
             self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
                 charKey = key,
                 dataType = "professions"

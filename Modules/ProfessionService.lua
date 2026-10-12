@@ -2678,7 +2678,7 @@ function WarbandNexus:OnProfessionQuestProgressChanged(immediate)
     end
 end
 
-function WarbandNexus:RefreshCurrentCharacterKnowledgeProgress()
+function WarbandNexus:RefreshCurrentCharacterKnowledgeProgress(suppressNotify)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     local charKey = ResolveTrackedCharactersTableKey()
@@ -2686,7 +2686,9 @@ function WarbandNexus:RefreshCurrentCharacterKnowledgeProgress()
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
     if not charData then return end
     if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 then
-        NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
+        if not suppressNotify then
+            NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
+        end
     end
 end
 
@@ -4179,7 +4181,7 @@ function WarbandNexus:StartRechargeTimer()
         local charKey = ResolveTrackedCharactersTableKey()
         if not charKey then return end
         if WarbandNexus.TryRefreshProfessionsLoggedInRow then
-            WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey)
+            WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey, true)
         end
     end)
     

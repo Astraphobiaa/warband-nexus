@@ -34,13 +34,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     ProfUI.ResetEquipResolveCache()
     SyncProfessionColumnOrder(WarbandNexus.db and WarbandNexus.db.profile)
 
-    if ns.Utilities and ns.Utilities:IsModuleEnabled("professions") then
-        if WarbandNexus.UpdateProfessionData then
-            pcall(WarbandNexus.UpdateProfessionData, WarbandNexus)
-        end
-        if WarbandNexus.RefreshCurrentCharacterKnowledgeProgress then
-            WarbandNexus:RefreshCurrentCharacterKnowledgeProgress()
-        end
+    if ns.Utilities and ns.Utilities:IsModuleEnabled("professions") and WarbandNexus.RefreshCurrentCharacterKnowledgeProgress then
+        WarbandNexus:RefreshCurrentCharacterKnowledgeProgress(true)
     end
 
     RegisterProfessionEvents(parent)

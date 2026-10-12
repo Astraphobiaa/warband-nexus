@@ -253,7 +253,7 @@ local COLUMNS = {
     skill       = { width = 70,  spacing = COL_SPACING },
     conc        = { width = 120, spacing = COL_SPACING },
     recharge    = { width = 65,  spacing = COL_SPACING },
-    knowledge   = { width = 74,  spacing = COL_SPACING },
+    knowledge   = { width = 82,  spacing = COL_SPACING },
     recipes     = { width = 68,  spacing = COL_SPACING },
     firstCraft  = { width = 68,  spacing = COL_SPACING },
     uniques     = { width = 68,  spacing = COL_SPACING },
@@ -1907,11 +1907,6 @@ function PUI.GetCharacterProfessionForSlot(char, slotIndex, isCurrent)
                 }
                 if not char.professions then char.professions = {} end
                 char.professions[slotIndex] = liveEntry
-                if WarbandNexus and WarbandNexus.UpdateProfessionData then
-                    C_Timer.After(0.2, function()
-                        pcall(WarbandNexus.UpdateProfessionData, WarbandNexus)
-                    end)
-                end
                 return liveEntry
             end
         end
@@ -2506,8 +2501,8 @@ end
 
 ns.UI_DebounceProfessionRowGradientRefresh = PUI.DebounceProfessionRowGradientRefresh
 
-function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, currentPlayerKey)
-    local row = AcquireProfessionRow(parent)
+function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, currentPlayerKey, existingRow)
+    local row = existingRow or AcquireProfessionRow(parent)
     row._wnYOffset = yOffset
     row:ClearAllPoints()
     row:SetHeight(ROW_HEIGHT)
@@ -2888,6 +2883,78 @@ function PUI.SetProfessionLineIconTexture(tex, prof, isEmptySlot)
     tex:Show()
 end
 
+--- Update concentration bar, recharge text and tooltip in-place on an existing row line (no frame allocations).
+function PUI.UpdateProfessionLineConcentration(row, char, prof, lineIndex, centerY, passedSlID)
+    if not row or not char or not prof then return end
+    local p = "l" .. lineIndex
+    local profName = prof.name
+    if not profName then return end
+
+    local slID = passedSlID or PUI.GetSkillLineIDForFilter(char, profName)
+    local concData = PUI.GetCharacterConcentration(char, profName, slID, prof)
+    local concCurrent, concMax = 0, 0
+    local rechargeStr = ""
+    if concData and concData.max and concData.max > 0 then
+        concCurrent = concData.current or 0
+        concMax = concData.max or 0
+        if WarbandNexus.GetEstimatedConcentration then
+            local estOk, estVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, concData)
+            if estOk and type(estVal) == "number" then
+                concCurrent = estVal
+            end
+        end
+        if concCurrent >= concMax then
+            local gr, gg, gb = PUI.ProgressRgb("complete")
+            rechargeStr = format("|cff%02x%02x%02x%s|r", gr * 255, gg * 255, gb * 255,
+                ((ns.L and ns.L["FULL"]) or "Full"))
+        elseif WarbandNexus.GetConcentrationTimeToFull then
+            local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concData)
+            if tsOk and ts and ts ~= "" and ts ~= "Full" then
+                rechargeStr = PUI.TextRoleMarkup("Bright") .. ts .. "|r"
+            end
+        end
+    end
+    local concVisible = PUI.IsColumnVisible("conc")
+    local concX = PUI.ColOffset("conc")
+    if concVisible then
+        PUI.UpdateConcentrationBar(row, p.."ConcBar", concX, PUI.ColBarTopY(centerY), PUI.ColWidth("conc"), concCurrent, concMax)
+    elseif row[p.."ConcBar"] then
+        row[p.."ConcBar"]:Hide()
+    end
+    local rechargeVisible = PUI.IsColumnVisible("recharge")
+    if rechargeVisible and row[p.."Recharge"] then
+        row[p.."Recharge"]:SetText(rechargeStr)
+    end
+
+    local rechargeHit = row[p.."RechargeHit"]
+    if rechargeHit then
+        if rechargeVisible and concData and concData.max and concData.max > 0 then
+            local capturedConcData = concData
+            rechargeHit:SetScript("OnEnter", function(self)
+                local est = capturedConcData.current or 0
+                if WarbandNexus.GetEstimatedConcentration then
+                    local eOk, eVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, capturedConcData)
+                    if eOk and type(eVal) == "number" then est = eVal end
+                end
+                if est >= (capturedConcData.max or 0) then return end
+                if WarbandNexus.GetConcentrationTimeToFullDetailed then
+                    local dOk, detailed = pcall(WarbandNexus.GetConcentrationTimeToFullDetailed, WarbandNexus, capturedConcData)
+                    if dOk and detailed and detailed ~= "" and detailed ~= "Full" then
+                        local lines = {
+                            { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = detailed, leftColor = {1,1,1}, rightColor = {1, 0.82, 0} },
+                        }
+                        if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", lines = lines }) end
+                    end
+                end
+            end)
+            rechargeHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+        else
+            rechargeHit:SetScript("OnEnter", nil)
+            rechargeHit:SetScript("OnLeave", nil)
+        end
+    end
+end
+
 -- DRAW PROFESSION LINE (single profession within a row)
 
 function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, isCurrent)
@@ -2957,10 +3024,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Know"]:SetMaxLines(1)
     end
     if not row[p.."KnowWarn"] then
-        local warnFrame = FactRow and FactRow:CreateContainer(row, 16, 16, false)
+        local warnFrame = FactRow and FactRow:CreateContainer(row, 13, 13, false)
         if not warnFrame then
             warnFrame = CreateFrame("Frame", nil, row)
-            warnFrame:SetSize(16, 16)
+            warnFrame:SetSize(13, 13)
         end
         warnFrame:EnableMouse(true)
         local tex = warnFrame:CreateTexture(nil, "OVERLAY")
@@ -2970,11 +3037,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."KnowWarn"] = warnFrame
     end
     if knowVisible then
-        row[p.."Know"]:SetWidth(knowW - 16)
+        row[p.."Know"]:SetWidth(knowW)
         PUI.AnchorCellInColumn(row[p.."Know"], "knowledge", row, centerY, "CENTER")
         row[p.."Know"]:Show()
-        row[p.."KnowWarn"]:ClearAllPoints()
-        row[p.."KnowWarn"]:SetPoint("CENTER", row, "LEFT", PUI.ColCenterX("knowledge") + (knowW / 2) - 10, centerY)
+        row[p.."KnowWarn"]:Hide()
     else
         row[p.."Know"]:Hide()
         row[p.."KnowWarn"]:Hide()
@@ -3093,6 +3159,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     if prof and prof.name then
         if row[p .. "EquipEmpty"] then row[p .. "EquipEmpty"]:Hide() end
         local profName = prof.name
+        local slID = PUI.GetSkillLineIDForFilter(char, profName)
 
         -- Icon (resolve fileID/path; refresh from skillLineID when DB icon missing)
         PUI.SetProfessionLineIconTexture(row[p.."Icon"].icon, prof, false)
@@ -3113,67 +3180,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             row[p.."Skill"]:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
         end
 
-        -- Concentration: resolve by child skillLineID, parent skillLineID, profName, or entry matching profession
-        local slID = PUI.GetSkillLineIDForFilter(char, profName)
-        local concData = PUI.GetCharacterConcentration(char, profName, slID, prof)
-        local concCurrent, concMax = 0, 0
-        local rechargeStr = ""
-        if concData and concData.max and concData.max > 0 then
-            concCurrent = concData.current or 0
-            concMax = concData.max or 0
-            if WarbandNexus.GetEstimatedConcentration then
-                local estOk, estVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, concData)
-                if estOk and type(estVal) == "number" then
-                    concCurrent = estVal
-                end
-            end
-            if concCurrent >= concMax then
-                local gr, gg, gb = PUI.ProgressRgb("complete")
-                rechargeStr = format("|cff%02x%02x%02x%s|r", gr * 255, gg * 255, gb * 255,
-                    ((ns.L and ns.L["FULL"]) or "Full"))
-            elseif WarbandNexus.GetConcentrationTimeToFull then
-                local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concData)
-                if tsOk and ts and ts ~= "" and ts ~= "Full" then
-                    rechargeStr = PUI.TextRoleMarkup("Bright") .. ts .. "|r"
-                end
-            end
-        end
-        local concVisible = PUI.IsColumnVisible("conc")
-        local concX = PUI.ColOffset("conc")
-        if concVisible then
-            PUI.UpdateConcentrationBar(row, p.."ConcBar", concX, PUI.ColBarTopY(centerY), PUI.ColWidth("conc"), concCurrent, concMax)
-        elseif row[p.."ConcBar"] then
-            row[p.."ConcBar"]:Hide()
-        end
-        if rechargeVisible then
-            row[p.."Recharge"]:SetText(rechargeStr)
-        end
-
-        -- Recharge tooltip: show detailed time breakdown on hover
-        if rechargeVisible and concData and concData.max and concData.max > 0 then
-            local capturedConcData = concData
-            rechargeHit:SetScript("OnEnter", function(self)
-                local est = capturedConcData.current or 0
-                if WarbandNexus.GetEstimatedConcentration then
-                    local eOk, eVal = pcall(WarbandNexus.GetEstimatedConcentration, WarbandNexus, capturedConcData)
-                    if eOk and type(eVal) == "number" then est = eVal end
-                end
-                if est >= (capturedConcData.max or 0) then return end
-                if WarbandNexus.GetConcentrationTimeToFullDetailed then
-                    local dOk, detailed = pcall(WarbandNexus.GetConcentrationTimeToFullDetailed, WarbandNexus, capturedConcData)
-                    if dOk and detailed and detailed ~= "" and detailed ~= "Full" then
-                        local lines = {
-                            { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = detailed, leftColor = {1,1,1}, rightColor = {1, 0.82, 0} },
-                        }
-                        if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", lines = lines }) end
-                    end
-                end
-            end)
-            rechargeHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-        else
-            rechargeHit:SetScript("OnEnter", nil)
-            rechargeHit:SetScript("OnLeave", nil)
-        end
+        -- Concentration: update bar, time-to-full text and hover tooltip
+        PUI.UpdateProfessionLineConcentration(row, char, prof, lineIndex, centerY, slID)
 
         -- Knowledge: keyed by skillLineID (expansion-specific). Always show Current / Max.
         -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
@@ -3181,26 +3189,54 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         if not kd and PUI.GetExpansionFilter() == "All" then
             kd = char.knowledgeData and char.knowledgeData[profName]
         end
-        if knowVisible then row[p.."Know"]:SetText(PUI.FormatKnowledge(kd)) end
-        local unspent = (kd and kd.unspentPoints) and kd.unspentPoints or 0
-        if knowVisible and unspent > 0 then
-            row[p.."KnowWarn"]:Show()
-            row[p.."KnowWarn"]:SetScript("OnEnter", function(self)
-                local msg
-                local msgTemplate = (ns.L and ns.L["UNSPENT_KNOWLEDGE_COUNT"]) or "%d unspent knowledge points"
-                local ok, formatted = pcall(format, msgTemplate, unspent)
-                if ok and formatted and formatted ~= "" then
-                    msg = formatted
-                else
-                    msg = ((ns.L and ns.L["UNSPENT_KNOWLEDGE_TOOLTIP"]) or "Unspent knowledge points") .. ": " .. tostring(unspent)
-                end
-                if ShowTooltip then ShowTooltip(self, { type = "custom", title = msg, lines = {} }) end
-            end)
-            row[p.."KnowWarn"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+        if knowVisible then
+            local knowText = PUI.FormatKnowledge(kd)
+            row[p.."Know"]:SetText(knowText)
+            local unspent = (kd and kd.unspentPoints) and kd.unspentPoints or 0
+            local colCenter = PUI.ColCenterX("knowledge")
+            local knowW = PUI.ColWidth("knowledge")
+
+            if unspent > 0 then
+                local warnSize = 13
+                local gap = 3
+                local strW = row[p.."Know"]:GetStringWidth() or 0
+                if strW <= 0 then strW = 40 end
+                local totalW = strW + gap + warnSize
+                local textLeft = colCenter - (totalW / 2)
+
+                row[p.."Know"]:ClearAllPoints()
+                row[p.."Know"]:SetPoint("LEFT", row, "LEFT", textLeft, centerY)
+                row[p.."Know"]:SetWidth(strW + 2)
+                row[p.."Know"]:SetJustifyH("LEFT")
+
+                row[p.."KnowWarn"]:ClearAllPoints()
+                row[p.."KnowWarn"]:SetPoint("LEFT", row, "LEFT", textLeft + strW + gap, centerY)
+                row[p.."KnowWarn"]:SetSize(warnSize, warnSize)
+                row[p.."KnowWarn"]:Show()
+                row[p.."KnowWarn"]:SetScript("OnEnter", function(self)
+                    local msg
+                    local msgTemplate = (ns.L and ns.L["UNSPENT_KNOWLEDGE_COUNT"]) or "%d unspent knowledge points"
+                    local ok, formatted = pcall(format, msgTemplate, unspent)
+                    if ok and formatted and formatted ~= "" then
+                        msg = formatted
+                    else
+                        msg = ((ns.L and ns.L["UNSPENT_KNOWLEDGE_TOOLTIP"]) or "Unspent knowledge points") .. ": " .. tostring(unspent)
+                    end
+                    if ShowTooltip then ShowTooltip(self, { type = "custom", title = msg, lines = {} }) end
+                end)
+                row[p.."KnowWarn"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+            else
+                row[p.."Know"]:ClearAllPoints()
+                row[p.."Know"]:SetPoint("CENTER", row, "LEFT", colCenter, centerY)
+                row[p.."Know"]:SetWidth(knowW)
+                row[p.."Know"]:SetJustifyH("CENTER")
+                row[p.."KnowWarn"]:Hide()
+                row[p.."KnowWarn"]:SetScript("OnEnter", nil)
+                row[p.."KnowWarn"]:SetScript("OnLeave", nil)
+            end
         else
+            row[p.."Know"]:Hide()
             row[p.."KnowWarn"]:Hide()
-            row[p.."KnowWarn"]:SetScript("OnEnter", nil)
-            row[p.."KnowWarn"]:SetScript("OnLeave", nil)
         end
 
         -- Recipes summary: keyed by skillLineID; in All mode fallback to matching profession name.
@@ -3230,7 +3266,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             or (recipeData and recipeData.skillLineID and PUI.IsMidnightSkillLineID(recipeData.skillLineID))
             or recipeExpMidnight
         local firstCraftProgress = progressData and progressData.firstCraft
-        if isMidnightRecipeData then
+        if isMidnightRecipeData and recipeData then
             local doneCount = recipeData.firstCraftDoneCount
             local totalBonusCount = recipeData.firstCraftTotalCount
             local recipeProgress = nil
@@ -3252,7 +3288,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         end
 
         -- Recipes: known / total (Midnight only to avoid mixing expansions).
-        if isMidnightRecipeData and recipeData.knownCount ~= nil and recipeData.totalCount and recipeData.totalCount > 0 then
+        if isMidnightRecipeData and recipeData and recipeData.knownCount ~= nil and recipeData.totalCount and recipeData.totalCount > 0 then
             recipesText:SetText(PUI.FormatProgressPair({ current = recipeData.knownCount, total = recipeData.totalCount }))
         else
             recipesText:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
@@ -3728,39 +3764,68 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
     pump()
 end
 
-function ProfUI.TryRefreshLoggedInRow(msgCharKey)
+function ProfUI.UpdateRowConcentration(row, charData)
+    if not row or not charData then return end
+    local isCurrent = (row._wnCharKey == (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)))
+    local prof1 = PUI.GetCharacterProfessionForSlot and PUI.GetCharacterProfessionForSlot(charData, 1, isCurrent) or (charData.professions and charData.professions[1])
+    local prof2 = PUI.GetCharacterProfessionForSlot and PUI.GetCharacterProfessionForSlot(charData, 2, isCurrent) or (charData.professions and charData.professions[2])
+    if prof1 then
+        PUI.UpdateProfessionLineConcentration(row, charData, prof1, 1, LINE1_Y)
+    end
+    if prof2 then
+        PUI.UpdateProfessionLineConcentration(row, charData, prof2, 2, LINE2_Y)
+    end
+end
+
+function ProfUI.TryRefreshLoggedInRow(msgCharKey, concentrationOnly)
     if not msgCharKey or not WarbandNexus then return false end
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if not mf or not mf:IsShown() or mf.currentTab ~= "professions" then return false end
     local scrollChild = mf.scroll and mf.scroll:GetScrollChild()
     if not scrollChild or not scrollChild._wnProfNestedRows then return false end
 
-    local resolvedKey = msgCharKey
-    if Utilities and Utilities.GetCanonicalCharacterKey then
-        resolvedKey = Utilities:GetCanonicalCharacterKey(msgCharKey) or msgCharKey
+    local U = ns.Utilities
+    local canonMsgKey = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(msgCharKey)) or msgCharKey
+    local chars = ns.db and ns.db.global and ns.db.global.characters
+    local charData = chars and (chars[canonMsgKey] or chars[msgCharKey])
+    if not charData and chars then
+        for k, v in pairs(chars) do
+            if (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(k) == canonMsgKey) or k == msgCharKey then
+                charData = v
+                break
+            end
+        end
     end
-    local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[resolvedKey]
     if not charData then return false end
 
     for ri = 1, #scrollChild._wnProfNestedRows do
         local row = scrollChild._wnProfNestedRows[ri]
         local ctx = row and row._wnProfPaintCtx
-        if row and row._wnCharKey == resolvedKey and ctx and ctx.sectionParent then
-            local ok = pcall(WarbandNexus.DrawProfessionRow, WarbandNexus,
-                ctx.sectionParent, charData, ctx.rowIndex, ctx.width, ctx.yOffset, ctx.currentPlayerKey)
-            if ok then
-                if row._wnGradientRefresh then
-                    pcall(row._wnGradientRefresh)
-                end
+        local rowKey = row and row._wnCharKey
+        local canonRowKey = (rowKey and U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(rowKey)) or rowKey
+        local isMatch = (rowKey and (rowKey == msgCharKey or rowKey == canonMsgKey))
+            or (canonRowKey and (canonRowKey == canonMsgKey or canonRowKey == msgCharKey))
+        if isMatch and ctx and ctx.sectionParent then
+            if concentrationOnly then
+                ProfUI.UpdateRowConcentration(row, charData)
                 return true
+            else
+                local ok = pcall(WarbandNexus.DrawProfessionRow, WarbandNexus,
+                    ctx.sectionParent, charData, ctx.rowIndex, ctx.width, ctx.yOffset, ctx.currentPlayerKey, row)
+                if ok then
+                    if row._wnGradientRefresh then
+                        pcall(row._wnGradientRefresh)
+                    end
+                    return true
+                end
             end
         end
     end
     return false
 end
 
-function WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey)
-    return ProfUI.TryRefreshLoggedInRow(charKey) == true
+function WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey, concentrationOnly)
+    return ProfUI.TryRefreshLoggedInRow(charKey, concentrationOnly) == true
 end
 
 --- Tab switch (AbortTabOperations): clear session profession caches so GUID/API-heavy maps are not retained across tabs.

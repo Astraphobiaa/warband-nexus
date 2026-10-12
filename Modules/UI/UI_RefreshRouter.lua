@@ -294,10 +294,10 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         if HiddenOrMissing() then return end
         local needChars = professionStormNeedsChars
         professionStormNeedsChars = false
-        if f.currentTab == "professions" then
-            SchedulePopulateContent(professionStormSkipCooldown())
-        elseif needChars and f.currentTab == "chars" then
+        if needChars and f.currentTab == "chars" then
             SchedulePopulateContent()
+        elseif not needChars and f.currentTab == "professions" and professionStormSkipCooldown() then
+            SchedulePopulateContent(true)
         end
     end
 
@@ -305,8 +305,13 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         if alsoChars then professionStormNeedsChars = true end
         if professionStormTimer and professionStormTimer.Cancel then
             professionStormTimer:Cancel()
+            professionStormTimer = nil
         end
-        professionStormTimer = C_Timer.After(getProfessionStormDebounce(), flushProfessionStormRefresh)
+        if C_Timer and C_Timer.NewTimer then
+            professionStormTimer = C_Timer.NewTimer(getProfessionStormDebounce(), flushProfessionStormRefresh)
+        else
+            C_Timer.After(getProfessionStormDebounce(), flushProfessionStormRefresh)
+        end
     end
 
     local function professionsChunkPaintActive()
@@ -314,24 +319,38 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         return sc and sc._wnProfChunkPending == true
     end
 
-    --- Logged-in row repaint only (no full PopulateContent). During chunked first paint, defer storm.
-    local function tryProfessionsIncrementalRefresh(charKey)
+    --- Logged-in row repaint only (no full PopulateContent). During chunked first paint, defer row refresh.
+    local function tryProfessionsIncrementalRefresh(charKey, concentrationOnly)
         if professionsChunkPaintActive() then
-            f._professionStormDeferred = true
+            if charKey and charKey ~= "all" and concentrationOnly then
+                if not f._professionDeferredRows then f._professionDeferredRows = {} end
+                f._professionDeferredRows[charKey] = true
+            end
             return true
         end
-        if not charKey then return false end
+        if not charKey or charKey == "all" then return false end
         if WarbandNexus.TryRefreshProfessionsLoggedInRow then
-            return WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey) == true
+            return WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey, concentrationOnly) == true
         end
         return false
     end
 
     local function flushDeferredProfessionStorm()
-        if not f._professionStormDeferred then return end
+        if HiddenOrMissing() or f.currentTab ~= "professions" then
+            f._professionDeferredRows = nil
+            f._professionStormDeferred = nil
+            return
+        end
+        if f._professionDeferredRows then
+            local defRows = f._professionDeferredRows
+            f._professionDeferredRows = nil
+            for rowKey, concOnly in pairs(defRows) do
+                if concOnly and WarbandNexus.TryRefreshProfessionsLoggedInRow then
+                    WarbandNexus:TryRefreshProfessionsLoggedInRow(rowKey, true)
+                end
+            end
+        end
         f._professionStormDeferred = nil
-        if HiddenOrMissing() or f.currentTab ~= "professions" then return end
-        scheduleProfessionStormRefresh(false)
     end
 
     local ProfUI = ns.ProfessionsUI
@@ -343,7 +362,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
             if tryProfessionsIncrementalRefresh(charKey) then return end
-            scheduleProfessionStormRefresh(false)
+            if professionStormSkipCooldown() then
+                scheduleProfessionStormRefresh(false)
+            end
         end
     end
 
@@ -351,7 +372,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
             if tryProfessionsIncrementalRefresh(charKey) then return end
-            scheduleProfessionStormRefresh(false)
+            if professionStormSkipCooldown() then
+                scheduleProfessionStormRefresh(false)
+            end
         elseif f.currentTab == "chars" then
             scheduleProfessionStormRefresh(true)
         end
@@ -361,7 +384,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     local function onConcentrationUpdated(_, charKey)
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
-            if tryProfessionsIncrementalRefresh(charKey) then return end
+            if tryProfessionsIncrementalRefresh(charKey, true) then
+                return
+            end
             if professionStormSkipCooldown() then
                 scheduleProfessionStormRefresh(false)
             end
@@ -410,7 +435,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         end
         local charKey = payload and payload.charKey
         if tryProfessionsIncrementalRefresh(charKey) then return end
-        scheduleProfessionStormRefresh(false)
+        if professionStormSkipCooldown() then
+            scheduleProfessionStormRefresh(false)
+        end
     end
 
     -- Must bypass POPULATE_COOLDOWN: after login/alt switch, ITEMS_UPDATED etc. can set st.lastEventPopulateTime
