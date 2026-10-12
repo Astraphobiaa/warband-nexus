@@ -1231,19 +1231,23 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V3517"] = [=[v3.5.17 (2026-10-11)
+L["CHANGELOG_V3518"] = [=[v3.5.18 (2026-10-12)
 
-Profession and concentration tracking persistence, try counter encounter accuracy, and container counting improvements.
+Centralized daily and weekly reset system, profession slot preservation and self-healing, and native in-game clock formatting.
+
+Added:
+- Added centralized daily and weekly reset management that automatically refreshes lockouts, plans, and quests on reset.
+
+Updated:
+- Updated reset countdowns and clock times to natively respect your in-game 12-hour or 24-hour time preferences.
 
 Fixed:
-- Fixed profession and concentration tracking on alt characters being wiped after logging out.
-- Fixed offline alt character concentration bars and recharge timers failing to display when the Midnight filter is active.
-- Fixed try counting for dungeon and raid bosses when encounter end and boss kill events both fire.
-- Fixed boss try counting double-counting if a boss corpse is looted after the fallback tracker already registered the kill.
-- Fixed container try counting incrementing when an item was not actually consumed.
-- Fixed login statistic sync unintentionally increasing try counts for already-collected mounts.
-- Fixed fishing casts in Oceanic Vortex incorrectly counting towards Nether-Warped Egg tries.
-- Fixed raid and dungeon lockout tracking when targeting a tracked rare or boss.
+- Fixed secondary profession slots occasionally being wiped from character data upon logout or partial background scans.
+- Fixed switching between professions inside the Trade Skill window failing to track the newly selected profession.
+- Fixed missing profession slots on alt characters by automatically reconstructing them from saved progression data.
+- Fixed stale Mythic+ keystones and weekly lockouts failing to clear immediately when the weekly reset boundary passes.
+- Fixed an infinite UI redraw loop occurring when opening the Professions tab.
+- Fixed profession rows and column dividers failing to render completely on characters without scanned recipe data.
 
 CurseForge: Warband Nexus]=]
 
