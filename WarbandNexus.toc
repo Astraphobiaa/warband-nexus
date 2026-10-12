@@ -50,6 +50,7 @@ Modules\Profiler_TraceUI.lua
 Modules\LoadingTracker.lua
 Modules\APIWrapper.lua
 Modules\Utilities.lua
+Modules\ResetService.lua
 Modules\DataFreshness.lua
 Modules\MigrationService.lua
 Modules\InitializationService.lua

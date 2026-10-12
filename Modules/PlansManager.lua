@@ -857,21 +857,28 @@ end
 
 
 ---Check if a Blizzard daily reset has occurred since the given timestamp.
----Uses C_DateAndTime.GetSecondsUntilDailyReset to derive the last reset moment.
 ---@return boolean
 function WarbandNexus:HasDailyResetOccurredSince(sinceTimestamp)
+    if ns.ResetService and ns.ResetService.HasDailyResetOccurred then
+        return ns.ResetService.HasDailyResetOccurred(sinceTimestamp)
+    end
     if not sinceTimestamp or sinceTimestamp == 0 then return true end
     local secondsUntilReset = C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset and C_DateAndTime.GetSecondsUntilDailyReset() or 0
-    local lastResetTime = time() + secondsUntilReset - 86400  -- last reset = next reset - 24h
+    local now = (GetServerTime and GetServerTime()) or time()
+    local lastResetTime = now + secondsUntilReset - 86400
     return sinceTimestamp < lastResetTime
 end
 
 ---Check if a Blizzard weekly reset has occurred since the given timestamp.
 ---@return boolean
 function WarbandNexus:HasWeeklyResetOccurredSince(sinceTimestamp)
+    if ns.ResetService and ns.ResetService.HasWeeklyResetOccurred then
+        return ns.ResetService.HasWeeklyResetOccurred(sinceTimestamp)
+    end
     if not sinceTimestamp or sinceTimestamp == 0 then return true end
     local secondsUntilReset = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
-    local lastResetTime = time() + secondsUntilReset - (7 * 86400)
+    local now = (GetServerTime and GetServerTime()) or time()
+    local lastResetTime = now + secondsUntilReset - (7 * 86400)
     return sinceTimestamp < lastResetTime
 end
 

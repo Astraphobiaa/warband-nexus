@@ -2448,56 +2448,19 @@ end
 
 --- True when a weekly reset occurred since lastScanTime (EU Wed 04:00 / US Tue 15:00 UTC fallback).
 function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
+    if ns.ResetService and ns.ResetService.HasWeeklyResetOccurred then
+        return ns.ResetService.HasWeeklyResetOccurred(lastScanTime)
+    end
     if not lastScanTime then return true end
-    
     local weekSecs = 7 * 24 * 60 * 60
-    
-    -- Prefer Blizzard API (no os.* — WoW sandbox has no standard os library)
     if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
         local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
         if secsUntil ~= nil and secsUntil >= 0 then
-            local now = GetServerTime()
-            local nextReset = now + secsUntil
-            local lastResetTime = nextReset - weekSecs
-            return lastScanTime < lastResetTime
+            local now = (GetServerTime and GetServerTime()) or time()
+            return lastScanTime < (now + secsUntil - weekSecs)
         end
     end
-
-    if C_DateAndTime and C_DateAndTime.GetWeeklyResetStartTime then
-        local ok, lastReset = pcall(C_DateAndTime.GetWeeklyResetStartTime)
-        lastReset = ok and tonumber(lastReset) or nil
-        if lastReset and lastReset > 0 then
-            return lastScanTime < lastReset
-        end
-    end
-    
-    -- Same helper as PlansManager:GetWeeklyResetTime fallback (UTC epoch math, not os.time)
-    if self.GetWeeklyResetTime then
-        local nextReset = self:GetWeeklyResetTime()
-        if nextReset and nextReset > 0 then
-            return lastScanTime < (nextReset - weekSecs)
-        end
-    end
-    
-    local now = (GetServerTime and GetServerTime()) or time()
-    local region = GetCurrentRegion() -- 1=US, 2=KR, 3=EU, 4=TW, 5=CN
-    -- date("!*t") wday: 1=Sun … 3=Tue, 4=Wed. EU weekly reset is Wednesday 04:00 UTC.
-    local resetDay = (region == 3) and 4 or 3
-    local resetHour = (region == 3) and 4 or 15  -- EU: 04:00 UTC, US: 15:00 UTC
-    
-    local function getLastResetTime(timestamp)
-        local d = date("!*t", timestamp)
-        local secondsIntoUtcDay = (d.hour * 3600) + (d.min * 60) + d.sec
-        local utcMidnight = timestamp - secondsIntoUtcDay
-        local daysSinceReset = (d.wday - resetDay + 7) % 7
-        local resetTs = utcMidnight - (daysSinceReset * 86400) + (resetHour * 3600)
-        if daysSinceReset == 0 and secondsIntoUtcDay < (resetHour * 3600) then
-            resetTs = resetTs - weekSecs
-        end
-        return resetTs
-    end
-    
-    return lastScanTime < getLastResetTime(now)
+    return false
 end
 
 --- Query current character's Mythic Keystone via C_MythicPlus API.

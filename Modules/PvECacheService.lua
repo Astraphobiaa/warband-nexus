@@ -3567,6 +3567,26 @@ function WarbandNexus:RegisterPvECacheEvents()
         end
     end)
     
+    if self.RegisterMessage and Constants and Constants.EVENTS and Constants.EVENTS.WEEKLY_RESET_OCCURRED then
+        self:RegisterMessage(Constants.EVENTS.WEEKLY_RESET_OCCURRED, function()
+            DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WN_WEEKLY_RESET_OCCURRED triggered")
+            if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
+                if WarbandNexus.db.global.pveCache.mythicPlus then
+                    WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
+                end
+                PruneAllPvEWeeklyData()
+                WarbandNexus:SavePvECache()
+            end
+            ThrottledPvEUpdate()
+            if WarbandNexus.RequestWeeklyVaultRefresh then
+                WarbandNexus:RequestWeeklyVaultRefresh()
+            end
+            if WarbandNexus.RequestKeystoneRefresh then
+                WarbandNexus:RequestKeystoneRefresh("WEEKLY_RESET_OCCURRED", true)
+            end
+        end)
+    end
+    
     -- Weekly Vault events
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_UPDATE triggered")

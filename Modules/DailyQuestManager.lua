@@ -1253,19 +1253,38 @@ function WarbandNexus:InitializeDailyQuestManager()
             if not WarbandNexus._hasDailyQuestPlanCache then return end
             if not self.HasWeeklyResetOccurredSince then return end
             if self:HasWeeklyResetOccurredSince(self.dailyQuestWeeklyCheckTime or 0) then
-                self.dailyQuestWeeklyCheckTime = time()
-                local currentKey = ns.Utilities:GetCharacterKey()
-                local dailyList = GetDailyQuestPlansForCharKey(currentKey)
-                if dailyList then
-                    for i = 1, #dailyList do
-                        self:UpdateDailyPlanProgress(dailyList[i], true)
-                    end
-                end
-                if self.SendMessage then
-                    self:SendMessage(E.PLANS_UPDATED, { action = "weekly_reset", planType = "daily_quests" })
-                end
+                self:UpdateDailyQuestWeeklyReset()
             end
         end)
+    end
+end
+
+function WarbandNexus:UpdateDailyQuestWeeklyReset()
+    self.dailyQuestWeeklyCheckTime = time()
+    local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not currentKey then return end
+    local dailyList = GetDailyQuestPlansForCharKey(currentKey)
+    if dailyList then
+        for i = 1, #dailyList do
+            self:UpdateDailyPlanProgress(dailyList[i], true)
+        end
+    end
+    if self.SendMessage and E and E.PLANS_UPDATED then
+        self:SendMessage(E.PLANS_UPDATED, { action = "weekly_reset", planType = "daily_quests" })
+    end
+end
+
+function WarbandNexus:RefreshDailyQuestsOnDailyReset()
+    local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not currentKey then return end
+    local dailyList = GetDailyQuestPlansForCharKey(currentKey)
+    if dailyList then
+        for i = 1, #dailyList do
+            self:UpdateDailyPlanProgress(dailyList[i], true)
+        end
+    end
+    if self.SendMessage and E and E.PLANS_UPDATED then
+        self:SendMessage(E.PLANS_UPDATED, { action = "daily_reset", planType = "daily_quests" })
     end
 end
 

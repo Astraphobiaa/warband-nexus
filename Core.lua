@@ -446,6 +446,12 @@ local defaults = {
         -- Database version for migration tracking (must match Constants.DB_VERSION)
         dataVersion = 1,
         
+        -- Centralized Reset Tracking (authoritative server epoch timestamps)
+        resets = {
+            lastDailyResetEpoch = 0,
+            lastWeeklyResetEpoch = 0,
+        },
+        
         -- Warband bank cache (SHARED across all characters) - working storage
         warbandBank = {
             items = {},            -- { [bagID] = { [slotID] = itemData } }
@@ -714,6 +720,12 @@ function WarbandNexus:OnInitialize()
         if not self.db.global.trackDB.custom.objects then self.db.global.trackDB.custom.objects = {} end
         if not self.db.global.trackDB.disabled then self.db.global.trackDB.disabled = {} end
         if not self.db.global.statisticSnapshots then self.db.global.statisticSnapshots = {} end
+        if not self.db.global.resets then
+            self.db.global.resets = {
+                lastDailyResetEpoch = 0,
+                lastWeeklyResetEpoch = 0,
+            }
+        end
     end
 
     -- Collections → Recent: prune stale rows (same tick as migrations is unnecessary; defer slightly).
@@ -1604,6 +1616,9 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         
         -- Core P0 (T+4s): Lightweight resets (always) + character-specific data (tracked only)
         C_Timer.After(4, function()
+            if ns.ResetService and ns.ResetService.CheckAndTriggerResets then
+                ns.ResetService:CheckAndTriggerResets("login")
+            end
             if self and self.CheckWeeklyReset then self:CheckWeeklyReset() end
             if self and self.CheckRecurringPlanResets then self:CheckRecurringPlanResets() end
             if self and self.UpdateProfessionData then

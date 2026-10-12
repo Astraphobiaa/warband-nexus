@@ -1769,12 +1769,15 @@ local RECURRING_WEEKLY_PROGRESS_KEYS = {
 local WEEK_SECONDS = 7 * 86400
 
 local function HasWeeklyResetOccurredForTimestamp(timestamp)
+    if ns.ResetService and ns.ResetService.HasWeeklyResetOccurred then
+        return ns.ResetService.HasWeeklyResetOccurred(timestamp)
+    end
     if not timestamp or timestamp == 0 then return true end
     if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
         local ok, secs = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
         if ok and type(secs) == "number" and secs > 0 and secs <= WEEK_SECONDS then
-            local lastResetTime = time() + secs - WEEK_SECONDS
-            return timestamp < lastResetTime
+            local now = (GetServerTime and GetServerTime()) or time()
+            return timestamp < (now + secs - WEEK_SECONDS)
         end
     end
     if WarbandNexus and WarbandNexus.HasWeeklyResetOccurredSince then

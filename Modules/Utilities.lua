@@ -695,14 +695,20 @@ end
 
 --- Format time remaining until a given timestamp
 function Utilities:FormatTimeUntilReset(resetTime)
-    local diff = (resetTime or 0) - time()
+    local now = (GetServerTime and GetServerTime()) or time()
+    local diff = (resetTime or 0) - now
+    if ns.ResetService and ns.ResetService.FormatTimeRemaining then
+        return ns.ResetService.FormatTimeRemaining(diff)
+    end
     return self:FormatTimeCompact(diff)
 end
 
 ---Format a number of seconds into a human-readable compact time string
 function Utilities:FormatTimeCompact(seconds)
     if not seconds or seconds <= 0 then return "Now" end
-    
+    if SecondsToTime then
+        return SecondsToTime(seconds, false, false, 2, false)
+    end
     local days = math.floor(seconds / 86400)
     local hours = math.floor((seconds % 86400) / 3600)
     local minutes = math.floor((seconds % 3600) / 60)

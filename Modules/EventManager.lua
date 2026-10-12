@@ -439,6 +439,37 @@ function WarbandNexus:InitializeEventManager()
         end
     end)
     
+    -- Centralized Reset Listeners (Event-Driven Reset Dispatch)
+    if E.WEEKLY_RESET_OCCURRED then
+        WarbandNexus.RegisterMessage(EventManagerEvents, E.WEEKLY_RESET_OCCURRED, function()
+            -- Professions weekly knowledge & quests sweep
+            if WarbandNexus.CollectMidnightKnowledgeOnLogin then
+                WarbandNexus:CollectMidnightKnowledgeOnLogin()
+            end
+            -- Plans weekly vault reset
+            if WarbandNexus.CheckWeeklyReset then
+                WarbandNexus:CheckWeeklyReset()
+            end
+            -- Daily quest manager weekly reset
+            if WarbandNexus.UpdateDailyQuestWeeklyReset then
+                WarbandNexus:UpdateDailyQuestWeeklyReset()
+            end
+        end)
+    end
+
+    if E.DAILY_RESET_OCCURRED then
+        WarbandNexus.RegisterMessage(EventManagerEvents, E.DAILY_RESET_OCCURRED, function()
+            -- Recurring plans reset
+            if WarbandNexus.CheckRecurringPlanResets then
+                WarbandNexus:CheckRecurringPlanResets()
+            end
+            -- Daily quest refresh
+            if WarbandNexus.RefreshDailyQuestsOnDailyReset then
+                WarbandNexus:RefreshDailyQuestsOnDailyReset()
+            end
+        end)
+    end
+    
     -- Knowledge: TRAIT_NODE_CHANGED fires when profession spec points are spent
     -- TRAIT_CONFIG_UPDATED fires when spec tree is modified
     self:RegisterEvent("TRAIT_NODE_CHANGED", function()
