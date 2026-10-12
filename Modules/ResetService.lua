@@ -47,8 +47,20 @@ function ResetService.GetSecondsUntilWeeklyReset()
     -- Region-based UTC fallback
     local now = (GetServerTime and GetServerTime()) or time()
     local region = (GetCurrentRegion and GetCurrentRegion()) or 1
-    local resetDay = (region == 3) and 4 or 3       -- EU=Wed(4), US=Tue(3)
-    local resetHour = (region == 3) and 4 or 15     -- EU=04:00 UTC, US=15:00 UTC
+    local resetDay, resetHour
+    if region == 3 then
+        resetDay = 4   -- EU: Wednesday 04:00 UTC
+        resetHour = 4
+    elseif region == 2 or region == 4 then
+        resetDay = 4   -- KR / TW: Wednesday 15:00 UTC
+        resetHour = 15
+    elseif region == 5 then
+        resetDay = 4   -- CN: Wednesday 23:00 UTC
+        resetHour = 23
+    else
+        resetDay = 3   -- US / Americas: Tuesday 15:00 UTC
+        resetHour = 15
+    end
     
     local dateFn = date or (os and os.date)
     if not dateFn then return 0 end
@@ -115,7 +127,8 @@ function ResetService.FormatTimeRemaining(seconds)
         return "Now"
     end
     if SecondsToTime then
-        return SecondsToTime(seconds, false, false, 2, false)
+        local noSeconds = (seconds >= 60)
+        return SecondsToTime(seconds, noSeconds, false, 2)
     end
     local days = math.floor(seconds / DAY_SECONDS)
     local hours = math.floor((seconds % DAY_SECONDS) / 3600)
@@ -141,7 +154,15 @@ function ResetService.FormatResetClockTime(epoch, useLocalTime)
     local d = useLocalTime and dateFn("*t", epoch) or dateFn("!*t", epoch)
     if not d then return "" end
 
-    local useMilitary = (GetCVarBool and GetCVarBool("timeMgrUseMilitaryTime"))
+    local useMilitary = false
+    if C_CVar and C_CVar.GetCVarBool then
+        local ok, val = pcall(C_CVar.GetCVarBool, "timeMgrUseMilitaryTime")
+        if ok then useMilitary = val end
+    elseif GetCVarBool then
+        local ok, val = pcall(GetCVarBool, "timeMgrUseMilitaryTime")
+        if ok then useMilitary = val end
+    end
+
     if useMilitary then
         return string.format(TIME_TWENTYFOURHOURS or "%02d:%02d", d.hour, d.min)
     else
@@ -210,14 +231,14 @@ end
 
 ---Arm C_Timer timers to trigger exactly 1 second after the next daily and weekly resets.
 function ResetService:ArmTimers()
-    if not (C_Timer and C_Timer.After) then return end
+    if not (C_Timer and C_Timer.NewTimer) then return end
 
     if dailyTimer then
-        dailyTimer:Cancel()
+        pcall(dailyTimer.Cancel, dailyTimer)
         dailyTimer = nil
     end
     if weeklyTimer then
-        weeklyTimer:Cancel()
+        pcall(weeklyTimer.Cancel, weeklyTimer)
         weeklyTimer = nil
     end
 
