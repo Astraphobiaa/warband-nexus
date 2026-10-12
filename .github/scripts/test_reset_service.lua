@@ -13,8 +13,9 @@ C_DateAndTime = {
     GetSecondsUntilWeeklyReset = function() return 7200 end,  -- 2h remaining
 }
 
-GameTime_GetFormattedTime = function(h, m)
-    return string.format("%02d:%02d", h, m)
+GetCVarBool = function(cvar)
+    if cvar == "timeMgrUseMilitaryTime" then return true end
+    return false
 end
 
 SecondsToTime = function(secs)

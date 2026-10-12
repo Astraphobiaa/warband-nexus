@@ -140,10 +140,18 @@ function ResetService.FormatResetClockTime(epoch, useLocalTime)
     if not dateFn then return "" end
     local d = useLocalTime and dateFn("*t", epoch) or dateFn("!*t", epoch)
     if not d then return "" end
-    if GameTime_GetFormattedTime then
-        return GameTime_GetFormattedTime(d.hour, d.min)
+
+    local useMilitary = (GetCVarBool and GetCVarBool("timeMgrUseMilitaryTime"))
+    if useMilitary then
+        return string.format(TIME_TWENTYFOURHOURS or "%02d:%02d", d.hour, d.min)
+    else
+        local hour = d.hour
+        local isPM = hour >= 12
+        local displayHour = hour % 12
+        if displayHour == 0 then displayHour = 12 end
+        local fmt = isPM and (TIME_TWELVEHOURPM or "%d:%02d PM") or (TIME_TWELVEHOURAM or "%d:%02d AM")
+        return string.format(fmt, displayHour, d.min)
     end
-    return string.format("%02d:%02d", d.hour, d.min)
 end
 
 ---Central check and trigger function. Compares stored DB flags against current reset epochs.
