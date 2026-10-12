@@ -2529,6 +2529,22 @@ function WarbandNexus:OnTradeSkillShow()
 end
 
 --[[
+    Called on TRADE_SKILL_DATA_SOURCE_CHANGED (switched profession while window is open).
+    Resets sync state and schedules a full collector pass for the newly active profession.
+]]
+function WarbandNexus:OnTradeSkillDataSourceChanged()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
+
+    professionWindowOpenAt = GetTime()
+    professionWindowInitialSyncComplete = false
+    professionWindowRetryUsed = false
+    professionWindowSyncedSkillLineID = nil
+
+    ScheduleProfessionWindowSync()
+end
+
+--[[
     Called on TRADE_SKILL_CLOSE (profession window closed).
     Notifies companion window.
 ]]
@@ -2694,19 +2710,32 @@ function WarbandNexus:OnProfessionChanged()
 
     -- Compare current professions to detect profession changes
     local currentProfs = {}
+    local currentPrimaryCount = 0
     if charData.professions then
         for k, prof in pairs(charData.professions) do
             if prof and prof.name then
                 currentProfs[prof.name] = true
+                if prof.name ~= "Cooking" and prof.name ~= "Fishing" then
+                    currentPrimaryCount = currentPrimaryCount + 1
+                end
             end
         end
     end
 
     -- Clear stale data for unlearned professions.
-    -- ONLY clear stale data if currentProfs has at least one detected profession!
-    -- When currentProfs is empty, GetProfessions() is either not loaded, tearing down,
-    -- or returned nil; wiping all saved data on empty currentProfs destroys user data.
-    local canClearStale = next(currentProfs) ~= nil
+    -- ONLY clear stale data if currentPrimaryCount >= 2, or if previously known primary
+    -- professions count was <= 1 and currentPrimaryCount >= 1.
+    -- If GetProfessions() returns only 1 profession while the character previously had 2,
+    -- it is a partial/lagged scan: NEVER purge the other primary profession!
+    local existingPrimaryCount = 0
+    if charData.professionExpansions then
+        for profName in pairs(charData.professionExpansions) do
+            if profName ~= "Cooking" and profName ~= "Fishing" then
+                existingPrimaryCount = existingPrimaryCount + 1
+            end
+        end
+    end
+    local canClearStale = (currentPrimaryCount >= 2) or (existingPrimaryCount <= 1 and currentPrimaryCount >= 1)
     if canClearStale then
         if charData.professionExpansions then
             for profName in pairs(charData.professionExpansions) do

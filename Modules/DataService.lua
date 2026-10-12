@@ -1004,6 +1004,21 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     local professionData = nil
     if lightOnly then
         professionData = existingEntry and existingEntry.professions
+        -- If existingEntry had no primary professions (or missing slots), attempt live collection!
+        if not professionData or not (professionData[1] and professionData[2]) then
+            local liveProf = self:CollectProfessionData()
+            if liveProf and next(liveProf) then
+                if not professionData then
+                    professionData = liveProf
+                else
+                    if not professionData[1] and liveProf[1] then professionData[1] = liveProf[1] end
+                    if not professionData[2] and liveProf[2] then professionData[2] = liveProf[2] end
+                    if not professionData.cooking and liveProf.cooking then professionData.cooking = liveProf.cooking end
+                    if not professionData.fishing and liveProf.fishing then professionData.fishing = liveProf.fishing end
+                end
+                ns._professionDataReady = true
+            end
+        end
     elseif isNew or not existingSnapshot or not existingSnapshot.professions or not next(existingSnapshot.professions) then
         professionData = self:CollectProfessionData()
         if professionData and next(professionData) then
@@ -1014,6 +1029,16 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     else
         -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
         professionData = existingSnapshot.professions
+        if not (professionData[1] and professionData[2]) then
+            local liveProf = self:CollectProfessionData()
+            if liveProf and next(liveProf) then
+                if not professionData[1] and liveProf[1] then professionData[1] = liveProf[1] end
+                if not professionData[2] and liveProf[2] then professionData[2] = liveProf[2] end
+                if not professionData.cooking and liveProf.cooking then professionData.cooking = liveProf.cooking end
+                if not professionData.fishing and liveProf.fishing then professionData.fishing = liveProf.fishing end
+                ns._professionDataReady = true
+            end
+        end
     end
     
     -- Average item level: ALWAYS fresh from the API, light path included.
@@ -1150,6 +1175,12 @@ function WarbandNexus:SaveCurrentCharacterData(options)
                 end
             end
         end
+        if professionData and next(professionData) then
+            existingEntry.professions = professionData
+        end
+        if self.HealCharacterProfessions then
+            self:HealCharacterProfessions(existingEntry)
+        end
         self.db.global.characters[key] = existingEntry
         RelocateLegacyCharacterSlot(self.db, key, legacyKey)
         return _saveProfEnd(true)
@@ -1230,6 +1261,10 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         lastFullSaveAt       = (not lightOnly) and time() or (existingEntry and existingEntry.lastFullSaveAt),
     }
 
+    if self.HealCharacterProfessions then
+        self:HealCharacterProfessions(self.db.global.characters[key])
+    end
+
     RelocateLegacyCharacterSlot(self.db, key, legacyKey)
 
     if not lightOnly then
@@ -1269,6 +1304,155 @@ function WarbandNexus:IsCharacterRowPersistedWarm()
     return DF and DF.IsCharacterRowWarm and DF.IsCharacterRowWarm(charData) == true
 end
 
+-- Standard primary profession icons and parent skill line mappings for self-healing
+local KNOWN_PROFESSION_ICONS = {
+    ["Alchemy"]        = "Interface\\Icons\\Trade_Alchemy",
+    ["Blacksmithing"]  = "Interface\\Icons\\Trade_BlackSmithing",
+    ["Enchanting"]     = "Interface\\Icons\\Trade_Engraving",
+    ["Engineering"]    = "Interface\\Icons\\Trade_Engineering",
+    ["Herbalism"]      = "Interface\\Icons\\Trade_Herbalism",
+    ["Inscription"]    = "Interface\\Icons\\INV_Inscription_Tradeskill01",
+    ["Jewelcrafting"]  = "Interface\\Icons\\INV_Misc_Gem_01",
+    ["Leatherworking"] = "Interface\\Icons\\Trade_LeatherWorking",
+    ["Mining"]         = "Interface\\Icons\\Trade_Mining",
+    ["Skinning"]       = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01",
+    ["Tailoring"]      = "Interface\\Icons\\Trade_Tailoring",
+    ["Cooking"]        = "Interface\\Icons\\INV_Misc_Food_15",
+    ["Fishing"]        = "Interface\\Icons\\Trade_Fishing",
+}
+ns.KNOWN_PROFESSION_ICONS = KNOWN_PROFESSION_ICONS
+
+local PRIMARY_NAME_TO_PARENT_SKILL_LINE = {
+    ["Alchemy"]        = 171,
+    ["Blacksmithing"]  = 164,
+    ["Enchanting"]     = 333,
+    ["Engineering"]    = 202,
+    ["Herbalism"]      = 182,
+    ["Inscription"]    = 773,
+    ["Jewelcrafting"]  = 755,
+    ["Leatherworking"] = 165,
+    ["Mining"]         = 186,
+    ["Skinning"]       = 393,
+    ["Tailoring"]      = 197,
+}
+ns.PRIMARY_NAME_TO_PARENT_SKILL_LINE = PRIMARY_NAME_TO_PARENT_SKILL_LINE
+
+local function BuildRecoveredProfEntry(charData, profName)
+    local parentSL = PRIMARY_NAME_TO_PARENT_SKILL_LINE[profName]
+    local icon = KNOWN_PROFESSION_ICONS[profName]
+    local skill, maxSkill = 0, 100
+    local skillLine = parentSL
+
+    if charData.professionExpansions and charData.professionExpansions[profName] then
+        local list = charData.professionExpansions[profName]
+        if type(list) == "table" and #list > 0 then
+            local exp = list[#list]
+            if exp then
+                skill = exp.skillLevel or skill
+                maxSkill = exp.maxSkillLevel or maxSkill
+                if exp.skillLineID then skillLine = exp.skillLineID end
+            end
+        end
+    end
+
+    if not skillLine and charData.discoveredSkillLines and charData.discoveredSkillLines[profName] then
+        local dsl = charData.discoveredSkillLines[profName]
+        if type(dsl) == "table" and dsl[1] then
+            skillLine = dsl[1].id or dsl[1].skillLineID or dsl[1]
+        end
+    end
+
+    if (not icon or icon == "") and skillLine and skillLine > 0 and C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+        local ok, info = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLine)
+        if ok and type(info) == "table" then
+            icon = info.iconFileID or info.texture or icon
+        end
+    end
+
+    return {
+        name = profName,
+        icon = icon or "Interface\\Icons\\Trade_Engineering",
+        skill = skill,
+        maxSkill = maxSkill,
+        rank = skill,
+        maxRank = maxSkill,
+        skillLine = skillLine or parentSL or 0,
+    }
+end
+
+--- Reconstruct missing profession slots in charData.professions from preserved
+--- expansion, discoveredSkillLines, equipment, concentration, knowledge, and recipe stores.
+---@param charData table character data table
+---@return boolean true if any slot was healed
+function WarbandNexus:HealCharacterProfessions(charData)
+    if not charData or type(charData) ~= "table" then return false end
+    if not charData.professions then charData.professions = {} end
+
+    local p1 = charData.professions[1]
+    local p2 = charData.professions[2]
+    local has1 = p1 and p1.name and p1.name ~= ""
+    local has2 = p2 and p2.name and p2.name ~= ""
+    if has1 and has2 then return false end
+
+    local foundNames = {}
+    local nameOrder = {}
+    local function addCandidate(name)
+        if not name or type(name) ~= "string" or name == "" then return end
+        if issecretvalue and issecretvalue(name) then return end
+        if name == "Cooking" or name == "Fishing" or name == "Archaeology" or name == "_legacy" then return end
+        if (has1 and p1.name == name) or (has2 and p2.name == name) then return end
+        if not foundNames[name] then
+            foundNames[name] = true
+            nameOrder[#nameOrder + 1] = name
+        end
+    end
+
+    if charData.professionExpansions then
+        for name in pairs(charData.professionExpansions) do addCandidate(name) end
+    end
+    if charData.discoveredSkillLines then
+        for name in pairs(charData.discoveredSkillLines) do addCandidate(name) end
+    end
+    if charData.professionEquipment then
+        for name in pairs(charData.professionEquipment) do addCandidate(name) end
+    end
+    if charData.concentration then
+        for k in pairs(charData.concentration) do
+            if type(k) == "string" then addCandidate(k) end
+        end
+    end
+    if charData.knowledgeData then
+        for k in pairs(charData.knowledgeData) do
+            if type(k) == "string" then addCandidate(k) end
+        end
+    end
+    if type(charData.recipes) == "table" then
+        for _, rec in pairs(charData.recipes) do
+            if type(rec) == "table" and rec.professionName then
+                addCandidate(rec.professionName)
+            end
+        end
+    end
+
+    if #nameOrder == 0 then return false end
+
+    local modified = false
+    local cIdx = 1
+    if not has1 and nameOrder[cIdx] then
+        charData.professions[1] = BuildRecoveredProfEntry(charData, nameOrder[cIdx])
+        has1 = true
+        cIdx = cIdx + 1
+        modified = true
+    end
+    if not has2 and nameOrder[cIdx] then
+        charData.professions[2] = BuildRecoveredProfEntry(charData, nameOrder[cIdx])
+        has2 = true
+        cIdx = cIdx + 1
+        modified = true
+    end
+    return modified
+end
+
 --[[
     Update only profession data (lightweight — names, icons, skill levels)
 ]]
@@ -1289,9 +1473,20 @@ function WarbandNexus:UpdateProfessionData()
         if not newData or not next(newData) then return end
 
         local existingData = self.db.global.characters[key].professions
-        -- If existing data had primary professions, do not let a collection with only
-        -- secondary professions (or empty primaries) wipe existing primary professions!
+        -- Slot-level merge: preserve existing slots if newData is missing one of them
         if existingData and type(existingData) == "table" then
+            if existingData[1] and not newData[1] then
+                newData[1] = existingData[1]
+            end
+            if existingData[2] and not newData[2] then
+                newData[2] = existingData[2]
+            end
+            if existingData.cooking and not newData.cooking then
+                newData.cooking = existingData.cooking
+            end
+            if existingData.fishing and not newData.fishing then
+                newData.fishing = existingData.fishing
+            end
             if (existingData[1] or existingData[2]) and not (newData[1] or newData[2]) then
                 return
             end
@@ -1299,6 +1494,9 @@ function WarbandNexus:UpdateProfessionData()
 
         ns._professionDataReady = true
         self.db.global.characters[key].professions = newData
+        if self.HealCharacterProfessions then
+            self:HealCharacterProfessions(self.db.global.characters[key])
+        end
         self.db.global.characters[key].lastSeen = time()
 
         local suppressCharUpdated = self.IsProfessionTradeWindowUiCoalesce

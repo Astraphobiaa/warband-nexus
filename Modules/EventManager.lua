@@ -356,6 +356,14 @@ function WarbandNexus:InitializeEventManager()
             WarbandNexus:OnTradeSkillShow()
         end
     end)
+    self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
+        if WarbandNexus.OnTradeSkillDataSourceChanged then
+            WarbandNexus:OnTradeSkillDataSourceChanged()
+        elseif WarbandNexus.OnTradeSkillShow then
+            WarbandNexus:OnTradeSkillShow()
+        end
+    end)
     self:RegisterEvent("TRADE_SKILL_CLOSE", function()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillClose then

@@ -185,6 +185,117 @@ do
     assertTrue(conc4 == nil, "returns nil safely when no concentration exists")
 end
 
+io.write("Phase 4: Slot-Level Merge When Scan Returns Only One Primary Slot\n")
+do
+    local existingData = {
+        [1] = { name = "Alchemy", rank = 60, maxRank = 100 },
+        [2] = { name = "Herbalism", rank = 100, maxRank = 100 },
+    }
+    local newData = {
+        [1] = { name = "Alchemy", rank = 65, maxRank = 100 },
+    }
+    -- Slot-level merge
+    if existingData[1] and not newData[1] then newData[1] = existingData[1] end
+    if existingData[2] and not newData[2] then newData[2] = existingData[2] end
+
+    assertTrue(newData[1].rank == 65, "slot 1 updated to fresh rank")
+    assertTrue(newData[2] ~= nil and newData[2].name == "Herbalism", "slot 2 Herbalism preserved when newData only had slot 1")
+end
+
+io.write("Phase 5: Self-Healing Character Professions from Preserved Stores\n")
+do
+    local charData = {
+        name = "Aanala",
+        professions = {}, -- empty/wiped
+        professionExpansions = {
+            ["Blacksmithing"] = { { skillLevel = 45, maxSkillLevel = 100, skillLineID = 164 } },
+            ["Mining"] = { { skillLevel = 75, maxSkillLevel = 100, skillLineID = 186 } },
+        },
+        concentration = {
+            ["Blacksmithing"] = { current = 1000, max = 1000 },
+        }
+    }
+
+    local KNOWN_PROFESSION_ICONS = {
+        ["Blacksmithing"] = "Interface\\Icons\\Trade_BlackSmithing",
+        ["Mining"] = "Interface\\Icons\\Trade_Mining",
+    }
+
+    local function HealProfessions(char)
+        if not char.professions then char.professions = {} end
+        local p1 = char.professions[1]
+        local p2 = char.professions[2]
+        local has1 = p1 and p1.name and p1.name ~= ""
+        local has2 = p2 and p2.name and p2.name ~= ""
+        if has1 and has2 then return false end
+
+        local order = {}
+        local found = {}
+        for name in pairs(char.professionExpansions or {}) do
+            if name ~= "Cooking" and name ~= "Fishing" and not found[name] then
+                found[name] = true
+                order[#order + 1] = name
+            end
+        end
+        table.sort(order) -- deterministic order
+        local idx = 1
+        if not has1 and order[idx] then
+            char.professions[1] = { name = order[idx], icon = KNOWN_PROFESSION_ICONS[order[idx]], skill = 45, maxSkill = 100 }
+            has1 = true
+            idx = idx + 1
+        end
+        if not has2 and order[idx] then
+            char.professions[2] = { name = order[idx], icon = KNOWN_PROFESSION_ICONS[order[idx]], skill = 75, maxSkill = 100 }
+            has2 = true
+            idx = idx + 1
+        end
+        return true
+    end
+
+    HealProfessions(charData)
+    assertTrue(charData.professions[1] ~= nil and charData.professions[1].name == "Blacksmithing", "recovered slot 1 Blacksmithing")
+    assertTrue(charData.professions[2] ~= nil and charData.professions[2].name == "Mining", "recovered slot 2 Mining")
+end
+
+io.write("Phase 6: Migration Row Merge Preserves Loser's Second Profession and Expansions\n")
+do
+    local winner = {
+        name = "Tellia",
+        professions = {
+            [1] = { name = "Alchemy", rank = 58, maxRank = 100 },
+        },
+        professionExpansions = {
+            ["Alchemy"] = { { skillLevel = 58, maxSkillLevel = 100 } },
+        }
+    }
+    local loser = {
+        name = "Tellia",
+        professions = {
+            [1] = { name = "Alchemy", rank = 50, maxRank = 100 },
+            [2] = { name = "Herbalism", rank = 80, maxRank = 100 },
+        },
+        professionExpansions = {
+            ["Alchemy"] = { { skillLevel = 50, maxSkillLevel = 100 } },
+            ["Herbalism"] = { { skillLevel = 80, maxSkillLevel = 100 } },
+        }
+    }
+
+    -- Merge logic from MigrationService
+    if type(winner.professions) == "table" and type(loser.professions) == "table" then
+        if not winner.professions[1] and loser.professions[1] then winner.professions[1] = loser.professions[1] end
+        if not winner.professions[2] and loser.professions[2] then winner.professions[2] = loser.professions[2] end
+    end
+    for k, v in pairs(loser.professionExpansions) do
+        if not winner.professionExpansions[k] then
+            winner.professionExpansions[k] = v
+        end
+    end
+
+    assertTrue(winner.professions[1].rank == 58, "winner slot 1 preserved")
+    assertTrue(winner.professions[2] ~= nil and winner.professions[2].name == "Herbalism", "loser slot 2 merged into winner")
+    assertTrue(winner.professionExpansions["Herbalism"] ~= nil, "loser expansion merged into winner")
+end
+
 if failures > 0 then
     io.stderr:write(string.format("\nFAILED: %d failure(s)\n", failures))
     os.exit(1)

@@ -1606,6 +1606,9 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         C_Timer.After(4, function()
             if self and self.CheckWeeklyReset then self:CheckWeeklyReset() end
             if self and self.CheckRecurringPlanResets then self:CheckRecurringPlanResets() end
+            if self and self.UpdateProfessionData then
+                self:UpdateProfessionData()
+            end
 
             -- Character-specific: skip for untracked characters
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)

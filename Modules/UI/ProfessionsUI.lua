@@ -1843,23 +1843,89 @@ end
 
 --- True when char.professions[1|2] has a learned primary profession (matches DrawProfessionLine / DataService).
 function PUI.CharacterHasPrimaryProfession(char)
-    if not char or not char.professions then return false end
-    for pi = 1, 2 do
-        local prof = char.professions[pi]
-        if prof then
-            local nm = prof.name
-            if nm and nm ~= "" then
-                if issecretvalue and issecretvalue(nm) then
-                    if prof.skillLine or prof.skillLineID then return true end
-                else
+    if not char then return false end
+    if char.professions then
+        for pi = 1, 2 do
+            local prof = char.professions[pi]
+            if prof then
+                local nm = prof.name
+                if nm and nm ~= "" then
+                    if issecretvalue and issecretvalue(nm) then
+                        if prof.skillLine or prof.skillLineID then return true end
+                    else
+                        return true
+                    end
+                elseif prof.skillLine or prof.skillLineID then
                     return true
                 end
-            elseif prof.skillLine or prof.skillLineID then
+            end
+        end
+    end
+    -- Fallback: check preserved expansion / discovered skill line data
+    if char.professionExpansions then
+        for profName in pairs(char.professionExpansions) do
+            if profName ~= "Cooking" and profName ~= "Fishing" and profName ~= "Archaeology" and profName ~= "_legacy" then
+                return true
+            end
+        end
+    end
+    if char.discoveredSkillLines then
+        for profName in pairs(char.discoveredSkillLines) do
+            if profName ~= "Cooking" and profName ~= "Fishing" and profName ~= "Archaeology" and profName ~= "_legacy" then
                 return true
             end
         end
     end
     return false
+end
+
+--- Get or dynamically recover profession data for slot 1 or 2.
+--- Handles live API queries for the current player and self-healing for alts.
+function PUI.GetCharacterProfessionForSlot(char, slotIndex, isCurrent)
+    if not char then return nil end
+    local profs = char.professions
+    if profs and profs[slotIndex] and profs[slotIndex].name and profs[slotIndex].name ~= "" then
+        return profs[slotIndex]
+    end
+
+    -- 1. Live player fallback
+    if isCurrent and GetProfessions and GetProfessionInfo then
+        local p1, p2 = GetProfessions()
+        local pIdx = (slotIndex == 1) and p1 or p2
+        if pIdx then
+            local name, icon, rank, maxRank, _, _, skillLine = GetProfessionInfo(pIdx)
+            if name and name ~= "" then
+                local liveEntry = {
+                    name = name,
+                    icon = icon,
+                    rank = rank,
+                    maxRank = maxRank,
+                    skill = rank,
+                    maxSkill = maxRank,
+                    skillLine = skillLine,
+                    index = pIdx,
+                }
+                if not char.professions then char.professions = {} end
+                char.professions[slotIndex] = liveEntry
+                if WarbandNexus and WarbandNexus.UpdateProfessionData then
+                    C_Timer.After(0.2, function()
+                        pcall(WarbandNexus.UpdateProfessionData, WarbandNexus)
+                    end)
+                end
+                return liveEntry
+            end
+        end
+    end
+
+    -- 2. Self-heal via WarbandNexus:HealCharacterProfessions
+    if WarbandNexus and WarbandNexus.HealCharacterProfessions then
+        WarbandNexus:HealCharacterProfessions(char)
+        if char.professions and char.professions[slotIndex] and char.professions[slotIndex].name and char.professions[slotIndex].name ~= "" then
+            return char.professions[slotIndex]
+        end
+    end
+
+    return nil
 end
 
 --- Count roster entries with saved primary profession slots (subtitle / empty-state hints).
@@ -2088,7 +2154,7 @@ function PUI.GetCharSortValue(char, col)
     }
 
     for profIdx = 1, 2 do
-        local prof = char.professions and char.professions[profIdx]
+        local prof = PUI.GetCharacterProfessionForSlot and PUI.GetCharacterProfessionForSlot(char, profIdx, false) or (char.professions and char.professions[profIdx])
         local profName = prof and prof.name
         if profName then
             local val = -1
@@ -2572,8 +2638,10 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     ApplyProfessionRowClassGradient()
 
     -- PROFESSION LINES (per-line Open in the open column)
-    self:DrawProfessionLine(row, char, char.professions and char.professions[1], 1, LINE1_Y, isCurrent)
-    self:DrawProfessionLine(row, char, char.professions and char.professions[2], 2, LINE2_Y, isCurrent)
+    local prof1 = PUI.GetCharacterProfessionForSlot and PUI.GetCharacterProfessionForSlot(char, 1, isCurrent) or (char.professions and char.professions[1])
+    local prof2 = PUI.GetCharacterProfessionForSlot and PUI.GetCharacterProfessionForSlot(char, 2, isCurrent) or (char.professions and char.professions[2])
+    self:DrawProfessionLine(row, char, prof1, 1, LINE1_Y, isCurrent)
+    self:DrawProfessionLine(row, char, prof2, 2, LINE2_Y, isCurrent)
 
     if row._wnProfMidRule then
         row._wnProfMidRule:Hide()
@@ -3498,6 +3566,7 @@ do
     c.ColOffset = PUI.ColOffset
     c.ColWidth = PUI.ColWidth
     c.CountCharsWithProfessionData = PUI.CountCharsWithProfessionData
+    c.GetCharacterProfessionForSlot = PUI.GetCharacterProfessionForSlot
     c.CreateCollapsibleHeader = CreateCollapsibleHeader
     c.DATA_FONT = DATA_FONT
     c.E = E

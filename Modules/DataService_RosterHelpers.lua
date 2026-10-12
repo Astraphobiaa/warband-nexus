@@ -198,6 +198,12 @@ local function BuildMergedCharacterRosterView(charsTbl)
             end
         end
     end
+    local WN = ns.WarbandNexus
+    if WN and WN.HealCharacterProfessions then
+        for _, charData in pairs(seen) do
+            WN:HealCharacterProfessions(charData)
+        end
+    end
     return seen
 end
 

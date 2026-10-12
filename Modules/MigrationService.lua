@@ -1185,16 +1185,45 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
     if wi <= 0 and li > 0 then
         winner.itemLevel = loser.itemLevel
     end
-    if emptyTable(winner.professions) and not emptyTable(loser.professions) then
+    if type(winner.professions) == "table" and type(loser.professions) == "table" then
+        if not winner.professions[1] and loser.professions[1] then
+            winner.professions[1] = loser.professions[1]
+        end
+        if not winner.professions[2] and loser.professions[2] then
+            winner.professions[2] = loser.professions[2]
+        end
+        if not winner.professions.cooking and loser.professions.cooking then
+            winner.professions.cooking = loser.professions.cooking
+        end
+        if not winner.professions.fishing and loser.professions.fishing then
+            winner.professions.fishing = loser.professions.fishing
+        end
+    elseif emptyTable(winner.professions) and not emptyTable(loser.professions) then
         winner.professions = loser.professions
     end
-    local nested = {
-        "concentration", "recipes", "professionExpansions", "discoveredSkillLines",
-        "knowledgeData", "professionCooldowns", "professionEquipment", "cooldownRecipeIDs",
-        "craftingOrders", "professionData", "rested", "stats",
+    local keyedNested = {
+        "professionExpansions", "discoveredSkillLines", "knowledgeData",
+        "concentration", "professionEquipment", "recipes", "professionCooldowns",
     }
-    for i = 1, #nested do
-        local k = nested[i]
+    for i = 1, #keyedNested do
+        local k = keyedNested[i]
+        local wv = winner[k]
+        local lv = loser[k]
+        if type(wv) == "table" and type(lv) == "table" then
+            for subKey, subVal in pairs(lv) do
+                if wv[subKey] == nil then
+                    wv[subKey] = subVal
+                end
+            end
+        elseif (wv == nil or emptyTable(wv)) and lv ~= nil then
+            winner[k] = lv
+        end
+    end
+    local otherNested = {
+        "cooldownRecipeIDs", "craftingOrders", "professionData", "rested", "stats",
+    }
+    for i = 1, #otherNested do
+        local k = otherNested[i]
         local wv = winner[k]
         if wv == nil or emptyTable(wv) then
             local lv = loser[k]
@@ -1202,6 +1231,10 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
                 winner[k] = lv
             end
         end
+    end
+    local WN = ns.WarbandNexus
+    if WN and WN.HealCharacterProfessions then
+        WN:HealCharacterProfessions(winner)
     end
     if winner.mythicKey == nil and loser.mythicKey ~= nil then
         winner.mythicKey = loser.mythicKey
