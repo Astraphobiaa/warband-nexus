@@ -666,7 +666,9 @@ end
     @return number - Unix timestamp of next reset
 ]]
 function WarbandNexus:GetWeeklyResetTime()
-    -- Try using Blizzard API first (most accurate)
+    if ns.ResetService and ns.ResetService.GetNextWeeklyResetTime then
+        return ns.ResetService.GetNextWeeklyResetTime()
+    end
     if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
         local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
         if secondsUntil and secondsUntil > 0 then
@@ -674,57 +676,7 @@ function WarbandNexus:GetWeeklyResetTime()
             return now + secondsUntil
         end
     end
-
-    -- Mainline also exposes the authoritative previous boundary. Prefer it over static
-    -- region data when the countdown is temporarily unavailable during login.
-    if C_DateAndTime and C_DateAndTime.GetWeeklyResetStartTime then
-        local ok, lastReset = pcall(C_DateAndTime.GetWeeklyResetStartTime)
-        lastReset = ok and tonumber(lastReset) or nil
-        if lastReset and lastReset > 0 then
-            return lastReset + (7 * 86400)
-        end
-    end
-    
-    -- Fallback: Region-based calculation.
-    -- Reset moments are fixed UTC instants per realm region, so every field below must be UTC:
-    -- date("*t") would yield the player's LOCAL wday/hour and compare them against UTC reset
-    -- hours, shifting the result by the client's UTC offset (and the wday near local midnight).
-    -- Server clock, matching the primary branch above and every caller (they subtract
-    -- GetServerTime from this result); time() would drift with the client's own clock.
-    local currentTime = (GetServerTime and GetServerTime()) or time()
-    local utcNow = date("!*t", currentTime)
-
-    -- Detect region (portal = realm region)
-    local region = GetCVar("portal") or "US"
-
-    -- Region-specific reset times (UTC)
-    -- wday: 1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday
-    local resetDay, resetHour
-    if region == "EU" then
-        resetDay = 4  -- Wednesday
-        resetHour = 4  -- 04:00 UTC (05:00 CET)
-    elseif region == "KR" or region == "TW" or region == "CN" then
-        resetDay = 4  -- Wednesday
-        resetHour = 15  -- 15:00 UTC
-    else  -- US, OCE, others
-        resetDay = 3  -- Tuesday
-        resetHour = 15  -- 15:00 UTC
-    end
-
-    -- Seconds elapsed in the current UTC day, and the epoch of 00:00 UTC today.
-    local secondsIntoUtcDay = (utcNow.hour * 3600) + (utcNow.min * 60) + utcNow.sec
-    local utcMidnight = currentTime - secondsIntoUtcDay
-
-    -- Days until the next reset weekday, evaluated on the UTC calendar
-    local daysUntilReset = (resetDay - utcNow.wday + 7) % 7
-    if daysUntilReset == 0 and secondsIntoUtcDay >= (resetHour * 3600) then
-        daysUntilReset = 7  -- Today's reset already passed
-    end
-
-    -- Pure epoch arithmetic on purpose: time(table) would read the fields as LOCAL time and
-    -- need a UTC-offset correction, which is itself DST-dependent and drifts by an hour across
-    -- a transition. A UTC day is always exactly 86400s, so this needs neither offset nor isdst.
-    return utcMidnight + (daysUntilReset * 86400) + (resetHour * 3600)
+    return ((GetServerTime and GetServerTime()) or time()) + 604800
 end
 
 function WarbandNexus:FormatTimeUntilReset(resetTime)
