@@ -5,6 +5,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.PvPUI
 assert(M, "PvPUI.lua must load before PvPUI_Overview.lua")
 
@@ -800,7 +802,7 @@ local function EnsureColumnHeaderBar(bundle, parent, stackW, yTop, sideInset)
     local ac = COLORS.accent or { 0.5, 0.4, 0.7 }
     if not bar._wnPvpHdrRule then
         bar._wnPvpHdrRule = bar:CreateTexture(nil, "ARTWORK")
-        bar._wnPvpHdrRule:SetHeight(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(bar._wnPvpHdrRule, "horizontal", 1) else bar._wnPvpHdrRule:SetHeight(1) end
         bar._wnPvpHdrRule:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
         bar._wnPvpHdrRule:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
     end

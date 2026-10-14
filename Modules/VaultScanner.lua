@@ -303,6 +303,8 @@ scannerFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 scannerFrame:RegisterEvent("WEEKLY_REWARDS_UPDATE")
 
 scannerFrame:SetScript("OnEvent", function(self, event, ...)
+    -- Module gate: vault producer runs while PvE, Plans or the VaultButton consumes it.
+    if not (ns.Utilities and ns.Utilities.IsPvEVaultConsumerEnabled and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
     if event == "PLAYER_ENTERING_WORLD" then
         -- Player logged in or reloaded UI
         -- Request data from server

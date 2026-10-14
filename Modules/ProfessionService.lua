@@ -6,6 +6,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local DebugPrint = ns.DebugPrint
@@ -1045,39 +1048,62 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
 
     local baseStrip = stripColors(baseName)
     local desired = baseName .. " (" .. craftMax .. ")"
+    -- Per-call constants, computed once (were recomputed for every region visited).
+    local desiredStrip = stripColors(desired)
+    local escaped = baseStrip:gsub("([%(%)%.%+%-%*%?%[%]%^%$%%])", "%%%1")
+    local titlePattern = "^" .. escaped .. "%s*%(%d+)%)$"
 
-    local function visit(frame, depth)
-        if not frame or depth > 12 then return false end
-        local regions = { frame:GetRegions() }
-        for i = 1, #regions do
-            local r = regions[i]
-            if r and r.GetText and r.SetText then
-                local t = r:GetText()
-                if t == nil then
-                    -- skip
-                elseif issecretvalue and issecretvalue(t) then
-                    -- skip (Midnight: never tostring/compare secret region text)
-                elseif t == "" then
-                    -- skip
-                else
-                    local ts = stripColors(t)
-                    if ts == baseStrip or ts == stripColors(desired) then
-                        r:SetText(desired)
-                        return true
-                    end
-                    local escaped = baseStrip:gsub("([%(%)%.%+%-%*%?%[%]%^%$%%])", "%%%1")
-                    if ts:match("^" .. escaped .. "%s*%(%d+)%)$") then
-                        r:SetText(desired)
-                        return true
-                    end
-                end
+    local function isTitleRegion(r)
+        if not (r and r.GetText and r.SetText) then return false end
+        local t = r:GetText()
+        if t == nil then return false end
+        -- Midnight: never tostring/compare secret region text
+        if issecretvalue and issecretvalue(t) then return false end
+        if t == "" then return false end
+        local ts = stripColors(t)
+        if ts == baseStrip or ts == desiredStrip then return true end
+        return ts:match(titlePattern) ~= nil
+    end
+
+    -- Cached title fontstring from a previous select: reuse only while it still sits under this
+    -- form (within the walk depth) and still holds this recipe's title.
+    local cached = schematicForm._wnCraftCountTitleRegion
+    if cached then
+        local p, depth = cached.GetParent and cached:GetParent(), 0
+        while p and p ~= schematicForm and depth <= 13 do
+            p = p.GetParent and p:GetParent()
+            depth = depth + 1
+        end
+        if p == schematicForm and isTitleRegion(cached) then
+            cached:SetText(desired)
+            return
+        end
+        schematicForm._wnCraftCountTitleRegion = nil
+    end
+
+    -- Vararg walkers: no {GetRegions()} / {GetChildren()} table per visited node.
+    local visit
+    local function scanRegions(...)
+        for i = 1, select("#", ...) do
+            local r = (select(i, ...))
+            if isTitleRegion(r) then
+                r:SetText(desired)
+                schematicForm._wnCraftCountTitleRegion = r
+                return true
             end
         end
-        local children = { frame:GetChildren() }
-        for j = 1, #children do
-            if visit(children[j], depth + 1) then return true end
+        return false
+    end
+    local function scanChildren(depth, ...)
+        for j = 1, select("#", ...) do
+            if visit((select(j, ...)), depth) then return true end
         end
         return false
+    end
+    visit = function(frame, depth)
+        if not frame or depth > 12 then return false end
+        if scanRegions(frame:GetRegions()) then return true end
+        return scanChildren(depth + 1, frame:GetChildren())
     end
 
     visit(schematicForm, 0)
@@ -3649,7 +3675,8 @@ function WarbandNexus:CollectConcentrationOnLogin()
         end
 
         -- Phase 2b: Fallback via GetProfessions + GetProfessionInfo (base profession skill line)
-        local prof1, prof2 = GetProfessions and GetProfessions()
+        local prof1, prof2
+        if GetProfessions then prof1, prof2 = GetProfessions() end
         local profIdxPair = { prof1, prof2 }
         for ii = 1, #profIdxPair do
             local index = profIdxPair[ii]

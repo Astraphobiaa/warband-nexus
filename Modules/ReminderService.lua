@@ -1887,6 +1887,8 @@ ScheduleCalendarResetReminderTimer = function()
 end
 
 RunZoneOrInstanceChangedNow = function(planIDFilter)
+    -- Module gate: reminders are To-Do plan features; Plans off = no zone/instance evaluation.
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     -- Full zone scans wait until transit ends. A config-save pass is already narrowed to
     -- explicit plan IDs, so it is safe to evaluate immediately and cannot be stranded aloft.
     if not planIDFilter and SafeIsPlayerAirborneTransit() then
@@ -1967,6 +1969,7 @@ local function OnZoneOrInstanceChanged()
 end
 
 OnLoginRemindersCheck = function(includeWorldEvents)
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     BeginCalendarToastBatch()
     CheckDailyLoginReminders()
     CheckMonthlyLoginReminders()
@@ -2053,6 +2056,13 @@ function WarbandNexus:InitializeReminderService()
                 elseif a == "reminder_dismissed" and payload and payload.planID ~= nil then
                     -- Do not let an already queued save pass immediately undo the dismissal.
                     pendingReminderLocationPlanIDs[tostring(payload.planID)] = nil
+                end
+            end)
+            -- Plans re-enable: login-time calendar pass was skipped while off; run it once.
+            WarbandNexus.RegisterMessage(ReminderPlansMessageSink, E.MODULE_TOGGLED, function(_, moduleName, enabled)
+                if moduleName ~= "plans" or enabled ~= true then return end
+                if OnLoginRemindersCheck then
+                    OnLoginRemindersCheck()
                 end
             end)
         end

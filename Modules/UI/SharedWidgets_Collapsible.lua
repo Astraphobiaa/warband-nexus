@@ -4,6 +4,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local issecretvalue = issecretvalue
@@ -186,6 +188,83 @@ local function BuildCollapsibleSectionOpts(config)
     }
 end
 
+--- Chrome-shape signature: a pooled header is reusable only when these match (fonts/chrome are reused as-is).
+local function CollapsibleHeaderReuseSig(useClassicPanel, suppressSectionChrome, hasCategoryIcon)
+    return (useClassicPanel and "c" or "m") .. (suppressSectionChrome and "s" or "-") .. (hasCategoryIcon and "i" or "-")
+end
+
+--- Opt-in reuse path (`visualOpts.reuseHeader`): re-parent + re-label + rebind state/callbacks on an existing
+--- header instead of creating a new frame (frames are never GC'd). Chrome colors re-applied for theme changes.
+local function RebindReusedCollapsibleHeader(header, parent, text, isExpanded, onToggle, iconTexture, isAtlas, indent, visualOpts, headerW, sectionH)
+    local preset = visualOpts and visualOpts.sectionPreset
+    local suppressSectionChrome = visualOpts and visualOpts.suppressSectionChrome == true
+    if header:GetParent() ~= parent then
+        header:SetParent(parent)
+    end
+    header:SetSize(headerW, sectionH)
+    if not suppressSectionChrome and not header._wnBlizzardButton then
+        local headerBg, br, bg, bb, ba, sr, sg, sb, sa = ResolveSectionPresetChrome(preset)
+        ApplyVisuals(header, headerBg, { br, bg, bb, ba })
+        if header._wnSectionStripe then
+            header._wnSectionStripe:SetColorTexture(sr, sg, sb, sa)
+        end
+        if header._wnSectionRowJoin then
+            header._wnSectionRowJoin:SetColorTexture(br, bg, bb, 0.28)
+        end
+    end
+
+    local expanded = isExpanded and true or false
+    header._wnCollExpanded = expanded
+    header._wnCollOnToggle = onToggle
+    header._wnCollVisualOpts = visualOpts
+    local expandIcon = header._wnCollExpandIcon
+    if expandIcon then
+        ns.UI_CollapseExpandSetState(expandIcon, expanded)
+        expandIcon:ClearAllPoints()
+        expandIcon:SetPoint("LEFT", (header._wnCollChevLeft or 12) + indent, 0)
+    end
+
+    local categoryIcon = header._wnCollCategoryIcon
+    if categoryIcon and iconTexture then
+        local iconSize = (UI_LAYOUT and UI_LAYOUT.HEADER_ICON_SIZE) or 24
+        categoryIcon:SetSize(iconSize, iconSize)
+        if isAtlas then
+            local ok = pcall(categoryIcon.SetAtlas, categoryIcon, iconTexture, false)
+            if not ok then
+                categoryIcon:SetAtlas("icons_64x64_important", false)
+            end
+        else
+            categoryIcon:SetTexCoord(0, 1, 0, 1)
+            categoryIcon:SetTexture(iconTexture)
+            if type(iconTexture) == "string" then
+                categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+        end
+        categoryIcon:Show()
+    end
+
+    local headerText = header._wnCollHeaderText
+    if headerText then
+        if suppressSectionChrome then
+            headerText:SetText("")
+            headerText:Hide()
+        else
+            headerText:SetText(text)
+            if preset == "danger" then
+                ns.UI_SetTextColorRole(headerText, "Muted")
+            else
+                ns.UI_SetTextColorRole(headerText, "Bright")
+            end
+            headerText:Show()
+        end
+    end
+    header:Show()
+    return header, expandIcon, categoryIcon, headerText
+end
+
+--- Optional `visualOpts.reuseHeader`: a header previously returned by this function for the same section.
+--- When its chrome signature still matches it is rebound in place (see RebindReusedCollapsibleHeader);
+--- otherwise a new header is created. Callers that do not pass it keep the create-every-call behaviour.
 local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel, noCategoryIcon, visualOpts)
     visualOpts = (type(visualOpts) == "table") and visualOpts or nil
     -- Support for nested headers (indentLevel: 0 = root, 1 = child, etc.)
@@ -203,6 +282,27 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local useFullParentWidth = visualOpts and visualOpts.useFullParentWidth == true
     local stackWidth = visualOpts and tonumber(visualOpts.sectionStackWidth)
     local useClassicPanel = UseClassicSectionChrome()
+    local reuseHeader = visualOpts and visualOpts.reuseHeader
+    if reuseHeader and reuseHeader._wnCollExpandIcon then
+        local reuseIcon = iconTexture
+        if noCategoryIcon then
+            reuseIcon = nil
+        elseif not reuseIcon or reuseIcon == "" then
+            reuseIcon = isAtlas and "icons_64x64_important" or "Interface\\Icons\\INV_Misc_Coin_01"
+        end
+        if reuseHeader._wnCollReuseSig == CollapsibleHeaderReuseSig(useClassicPanel, suppressSectionChrome, reuseIcon ~= nil) then
+            local reuseW
+            if stackWidth and stackWidth > 0 then
+                reuseW = math.max(1, stackWidth - indent)
+            elseif useFullParentWidth then
+                reuseW = math.max(1, parentW - indent)
+            else
+                reuseW = math.max(1, parentW - (sideInset * 2) - indent)
+            end
+            return RebindReusedCollapsibleHeader(reuseHeader, parent, text, isExpanded, onToggle, reuseIcon, isAtlas,
+                indent, visualOpts, reuseW, sectionH)
+        end
+    end
     local header
     if useClassicPanel and not suppressSectionChrome then
         header = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -263,7 +363,10 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
             ApplyVisuals(header, headerBg, { br, bg, bb, ba })
 
             local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
-            stripe:SetSize(stripeW, math.max(4, sectionH - stripeVInset - stripeVInset))
+            -- Whole-pixel width + snap so the accent stripe keeps its width at any offset.
+            local stripeWpx = (ns.PixelRound and ns.PixelRound(stripeW, header, 1)) or stripeW
+            stripe:SetSize(stripeWpx, math.max(4, sectionH - stripeVInset - stripeVInset))
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(stripe) end
             stripe:SetPoint("LEFT", 4, 0)
             stripe:SetColorTexture(sr, sg, sb, sa)
             header._wnSectionStripe = stripe
@@ -276,7 +379,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
             -- Soft join into first row (same accent; lower alpha than header border).
             if not header._wnSectionRowJoin then
                 local join = header:CreateTexture(nil, "BORDER", nil, 1)
-                join:SetHeight(1)
+                join:SetHeight((ns.GetPixelScale and ns.GetPixelScale(header)) or 1)
+                if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(join) end
                 join:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", stripeW + 8, 1)
                 join:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 1)
                 header._wnSectionRowJoin = join
@@ -361,6 +465,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     header._wnCollExpanded = isExpanded and true or false
     header._wnCollExpandIcon = expandIcon
     header._wnCollChevLeft = chevLeft
+    header._wnCollCategoryIcon = categoryIcon
+    header._wnCollReuseSig = CollapsibleHeaderReuseSig(useClassicPanel, suppressSectionChrome, categoryIcon ~= nil)
 
     -- Click handler: optional animatedContent body resizes instantly; then onToggle / callbacks.
     header:SetScript("OnClick", function()

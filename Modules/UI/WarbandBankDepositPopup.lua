@@ -142,7 +142,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     -- Separator
     local sep1 = contentFrame:CreateTexture(nil, "ARTWORK")
-    sep1:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep1, "horizontal", 1) else sep1:SetHeight(1) end
     sep1:SetPoint("TOPLEFT", PADDING, -yOffset)
     sep1:SetPoint("TOPRIGHT", -PADDING, -yOffset)
     sep1:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4)
@@ -228,7 +228,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     -- Separator
     local sep2 = contentFrame:CreateTexture(nil, "ARTWORK")
-    sep2:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep2, "horizontal", 1) else sep2:SetHeight(1) end
     sep2:SetPoint("TOPLEFT", PADDING, -yOffset)
     sep2:SetPoint("TOPRIGHT", -PADDING, -yOffset)
     sep2:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4)

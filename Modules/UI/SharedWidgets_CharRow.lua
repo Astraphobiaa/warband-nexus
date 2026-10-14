@@ -272,7 +272,7 @@ local function EnsureGridColumnDivider(parent, index, x, height)
         parent._wnGridColDividers[index] = divider
     end
     divider:SetColorTexture(GRID_COL_DIVIDER_RGBA[1], GRID_COL_DIVIDER_RGBA[2], GRID_COL_DIVIDER_RGBA[3], GRID_COL_DIVIDER_RGBA[4])
-    divider:SetWidth(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(divider, "vertical", 1) else divider:SetWidth(1) end
     divider:SetHeight(height or 38)
     divider:ClearAllPoints()
     divider:SetPoint("CENTER", parent, "LEFT", x, 0)

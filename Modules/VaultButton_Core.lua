@@ -1,6 +1,8 @@
 --[[ Warband Nexus - Easy Access - VaultButton_Core.lua ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 ns.VaultButton = ns.VaultButton or {}
 local M = ns.VaultButton
 local WarbandNexus = ns.WarbandNexus
@@ -318,7 +320,7 @@ function M.VBCreateEasyAccessSeparator(parent, leftPad, rightPad, y)
     end
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.40, 0.20, 0.58 }
     local sep = parent:CreateTexture(nil, "BORDER")
-    sep:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep, "horizontal", 1) else sep:SetHeight(1) end
     sep:SetPoint("TOPLEFT", parent, "TOPLEFT", leftPad or 0, y or 0)
     sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(rightPad or 0), y or 0)
     sep:SetColorTexture(accent[1], accent[2], accent[3], 0.55)

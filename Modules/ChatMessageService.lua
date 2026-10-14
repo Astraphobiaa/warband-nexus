@@ -134,6 +134,8 @@ end
 ---Display data: read from DB via GetCurrencyData (fallback: live GetCurrencyInfo)
 local function OnCurrencyGained(event, data)
     if not data or not data.currencyID then return end
+    -- Module gate: "+X currency" chat lines belong to the Currencies module (producer stays on).
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("currencies")) then return end
     
     local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
     if not notifs or not notifs.enabled or not notifs.showCurrencyGains then
@@ -232,6 +234,8 @@ end
 ---Event payload: {factionID, factionName, gainAmount, currentRep, maxRep, wasStandingUp, standingName?, standingColor?}
 local function OnReputationGained(event, data)
     if not data or not data.factionID then return end
+    -- Module gate: "+X reputation" chat lines belong to the Reputations module.
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("reputations")) then return end
     
     local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
     if not notifs or not notifs.enabled or not notifs.showReputationGains then

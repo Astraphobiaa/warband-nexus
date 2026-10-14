@@ -262,7 +262,7 @@ function M.BuildInstanceCard(parent, group, cardSize)
     local stripe = card:CreateTexture(nil, "ARTWORK")
     stripe:SetPoint("TOPLEFT", 1, -1)
     stripe:SetPoint("TOPRIGHT", -1, -1)
-    stripe:SetHeight(2)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(stripe, "horizontal", 2) else stripe:SetHeight(2) end
     stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
 
     local titleFS = FontManager and FontManager.CreateFontString

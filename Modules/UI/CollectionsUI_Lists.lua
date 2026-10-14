@@ -599,43 +599,243 @@ function M.RemoveFirstMatchingPlan(pred)
     return false
 end
 
+-- Stable row callbacks (no per-paint closures). AcquireCollectionRow stores the painted list item on
+-- the row frame (_wnCollItem: .mount/.pet/.toy/.achievement) plus the list's onSelect callback
+-- (_wnCollSelectCb); handlers below read those fields at click time.
+local CollRowCb = {
+    planSlotScratch = {},  -- filled by Acquire*Row, copied into the row frame's own table
+}
+
+function CollRowCb.OnMouseDown(row)
+    local sel = row._wnCollSelect
+    if sel then sel(row) end
+    local refresh = row._wnCollRefresh
+    if refresh then refresh(row) end
+end
+
+-- RowPool invokes planSlotState.onTodoClick/onTrackClick with no args: one thunk per frame, created once.
+function CollRowCb.EnsureSlotThunks(f)
+    if f._wnCollTodoThunk then return end
+    f._wnCollTodoThunk = function()
+        local h = f._wnCollTodoHandler
+        if h then h(f) end
+    end
+    f._wnCollTrackThunk = function()
+        local h = f._wnCollTrackHandler
+        if h then h(f) end
+    end
+end
+
+local function CollRowEntity(row, key)
+    local item = row and row._wnCollItem
+    return item and item[key]
+end
+
+function CollRowCb.MountSelect(row)
+    local cb, mount = row._wnCollSelectCb, CollRowEntity(row, "mount")
+    if cb and mount then
+        cb(mount.id, mount.name, mount.icon, mount.source, mount.creatureDisplayID, mount.description, mount.isCollected)
+    end
+end
+function CollRowCb.MountRefresh(row)
+    local mount = CollRowEntity(row, "mount")
+    if mount and M.state._mountFlatList and M.state.mountListScrollFrame then
+        M.state._mountListSelectedID = mount.id
+        local r = M.state._mountListRefreshVisible
+        if r then r() end
+    end
+end
+function CollRowCb.MountTodo(row)
+    local WN = WarbandNexus
+    local mount = CollRowEntity(row, "mount")
+    if not WN or not mount then return end
+    if WN.IsMountPlanned and WN:IsMountPlanned(mount.id) then
+        M.RemoveFirstMatchingPlan(function(p)
+            return p.type == "mount" and p.mountID == mount.id
+        end)
+    elseif not mount.isCollected and WN.AddPlan then
+        WN:AddPlan({
+            type = "mount",
+            mountID = mount.id,
+            name = mount.name,
+            icon = mount.icon,
+            source = mount.source or "",
+        })
+    end
+    CollRowCb.MountRefresh(row)
+end
+
+function CollRowCb.PetSelect(row)
+    local cb, pet = row._wnCollSelectCb, CollRowEntity(row, "pet")
+    if cb and pet then
+        cb(pet.id, pet.name, pet.icon, pet.source, pet.creatureDisplayID, pet.description, pet.isCollected)
+    end
+end
+function CollRowCb.PetRefresh(row)
+    local pet = CollRowEntity(row, "pet")
+    if pet and M.state._petFlatList and M.state.petListScrollFrame then
+        M.state._petListSelectedID = pet.id
+        local r = M.state._petListRefreshVisible
+        if r then r() end
+    end
+end
+function CollRowCb.PetTodo(row)
+    local WN = WarbandNexus
+    local pet = CollRowEntity(row, "pet")
+    if not WN or not pet then return end
+    if WN.IsPetPlanned and WN:IsPetPlanned(pet.id) then
+        M.RemoveFirstMatchingPlan(function(p)
+            return p.type == "pet" and p.speciesID == pet.id
+        end)
+    elseif not pet.isCollected and WN.AddPlan then
+        WN:AddPlan({
+            type = "pet",
+            speciesID = pet.id,
+            name = pet.name,
+            icon = pet.icon,
+            source = pet.source or "",
+        })
+    end
+    CollRowCb.PetRefresh(row)
+end
+
+local function CollToyIsCollected(toy)
+    return (toy.isCollected == true) or (toy.collected == true)
+end
+function CollRowCb.ToySelect(row)
+    local cb, toy = row._wnCollSelectCb, CollRowEntity(row, "toy")
+    if cb and toy then
+        cb(toy.id, toy.name, toy.icon, toy.source, toy.description, CollToyIsCollected(toy), toy.sourceTypeName)
+    end
+end
+function CollRowCb.ToyRefresh(row)
+    local toy = CollRowEntity(row, "toy")
+    if toy and M.state._toyFlatList and M.state.toyListScrollFrame then
+        M.state._toyListSelectedID = toy.id
+        local r = M.state._toyListRefreshVisible
+        if r then r() end
+    end
+end
+function CollRowCb.ToyTodo(row)
+    local WN = WarbandNexus
+    local toy = CollRowEntity(row, "toy")
+    if not WN or not toy then return end
+    if WN.IsItemPlanned and WN:IsItemPlanned("toy", toy.id) then
+        M.RemoveFirstMatchingPlan(function(p)
+            return p.type == "toy" and p.itemID == toy.id
+        end)
+    elseif not CollToyIsCollected(toy) and WN.AddPlan then
+        WN:AddPlan({
+            type = "toy",
+            itemID = toy.id,
+            name = toy.name,
+            icon = toy.icon,
+            source = toy.sourceTypeName or "",
+        })
+    end
+    CollRowCb.ToyRefresh(row)
+end
+
+function CollRowCb.AchSelect(row)
+    local cb, ach = row._wnCollSelectCb, CollRowEntity(row, "achievement")
+    if cb and ach then cb(ach) end
+end
+function CollRowCb.AchRefresh(row)
+    local ach = CollRowEntity(row, "achievement")
+    if ach and M.state._achFlatList and M.state.achievementListScrollFrame then
+        M.state._achListSelectedID = ach.id
+        local r = M.state._achListRefreshVisible
+        if r then r() end
+    end
+end
+function CollRowCb.AchTodo(row)
+    local WN = WarbandNexus
+    local ach = CollRowEntity(row, "achievement")
+    if not WN or not ach or not ach.id then return end
+    local planned = WN.IsAchievementPlanned and WN:IsAchievementPlanned(ach.id)
+    if planned then
+        M.RemoveFirstMatchingPlan(function(p)
+            return p.type == "achievement" and p.achievementID == ach.id
+        end)
+    elseif not (ach.isCollected == true) and WN.AddPlan then
+        local rewardInfo = WN.GetAchievementRewardInfo and WN:GetAchievementRewardInfo(ach.id)
+        local rewardText = rewardInfo and (rewardInfo.title or rewardInfo.itemName) or nil
+        if not rewardText or rewardText == "" then
+            rewardText = ach.rewardText or ach.rewardTitle
+        end
+        WN:AddPlan({
+            type = "achievement",
+            achievementID = ach.id,
+            name = ach.name,
+            icon = ach.icon,
+            points = ach.points,
+            source = ach.source,
+            rewardText = rewardText,
+        })
+    end
+    CollRowCb.AchRefresh(row)
+end
+function CollRowCb.AchTrack(row)
+    local WN = WarbandNexus
+    local ach = CollRowEntity(row, "achievement")
+    if WN and WN.ToggleAchievementTracking and ach and ach.id then
+        WN:ToggleAchievementTracking(ach.id)
+    end
+    CollRowCb.AchRefresh(row)
+end
+
+-- Slot tooltip tables are read-only for consumers (RowPool SetCollectionPlanSlotTooltip reads
+-- title/lines), so each variant is built once per session (only once ns.L exists) and shared.
+local collPlanSlotTipCache = {}
+
 function M.CollectionRowTodoSlotTooltip(onTodo, canInteract)
+    local variant = onTodo and "todoRemove" or (canInteract and "todoAdd") or nil
+    if not variant then return nil end
+    local cached = collPlanSlotTipCache[variant]
+    if cached then return cached end
     local L = ns.L
     local title = (L and L["COLLECTIONS_TT_TODO_TITLE"]) or "To-Do list"
+    local tip
     if onTodo then
-        return {
+        tip = {
             title = title,
             lines = { (L and L["COLLECTIONS_TT_TODO_REMOVE"]) or "Left-click to remove this entry from your To-Do list." },
         }
-    end
-    if canInteract then
-        return {
+    else
+        tip = {
             title = title,
             lines = { (L and L["COLLECTIONS_TT_TODO_ADD"]) or "Left-click to add this entry to your To-Do list." },
         }
     end
-    return nil
+    if L then collPlanSlotTipCache[variant] = tip end
+    return tip
 end
 
 function M.CollectionRowTrackSlotTooltip(achCollected, onTrack)
+    local variant = achCollected and "trackCompleted" or (onTrack and "trackDisable") or "trackEnable"
+    local cached = collPlanSlotTipCache[variant]
+    if cached then return cached end
     local L = ns.L
     local title = (L and L["COLLECTIONS_TT_TRACK_TITLE"]) or "Objectives tracker"
+    local tip
     if achCollected then
-        return {
+        tip = {
             title = title,
             lines = { (L and L["COLLECTIONS_TT_TRACK_COMPLETED"]) or "This achievement is already completed. Tracking is not available." },
         }
-    end
-    if onTrack then
-        return {
+    elseif onTrack then
+        tip = {
             title = title,
             lines = { (L and L["COLLECTIONS_TT_TRACK_DISABLE"]) or "Left-click to stop tracking in Blizzard objectives." },
         }
+    else
+        tip = {
+            title = title,
+            lines = { (L and L["COLLECTIONS_TT_TRACK_ENABLE"]) or "Left-click to show progress in Blizzard objectives (up to 10 at once)." },
+        }
     end
-    return {
-        title = title,
-        lines = { (L and L["COLLECTIONS_TT_TRACK_ENABLE"]) or "Left-click to show progress in Blizzard objectives (up to 10 at once)." },
-    }
+    if L then collPlanSlotTipCache[variant] = tip end
+    return tip
 end
 
 -- Acquire a collection list row (SharedWidgets layout: status icon + icon + label). Used by Mounts, Pets, Achievements.
@@ -646,7 +846,10 @@ function M.CollectionRowPaintHeight(item)
     return ROW_HEIGHT
 end
 
-function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState, rightAlignedText, leftAlignedText)
+--- onSelect / refreshFn / planSlotState.onTodoClick / onTrackClick are called with the row frame;
+--- selectCb (optional) is stored as row._wnCollSelectCb. Section rows (item._collRelY) are placed at
+--- their section-relative Y; the painted item is kept on row._wnCollItem for the stable handlers.
+function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState, rightAlignedText, leftAlignedText, selectCb)
     if not rowParent then return nil end
     local rowH = M.CollectionRowPaintHeight(item)
     local f = table.remove(CollectionRowPool)
@@ -656,18 +859,41 @@ function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText
     end
     f:SetParent(rowParent)
     local rightPad = 4
-    f:SetPoint("TOPLEFT", rowParent, "TOPLEFT", leftIndent or 0, -(item.yOffset or 0))
-    f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", -rightPad, -(item.yOffset or 0))
+    local yOffset = item._collRelY or item.yOffset or 0
+    f:SetPoint("TOPLEFT", rowParent, "TOPLEFT", leftIndent or 0, -yOffset)
+    f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", -rightPad, -yOffset)
     f:SetHeight(rowH)
     if f.SetClipsChildren then
         f:SetClipsChildren(true)
     end
-    local onClick
-    if onSelect or refreshFn then
-        onClick = function()
-            if onSelect then onSelect() end
-            if refreshFn then refreshFn() end
+    f._wnCollItem = item
+    f._wnCollSelectCb = selectCb
+    f._wnCollSelect = onSelect
+    f._wnCollRefresh = refreshFn
+    local onClick = (onSelect or refreshFn) and CollRowCb.OnMouseDown or nil
+    if planSlotState then
+        -- RowPool's slot OnClick closures keep a reference to this table: one per frame, reused.
+        local dst = f._wnCollPlanSlot
+        if not dst then
+            dst = {}
+            f._wnCollPlanSlot = dst
         end
+        wipe(dst)
+        for k, v in pairs(planSlotState) do
+            dst[k] = v
+        end
+        CollRowCb.EnsureSlotThunks(f)
+        f._wnCollTodoHandler = planSlotState.onTodoClick
+        f._wnCollTrackHandler = planSlotState.onTrackClick
+        dst.onTodoClick = planSlotState.onTodoClick and f._wnCollTodoThunk or nil
+        dst.onTrackClick = planSlotState.onTrackClick and f._wnCollTrackThunk or nil
+        if planSlotState == CollRowCb.planSlotScratch then
+            wipe(planSlotState)
+        end
+        planSlotState = dst
+    else
+        f._wnCollTodoHandler = nil
+        f._wnCollTrackHandler = nil
     end
     Factory:ApplyCollectionListRowContent(f, item.rowIndex, iconPath, labelText, isCollected, (selectedID == itemID), onClick, rightAlignedText, nil, planSlotState, leftAlignedText)
     M.ApplyCollectionsRowIconChrome(f)
@@ -683,48 +909,17 @@ function M.AcquireMountRow(scrollChild, listWidth, item, selectedMountID, onSele
     if item._collSectionKey and M.state._mountSectionBodies and M.state._mountSectionBodies[item._collSectionKey] then
         rowParent = M.state._mountSectionBodies[item._collSectionKey]
     end
-    local rowItem = item
-    if item._collRelY then
-        rowItem = { mount = item.mount, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height, rowPaintHeight = item.rowPaintHeight }
-    end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsMountPlanned and WN:IsMountPlanned(mount.id) or false
-    local function refreshMountListVisible()
-        if M.state._mountFlatList and M.state.mountListScrollFrame then
-            M.state._mountListSelectedID = mount.id
-            local r = M.state._mountListRefreshVisible
-            if r then r() end
-        end
-    end
-    local planSlotState = {
-        onTodo = onTodo,
-        onTrack = false,
-        achievementRow = false,
-        showTrackSlot = false,
-        todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not mount.isCollected),
-        onTodoClick = (onTodo or not mount.isCollected) and function()
-            if not WN then return end
-            if WN.IsMountPlanned and WN:IsMountPlanned(mount.id) then
-                M.RemoveFirstMatchingPlan(function(p)
-                    return p.type == "mount" and p.mountID == mount.id
-                end)
-            elseif not mount.isCollected and WN.AddPlan then
-                WN:AddPlan({
-                    type = "mount",
-                    mountID = mount.id,
-                    name = mount.name,
-                    icon = mount.icon,
-                    source = mount.source or "",
-                })
-            end
-            refreshMountListVisible()
-        end or nil,
-    }
-    return M.AcquireCollectionRow(rowParent, rowItem, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id, function()
-        if onSelectMount then
-            onSelectMount(mount.id, mount.name, mount.icon, mount.source, mount.creatureDisplayID, mount.description, mount.isCollected)
-        end
-    end, refreshMountListVisible, planSlotState)
+    local planSlotState = CollRowCb.planSlotScratch
+    planSlotState.onTodo = onTodo
+    planSlotState.onTrack = false
+    planSlotState.achievementRow = false
+    planSlotState.showTrackSlot = false
+    planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not mount.isCollected)
+    planSlotState.onTodoClick = (onTodo or not mount.isCollected) and CollRowCb.MountTodo or nil
+    return M.AcquireCollectionRow(rowParent, item, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id,
+        CollRowCb.MountSelect, CollRowCb.MountRefresh, planSlotState, nil, nil, onSelectMount)
 end
 
 function M.AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPet, redraw, cf)
@@ -735,48 +930,17 @@ function M.AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPe
     if item._collSectionKey and M.state._petSectionBodies and M.state._petSectionBodies[item._collSectionKey] then
         rowParent = M.state._petSectionBodies[item._collSectionKey]
     end
-    local rowItem = item
-    if item._collRelY then
-        rowItem = { pet = item.pet, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height, rowPaintHeight = item.rowPaintHeight }
-    end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsPetPlanned and WN:IsPetPlanned(pet.id) or false
-    local function refreshPetListVisible()
-        if M.state._petFlatList and M.state.petListScrollFrame then
-            M.state._petListSelectedID = pet.id
-            local r = M.state._petListRefreshVisible
-            if r then r() end
-        end
-    end
-    local planSlotState = {
-        onTodo = onTodo,
-        onTrack = false,
-        achievementRow = false,
-        showTrackSlot = false,
-        todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not pet.isCollected),
-        onTodoClick = (onTodo or not pet.isCollected) and function()
-            if not WN then return end
-            if WN.IsPetPlanned and WN:IsPetPlanned(pet.id) then
-                M.RemoveFirstMatchingPlan(function(p)
-                    return p.type == "pet" and p.speciesID == pet.id
-                end)
-            elseif not pet.isCollected and WN.AddPlan then
-                WN:AddPlan({
-                    type = "pet",
-                    speciesID = pet.id,
-                    name = pet.name,
-                    icon = pet.icon,
-                    source = pet.source or "",
-                })
-            end
-            refreshPetListVisible()
-        end or nil,
-    }
-    return M.AcquireCollectionRow(rowParent, rowItem, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id, function()
-        if onSelectPet then
-            onSelectPet(pet.id, pet.name, pet.icon, pet.source, pet.creatureDisplayID, pet.description, pet.isCollected)
-        end
-    end, refreshPetListVisible, planSlotState)
+    local planSlotState = CollRowCb.planSlotScratch
+    planSlotState.onTodo = onTodo
+    planSlotState.onTrack = false
+    planSlotState.achievementRow = false
+    planSlotState.showTrackSlot = false
+    planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not pet.isCollected)
+    planSlotState.onTodoClick = (onTodo or not pet.isCollected) and CollRowCb.PetTodo or nil
+    return M.AcquireCollectionRow(rowParent, item, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id,
+        CollRowCb.PetSelect, CollRowCb.PetRefresh, planSlotState, nil, nil, onSelectPet)
 end
 
 function M.CollectionsUsesToyListPipeline()
@@ -797,50 +961,18 @@ function M.AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectTo
             rowParent = sectionBodies[item._collSectionKey]
         end
     end
-    local rowItem = item
-    if item._collRelY then
-        rowItem = { toy = item.toy, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height, rowPaintHeight = item.rowPaintHeight }
-    end
     local WN = WarbandNexus
-    local planKey = toy.id
-    local onTodo = WN and WN.IsItemPlanned and WN:IsItemPlanned("toy", planKey) or false
-    local toyCollected = (toy.isCollected == true) or (toy.collected == true)
-    local function refreshToyListVisible()
-        if M.state._toyFlatList and M.state.toyListScrollFrame then
-            M.state._toyListSelectedID = toy.id
-            local r = M.state._toyListRefreshVisible
-            if r then r() end
-        end
-    end
-    local planSlotState = {
-        onTodo = onTodo,
-        onTrack = false,
-        achievementRow = false,
-        showTrackSlot = false,
-        todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not toyCollected),
-        onTodoClick = (onTodo or not toyCollected) and function()
-            if not WN then return end
-            if WN.IsItemPlanned and WN:IsItemPlanned("toy", planKey) then
-                M.RemoveFirstMatchingPlan(function(p)
-                    return p.type == "toy" and p.itemID == toy.id
-                end)
-            elseif not toyCollected and WN.AddPlan then
-                WN:AddPlan({
-                    type = "toy",
-                    itemID = toy.id,
-                    name = toy.name,
-                    icon = toy.icon,
-                    source = toy.sourceTypeName or "",
-                })
-            end
-            refreshToyListVisible()
-        end or nil,
-    }
-    return M.AcquireCollectionRow(rowParent, rowItem, 0, toy.icon or DEFAULT_ICON_TOY, labelText, toyCollected, selectedToyID, toy.id, function()
-        if onSelectToy then
-            onSelectToy(toy.id, toy.name, toy.icon, toy.source, toy.description, toyCollected, toy.sourceTypeName)
-        end
-    end, refreshToyListVisible, planSlotState)
+    local onTodo = WN and WN.IsItemPlanned and WN:IsItemPlanned("toy", toy.id) or false
+    local toyCollected = CollToyIsCollected(toy)
+    local planSlotState = CollRowCb.planSlotScratch
+    planSlotState.onTodo = onTodo
+    planSlotState.onTrack = false
+    planSlotState.achievementRow = false
+    planSlotState.showTrackSlot = false
+    planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not toyCollected)
+    planSlotState.onTodoClick = (onTodo or not toyCollected) and CollRowCb.ToyTodo or nil
+    return M.AcquireCollectionRow(rowParent, item, 0, toy.icon or DEFAULT_ICON_TOY, labelText, toyCollected, selectedToyID, toy.id,
+        CollRowCb.ToySelect, CollRowCb.ToyRefresh, planSlotState, nil, nil, onSelectToy)
 end
 
 function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchievementID, onSelectAchievement, redraw, cf)
@@ -859,69 +991,20 @@ function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchieveme
     if item._collSectionKey and M.state._achSectionBodies and M.state._achSectionBodies[item._collSectionKey] then
         rowParent = M.state._achSectionBodies[item._collSectionKey]
     end
-    local rowItem = item
-    if item._collRelY then
-        rowItem = {
-            achievement = item.achievement,
-            rowIndex = item.rowIndex,
-            yOffset = item._collRelY,
-            height = item.height,
-            rowPaintHeight = item.rowPaintHeight,
-            indent = item.indent,
-        }
-    end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsAchievementPlanned and WN:IsAchievementPlanned(ach.id) or false
     local onTrack = WN and WN.IsAchievementTracked and WN:IsAchievementTracked(ach.id) or false
-    local function refreshAchListVisible()
-        if M.state._achFlatList and M.state.achievementListScrollFrame then
-            M.state._achListSelectedID = ach.id
-            local r = M.state._achListRefreshVisible
-            if r then r() end
-        end
-    end
-    local planSlotState = {
-        onTodo = onTodo,
-        onTrack = onTrack,
-        achievementRow = true,
-        achievementCollected = achCollected,
-        todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not achCollected),
-        trackTooltip = M.CollectionRowTrackSlotTooltip(achCollected, onTrack),
-        onTodoClick = (onTodo or not achCollected) and function()
-            if not WN or not ach.id then return end
-            local planned = WN.IsAchievementPlanned and WN:IsAchievementPlanned(ach.id)
-            if planned then
-                M.RemoveFirstMatchingPlan(function(p)
-                    return p.type == "achievement" and p.achievementID == ach.id
-                end)
-            elseif not achCollected and WN.AddPlan then
-                local rewardInfo = WN.GetAchievementRewardInfo and WN:GetAchievementRewardInfo(ach.id)
-                local rewardText = rewardInfo and (rewardInfo.title or rewardInfo.itemName) or nil
-                if not rewardText or rewardText == "" then
-                    rewardText = ach.rewardText or ach.rewardTitle
-                end
-                WN:AddPlan({
-                    type = "achievement",
-                    achievementID = ach.id,
-                    name = ach.name,
-                    icon = ach.icon,
-                    points = ach.points,
-                    source = ach.source,
-                    rewardText = rewardText,
-                })
-            end
-            refreshAchListVisible()
-        end or nil,
-        onTrackClick = (not achCollected) and function()
-            if WN and WN.ToggleAchievementTracking and ach.id then
-                WN:ToggleAchievementTracking(ach.id)
-            end
-            refreshAchListVisible()
-        end or nil,
-    }
-    return M.AcquireCollectionRow(rowParent, rowItem, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id, function()
-        if onSelectAchievement then onSelectAchievement(ach) end
-    end, refreshAchListVisible, planSlotState, earnedEarnerRich, earnedDateRich)
+    local planSlotState = CollRowCb.planSlotScratch
+    planSlotState.onTodo = onTodo
+    planSlotState.onTrack = onTrack
+    planSlotState.achievementRow = true
+    planSlotState.achievementCollected = achCollected
+    planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not achCollected)
+    planSlotState.trackTooltip = M.CollectionRowTrackSlotTooltip(achCollected, onTrack)
+    planSlotState.onTodoClick = (onTodo or not achCollected) and CollRowCb.AchTodo or nil
+    planSlotState.onTrackClick = (not achCollected) and CollRowCb.AchTrack or nil
+    return M.AcquireCollectionRow(rowParent, item, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id,
+        CollRowCb.AchSelect, CollRowCb.AchRefresh, planSlotState, earnedEarnerRich, earnedDateRich, onSelectAchievement)
 end
 
 -- Update visible row frames only (virtual scroll). Headers are created in PopulateMountList.

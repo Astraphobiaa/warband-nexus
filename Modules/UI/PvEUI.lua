@@ -8,6 +8,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
 local issecretvalue = issecretvalue
 
@@ -1662,7 +1664,9 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
 
             -- Calculate responsive card widths (pixel-snapped)
             -- Order: Overall Score (35%) → Keystone+Affixes (35%) → Vault (30%)
-            local PixelSnap = ns.PixelSnap or function(v) return v end
+            -- Snap on cardContainer's grid: the main window carries profile.uiScale.
+            local PixelSnap = ns.PixelSnap and function(v) return ns.PixelSnap(v, cardContainer) end
+                or function(v) return v end
             local totalWidth = PixelSnap(bodyW)
             -- Vault card: 4 equal columns (Label + 3 slots), each needs room for "Dungeons" + icon
             local card3Width = PixelSnap(math.max(360, totalWidth * 0.40))  -- Vault (min 360px)

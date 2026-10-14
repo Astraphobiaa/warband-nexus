@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120105
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team

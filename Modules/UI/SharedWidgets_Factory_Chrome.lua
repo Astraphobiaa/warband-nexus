@@ -5,6 +5,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
 ns.UI = ns.UI or {}
 ns.UI.Factory = ns.UI.Factory or {}
@@ -41,6 +43,7 @@ local function ApplyClassicHairlineDivider(frame)
     end
     tex:ClearAllPoints()
     tex:SetAllPoints()
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(tex) end
     local div = ClassicHairlineColor()
     tex:SetColorTexture(div[1], div[2], div[3], div[4] or 0.40)
     frame._wnClassicHairlineDivider = true
@@ -135,6 +138,8 @@ function Factory:CreateThemeDivider(parent, opts)
     elseif classicMode then
         thickness = DIVIDER_THICKNESS.classicHairline
     end
+    -- Whole physical pixels: a fractional-pixel strip changes width as it moves.
+    if ns.PixelRound then thickness = ns.PixelRound(thickness, parent, 1) end
 
     local divider
     if classicMode then
@@ -262,7 +267,8 @@ end
 --- Search box shell + Factory edit field (wraps SearchBoxComponent).
 function Factory:CreateSearchBox(parent, width, placeholder, onChange, initialText, registryKey)
     if ns.UI_CreateSearchBox then
-        return ns.UI_CreateSearchBox(parent, width, placeholder, onChange, initialText, registryKey)
+        -- Component signature: (parent, width, placeholder, onChange, debounceDelay, initialValue, registryKey).
+        return ns.UI_CreateSearchBox(parent, width, placeholder, onChange, nil, initialText, registryKey)
     end
     return nil
 end

@@ -133,6 +133,86 @@ local function ItemsUI_PopulateStorageRowDirect(row, item, rowIdx, rowWidth, loc
     end)
 end
 
+--- Storage tree section-frame pool (per results container: `resultsContainer._wnStorSectionPool`).
+--- Wraps / bodies / rows containers / headers are keyed by stable section keys and re-bound on every
+--- DrawStorageResults pass instead of recreated (WoW frames are never GC'd; the old per-pass frames were
+--- parked in WarbandNexusRecycleBin forever on each ITEMS/BAGS update). Single table = one upvalue for the
+--- deeply nested draw closures (Lua 5.1 60-upvalue limit).
+local StorPool = {}
+StorPool.STATE_FIELDS = {
+    "_wnStorageMajorPopulateFn", "_wnStorageMajorBodyBuilt", "_wnSectionFullH", "_wnRowsContainer",
+    "_wnStorageLeafMeta", "_wnStorageLeafStaging", "_wnVirtualContentHeight",
+    "_wnStorageMajorBodyBuilding",
+}
+
+function StorPool.Get(resultsContainer)
+    local pool = resultsContainer._wnStorSectionPool
+    if not pool then
+        pool = {}
+        resultsContainer._wnStorSectionPool = pool
+    end
+    return pool
+end
+
+--- Hide every pooled frame (unused keys this pass must not stay visible under a re-used parent).
+function StorPool.HideAll(resultsContainer)
+    local pool = resultsContainer._wnStorSectionPool
+    if not pool then return end
+    -- Pooled row containers keep last pass's item rows as children; release them back to the
+    -- row pool, or the next pass draws new rows on top of the old ones (overlapping rows).
+    local release = ns.UI_ReleasePooledRowsInSubtree
+    for key, f in pairs(pool) do
+        if release and key:sub(1, 5) == "rows:" then
+            release(f)
+        end
+        f:Hide()
+        f:ClearAllPoints()
+    end
+end
+
+function StorPool.Acquire(resultsContainer, key, contentParent, w, h)
+    local pool = StorPool.Get(resultsContainer)
+    local f = pool[key]
+    if f then
+        if f:GetParent() ~= contentParent then
+            f:SetParent(contentParent)
+        end
+        local fields = StorPool.STATE_FIELDS
+        for i = 1, #fields do
+            f[fields[i]] = nil
+        end
+        f:ClearAllPoints()
+        f:SetSize(w, h)
+        f:SetAlpha(1)
+        f:Show()
+        return f
+    end
+    f = ns.UI.Factory:CreateContainer(contentParent, w, h, false)
+    if f then
+        f._wnStorPooled = true
+        pool[key] = f
+    end
+    return f
+end
+
+--- Attach the cached header (if any) so CreateCollapsibleHeader rebinds it instead of creating a frame.
+function StorPool.HeaderOpts(resultsContainer, key, visualOpts)
+    if type(visualOpts) == "table" then
+        visualOpts.reuseHeader = StorPool.Get(resultsContainer)[key]
+    end
+    return visualOpts
+end
+
+function StorPool.Remember(resultsContainer, key, header)
+    if header then
+        header._wnStorPooled = true
+        StorPool.Get(resultsContainer)[key] = header
+    end
+end
+
+-- DrawStorageResults sits at the 60-upvalue limit: it reads the pool through `ns` (existing upvalue).
+ns.ItemsUI._StorPool = StorPool
+
 function WarbandNexus:ScheduleStorageResultsRedraw()
     if self._wnStorageResultsRedrawPending then
         return
@@ -158,6 +238,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     if mfPaint and (mfPaint.currentTab ~= "items" or not ItemsUsesStorageTreeEmbed()) then
         return yOffset or 0
     end
+    local StorPool = ns.ItemsUI._StorPool
     local leafPaintGen = 0
     if mfPaint then
         leafPaintGen = (mfPaint._wnStorageLeafPaintGen or 0) + 1
@@ -212,10 +293,14 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     if ReleasePooledRowsInSubtree then
         ReleasePooledRowsInSubtree(parent)
     end
+    -- Pooled section frames stay in place (hidden) and are re-bound below by stable key.
+    StorPool.HideAll(parent)
     local nTop = PackChildrenInto(_wnStorTopScratch, parent)
     for i = 1, nTop do
         local child = _wnStorTopScratch[i]
-        if not child._isVirtualRow and not child._wnSkipStorageTeardown then
+        if child._wnStorPooled then
+            -- hidden + unanchored by StorPool.HideAll
+        elseif not child._isVirtualRow and not child._wnSkipStorageTeardown then
             child:Hide()
             child:ClearAllPoints()
             child:SetParent(recycleBin or UIParent)
@@ -254,9 +339,14 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- Session-only expand state (see WarbandNexus:GetStorageTreeExpandState / ResetStorageTreeExpandState in Core.lua).
     local expanded = self:GetStorageTreeExpandState()
 
-    local function CreateStorageRowsContainer(contentParent, anchorFrame, leftOffset, rightOffset)
+    local function CreateStorageRowsContainer(contentParent, anchorFrame, leftOffset, rightOffset, poolKey)
         contentParent = contentParent or parent
-        local frame = ns.UI.Factory:CreateContainer(contentParent, math.max(1, contentParent:GetWidth()), 1, false)
+        local frame
+        if poolKey then
+            frame = StorPool.Acquire(parent, poolKey, contentParent, math.max(1, contentParent:GetWidth()), 1)
+        else
+            frame = ns.UI.Factory:CreateContainer(contentParent, math.max(1, contentParent:GetWidth()), 1, false)
+        end
         frame:ClearAllPoints()
         frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", leftOffset or 0, 0)
         frame:SetPoint("TOPRIGHT", anchorFrame, "BOTTOMRIGHT", rightOffset or 0, 0)
@@ -715,16 +805,21 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local expandAllActive = self.storageExpandAllActive == true
 
         if embedItemsGuild then
-            local entries = self.GetGuildBankSortedEntries and self:GetGuildBankSortedEntries() or {}
+            local entries = self.GetGuildBankDisplayEntries and self:GetGuildBankDisplayEntries() or {}
             for ei = 1, #entries do
                 local gd = entries[ei].data
-                local slots = gd.usedSlots or 0
-                if slots <= 0 and self.CountGuildBankOccupiedSlots then
-                    slots = self:CountGuildBankOccupiedSlots(gd)
-                end
-                guildTotalMatches = guildTotalMatches + slots
-                if slots > 0 or (gd.cachedGold or 0) > 0 then
+                if entries[ei].unscanned then
+                    -- Roster guild without viewable cache: still listed (compact "not scanned" header).
                     hasAnyData = true
+                elseif gd then
+                    local slots = gd.usedSlots or 0
+                    if slots <= 0 and self.CountGuildBankOccupiedSlots then
+                        slots = self:CountGuildBankOccupiedSlots(gd)
+                    end
+                    guildTotalMatches = guildTotalMatches + slots
+                    if slots > 0 or (gd.cachedGold or 0) > 0 then
+                        hasAnyData = true
+                    end
                 end
             end
             if not hasAnyData and StorageTreeHasExpandedPrefixCategory(expanded, "guild_") then
@@ -814,7 +909,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         
         local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
 
-        local personalWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, stackW), MAIN_SECTION_HEADER_H + 0.1, false)
+        local personalWrap = StorPool.Acquire(parent, "wrap:personal", parent, math.max(1, stackW), MAIN_SECTION_HEADER_H + 0.1)
         personalWrap:ClearAllPoints()
         if personalWrap.SetClipsChildren then
             personalWrap:SetClipsChildren(true)
@@ -836,10 +931,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             true,
             nil,
             nil,
-            MajorStorageSectionOpts(personalWrap, function() return personalBody end, MAIN_SECTION_HEADER_H, function(exp)
+            StorPool.HeaderOpts(parent, "hdr:personal", MajorStorageSectionOpts(personalWrap, function() return personalBody end, MAIN_SECTION_HEADER_H, function(exp)
                 expanded.personal = exp
-            end, nil, "accent")
+            end, nil, "accent"))
         )
+        StorPool.Remember(parent, "hdr:personal", personalHeader)
         if ns.UI_AnchorSectionHeaderInWrap then
             ns.UI_AnchorSectionHeaderInWrap(personalHeader, personalWrap, stackW)
         else
@@ -847,7 +943,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             personalHeader:SetWidth(math.max(1, stackW))
         end
 
-        personalBody = ns.UI.Factory:CreateContainer(personalWrap, math.max(1, stackW), 0.1, false)
+        personalBody = StorPool.Acquire(parent, "body:personal", personalWrap, math.max(1, stackW), 0.1)
         personalBody:ClearAllPoints()
         personalBody:SetPoint("TOPLEFT", personalHeader, "BOTTOMLEFT", 0, 0)
         personalBody:SetPoint("TOPRIGHT", personalHeader, "BOTTOMRIGHT", 0, 0)
@@ -856,9 +952,14 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local personalInnerAccum = 0
 
         local function populatePersonalMajorBody()
-            if personalBody._wnStorageMajorBodyBuilt then
+            -- Building guard: the char pump finishes over several frames; a second call in that
+            -- window (expand click + sectionOnComplete refresh) re-chained the same pooled frames
+            -- into an anchor cycle.
+            if personalBody._wnStorageMajorBodyBuilt or personalBody._wnStorageMajorBodyBuilding then
                 return
             end
+            personalBody._wnStorageMajorBodyBuilding = true
+            personalInnerTail, personalInnerAccum = nil, 0
         local hasAnyPersonalItems = false
 
         -- Direct DB access (DB-First pattern) (tracked only)
@@ -919,6 +1020,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             personalBody:Show()
             personalBody:SetHeight(personalBody._wnSectionFullH)
             personalBody._wnStorageMajorBodyBuilt = true
+            personalBody._wnStorageMajorBodyBuilding = nil
         end
 
         local function syncPersonalChromePartial()
@@ -963,7 +1065,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     -- Character block: wrapped header + body (major section); types always built inside body.
                     local charIndent = BASE_INDENT * 1  -- 15px
                     local charStackW = math.max(1, stackW - charIndent)
-                    local charWrap = ns.UI.Factory:CreateContainer(personalBody, charStackW, MAIN_SECTION_HEADER_H + 0.1, false)
+                    local charWrap = StorPool.Acquire(parent, "wrap:" .. charCategoryKey, personalBody, charStackW, MAIN_SECTION_HEADER_H + 0.1)
                     charWrap:ClearAllPoints()
                     if charWrap.SetClipsChildren then
                         charWrap:SetClipsChildren(true)
@@ -989,14 +1091,15 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         false,
                         1,
                         nil,
-                        MajorStorageSectionOpts(charWrap, function() return charBody end, MAIN_SECTION_HEADER_H, function(exp)
+                        StorPool.HeaderOpts(parent, "hdr:" .. charCategoryKey, MajorStorageSectionOpts(charWrap, function() return charBody end, MAIN_SECTION_HEADER_H, function(exp)
                             expanded.categories[charCategoryKey] = exp
                         end, {
                             stackParent = personalBody,
                             outerWrap = personalWrap,
                             outerHeaderH = MAIN_SECTION_HEADER_H,
-                        })
+                        }))
                     )
+                    StorPool.Remember(parent, "hdr:" .. charCategoryKey, charHeader)
                     if ns.UI_AnchorSectionHeaderInWrap then
                         ns.UI_AnchorSectionHeaderInWrap(charHeader, charWrap, charStackW)
                     else
@@ -1004,7 +1107,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         charHeader:SetWidth(charStackW)
                     end
 
-                    charBody = ns.UI.Factory:CreateContainer(charWrap, charStackW, 0.1, false)
+                    charBody = StorPool.Acquire(parent, "body:" .. charCategoryKey, charWrap, charStackW, 0.1)
                     charBody:ClearAllPoints()
                     charBody:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
                     charBody:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
@@ -1116,7 +1219,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 
                                 -- Type header + rows: synchronous leaf rows (see RenderStorageLeafRows).
                                 local typeIndent = BASE_INDENT * 2  -- 30px
-                                local typeSectionWrap = ns.UI.Factory:CreateContainer(charBody, math.max(1, charBody:GetWidth() - typeIndent), TYPE_SECTION_HEADER_H + 0.1, false)
+                                local typeSectionWrap = StorPool.Acquire(parent, "wrap:" .. typeKey, charBody, math.max(1, charBody:GetWidth() - typeIndent), TYPE_SECTION_HEADER_H + 0.1)
                                 typeSectionWrap:ClearAllPoints()
                                 if typeSectionWrap.SetClipsChildren then
                                     typeSectionWrap:SetClipsChildren(true)
@@ -1167,8 +1270,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 false,  -- isAtlas = false (item icons are texture paths)
                                 0,      -- indent in wrap only; typeSectionWrap already offset under character header
                                 nil,
-                                LeafTypeSectionVisualOpts(typeSectionWrap, function() return rowsContainer end, typeKey, leafAncestorCtxPersonal)
+                                StorPool.HeaderOpts(parent, "hdr:" .. typeKey, LeafTypeSectionVisualOpts(typeSectionWrap, function() return rowsContainer end, typeKey, leafAncestorCtxPersonal))
                             )
+                            StorPool.Remember(parent, "hdr:" .. typeKey, typeHeader2)
                             if ns.UI_AnchorSectionHeaderInWrap then
                                 ns.UI_AnchorSectionHeaderInWrap(typeHeader2, typeSectionWrap)
                             else
@@ -1176,7 +1280,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 typeHeader2:SetPoint("TOPLEFT", typeSectionWrap, "TOPLEFT", 0, 0)
                                 typeHeader2:SetWidth(typeSectionWrap:GetWidth())
                             end
-                            rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0)
+                            rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader2, 0, 0, "rows:" .. typeKey)
                             -- Match typeSectionWrap width (charBody full width minus typeIndent); warband path uses the same idea.
                             local rowWidthPersonal = math.max(1, width - charIndent - typeIndent)
                             local typeItemsForRows = charItems[typeName]
@@ -1284,6 +1388,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     C_Timer.After(0, pumpPersonalChars)
                 else
                     finalizePersonalBodyShell()
+                    syncPersonalChromePartial()
                     consumeCharStagingCredit()
                     hideDrawIndicatorWithStagingGate()
                 end
@@ -1294,6 +1399,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 #charsToPaint * (MAIN_SECTION_HEADER_H + SECTION_SPACING + 20)
             )
             personalBody:SetHeight(math.max(0.1, personalInnerAccum - SECTION_SPACING))
+            -- Expand click reads _wnSectionFullH right after onToggle: reserve the pumped height.
+            personalBody._wnSectionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
             syncPersonalChromePartial()
             pumpPersonalChars()
         end
@@ -1389,7 +1496,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         if warbandTotalMatches <= 0 then
             warbandTotalMatches = 1
         end
-        local warbandWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, stackW), MAIN_SECTION_HEADER_H + 0.1, false)
+        local warbandWrap = StorPool.Acquire(parent, "wrap:warband", parent, math.max(1, stackW), MAIN_SECTION_HEADER_H + 0.1)
         warbandWrap:ClearAllPoints()
         if warbandWrap.SetClipsChildren then
             warbandWrap:SetClipsChildren(true)
@@ -1411,10 +1518,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             false,
             nil,
             nil,
-            MajorStorageSectionOpts(warbandWrap, function() return warbandBody end, MAIN_SECTION_HEADER_H, function(exp)
+            StorPool.HeaderOpts(parent, "hdr:warband", MajorStorageSectionOpts(warbandWrap, function() return warbandBody end, MAIN_SECTION_HEADER_H, function(exp)
                 expanded.warband = exp
-            end, nil, "accent")
+            end, nil, "accent"))
         )
+        StorPool.Remember(parent, "hdr:warband", warbandHeader)
         if ns.UI_AnchorSectionHeaderInWrap then
             ns.UI_AnchorSectionHeaderInWrap(warbandHeader, warbandWrap, stackW)
         else
@@ -1422,7 +1530,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             warbandHeader:SetWidth(math.max(1, stackW))
         end
 
-        warbandBody = ns.UI.Factory:CreateContainer(warbandWrap, math.max(1, stackW), 0.1, false)
+        warbandBody = StorPool.Acquire(parent, "body:warband", warbandWrap, math.max(1, stackW), 0.1)
         warbandBody:ClearAllPoints()
         warbandBody:SetPoint("TOPLEFT", warbandHeader, "BOTTOMLEFT", 0, 0)
         warbandBody:SetPoint("TOPRIGHT", warbandHeader, "BOTTOMRIGHT", 0, 0)
@@ -1561,7 +1669,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
             
             local typeIndentWB = BASE_INDENT
-            local typeSectionWrapWB = ns.UI.Factory:CreateContainer(warbandBody, math.max(1, warbandBody:GetWidth() - typeIndentWB), TYPE_SECTION_HEADER_H + 0.1, false)
+            local typeSectionWrapWB = StorPool.Acquire(parent, "wrap:" .. categoryKey, warbandBody, math.max(1, warbandBody:GetWidth() - typeIndentWB), TYPE_SECTION_HEADER_H + 0.1)
             typeSectionWrapWB:ClearAllPoints()
             if typeSectionWrapWB.SetClipsChildren then
                 typeSectionWrapWB:SetClipsChildren(true)
@@ -1599,8 +1707,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 false,
                 nil,
                 nil,
-                LeafTypeSectionVisualOpts(typeSectionWrapWB, function() return rowsContainer end, categoryKey, leafAncestorCtxWarband)
+                StorPool.HeaderOpts(parent, "hdr:" .. categoryKey, LeafTypeSectionVisualOpts(typeSectionWrapWB, function() return rowsContainer end, categoryKey, leafAncestorCtxWarband))
             )
+            StorPool.Remember(parent, "hdr:" .. categoryKey, typeHeader)
             if ns.UI_AnchorSectionHeaderInWrap then
                 ns.UI_AnchorSectionHeaderInWrap(typeHeader, typeSectionWrapWB)
             else
@@ -1608,7 +1717,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 typeHeader:SetPoint("TOPLEFT", typeSectionWrapWB, "TOPLEFT", 0, 0)
                 typeHeader:SetWidth(typeSectionWrapWB:GetWidth())
             end
-            rowsContainer = CreateStorageRowsContainer(typeSectionWrapWB, typeHeader, 0, 0)
+            rowsContainer = CreateStorageRowsContainer(typeSectionWrapWB, typeHeader, 0, 0, "rows:" .. categoryKey)
             local rowWidthWB = width - BASE_INDENT
             local wbTypeItems3 = warbandItems[typeName]
             local rowsYOffset
@@ -1715,10 +1824,13 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     
     stStart("Stor_guild")
     if embedItemsGuild then
-        local guildEntries = self:GetGuildBankSortedEntries() or {}
+        local guildEntries = (self.GetGuildBankDisplayEntries and self:GetGuildBankDisplayEntries())
+            or self:GetGuildBankSortedEntries() or {}
         for gei = 1, #guildEntries do
             local guildName = guildEntries[gei].name
-            local guildData = guildEntries[gei].data
+            local guildUnscanned = guildEntries[gei].unscanned == true
+            -- Unscanned roster guilds render from an empty view (never index stale stub rows).
+            local guildData = (not guildUnscanned and guildEntries[gei].data) or {}
             local guildCategoryKey = "guild_" .. guildName
             local guildItemSlots = guildData.usedSlots or 0
             if guildItemSlots <= 0 and self.CountGuildBankOccupiedSlots then
@@ -1727,7 +1839,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
             if storageSearchActive and not categoriesWithMatches[guildCategoryKey] then
                 -- skip guild with no search hits
-            elseif guildItemSlots <= 0 and not storageSearchActive
+            elseif guildItemSlots <= 0 and not guildUnscanned and not storageSearchActive
                 and not expandAllActive
                 and not expanded.categories[guildCategoryKey]
                 and not StorageTreeHasExpandedPrefixCategory(expanded, guildCategoryKey .. "_") then
@@ -1741,7 +1853,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     guildExpanded = true
                 end
 
-                local guildWrap = ns.UI.Factory:CreateContainer(parent, math.max(1, stackW), MAIN_SECTION_HEADER_H + 0.1, false)
+                local guildWrap = StorPool.Acquire(parent, "wrap:" .. guildCategoryKey, parent, math.max(1, stackW), MAIN_SECTION_HEADER_H + 0.1)
                 guildWrap:ClearAllPoints()
                 if guildWrap.SetClipsChildren then
                     guildWrap:SetClipsChildren(true)
@@ -1751,7 +1863,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 local guildBody
                 local guildHeader, _, guildIcon = CreateCollapsibleHeader(
                     guildWrap,
-                    guildName .. " (" .. FormatNumber(guildItemSlots) .. ")",
+                    guildUnscanned and guildName or (guildName .. " (" .. FormatNumber(guildItemSlots) .. ")"),
                     guildCategoryKey,
                     guildExpanded,
                     function()
@@ -1763,10 +1875,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     false,
                     nil,
                     nil,
-                    MajorStorageSectionOpts(guildWrap, function() return guildBody end, MAIN_SECTION_HEADER_H, function(exp)
+                    StorPool.HeaderOpts(parent, "hdr:" .. guildCategoryKey, MajorStorageSectionOpts(guildWrap, function() return guildBody end, MAIN_SECTION_HEADER_H, function(exp)
                         expanded.categories[guildCategoryKey] = exp
-                    end, nil, "accent")
+                    end, nil, "accent"))
                 )
+                StorPool.Remember(parent, "hdr:" .. guildCategoryKey, guildHeader)
                 if guildIcon then
                     guildIcon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
                     guildIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1779,7 +1892,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     guildHeader:SetWidth(math.max(1, stackW))
                 end
 
-                guildBody = ns.UI.Factory:CreateContainer(guildWrap, math.max(1, stackW), 0.1, false)
+                guildBody = StorPool.Acquire(parent, "body:" .. guildCategoryKey, guildWrap, math.max(1, stackW), 0.1)
+                if guildBody._wnGuildEmptyHint then
+                    guildBody._wnGuildEmptyHint:Hide()
+                end
                 guildBody:ClearAllPoints()
                 guildBody:SetPoint("TOPLEFT", guildHeader, "BOTTOMLEFT", 0, 0)
                 guildBody:SetPoint("TOPRIGHT", guildHeader, "BOTTOMRIGHT", 0, 0)
@@ -1790,9 +1906,15 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         return true
                     end
                     for tabIndex, tabData in pairs(guildData.tabs or {}) do
-                        for slotID, item in pairs(tabData.items or {}) do
-                            if item and item.itemID then
-                                if not storageSearchActive or ItemMatchesSearch(item) then
+                        for slotID, savedItem in pairs(tabData.items or {}) do
+                            if savedItem and savedItem.itemID then
+                                if not storageSearchActive or ItemMatchesSearch(savedItem) then
+                                    -- Shallow copy: display-only location fields must not land in SavedVariables rows
+                                    -- (same pattern as CollectGuildBankItemsFlat).
+                                    local item = {}
+                                    for k, v in pairs(savedItem) do
+                                        item[k] = v
+                                    end
                                     local classID = ResolvedStorageClassID(item)
                                     local typeName = ResolvedStorageTypeName(item)
                                     item.tabIndex = tabIndex
@@ -1818,13 +1940,25 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     if not ensureGuildItemsIndexed() then
                         if guildExpanded then
                             local hintH = 28
-                            local hint = FontManager:CreateFontString(guildBody, "body", "OVERLAY")
-                            hint:SetPoint("TOPLEFT", guildBody, "TOPLEFT", BASE_INDENT, -8)
-                            hint:SetPoint("TOPRIGHT", guildBody, "TOPRIGHT", -BASE_INDENT, -8)
-                            hint:SetJustifyH("LEFT")
-                            hint:SetWordWrap(true)
-                            hint:SetText((ns.L and ns.L["EMPTY_GUILD_BANK_DESC"]) or "Open your Guild Bank to scan items.")
+                            local hint = guildBody._wnGuildEmptyHint
+                            if not hint then
+                                hint = FontManager:CreateFontString(guildBody, "body", "OVERLAY")
+                                hint:SetPoint("TOPLEFT", guildBody, "TOPLEFT", BASE_INDENT, -8)
+                                hint:SetPoint("TOPRIGHT", guildBody, "TOPRIGHT", -BASE_INDENT, -8)
+                                hint:SetJustifyH("LEFT")
+                                hint:SetWordWrap(true)
+                                guildBody._wnGuildEmptyHint = hint
+                            end
+                            hint:Show()
+                            local unscannedNames = guildUnscanned and guildEntries[gei].charNames
+                            if unscannedNames and #unscannedNames > 0 then
+                                hint:SetText(format((ns.L and ns.L["GUILD_BANK_NOT_SCANNED_ON"]) or "Not scanned yet - open the guild bank on %s.",
+                                    table.concat(unscannedNames, ", ")))
+                            else
+                                hint:SetText((ns.L and ns.L["EMPTY_GUILD_BANK_DESC"]) or "Open your Guild Bank to scan items.")
+                            end
                             ns.UI_SetTextColorRole(hint, "Muted")
+                            hintH = math.max(hintH, math.ceil((hint:GetStringHeight() or 0) + 16))
                             guildBody._wnSectionFullH = hintH
                             guildBody:Show()
                             guildBody:SetHeight(hintH)
@@ -1908,7 +2042,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             end
 
                             local typeIndent = BASE_INDENT
-                            local typeSectionWrap = ns.UI.Factory:CreateContainer(guildBody, math.max(1, guildBody:GetWidth() - typeIndent), TYPE_SECTION_HEADER_H + 0.1, false)
+                            local typeSectionWrap = StorPool.Acquire(parent, "wrap:" .. typeKey, guildBody, math.max(1, guildBody:GetWidth() - typeIndent), TYPE_SECTION_HEADER_H + 0.1)
                             typeSectionWrap:ClearAllPoints()
                             if typeSectionWrap.SetClipsChildren then
                                 typeSectionWrap:SetClipsChildren(true)
@@ -1940,8 +2074,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 false,
                                 nil,
                                 nil,
-                                LeafTypeSectionVisualOpts(typeSectionWrap, function() return rowsContainer end, typeKey, leafAncestorCtxGuild)
+                                StorPool.HeaderOpts(parent, "hdr:" .. typeKey, LeafTypeSectionVisualOpts(typeSectionWrap, function() return rowsContainer end, typeKey, leafAncestorCtxGuild))
                             )
+                            StorPool.Remember(parent, "hdr:" .. typeKey, typeHeader)
                             if ns.UI_AnchorSectionHeaderInWrap then
                                 ns.UI_AnchorSectionHeaderInWrap(typeHeader, typeSectionWrap)
                             else
@@ -1949,7 +2084,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 typeHeader:SetPoint("TOPLEFT", typeSectionWrap, "TOPLEFT", 0, 0)
                                 typeHeader:SetWidth(typeSectionWrap:GetWidth())
                             end
-                            rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader, 0, 0)
+                            rowsContainer = CreateStorageRowsContainer(typeSectionWrap, typeHeader, 0, 0, "rows:" .. typeKey)
                             local rowWidthGuild = width - BASE_INDENT
                             local rowsYOffset = 0
                             if isTypeExpanded then

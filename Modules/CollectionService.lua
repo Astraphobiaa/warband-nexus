@@ -15,6 +15,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfoInstant = C_Item.GetItemInfoInstant
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
 local tinsert = table.insert
@@ -2170,24 +2173,29 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     if not achievementID then return end
     
     DebugPrint("|cff00ff00[WN CollectionService]|r Achievement earned: " .. achievementID)
-    
-    -- Remove completed achievement from cache
-    if collectionCache.uncollected.achievement and collectionCache.uncollected.achievement[achievementID] then
-        collectionCache.uncollected.achievement[achievementID] = nil
-    DebugPrint("|cff9370DB[WN CollectionService]|r Removed completed achievement " .. achievementID .. " from cache")
-    end
 
-    -- Mark as collected in store so Collections UI and GetAllAchievementsData show it as completed
-    if not collectionStore.achievement then collectionStore.achievement = {} end
-    local prevAchEntry = collectionStore.achievement[achievementID]
+    -- Module gate: store/cache writes only while Collections or Plans consume them.
+    -- Character achievement points (Characters tab) and the toast below always run.
+    local storeOn = ns.Utilities and ns.Utilities:IsAnyModuleEnabled("collections", "plans") or false
+    local prevAchEntry = collectionStore.achievement and collectionStore.achievement[achievementID]
     local priorAchievementCollected = prevAchEntry and prevAchEntry.collected == true
-    local entry = prevAchEntry
-    if not entry then
-        collectionStore.achievement[achievementID] = { collected = true }
-    else
-        entry.collected = true
+
+    if storeOn then
+        -- Remove completed achievement from cache
+        if collectionCache.uncollected.achievement and collectionCache.uncollected.achievement[achievementID] then
+            collectionCache.uncollected.achievement[achievementID] = nil
+        DebugPrint("|cff9370DB[WN CollectionService]|r Removed completed achievement " .. achievementID .. " from cache")
+        end
+
+        -- Mark as collected in store so Collections UI and GetAllAchievementsData show it as completed
+        if not collectionStore.achievement then collectionStore.achievement = {} end
+        if not prevAchEntry then
+            collectionStore.achievement[achievementID] = { collected = true }
+        else
+            prevAchEntry.collected = true
+        end
+        self:SaveCollectionStore()
     end
-    self:SaveCollectionStore()
 
     if not priorAchievementCollected and GetAchievementInfo then
         local okPts, _, _, pts, _, _, _, _, _, _, _, isGuild, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
@@ -2222,8 +2230,8 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     end
 
     -- Check for chained/superceding achievements (e.g., 5/5 → 0/10)
-    -- GetSupercedingAchievements returns the next achievement in the chain
-    if C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements then
+    -- GetSupercedingAchievements returns the next achievement in the chain (store/cache write: gated)
+    if storeOn and C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements then
         if not (issecretvalue and achievementID and issecretvalue(achievementID)) then
             local okSup, supercedingAchievements = pcall(C_AchievementInfo.GetSupercedingAchievements, achievementID)
             if okSup and supercedingAchievements and type(supercedingAchievements) == "table" and #supercedingAchievements > 0 then

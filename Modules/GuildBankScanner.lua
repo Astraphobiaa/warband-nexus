@@ -315,16 +315,19 @@ function WarbandNexus:ScanGuildBank()
         end
     end
 
-    local function processChunk()
+    -- drainAll: finish every remaining tab in this call, ignoring the frame budget and the
+    -- open flag. Used once at close (APIs are still valid in the close handler's frame) so a
+    -- short visit still finalizes lastScan / totals / gold instead of being abandoned.
+    local function processChunk(drainAll)
         if myGen ~= guildBankScanGeneration then return end
-        if not self.guildBankIsOpen then return end
+        if not drainAll and not self.guildBankIsOpen then return end
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
 
         local budgetStart = debugprofilestop()
 
-        while (debugprofilestop() - budgetStart) < FRAME_BUDGET_MS do
+        while drainAll or (debugprofilestop() - budgetStart) < FRAME_BUDGET_MS do
             if myGen ~= guildBankScanGeneration then return end
-            if not self.guildBankIsOpen then return end
+            if not drainAll and not self.guildBankIsOpen then return end
 
             if tabIndex > numTabs then
                 finalizeSuccess()
@@ -395,7 +398,11 @@ function WarbandNexus:ScanGuildBank()
                         -- QueryGuildBankTab responses have had time to arrive.
                         local sawData = next(tabItemsBuilding) ~= nil
                         local hadCache = tabData.items and next(tabData.items) ~= nil
-                        local emptyTrusted = (GetTime() - (self._guildBankOpenScanAt or 0)) >= GUILD_BANK_EMPTY_TAB_TRUST_SEC
+                        -- Only the tab on screen is guaranteed to have server data; an all-empty
+                        -- read of any other tab may just be "never queried" and must not wipe it.
+                        local currentTab = GetCurrentGuildBankTab and GetCurrentGuildBankTab()
+                        local emptyTrusted = currentTab == tabIndex
+                            and (GetTime() - (self._guildBankOpenScanAt or 0)) >= GUILD_BANK_EMPTY_TAB_TRUST_SEC
                         if sawData or emptyTrusted or not hadCache then
                             tabData.items = tabItemsBuilding
                         end
@@ -411,8 +418,22 @@ function WarbandNexus:ScanGuildBank()
         C_Timer.After(0, processChunk)
     end
 
+    if activeScanCtx and activeScanCtx.myGen == myGen then
+        activeScanCtx.drainNow = function() processChunk(true) end
+    end
     C_Timer.After(0, processChunk)
     return true, nil
+end
+
+---Finish the in-flight guild bank scan synchronously (call from the close handler, before
+---guildBankIsOpen is cleared). Returns true when a scan was drained.
+function WarbandNexus:FinishGuildBankScanNow()
+    local ctx = activeScanCtx
+    if ctx and ctx.drainNow then
+        ctx.drainNow()
+        return true
+    end
+    return false
 end
 
 ---Abort in-flight chunked guild bank scan (window closed or superseded).
@@ -612,6 +633,41 @@ function WarbandNexus:GetGuildBankSortedEntries()
             local _, usedSlots = self:SyncGuildBankCacheMetadata(guildData)
             if usedSlots > 0 or (guildData.cachedGold or 0) > 0 then
                 out[#out + 1] = { name = guildName, data = guildData }
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        return (Utilities and Utilities.SafeLower and Utilities:SafeLower(a.name) or "")
+            < (Utilities and Utilities.SafeLower and Utilities:SafeLower(b.name) or "")
+    end)
+    return out
+end
+
+--- Display list for the Items > Guild Bank sub-tab: every scanned guild (GetGuildBankSortedEntries) plus
+--- every tracked character's guild without viewable cached data. Read-only; never writes db.global.
+--- Entry: { name, data, unscanned = bool, charNames = { "Name", ... } } (charNames only for unscanned).
+function WarbandNexus:GetGuildBankDisplayEntries()
+    local out = self:GetGuildBankSortedEntries()
+    local seen = {}
+    for i = 1, #out do
+        seen[out[i].name] = true
+    end
+    local gb = self.db.global.guildBank
+    local unscannedByName = {}
+    local roster = self.GetAllCharacters and self:GetAllCharacters() or {}
+    for i = 1, #roster do
+        local char = roster[i]
+        local gn = char and char.isTracked ~= false and char.guildName
+        if gn and type(gn) == "string" and not (issecretvalue and issecretvalue(gn)) and gn ~= "" and not seen[gn] then
+            local entry = unscannedByName[gn]
+            if not entry then
+                entry = { name = gn, data = gb and gb[gn] or nil, unscanned = true, charNames = {} }
+                unscannedByName[gn] = entry
+                out[#out + 1] = entry
+            end
+            local cn = char.name
+            if cn and type(cn) == "string" and not (issecretvalue and issecretvalue(cn)) then
+                entry.charNames[#entry.charNames + 1] = cn
             end
         end
     end

@@ -1452,15 +1452,33 @@ function ReputationCache:RegisterEventListeners()
     ---Schedule a FullScan that will also process pending chat notifications.
     ---Cancels any existing timer to use the earlier deadline (gains need faster processing).
     ---WoW API typically updates within 0.2-0.3s; we use 0.5s for safe margin.
+    ---Chat-triggered scans bypass the 5s/20s FullScan throttle (pending notifications need fresh DB
+    ---values), so space them: at most one per CHAT_FULLSCAN_MIN_INTERVAL. Kills a second apart now
+    ---share one trailing scan instead of each paying a ~200-faction rebuild + UI redraw.
+    local CHAT_FULLSCAN_MIN_INTERVAL = 1.5
     local function ScheduleFullScanForChat()
         -- Cancel existing timer if it's slower than what we need
         if ReputationCache.updateThrottle then
             ReputationCache.updateThrottle:Cancel()
             ReputationCache.updateThrottle = nil
         end
-        -- Schedule FullScan at 0.5s — API is updated by then, minimizes chat delay
-        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+        -- Schedule FullScan at 0.5s — API is updated by then, minimizes chat delay —
+        -- pushed out to the end of the min-interval window when a chat scan just ran.
+        local delay = 0.5
+        local lastChatScan = ReputationCache._lastChatFullScanAt
+        if lastChatScan then
+            local remaining = (lastChatScan + CHAT_FULLSCAN_MIN_INTERVAL) - GetTime()
+            if remaining > delay then
+                delay = remaining
+            end
+        end
+        -- Flag: FullScan completion must not cancel a chat timer armed mid-scan (that line's
+        -- pending notification would otherwise wait for an unrelated later scan).
+        ReputationCache._updateThrottleIsChat = true
+        ReputationCache.updateThrottle = C_Timer.NewTimer(delay, function()
             ReputationCache.updateThrottle = nil
+            ReputationCache._updateThrottleIsChat = nil
+            ReputationCache._lastChatFullScanAt = GetTime()
             ReputationCache:PerformFullScan(true)  -- bypass throttle: pending notifications need processing
         end)
     end
@@ -1471,6 +1489,10 @@ function ReputationCache:RegisterEventListeners()
         local function inner(...)
             -- Guard: only process if character is tracked
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        -- Module gate: Reputations off = no parse/queue/scan (no other module consumes rep data).
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("reputations")) then
             return
         end
         
@@ -1662,6 +1684,17 @@ function ReputationCache:RegisterEventListeners()
         P:TraceEventHandler(event, t0, ...)
     end
 end)
+
+    -- Reputations re-enable: events were dropped while off; resync the DB with one full scan.
+    ReputationCache._moduleToggleSink = ReputationCache._moduleToggleSink or {}
+    WarbandNexus.RegisterMessage(ReputationCache._moduleToggleSink, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)
+        if moduleName ~= "reputations" or enabled ~= true then return end
+        C_Timer.After(0.5, function()
+            if not (ns.Utilities and ns.Utilities:IsModuleEnabled("reputations")) then return end
+            if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+            ReputationCache:PerformFullScan(true)
+        end)
+    end)
     
     -- FULL FLOW SIMULATION (developer / internal testing)
     -- Defined inside RegisterEventListeners for closure access to:
@@ -2303,7 +2336,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                     self:BuildSnapshotAsync()
                     CompleteReputationLoadingTracker()
                     
-                    if self.updateThrottle then
+                    if self.updateThrottle and not self._updateThrottleIsChat then
                         self.updateThrottle:Cancel()
                         self.updateThrottle = nil
                     end

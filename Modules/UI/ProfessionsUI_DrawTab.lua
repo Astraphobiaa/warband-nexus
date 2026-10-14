@@ -2,6 +2,8 @@
      Loaded after ProfessionsUI.lua; resolves helpers via ProfUI._drawChunk. ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local ProfUI = ns.ProfessionsUI
 
@@ -259,7 +261,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     if not colHeaderBar._wnProfHdrRule then
         colHeaderBar._wnProfHdrRule = colHeaderBar:CreateTexture(nil, "ARTWORK")
-        colHeaderBar._wnProfHdrRule:SetHeight(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(colHeaderBar._wnProfHdrRule, "horizontal", 1) else colHeaderBar._wnProfHdrRule:SetHeight(1) end
         colHeaderBar._wnProfHdrRule:SetPoint("BOTTOMLEFT", colHeaderBar, "BOTTOMLEFT", 0, 0)
         colHeaderBar._wnProfHdrRule:SetPoint("BOTTOMRIGHT", colHeaderBar, "BOTTOMRIGHT", 0, 0)
     end

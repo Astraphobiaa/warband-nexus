@@ -4,6 +4,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local issecretvalue = issecretvalue
@@ -850,6 +852,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
         template = template or "UIPanelScrollFrameTemplate"
         local scrollFrame = CreateFrame("ScrollFrame", nil, parent, template)
+        if ns.UI_KeepScrollOnPixelGrid then ns.UI_KeepScrollOnPixelGrid(scrollFrame) end
         scrollFrame._wnBlizzardScroll = true
         local scrollBar = scrollFrame.ScrollBar
         if scrollBar then
@@ -889,6 +892,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     template = template or "UIPanelScrollFrameTemplate"
     
     local scrollFrame = CreateFrame("ScrollFrame", nil, parent, template)
+    if ns.UI_KeepScrollOnPixelGrid then ns.UI_KeepScrollOnPixelGrid(scrollFrame) end
     
     -- Apply modern custom scroll bar styling (default: true)
     if customStyle ~= false and scrollFrame.ScrollBar then
@@ -920,7 +924,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         RegisterScrollChrome(scrollBar)
         
         -- Create pixel-perfect borders for track
-        local pixelScale = GetPixelScale()
+        local pixelScale = GetPixelScale(scrollBar)
         
         if not scrollBar.BorderLeft then
             scrollBar.BorderLeft = scrollBar:CreateTexture(nil, "BORDER")
@@ -928,6 +932,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.BorderLeft:SetPoint("TOPLEFT", scrollBar, "TOPLEFT", 0, 0)
             scrollBar.BorderLeft:SetPoint("BOTTOMLEFT", scrollBar, "BOTTOMLEFT", 0, 0)
             scrollBar.BorderLeft:SetWidth(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(scrollBar.BorderLeft) end
             scrollBar.BorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
         end
         
@@ -937,6 +942,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.BorderRight:SetPoint("TOPRIGHT", scrollBar, "TOPRIGHT", 0, 0)
             scrollBar.BorderRight:SetPoint("BOTTOMRIGHT", scrollBar, "BOTTOMRIGHT", 0, 0)
             scrollBar.BorderRight:SetWidth(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(scrollBar.BorderRight) end
             scrollBar.BorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
         end
         
@@ -946,6 +952,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.BorderTop:SetPoint("TOPLEFT", scrollBar, "TOPLEFT", 0, 0)
             scrollBar.BorderTop:SetPoint("TOPRIGHT", scrollBar, "TOPRIGHT", 0, 0)
             scrollBar.BorderTop:SetHeight(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(scrollBar.BorderTop) end
             scrollBar.BorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
         end
         
@@ -955,6 +962,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.BorderBottom:SetPoint("BOTTOMLEFT", scrollBar, "BOTTOMLEFT", 0, 0)
             scrollBar.BorderBottom:SetPoint("BOTTOMRIGHT", scrollBar, "BOTTOMRIGHT", 0, 0)
             scrollBar.BorderBottom:SetHeight(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(scrollBar.BorderBottom) end
             scrollBar.BorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
         end
         
@@ -1011,13 +1019,14 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollUpBtn.bg = upBg
             
             -- Pixel-perfect borders (matching scroll bar)
-            local pixelScale = GetPixelScale()
+            local pixelScale = GetPixelScale(scrollBar.ScrollUpBtn)
             
             local upBorderTop = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
             upBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
             upBorderTop:SetPoint("TOPLEFT", 0, 0)
             upBorderTop:SetPoint("TOPRIGHT", 0, 0)
             upBorderTop:SetHeight(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(upBorderTop) end
             upBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             local upBorderBottom = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
@@ -1025,6 +1034,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             upBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
             upBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
             upBorderBottom:SetHeight(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(upBorderBottom) end
             upBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             local upBorderLeft = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
@@ -1032,6 +1042,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             upBorderLeft:SetPoint("TOPLEFT", 0, 0)
             upBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
             upBorderLeft:SetWidth(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(upBorderLeft) end
             upBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             local upBorderRight = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
@@ -1039,6 +1050,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             upBorderRight:SetPoint("TOPRIGHT", 0, 0)
             upBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
             upBorderRight:SetWidth(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(upBorderRight) end
             upBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             -- Store border textures for registry
@@ -1068,7 +1080,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
                 local current = scrollFrame:GetVerticalScroll()
                 local val = math.max(0, current - step)
                 local PS = ns.PixelSnap
-                if PS then val = PS(val) end
+                if PS then val = PS(val, scrollFrame) end
                 scrollFrame:SetVerticalScroll(val)
                 ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
             end)
@@ -1101,13 +1113,14 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollDownBtn.bg = downBg
             
             -- Pixel-perfect borders (matching scroll bar)
-            local pixelScale = GetPixelScale()
+            local pixelScale = GetPixelScale(scrollBar.ScrollDownBtn)
             
             local downBorderTop = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
             downBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
             downBorderTop:SetPoint("TOPLEFT", 0, 0)
             downBorderTop:SetPoint("TOPRIGHT", 0, 0)
             downBorderTop:SetHeight(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(downBorderTop) end
             downBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             local downBorderBottom = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
@@ -1115,6 +1128,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             downBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
             downBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
             downBorderBottom:SetHeight(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(downBorderBottom) end
             downBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             local downBorderLeft = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
@@ -1122,6 +1136,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             downBorderLeft:SetPoint("TOPLEFT", 0, 0)
             downBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
             downBorderLeft:SetWidth(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(downBorderLeft) end
             downBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             local downBorderRight = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
@@ -1129,6 +1144,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             downBorderRight:SetPoint("TOPRIGHT", 0, 0)
             downBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
             downBorderRight:SetWidth(pixelScale)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(downBorderRight) end
             downBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
             -- Store border textures for registry
@@ -1159,7 +1175,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
                 local maxScroll = scrollFrame:GetVerticalScrollRange()
                 local val = math.min(maxScroll, current + step)
                 local PS = ns.PixelSnap
-                if PS then val = PS(val) end
+                if PS then val = PS(val, scrollFrame) end
                 scrollFrame:SetVerticalScroll(val)
                 ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
             end)
@@ -1247,7 +1263,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         local maxScroll = self:GetVerticalScrollRange()
         local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
         local PS = ns.PixelSnap
-        if PS then newScroll = PS(newScroll) end
+        if PS then newScroll = PS(newScroll, self) end
         self:SetVerticalScroll(newScroll)
         ns.UI.Factory:SyncScrollBarThumb(self)
     end)
@@ -1848,12 +1864,13 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     RegisterScrollChrome(hBar)
 
     -- Pixel borders
-    local pixelScale = GetPixelScale()
+    local pixelScale = GetPixelScale(hBar)
     hBar.BorderLeft = hBar:CreateTexture(nil, "BORDER")
     hBar.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
     hBar.BorderLeft:SetPoint("TOPLEFT", hBar, "TOPLEFT", 0, 0)
     hBar.BorderLeft:SetPoint("BOTTOMLEFT", hBar, "BOTTOMLEFT", 0, 0)
     hBar.BorderLeft:SetWidth(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(hBar.BorderLeft) end
     hBar.BorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
 
     hBar.BorderRight = hBar:CreateTexture(nil, "BORDER")
@@ -1861,6 +1878,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.BorderRight:SetPoint("TOPRIGHT", hBar, "TOPRIGHT", 0, 0)
     hBar.BorderRight:SetPoint("BOTTOMRIGHT", hBar, "BOTTOMRIGHT", 0, 0)
     hBar.BorderRight:SetWidth(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(hBar.BorderRight) end
     hBar.BorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
 
     hBar.BorderTop = hBar:CreateTexture(nil, "BORDER")
@@ -1868,6 +1886,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.BorderTop:SetPoint("TOPLEFT", hBar, "TOPLEFT", 0, 0)
     hBar.BorderTop:SetPoint("TOPRIGHT", hBar, "TOPRIGHT", 0, 0)
     hBar.BorderTop:SetHeight(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(hBar.BorderTop) end
     hBar.BorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
 
     hBar.BorderBottom = hBar:CreateTexture(nil, "BORDER")
@@ -1875,6 +1894,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.BorderBottom:SetPoint("BOTTOMLEFT", hBar, "BOTTOMLEFT", 0, 0)
     hBar.BorderBottom:SetPoint("BOTTOMRIGHT", hBar, "BOTTOMRIGHT", 0, 0)
     hBar.BorderBottom:SetHeight(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(hBar.BorderBottom) end
     hBar.BorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
 
     hBar._borderType = "accent"
@@ -1902,24 +1922,28 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     leftBorderTop:SetPoint("TOPLEFT", 0, 0)
     leftBorderTop:SetPoint("TOPRIGHT", 0, 0)
     leftBorderTop:SetHeight(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(leftBorderTop) end
     leftBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     local leftBorderBottom = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
     leftBorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
     leftBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
     leftBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
     leftBorderBottom:SetHeight(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(leftBorderBottom) end
     leftBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     local leftBorderLeft = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
     leftBorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
     leftBorderLeft:SetPoint("TOPLEFT", 0, 0)
     leftBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
     leftBorderLeft:SetWidth(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(leftBorderLeft) end
     leftBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     local leftBorderRight = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
     leftBorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
     leftBorderRight:SetPoint("TOPRIGHT", 0, 0)
     leftBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
     leftBorderRight:SetWidth(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(leftBorderRight) end
     leftBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     hBar.ScrollLeftBtn.BorderTop = leftBorderTop
     hBar.ScrollLeftBtn.BorderBottom = leftBorderBottom
@@ -1950,24 +1974,28 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     rightBorderTop:SetPoint("TOPLEFT", 0, 0)
     rightBorderTop:SetPoint("TOPRIGHT", 0, 0)
     rightBorderTop:SetHeight(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(rightBorderTop) end
     rightBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     local rightBorderBottom = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
     rightBorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
     rightBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
     rightBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
     rightBorderBottom:SetHeight(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(rightBorderBottom) end
     rightBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     local rightBorderLeft = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
     rightBorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
     rightBorderLeft:SetPoint("TOPLEFT", 0, 0)
     rightBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
     rightBorderLeft:SetWidth(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(rightBorderLeft) end
     rightBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     local rightBorderRight = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
     rightBorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
     rightBorderRight:SetPoint("TOPRIGHT", 0, 0)
     rightBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
     rightBorderRight:SetWidth(pixelScale)
+    if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(rightBorderRight) end
     rightBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
     hBar.ScrollRightBtn.BorderTop = rightBorderTop
     hBar.ScrollRightBtn.BorderBottom = rightBorderBottom
@@ -2124,7 +2152,7 @@ function ns.UI_ScrollFrameByMouseWheel(scrollFrame, delta)
     local maxS = scrollFrame:GetVerticalScrollRange() or 0
     local newScroll = math.max(0, math.min(cur - (delta * step), maxS))
     local PS = ns.PixelSnap
-    if PS then newScroll = PS(newScroll) end
+    if PS then newScroll = PS(newScroll, scrollFrame) end
     scrollFrame:SetVerticalScroll(newScroll)
     if ns.UI.Factory and ns.UI.Factory.SyncScrollBarThumb then
         ns.UI.Factory:SyncScrollBarThumb(scrollFrame)

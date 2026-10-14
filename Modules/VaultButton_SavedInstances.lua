@@ -1,6 +1,8 @@
 --[[ Warband Nexus - Easy Access - VaultButton_SavedInstances.lua ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = assert(ns.VaultButton)
 local WarbandNexus = ns.WarbandNexus
 local S = M.state

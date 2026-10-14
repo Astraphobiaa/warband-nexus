@@ -159,7 +159,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         if not closeAtlasOk then
             closeIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
         end
-        local closeR, closeG, closeB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 0.92, 0.35, 0.35
+        local closeR, closeG, closeB = 0.92, 0.35, 0.35
+        if ns.UI_GetSemanticRedColor then closeR, closeG, closeB = ns.UI_GetSemanticRedColor() end
         closeIcon:SetVertexColor(closeR, closeG, closeB)
         closeBtn:SetScript("OnClick", function()
             f:Hide()

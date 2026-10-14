@@ -13,6 +13,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -347,8 +349,7 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
         local function MakeBorder()
             local t = pb.bg:CreateTexture(nil, "BORDER")
             t:SetTexture("Interface\\Buttons\\WHITE8x8")
-            t:SetSnapToPixelGrid(false)
-            t:SetTexelSnappingBias(0)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(t) end
             t:SetDrawLayer("BORDER", 0)
             return t
         end
@@ -418,28 +419,31 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     local br, bgc, bb = borderColor[1], borderColor[2], borderColor[3]
     local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.88 or 0.58
 
+    -- Border textures opt out of pixel-grid snapping, so size them in physical pixels.
+    local px = (ns.GetPixelScale and ns.GetPixelScale(pb.bg)) or 1
+
     pb.borderTop:ClearAllPoints()
     pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
     pb.borderTop:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, 0)
-    pb.borderTop:SetHeight(1)
+    pb.borderTop:SetHeight(px)
     pb.borderTop:SetVertexColor(br, bgc, bb, ba)
 
     pb.borderBottom:ClearAllPoints()
     pb.borderBottom:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 0)
     pb.borderBottom:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 0)
-    pb.borderBottom:SetHeight(1)
+    pb.borderBottom:SetHeight(px)
     pb.borderBottom:SetVertexColor(br, bgc, bb, ba)
 
     pb.borderLeft:ClearAllPoints()
-    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -1)
-    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 1)
-    pb.borderLeft:SetWidth(1)
+    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -px)
+    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, px)
+    pb.borderLeft:SetWidth(px)
     pb.borderLeft:SetVertexColor(br, bgc, bb, ba)
 
     pb.borderRight:ClearAllPoints()
-    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -1)
-    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 1)
-    pb.borderRight:SetWidth(1)
+    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -px)
+    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, px)
+    pb.borderRight:SetWidth(px)
     pb.borderRight:SetVertexColor(br, bgc, bb, ba)
 
     local progressBg = pb.bg
@@ -2373,6 +2377,20 @@ function WarbandNexus:DrawReputationTab(parent)
             local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
             return mf and mf:IsShown() and mf.currentTab == "reputations"
         end
+
+        -- REPUTATION_CACHE_READY + REPUTATION_UPDATED are sent back-to-back by ReputationCacheService;
+        -- coalesce the burst into one next-frame data refresh instead of two synchronous redraws.
+        local repRefreshPending = false
+        local function ScheduleCoalescedReputationRefresh()
+            if repRefreshPending then return end
+            repRefreshPending = true
+            C_Timer.After(0, function()
+                repRefreshPending = false
+                if parent and IsReputationTabActive() then
+                    RefreshReputationTabData(parent, false)
+                end
+            end)
+        end
         
         -- Loading started - only refresh if Reputations tab is active (not parent:IsVisible â€” shared scroll child)
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_LOADING_STARTED, function()
@@ -2411,16 +2429,12 @@ function WarbandNexus:DrawReputationTab(parent)
                 parent._loadingPanel:HideLoading()
             end
             
-            if parent and IsReputationTabActive() then
-                RefreshReputationTabData(parent, false)
-            end
+            ScheduleCoalescedReputationRefresh()
         end)
         
         -- Real-time update event (single faction changed)
         WarbandNexus.RegisterMessage(ReputationUIEvents, Constants.EVENTS.REPUTATION_UPDATED, function(event, factionID)
-            if parent and IsReputationTabActive() then
-                RefreshReputationTabData(parent, false)
-            end
+            ScheduleCoalescedReputationRefresh()
         end)
     end
     

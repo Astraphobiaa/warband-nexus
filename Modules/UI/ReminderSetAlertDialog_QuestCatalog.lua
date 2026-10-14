@@ -423,7 +423,7 @@ function Q.Install(ctx)
         f.questSectionScrollChild = typeListHost
 
         local questSplitLine = questPickSplit:CreateTexture(nil, "ARTWORK")
-        questSplitLine:SetWidth(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(questSplitLine, "vertical", 1) else questSplitLine:SetWidth(1) end
         questSplitLine:SetColorTexture(borderCol[1], borderCol[2], borderCol[3], 0.45)
         questSplitLine:SetPoint("TOPLEFT", typePanel, "TOPRIGHT", math.floor(qcSplitGap * 0.5), 0)
         questSplitLine:SetPoint("BOTTOMLEFT", typePanel, "BOTTOMRIGHT", math.ceil(qcSplitGap * 0.5), 0)

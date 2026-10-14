@@ -8,6 +8,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemCount = C_Item.GetItemCount
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
 
@@ -150,7 +153,7 @@ local COLLECTION_SNAPSHOT_TTL = 0.65
 -- Session RAM is authoritative during play; see PersistSessionDirtyFast + FlushPendingCompressWrites.
 local sessionDirtyBuckets = {}  -- [charKey .. "\0" .. dataType] = true
 local pendingCompressSaves = {}  -- [charKey .. "\0" .. dataType] = { charKey, dataType, items }
-local sessionIdleFlushTicker = nil
+local sessionIdleFlushTimer = nil  -- one-shot; armed only while sessionDirtyBuckets is non-empty
 local sessionActivityPersistTimer = nil
 local summaryDrainScheduled = false
 local deferredThrottleTimer = nil
@@ -1569,6 +1572,17 @@ end
 
 -- EVENT HANDLERS (Will be registered by EventManager)
 
+---Module gate for bag/bank scan work: the item DB feeds Items/Storage, Gear, Plans, Professions
+---and the always-on item-count tooltip, so the producer stays on while any of them consumes it.
+local function IsItemScanConsumerEnabled()
+    local U = ns.Utilities
+    if U and U:IsAnyModuleEnabled("items", "storage", "gear", "plans", "professions") then
+        return true
+    end
+    local db = WarbandNexus.db
+    return db and db.profile and db.profile.showItemCount ~= false or false
+end
+
 ---Handle BAG_UPDATE event (from RegisterBucketEvent)
 ---Batches all bag updates and sends ONE coalesced ITEMS_UPDATED message
 function WarbandNexus:OnBagUpdate(bagIDs)
@@ -1598,6 +1612,9 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     if self.RequestKeystoneRefresh then
         self:RequestKeystoneRefresh("BAG_UPDATE")
     end
+
+    -- Module gate AFTER the keystone refresh above (keystone is always-on; bag scan is not).
+    if not IsItemScanConsumerEnabled() then return end
 
     -- Process each bag that was updated, track if any actually changed
     local changedBags = {}
@@ -1831,6 +1848,8 @@ function WarbandNexus:OnBankOpened()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
+    -- Module gate: gold/reagent triggers above always run; only the bank scan is gated.
+    if not IsItemScanConsumerEnabled() then return end
     
     isBankOpen = true
     isWarbandBankOpen = true
@@ -1985,11 +2004,19 @@ ScheduleSessionActivityPersist = function()
     end)
 end
 
-local function StartSessionIdleFlushTicker()
-    if sessionIdleFlushTicker then return end
-    sessionIdleFlushTicker = C_Timer.NewTicker(SESSION_IDLE_FLUSH_SEC, function()
-        if InCombatLockdown and InCombatLockdown() then return end
+-- Safety-backup flush: one-shot timer armed by SaveItemsCompressed (replaces a permanent 45s
+-- ticker). Dirty keys persist until logout compress, so the old ticker re-ran the fast persist
+-- every 45s all session; now it runs once per burst of changes, re-arming only if combat blocked it.
+local function ArmSessionIdleFlushTimer()
+    if sessionIdleFlushTimer then return end
+    if next(sessionDirtyBuckets) == nil then return end
+    sessionIdleFlushTimer = C_Timer.NewTimer(SESSION_IDLE_FLUSH_SEC, function()
+        sessionIdleFlushTimer = nil
         if next(sessionDirtyBuckets) == nil then return end
+        if InCombatLockdown and InCombatLockdown() then
+            ArmSessionIdleFlushTimer()
+            return
+        end
         PersistSessionDirtyFast()
     end)
 end
@@ -2143,6 +2170,7 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
     }
     TouchDecompressedItemCache(charKey, dataType, items, (bucket and bucket.lastUpdate) or time())
     ScheduleSessionActivityPersist()
+    ArmSessionIdleFlushTimer()
     local BP = ns.ItemsCacheBagPerf
     if BP and BP.NoteSessionDirty then
         BP.NoteSessionDirty(charKey, dataType)
@@ -3143,7 +3171,7 @@ function WarbandNexus:InitializeItemsCache()
     WarbandNexus:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
     WarbandNexus:RegisterEvent("BAG_UPDATE_DELAYED", "OnInventoryBagsChanged")
     WarbandNexus:RegisterEvent("PLAYER_LEAVING_WORLD", "FlushItemsCacheOnLeavingWorld")
-    StartSessionIdleFlushTicker()
+    ArmSessionIdleFlushTimer()
     
     -- Set loading state (initial scan in progress)
     ns.ItemsLoadingState.isLoading = true

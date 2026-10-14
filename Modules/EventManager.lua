@@ -315,8 +315,9 @@ function WarbandNexus:InitializeEventManager()
     -- Do NOT register here — prevents duplicate scanning
     
     -- ── Collection events (single owner: CollectionService) ──
-    -- NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED, ACHIEVEMENT_EARNED: registered when
-    -- `modulesEnabled.collections` is on — see CollectionService:EnsureCollectionServiceRealtimeListeners.
+    -- NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED, ACHIEVEMENT_EARNED: always registered at file load
+    -- (CollectionService_Events.lua / CollectionService.lua); toasts and Plans consume them. Handlers gate
+    -- only collection store/cache writes on IsAnyModuleEnabled("collections", "plans").
     -- Each handler uses incremental updates + SendMessage(COLLECTION_UPDATED) — no EventManager routing needed.
     -- Do NOT register here — AceEvent allows only one handler per event per object,
     -- and re-registering here would OVERWRITE the CollectionService handlers.
@@ -327,6 +328,13 @@ function WarbandNexus:InitializeEventManager()
             if moduleName ~= "collections" then return end
             if enabled then
                 WarbandNexus:EnsureEventManagerCollectionListeners()
+                -- Re-enable: rehydrate the owned cache (same P1 warmup as login).
+                C_Timer.After(0.5, function()
+                    if WarbandNexus and WarbandNexus.RunCollectionOwnedCacheWarmup
+                        and ns.Utilities and ns.Utilities:IsModuleEnabled("collections") then
+                        WarbandNexus:RunCollectionOwnedCacheWarmup()
+                    end
+                end)
             else
                 WarbandNexus:ClearEventManagerCollectionListeners()
             end
@@ -337,7 +345,7 @@ function WarbandNexus:InitializeEventManager()
             WarbandNexus:EnsureEventManagerCollectionListeners()
         end
     end)
-    -- ACHIEVEMENT_EARNED: owned by CollectionService (EnsureCollectionServiceRealtimeListeners)
+    -- ACHIEVEMENT_EARNED: owned by CollectionService (registered at file load, always on)
     -- TOYS_UPDATED: removed — spams on every toy use/cooldown
     
     -- PvE events are now handled by PvECacheService (RegisterPvECacheEvents)
@@ -402,7 +410,12 @@ function WarbandNexus:InitializeEventManager()
 
     -- Item-consumed quests (treatises, knowledge treasures, gathering items) complete without
     -- firing QUEST_TURNED_IN. Listen to QUEST_LOG_UPDATE and spec currency events to refresh.
+    -- Consolidated owner: AceEvent keeps ONE handler per event per object, so
+    -- DailyQuestManager's daily-plan refresh is dispatched from here too.
     self:RegisterEvent("QUEST_LOG_UPDATE", function()
+        if WarbandNexus._dailyQuestManagerInitialized and WarbandNexus.OnDailyQuestUpdate then
+            WarbandNexus:OnDailyQuestUpdate()
+        end
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnProfessionQuestProgressChanged then
             WarbandNexus:OnProfessionQuestProgressChanged()

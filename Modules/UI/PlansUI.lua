@@ -8,6 +8,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
@@ -1542,7 +1544,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         if ns.UI_ShowTabEmptyStateCard then
             return ns.UI_ShowTabEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true }) + 10
         end
-        local _, height = CreateEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true })
+        local _, height = CreateEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true, sideInset = PlansContentPadH() })
         return yOffset + height + 10
     end
 
@@ -2298,7 +2300,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         if ns.UI_ShowTabEmptyStateCard then
             return ns.UI_ShowTabEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true }) + 10
         end
-        local _, height = CreateEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true })
+        local _, height = CreateEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true, sideInset = PlansContentPadH() })
         return yOffset + height + 10
     end
     

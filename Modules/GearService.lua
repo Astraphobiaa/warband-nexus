@@ -10,6 +10,12 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+-- Global GetSpecialization/GetSpecializationInfo are deprecated aliases of these (11.2.0).
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local issecretvalue = issecretvalue
@@ -2013,7 +2019,7 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                 end
 
                 local isMissingGem = false
-                local stats = GetItemStats and GetItemStats(itemLink) or {}
+                local stats = GetItemStatTableForLink(itemLink) or {}
                 for k, v in pairs(stats) do
                     if type(k) == "string" and string.find(k, "EMPTY_SOCKET_") then
                         isMissingGem = true
@@ -2294,6 +2300,8 @@ end
 --- Debounces rapid swaps and scans only gear slots (1-17).
 ---@param slotID number
 function WarbandNexus:OnGearEquipmentChanged(slotID)
+    -- Module gate: Gear off = no gear cache work (OnItemLevelChanged stays ungated in EventManager).
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("gear")) then return end
     if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
     if slotID and (slotID < 1 or slotID > 17) then return end
     -- Gear tab: refresh paperdoll icons from live inventory immediately; API links can lag one frame
@@ -3103,6 +3111,7 @@ local GearServiceMsgListeners = ns._gearServiceMsgListeners or {}
 ns._gearServiceMsgListeners = GearServiceMsgListeners
 WarbandNexus.RegisterMessage(GearServiceMsgListeners, Constants.EVENTS.CURRENCY_UPDATED, function()
     InvalidateGearUpgradeCurrencyCaches()
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("gear")) then return end
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
     if currencyGearScanTimer then currencyGearScanTimer:Cancel() end
     currencyGearScanTimer = C_Timer.NewTimer(0.4, function()
@@ -3113,4 +3122,14 @@ end)
 
 WarbandNexus.RegisterMessage(GearServiceMsgListeners, Constants.EVENTS.CHARACTER_UPDATED, function()
     InvalidateGearUpgradeCurrencyCaches()
+end)
+
+-- Gear re-enable: login-time scans already passed while the module was off; repopulate once.
+WarbandNexus.RegisterMessage(GearServiceMsgListeners, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)
+    if moduleName ~= "gear" or enabled ~= true then return end
+    C_Timer.After(0.5, function()
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("gear")) then return end
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+        WarbandNexus:ScanEquippedGear()
+    end)
 end)

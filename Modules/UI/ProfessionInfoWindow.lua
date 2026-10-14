@@ -11,6 +11,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
@@ -79,8 +81,11 @@ local PROGRESS_BAR_HEIGHT = 12
 
 local function NodeSurface(kind)
     if kind == "maxed" then
-        local bg, border = ns.UI_GetSemanticPositiveCard and ns.UI_GetSemanticPositiveCard(false)
-        if bg then
+        local bg, border
+        if ns.UI_GetSemanticPositiveCard then
+            bg, border = ns.UI_GetSemanticPositiveCard(false)
+        end
+        if bg and border then
             return { bg[1], bg[2], bg[3], 0.9 }, { border[1], border[2], border[3], 0.6 }
         end
         local g = SemanticGreen()

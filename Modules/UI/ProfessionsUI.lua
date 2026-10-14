@@ -27,6 +27,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local E = ns.Constants.EVENTS
 
 --- Incremental professions tab paint (WN-PERF heavy tab first paint; Collections RunChunked parity).
@@ -1442,11 +1444,11 @@ function PUI.UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth, 
             t:SetTexture("Interface\\Buttons\\WHITE8x8")
             t:SetPoint(p1, bar, p1, 0, 0)
             t:SetPoint(p2, bar, p2, 0, 0)
-            if w then t:SetWidth(w) end
-            if h then t:SetHeight(h) end
+            -- Whole physical pixels + grid snap (constant thickness at any offset/scale).
+            local SetRule = ns.UI_SetRuleThickness
+            if w then if SetRule then SetRule(t, "vertical", w) else t:SetWidth(w) end end
+            if h then if SetRule then SetRule(t, "horizontal", h) else t:SetHeight(h) end end
             t:SetVertexColor(cr, cg, cb, ca)
-            t:SetSnapToPixelGrid(false)
-            t:SetTexelSnappingBias(0)
             return t
         end
 

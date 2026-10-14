@@ -5,6 +5,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
@@ -485,7 +487,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         
         -- Separator line
         popup._separator = popup:CreateTexture(nil, "ARTWORK")
-        popup._separator:SetHeight(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(popup._separator, "horizontal", 1) else popup._separator:SetHeight(1) end
         popup._separator:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
         
         -- Description

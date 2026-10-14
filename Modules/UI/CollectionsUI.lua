@@ -4,6 +4,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.CollectionsUI
 assert(M and M.state, "CollectionsUI_Shared.lua must load first")
 
@@ -629,29 +631,39 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end
         end)
 
+        -- One new collectible fires both COLLECTION_UPDATED and COLLECTIBLE_OBTAINED (often
+        -- PLANS_UPDATED too); share one trailing timer so the sub-tab rebuilds once.
+        local collectionRedrawPending = false
+        local function ScheduleCoalescedCollectionRedraw()
+            if collectionRedrawPending then return end
+            collectionRedrawPending = true
+            C_Timer.After(0.05, function()
+                collectionRedrawPending = false
+                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
+                RedrawActiveCollectionSubTab()
+            end)
+        end
+
         local updatedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED) or "WN_COLLECTION_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, updatedName, function(_, updatedType)
             if updatedType ~= "mount" and updatedType ~= "pet" and updatedType ~= "toy" and updatedType ~= "achievement" then return end
             InvalidateCollectionCachesForType(updatedType)
-            C_Timer.After(0.05, function()
-                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                RedrawActiveCollectionSubTab()
-            end)
+            ScheduleCoalescedCollectionRedraw()
         end)
 
         local plansUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.PLANS_UPDATED) or "WN_PLANS_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, plansUpdatedName, function()
-            C_Timer.After(0.05, function()
-                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                RedrawActiveCollectionSubTab()
-            end)
+            ScheduleCoalescedCollectionRedraw()
         end)
 
         local trackingUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED) or "WN_ACHIEVEMENT_TRACKING_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, trackingUpdatedName, function(_, payload)
-            if not payload or not payload.achievementID then return end
+            if not payload or not payload.achievementID then
+                -- Bulk tracking change: router no longer repopulates the collections tab, redraw here.
+                ScheduleCoalescedCollectionRedraw()
+                return
+            end
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
@@ -664,13 +676,16 @@ function WarbandNexus:DrawCollectionsTab(parent)
         local obtainedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTIBLE_OBTAINED) or "WN_COLLECTIBLE_OBTAINED"
         WarbandNexus.RegisterMessage(CUIListeners, obtainedName, function(_, data)
             if not data or not data.type then return end
-            if data.type ~= "mount" and data.type ~= "pet" and data.type ~= "toy" and data.type ~= "achievement" then return end
+            if data.type ~= "mount" and data.type ~= "pet" and data.type ~= "toy" and data.type ~= "achievement" then
+                -- Other types (illusion, title, ...) still land in the Recent ring; this module is the
+                -- sole Collections-tab redraw owner (UI_RefreshRouter skips the collections tab).
+                if M.state.currentSubTab == "recent" then
+                    ScheduleCoalescedCollectionRedraw()
+                end
+                return
+            end
             InvalidateCollectionCachesForType(data.type)
-            C_Timer.After(0.05, function()
-                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                RedrawActiveCollectionSubTab()
-            end)
+            ScheduleCoalescedCollectionRedraw()
         end)
 
         local metadataReadyName = (Constants and Constants.EVENTS and Constants.EVENTS.ITEM_METADATA_READY) or "WN_ITEM_METADATA_READY"

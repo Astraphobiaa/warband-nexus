@@ -1361,6 +1361,17 @@ end
     GUILD BANK HANDLERS (Updated for 10.0+ compatibility)
 ============================================================================]]
 
+--- Module gate for guild bank scans: consumed by Items (Guild sub-tab), Professions reagent
+--- counts and the always-on item-count tooltip.
+local function IsGuildBankScanConsumerEnabled(addon)
+    local U = ns.Utilities
+    if U and U:IsAnyModuleEnabled("items", "storage", "professions") then
+        return true
+    end
+    local db = addon and addon.db
+    return db and db.profile and db.profile.showItemCount ~= false or false
+end
+
 --- Hook Guild Bank UI for open/close detection
 function WarbandNexus:HookGuildBankUI()
     if self.guildBankHooked then return end
@@ -1395,6 +1406,7 @@ end
 --- the first GUILDBANKBAGSLOTS_CHANGED can announce the open, so OnGuildBankOpened
 --- dedupes against its pending +0.5s open scan.
 function WarbandNexus:OnGuildBankUpdate()
+    if not IsGuildBankScanConsumerEnabled(self) then return end
     -- If bank wasn't open before, this is the open event
     if not self.guildBankIsOpen then
         self:OnGuildBankOpened()
@@ -1416,6 +1428,8 @@ function WarbandNexus:OnGuildBankUpdate()
 end
 
 function WarbandNexus:OnGuildBankOpened()
+    -- Module gate: also covers the GuildBankFrame OnShow open path (GUILDBANK_UPDATE_TABS bails on guildBankIsOpen).
+    if not IsGuildBankScanConsumerEnabled(self) then return end
     -- OnShow hook and the first bag-slots event can both land here within the same open.
     if self.guildBankIsOpen and self._guildBankOpenScanAt and (GetTime() - self._guildBankOpenScanAt) < 0.5 then
         return
@@ -1484,9 +1498,16 @@ function WarbandNexus:OnGuildBankClosed()
         self:CancelTimer(self._guildBankRescanTimer)
         self._guildBankRescanTimer = nil
     end
-    -- Flush debounced rescan while guild bank APIs may still be valid this frame.
-    if hadPendingRescan and self.ThrottledGuildBankScan then
-        self:ThrottledGuildBankScan()
+    -- Finish scanning while guild bank APIs are still valid this frame. Starting a new scan here
+    -- used to cancel the one in flight, and the new one then bailed on the closed flag, so short
+    -- visits never finalized (lastScan / totals / gold) and later tabs were never read.
+    if self.FinishGuildBankScanNow and self:FinishGuildBankScanNow() then
+        -- in-flight scan drained (it already reads the latest slot data)
+    elseif hadPendingRescan and self.ScanGuildBank and self.guildBankIsOpen then
+        local started = self:ScanGuildBank()
+        if started and self.FinishGuildBankScanNow then
+            self:FinishGuildBankScanNow()
+        end
     end
     if self.CancelGuildBankSettleScans then
         self:CancelGuildBankSettleScans()
@@ -1677,7 +1698,8 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         C_Timer.After(5.5, function()
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
-                if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
+                -- Same producer gate as UpdatePvEData (PvE / Plans / VaultButton consumers).
+                if ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled() then
                     local P = ns.Profiler
                     local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "UpdatePvEData")
                     if P and P.enabled and lab then P:Start(lab) end

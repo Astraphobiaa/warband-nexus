@@ -248,14 +248,26 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
         self:ClearFocus()
     end)
 
+    -- Standard hint behavior on every tab: the placeholder hides while the box has focus and
+    -- returns on blur only when the box is still empty.
+    local function SearchTextIsEmpty()
+        local t = searchBox:GetText()
+        if issecretvalue and issecretvalue(t) then return true end
+        return type(t) ~= "string" or t == ""
+    end
+
     searchBox:SetScript("OnEditFocusLost", function()
         if debounceTimer then
             CancelDebounce()
             FireSearchCallback(pendingSearchText)
         end
+        if SearchTextIsEmpty() then
+            placeholderText:Show()
+        end
     end)
 
     searchBox:SetScript("OnEditFocusGained", function(self)
+        placeholderText:Hide()
         self:HighlightText()
     end)
     

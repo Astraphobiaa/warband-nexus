@@ -20,6 +20,11 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
@@ -369,7 +374,7 @@ end
 ]]
 local function CreateSeparator(parent, yOffset, width)
     local line = parent:CreateTexture(nil, "ARTWORK")
-    line:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(line, "horizontal", 1) else line:SetHeight(1) end
     line:SetPoint("TOPLEFT", PADDING, -yOffset)
     line:SetPoint("RIGHT", parent, "RIGHT", -PADDING, 0)
     line:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4)

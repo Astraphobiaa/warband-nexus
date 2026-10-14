@@ -7,6 +7,9 @@
 
 local _, ns = ...
 
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfoInstant = C_Item.GetItemInfoInstant
+
 local WarbandNexus = ns.WarbandNexus
 local Notify = ns.CollectionNotify
 local issecretvalue = issecretvalue

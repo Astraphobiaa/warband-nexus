@@ -4,6 +4,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.CollectionsUI
 assert(M and M.state, "CollectionsUI_Shared.lua must load before this file")
 
@@ -902,7 +904,7 @@ function M.CreateModelViewer(parent, width, height)
     local headerRowBottom = Factory:CreateContainer(textOverlay, math.max(1, width), 1, false)
     if not headerRowBottom then
         headerRowBottom = CreateFrame("Frame", nil, textOverlay)
-        headerRowBottom:SetHeight(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(headerRowBottom, "horizontal", 1) else headerRowBottom:SetHeight(1) end
     end
     headerRowBottom:SetPoint("TOPLEFT", iconBorder, "BOTTOMLEFT", 0, 0)
     headerRowBottom:SetPoint("TOPRIGHT", nameText, "BOTTOMRIGHT", 0, 0)

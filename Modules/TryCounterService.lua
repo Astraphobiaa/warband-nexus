@@ -13,6 +13,9 @@
 
 local ADDON_NAME, ns = ...
 
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfo = C_Item.GetItemInfo
+
 -- IIFE: Lua 5.1 / WoW cap ~200 locals per function; main chunk exceeded limit.
 ;(function()
 local WarbandNexus = ns.WarbandNexus
@@ -87,7 +90,7 @@ local UnitGUID = UnitGUID
 local GetNumLootItems = GetNumLootItems
 local GetLootSlotLink = GetLootSlotLink
 local LootSlotHasItem = LootSlotHasItem
-local GetItemInfoInstant = GetItemInfoInstant
+local GetItemInfoInstant = C_Item.GetItemInfoInstant
 local GetTime = GetTime
 local strsplit = strsplit
 local tonumber = tonumber
@@ -7632,8 +7635,8 @@ function WarbandNexus:CheckTargetDrops()
     -- Unit name: avoid (UnitName() or "Unknown") — secret return must not pass through `or` / tostring
     local rawUnitName = UnitName(unit)
     local unitName = "Unknown"
-    if type(rawUnitName) == "string" and rawUnitName ~= ""
-        and not (issecretvalue and issecretvalue(rawUnitName)) then
+    if type(rawUnitName) == "string"
+        and not (issecretvalue and issecretvalue(rawUnitName)) and rawUnitName ~= "" then
         unitName = rawUnitName
     end
     

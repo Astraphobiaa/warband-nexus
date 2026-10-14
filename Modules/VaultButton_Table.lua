@@ -486,7 +486,7 @@ RefreshTable = function()
         -- Row separator
         if i > 1 then
             local rowSep = row:CreateTexture(nil, "BORDER")
-            rowSep:SetHeight(1)
+            if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(rowSep, "horizontal", 1) else rowSep:SetHeight(1) end
             rowSep:SetPoint("TOPLEFT",  row, "TOPLEFT",  3, 0)
             rowSep:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
             rowSep:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.5)

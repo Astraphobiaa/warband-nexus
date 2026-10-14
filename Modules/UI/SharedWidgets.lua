@@ -6,6 +6,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -30,6 +32,8 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Pixel helpers: Modules/UI/SharedWidgets_Pixel.lua (ns.GetPixelScale / PixelSnap / ResetPixelScale)
 local GetPixelScale = ns.GetPixelScale
 local PixelSnap = ns.PixelSnap
+local PixelRound = ns.PixelRound
+local SnapRuleTexture = ns.UI_SnapRuleTexture
 local ResetPixelScale = ns.ResetPixelScale
 assert(GetPixelScale and PixelSnap, "SharedWidgets: SharedWidgets_Pixel must load first")
 
@@ -1363,9 +1367,9 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderTop:SetHeight(pixelScale)  -- Pixel-perfect 1px
-        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
-        frame.BorderTop:SetSnapToPixelGrid(false)
-        frame.BorderTop:SetTexelSnappingBias(0)
+        -- Exactly 1 physical px + grid snap = constant 1px during resize/scroll
+        -- (unsnapped, a sub-pixel offset smears it across 2px and it flickers).
+        SnapRuleTexture(frame.BorderTop)
         frame.BorderTop:SetDrawLayer("BORDER", 0)
         
         -- Bottom border (INSIDE frame, at the bottom edge)
@@ -1374,9 +1378,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderBottom:SetHeight(pixelScale)  -- Pixel-perfect 1px
-        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
-        frame.BorderBottom:SetSnapToPixelGrid(false)
-        frame.BorderBottom:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderBottom)
         frame.BorderBottom:SetDrawLayer("BORDER", 0)
         
         -- Left border (INSIDE frame, full height — overlaps corners, same color = invisible)
@@ -1385,8 +1387,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderLeft:SetWidth(pixelScale)
-        frame.BorderLeft:SetSnapToPixelGrid(false)
-        frame.BorderLeft:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderLeft)
         frame.BorderLeft:SetDrawLayer("BORDER", 0)
         
         -- Right border (INSIDE frame, full height — overlaps corners, same color = invisible)
@@ -1395,8 +1396,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderRight:SetWidth(pixelScale)
-        frame.BorderRight:SetSnapToPixelGrid(false)
-        frame.BorderRight:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderRight)
         frame.BorderRight:SetDrawLayer("BORDER", 0)
         
         -- Apply border color (only on creation)
@@ -1453,9 +1453,8 @@ end
 local function ApplyMainWindowShellBorderQuartet(frame, borderColor)
     if not frame or not borderColor then return end
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
-    local borderW = shell.MAIN_SHELL_FRAME_BORDER_WIDTH or 2
-    local pixelScale = GetPixelScale(frame)
-    if borderW < pixelScale then borderW = pixelScale end
+    -- Whole physical pixels (min 1) so the snapped edges never alternate thickness.
+    local borderW = PixelRound(shell.MAIN_SHELL_FRAME_BORDER_WIDTH or 2, frame, 1)
     local borderLayer = "OVERLAY"
     local borderSubLevel = 7
     if not frame.BorderTop then
@@ -1464,26 +1463,28 @@ local function ApplyMainWindowShellBorderQuartet(frame, borderColor)
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderTop:SetHeight(borderW)
-        frame.BorderTop:SetSnapToPixelGrid(false)
-        frame.BorderTop:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderTop)
 
         frame.BorderBottom = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderBottom:SetHeight(borderW)
+        SnapRuleTexture(frame.BorderBottom)
 
         frame.BorderLeft = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderLeft:SetWidth(borderW)
+        SnapRuleTexture(frame.BorderLeft)
 
         frame.BorderRight = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderRight:SetWidth(borderW)
+        SnapRuleTexture(frame.BorderRight)
     else
         frame.BorderTop:SetHeight(borderW)
         frame.BorderBottom:SetHeight(borderW)
@@ -3096,7 +3097,7 @@ local function ForwardMouseWheelToScrollAncestor(frame, delta)
             local current = ancestor:GetVerticalScroll() or 0
             local maxScroll = ancestor:GetVerticalScrollRange() or 0
             local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
-            newScroll = PixelSnap(newScroll)
+            newScroll = PixelSnap(newScroll, ancestor)
             pcall(ancestor.SetVerticalScroll, ancestor, newScroll)
             return
         end
@@ -3436,7 +3437,8 @@ local function ApplyTitleCardUnderline(titleCard, leftAnchor, rightAnchor, sp)
         titleCard._wnTitleUnderline = rule
     end
     rule:SetColorTexture(ac[1], ac[2], ac[3], ruleA)
-    rule:SetHeight(1)
+    rule:SetHeight(GetPixelScale(titleCard))
+    SnapRuleTexture(rule)
     rule:ClearAllPoints()
     rule:SetPoint("BOTTOMLEFT", leftAnchor, "BOTTOMLEFT", 0, -5)
     rule:SetPoint("BOTTOMRIGHT", rightAnchor, "BOTTOMRIGHT", 0, -5)
@@ -4876,7 +4878,74 @@ ns.UI_CreateDBVersionBadge = CreateDBVersionBadge
 
 -- LOADING STATE WIDGETS (Standardized Progress Indicator)
 
+--- Looping spinner rotation via AnimationGroup (no per-frame Lua OnUpdate). Same pattern as the
+--- login sync bar in UI.lua (`spinGroup` Rotation + SetLooping("REPEAT")).
+--- Positive degrees = counter-clockwise, matching the previous SetRotation(+rad) OnUpdate (270 deg/s).
+local SPINNER_DEGREES_PER_SEC = 270
+local function AttachLoopingSpinnerRotation(host, tex)
+    if not tex or not tex.CreateAnimationGroup then return nil end
+    local ag = tex:CreateAnimationGroup()
+    local rot = ag:CreateAnimation("Rotation")
+    rot:SetDegrees(360)
+    rot:SetDuration(360 / SPINNER_DEGREES_PER_SEC)
+    ag:SetLooping("REPEAT")
+    if host and host.HookScript then
+        host:HookScript("OnShow", function()
+            if not ag:IsPlaying() then ag:Play() end
+        end)
+    end
+    ag:Play()
+    return ag
+end
+
+local LOADING_CARD_H = 108
+local LOADING_CARD_UPDATE_INTERVAL = 0.1 -- <= 10 Hz progress re-apply
+
+local function ReadLoadingPercent(state)
+    if not state then return 0 end
+    local lp = state.loadingProgress
+    local sp = state.scanProgress
+    local v = lp or sp or 0
+    if type(v) ~= "number" then return 0 end
+    if v ~= v then return 0 end
+    return math.min(100, math.max(0, math.floor(v + 0.5)))
+end
+
+--- Re-apply stage text / bar fill only when stage, percent or bar width changed.
+local function ApplyLoadingCardProgress(card)
+    local loadingState = card._wnLoadingState
+    if not loadingState then return end
+    local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
+    local progress = ReadLoadingPercent(loadingState)
+    if currentStage ~= card._wnLastStage or progress ~= card._wnLastProgress then
+        card._wnLastStage = currentStage
+        card._wnLastProgress = progress
+        card._wnProgressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
+    end
+    local bw = card._wnBarBg:GetWidth()
+    if bw and bw > 0 then
+        local fillW = math.max(1, bw * (progress / 100))
+        if fillW ~= card._wnLastFillW then
+            card._wnLastFillW = fillW
+            card._wnBarFill:SetWidth(fillW)
+        end
+    end
+end
+
+local function LoadingCard_OnUpdate(card, elapsed)
+    local loadingState = card._wnLoadingState
+    if not loadingState or not loadingState.isLoading then
+        card:SetScript("OnUpdate", nil)
+        return
+    end
+    card._wnUpdateAccum = (card._wnUpdateAccum or 0) + (elapsed or 0)
+    if card._wnUpdateAccum < LOADING_CARD_UPDATE_INTERVAL then return end
+    card._wnUpdateAccum = 0
+    ApplyLoadingCardProgress(card)
+end
+
 ---Create standardized loading state card with animated spinner and progress bar
+--- Cached per parent + title (`parent._wnLoadingStateCards`) and re-adopted on later calls.
 ---@return number newYOffset - New Y offset after card
 function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     if not loadingState or not loadingState.isLoading then
@@ -4884,40 +4953,14 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     end
     
     local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
-    local CARD_H = 108
-    local loadingCard = CreateCard(parent, CARD_H)
-    ApplyStandardCardElevatedChrome(loadingCard)
-    loadingCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    loadingCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
-    -- Animated spinner
-    local spinnerFrame = ns.UI_CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
-    spinnerFrame:SetPoint("LEFT", 20, 0)
-    spinnerFrame:Show()
-    local spinner = spinnerFrame.texture
-    
-    -- Animate rotation on spinner only (avoid clobbering loadingCard OnUpdate); stop when hidden.
-    local rotation = 0
-    spinnerFrame:SetScript("OnUpdate", function(_, elapsed)
-        rotation = rotation + (elapsed * 270)
-        if spinner then
-            spinner:SetRotation(math.rad(rotation))
-        end
-    end)
-    loadingCard:HookScript("OnHide", function()
-        spinnerFrame:SetScript("OnUpdate", nil)
-        loadingCard:SetScript("OnUpdate", nil)
-    end)
-    
-    -- Loading title
-    local FontManager = ns.FontManager
-    local loadingText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardTitle"), "OVERLAY")
-    loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
-    loadingText:SetText("|cff00ccff" .. (title or ((ns.L and ns.L["LOADING"]) or "Loading...")) .. "|r")
-    
-    -- Progress indicator
-    local progressText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardProgress"), "OVERLAY")
-    progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
+    local CARD_H = LOADING_CARD_H
+    local titleStr = title or ((ns.L and ns.L["LOADING"]) or "Loading...")
+    local cache = parent and parent._wnLoadingStateCards
+    if parent and not cache then
+        cache = {}
+        parent._wnLoadingStateCards = cache
+    end
+    local loadingCard = cache and cache[titleStr]
 
     local BAR_W = 200
     if parent and parent.GetWidth then
@@ -4925,53 +4968,74 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
         local w = pw - (SIDE_MARGIN * 2) - 20 - 40 - 15 - 20
         BAR_W = math.min(280, math.max(120, w))
     end
-    local barBg = loadingCard:CreateTexture(nil, "ARTWORK")
-    barBg:SetSize(BAR_W, 5)
-    barBg:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", 0, -6)
-    local barTrack = COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
-    barBg:SetColorTexture(barTrack[1], barTrack[2], barTrack[3], barTrack[4] or 1)
-    local barFill = loadingCard:CreateTexture(nil, "OVERLAY")
-    barFill:SetHeight(5)
-    barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
-    barFill:SetWidth(1)
-    local acc = COLORS and COLORS.accent or {0.2, 0.6, 1}
-    barFill:SetColorTexture(acc[1], acc[2], acc[3], 0.9)
-    
-    local function ReadLoadingPercent(state)
-        if not state then return 0 end
-        local lp = state.loadingProgress
-        local sp = state.scanProgress
-        local v = lp or sp or 0
-        if type(v) ~= "number" then return 0 end
-        if v ~= v then return 0 end
-        return math.min(100, math.max(0, math.floor(v + 0.5)))
-    end
-    
-    local function ApplyProgressVisual()
-        local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
-        local progress = ReadLoadingPercent(loadingState)
-        progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
-        local bw = barBg:GetWidth()
-        if bw and bw > 0 then
-            barFill:SetWidth(math.max(1, bw * (progress / 100)))
-        end
-    end
-    ApplyProgressVisual()
-    
-    -- Hint text
-    local hintText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardHint"), "OVERLAY")
-    hintText:SetPoint("TOPLEFT", barBg, "BOTTOMLEFT", 0, -6)
-    hintText:SetPoint("RIGHT", loadingCard, "RIGHT", -16, 0)
-    ns.UI_SetTextColorRole(hintText, "Muted")
-    hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
-    
-    loadingCard:SetScript("OnUpdate", function()
-        if not loadingState.isLoading then
+
+    if not loadingCard then
+        loadingCard = CreateCard(parent, CARD_H)
+        ApplyStandardCardElevatedChrome(loadingCard)
+        
+        -- Animated spinner (AnimationGroup rotation; replays on card OnShow).
+        local spinnerFrame = ns.UI_CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
+        spinnerFrame:SetPoint("LEFT", 20, 0)
+        spinnerFrame:Show()
+        local spinner = spinnerFrame.texture
+        loadingCard._wnSpinGroup = AttachLoopingSpinnerRotation(loadingCard, spinner)
+        loadingCard:HookScript("OnHide", function()
             loadingCard:SetScript("OnUpdate", nil)
-            return
+        end)
+        
+        -- Loading title
+        local FontManager = ns.FontManager
+        local loadingText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardTitle"), "OVERLAY")
+        loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
+        loadingText:SetText("|cff00ccff" .. titleStr .. "|r")
+        loadingCard._wnTitleText = loadingText
+        
+        -- Progress indicator
+        local progressText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardProgress"), "OVERLAY")
+        progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
+        loadingCard._wnProgressText = progressText
+
+        local barBg = loadingCard:CreateTexture(nil, "ARTWORK")
+        barBg:SetSize(BAR_W, 5)
+        barBg:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", 0, -6)
+        local barTrack = COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
+        barBg:SetColorTexture(barTrack[1], barTrack[2], barTrack[3], barTrack[4] or 1)
+        loadingCard._wnBarBg = barBg
+        local barFill = loadingCard:CreateTexture(nil, "OVERLAY")
+        barFill:SetHeight(5)
+        barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
+        barFill:SetWidth(1)
+        local acc = COLORS and COLORS.accent or {0.2, 0.6, 1}
+        barFill:SetColorTexture(acc[1], acc[2], acc[3], 0.9)
+        loadingCard._wnBarFill = barFill
+        
+        -- Hint text
+        local hintText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardHint"), "OVERLAY")
+        hintText:SetPoint("TOPLEFT", barBg, "BOTTOMLEFT", 0, -6)
+        hintText:SetPoint("RIGHT", loadingCard, "RIGHT", -16, 0)
+        ns.UI_SetTextColorRole(hintText, "Muted")
+        hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
+
+        if cache then cache[titleStr] = loadingCard end
+    else
+        -- Re-adopt: content teardown may have parked the card in the recycle bin.
+        if loadingCard:GetParent() ~= parent then
+            loadingCard:SetParent(parent)
         end
-        ApplyProgressVisual()
-    end)
+        loadingCard._wnBarBg:SetWidth(BAR_W)
+    end
+
+    loadingCard:ClearAllPoints()
+    loadingCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    loadingCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+
+    loadingCard._wnLoadingState = loadingState
+    loadingCard._wnLastStage = nil
+    loadingCard._wnLastProgress = nil
+    loadingCard._wnLastFillW = nil
+    loadingCard._wnUpdateAccum = 0
+    ApplyLoadingCardProgress(loadingCard)
+    loadingCard:SetScript("OnUpdate", LoadingCard_OnUpdate)
     
     loadingCard:Show()
     
@@ -5018,14 +5082,8 @@ function UI_CreateInlineLoadingSpinner(parent, anchorFrame, anchorPoint, xOffset
     spinnerFrame:SetPoint(anchorPoint, anchorFrame, anchorPoint, xOffset, yOffset)
     spinnerFrame:Show()
     
-    -- Animate rotation
-    local rotation = 0
-    spinnerFrame:SetScript("OnUpdate", function(_, elapsed)
-        rotation = rotation + (elapsed * 270)
-        if spinnerFrame and spinnerFrame.texture then
-            spinnerFrame.texture:SetRotation(math.rad(rotation))
-        end
-    end)
+    -- Animate rotation (AnimationGroup; no per-frame OnUpdate)
+    spinnerFrame._wnSpinGroup = AttachLoopingSpinnerRotation(spinnerFrame, spinnerFrame.texture)
     
     return spinnerFrame
 end
@@ -5048,11 +5106,7 @@ local function UI_CreateLoadingStatePanel(parent)
     local spinnerTex = spinnerFrame.texture
     panel._spinnerTex = spinnerTex
 
-    local rotation = 0
-    panel:SetScript("OnUpdate", function(_, elapsed)
-        rotation = rotation + (elapsed * 270)
-        if spinnerTex then spinnerTex:SetRotation(math.rad(rotation)) end
-    end)
+    panel._wnSpinGroup = AttachLoopingSpinnerRotation(panel, spinnerTex)
 
     -- Title
     local FM = ns.FontManager

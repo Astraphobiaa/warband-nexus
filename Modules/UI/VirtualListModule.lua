@@ -299,6 +299,19 @@ local function FindFirstRowInScrollSpace(flatList, scrollTop, layoutOff, bufferP
 end
 
 --- Row frames may be parented under group shells (Bank/Items collapsible groups); walk ancestors.
+--- Incremental reuse: claim a stale frame from the previous paint whose row signature matches.
+local function TakeStaleFrameForSig(oldVis, sig)
+    if not oldVis or not sig then return nil end
+    for j = 1, #oldVis do
+        local f = oldVis[j] and oldVis[j].frame
+        if f and f._vlm_stale and f._vlm_rowSig == sig then
+            f._vlm_stale = false
+            return f
+        end
+    end
+    return nil
+end
+
 local function VirtualRowIsUnderContainer(rowFrame, container)
     local p = rowFrame and rowFrame:GetParent()
     while p do
@@ -620,18 +633,6 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
         local incrementalReuse = container._vlm_incrementalRowReuse == true
         local oldVis = container._virtualVisibleFrames
 
-        local function TakeReuseFrameForSig(sig)
-            if not incrementalReuse or not oldVis or not sig then return nil end
-            for j = 1, #oldVis do
-                local f = oldVis[j] and oldVis[j].frame
-                if f and f._vlm_stale and f._vlm_rowSig == sig then
-                    f._vlm_stale = false
-                    return f
-                end
-            end
-            return nil
-        end
-
         if incrementalReuse then
             if oldVis then
                 for j = 1, #oldVis do
@@ -685,7 +686,10 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             and not container._vlm_groupShellByKey
             and container._vlm_nestedInScrollChild
 
-        local function tryPaint(paintOff)
+        -- Single paint pass inlined (was a per-UpdateVisible tryPaint closure, called once).
+        wipe(newVis)
+        do
+            local paintOff = layoutOff
             local effectiveOff = useScrollSpaceCull and layoutOff or paintOff
             local rm = scrollTop - effectiveOff - bufferPx
             local rx = scrollTop - effectiveOff + viewHeight + bufferPx
@@ -716,7 +720,10 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                     if rowVisible then
                         local sig = it.rowReuseSig
                         local frameReused = false
-                        local frame = TakeReuseFrameForSig(sig)
+                        local frame = nil
+                        if incrementalReuse then
+                            frame = TakeStaleFrameForSig(oldVis, sig)
+                        end
                         if frame then
                             frameReused = true
                         else
@@ -790,9 +797,6 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                 end
             end
         end
-
-        wipe(newVis)
-        tryPaint(layoutOff)
 
         if incrementalReuse and oldVis then
             for j = 1, #oldVis do

@@ -8,6 +8,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 
 local issecretvalue = issecretvalue
@@ -2889,7 +2891,8 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
         local addedText = FontManager:CreateFontString(addedBtn, fontCategory, "OVERLAY")
         addedText:SetPoint("CENTER")
         addedText:SetText(label)
-        local gr, gg, gb = (ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor()) or 0.38, 0.72, 0.48
+        local gr, gg, gb = 0.38, 0.72, 0.48
+        if ns.UI_GetSemanticGreenColor then gr, gg, gb = ns.UI_GetSemanticGreenColor() end
         addedText:SetTextColor(gr, gg, gb, 0.78)
         addedBtn._wnAddedText = addedText
         return addedBtn

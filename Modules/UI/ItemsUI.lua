@@ -8,6 +8,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 ns.ItemsUI = ns.ItemsUI or {}
 local E = ns.Constants.EVENTS
@@ -642,13 +644,18 @@ local _wnStorTopScratch = {}
 local _wnStorChildScratch = {}
 local _wnStorReflowScratch = {}
 
-local function PackChildrenInto(dest, frame)
-    wipe(dest)
-    local n = select("#", frame:GetChildren())
+-- One GetChildren() call per pack (the old loop re-called it per index: O(n) C calls each).
+local function PackVarargsInto(dest, ...)
+    local n = select("#", ...)
     for i = 1, n do
-        dest[i] = select(i, frame:GetChildren())
+        dest[i] = (select(i, ...))
     end
     return n
+end
+
+local function PackChildrenInto(dest, frame)
+    wipe(dest)
+    return PackVarargsInto(dest, frame:GetChildren())
 end
 
 --- Vertical extent (px): container top to lowest shown child bottom. Matches ReflowStorageStackParentBody
@@ -1967,12 +1974,18 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
 
             row:SetScript("OnEnter", function(self)
                 if not ShowTooltip then return end
-                local brightR, brightG, brightB = ns.UI_GetTextRoleRGB and ns.UI_GetTextRoleRGB("Bright") or 1, 1, 1
-                local mutedR, mutedG, mutedB = ns.UI_GetTextRoleRGB and ns.UI_GetTextRoleRGB("Muted") or 0.7, 0.7, 0.7
-                local normalR, normalG, normalB = ns.UI_GetTextRoleRGB and ns.UI_GetTextRoleRGB("Normal") or 0.85, 0.85, 0.85
-                local infoR, infoG, infoB = ns.UI_GetSemanticInfoColor and ns.UI_GetSemanticInfoColor() or 0.4, 0.8, 1
-                local greenR, greenG, greenB = ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor() or 0, 1, 0
-                local orangeR, orangeG, orangeB = ns.UI_GetSemanticOrangeColor and ns.UI_GetSemanticOrangeColor() or 1, 0.65, 0.25
+                local brightR, brightG, brightB = 1, 1, 1
+                if ns.UI_GetTextRoleRGB then brightR, brightG, brightB = ns.UI_GetTextRoleRGB("Bright") end
+                local mutedR, mutedG, mutedB = 0.7, 0.7, 0.7
+                if ns.UI_GetTextRoleRGB then mutedR, mutedG, mutedB = ns.UI_GetTextRoleRGB("Muted") end
+                local normalR, normalG, normalB = 0.85, 0.85, 0.85
+                if ns.UI_GetTextRoleRGB then normalR, normalG, normalB = ns.UI_GetTextRoleRGB("Normal") end
+                local infoR, infoG, infoB = 0.4, 0.8, 1
+                if ns.UI_GetSemanticInfoColor then infoR, infoG, infoB = ns.UI_GetSemanticInfoColor() end
+                local greenR, greenG, greenB = 0, 1, 0
+                if ns.UI_GetSemanticGreenColor then greenR, greenG, greenB = ns.UI_GetSemanticGreenColor() end
+                local orangeR, orangeG, orangeB = 1, 0.65, 0.25
+                if ns.UI_GetSemanticOrangeColor then orangeR, orangeG, orangeB = ns.UI_GetSemanticOrangeColor() end
                 local additionalLines = {}
                 if item.stackCount and item.stackCount > 1 then
                     table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["STACK_LABEL"]) or "Stack:") .. FormatNumber(item.stackCount), color = {normalR, normalG, normalB}})

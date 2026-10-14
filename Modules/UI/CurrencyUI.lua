@@ -1440,11 +1440,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_CACHE_READY, function()
-            if parent and IsCurrencyTabActive() then
-                WarbandNexus:DrawCurrencyTab(parent)
-            end
-        end)
+        -- WN_CURRENCY_CACHE_READY: owned by UI_RefreshRouter (same populate debounce as CURRENCY_UPDATED).
+        -- FullScan sends both back-to-back; drawing here too meant an immediate rebuild + a second one 100ms later.
         
         WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_CACHE_CLEARED, function()
             if parent and IsCurrencyTabActive() then

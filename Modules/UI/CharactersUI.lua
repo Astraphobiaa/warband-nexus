@@ -9,6 +9,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
@@ -287,7 +289,7 @@ local function ApplyTotalGoldCardInterior(bundle, stackToken)
         local midRule = bundle.midRule
         if not midRule then
             midRule = totalGoldCard:CreateTexture(nil, "ARTWORK")
-            midRule:SetHeight(1)
+            if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(midRule, "horizontal", 1) else midRule:SetHeight(1) end
             midRule:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35)
             bundle.midRule = midRule
         end
