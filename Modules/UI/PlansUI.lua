@@ -1542,7 +1542,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
     if #filteredPlans == 0 then
         if ns.UI_ShowTabEmptyStateCard then
-            return ns.UI_ShowTabEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true }) + 10
+            return ns.UI_ShowTabEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true, sideInset = PlansContentPadH() }) + 10
         end
         local _, height = CreateEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true, sideInset = PlansContentPadH() })
         return yOffset + height + 10
@@ -2298,7 +2298,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         parent._plansCardLayoutManager = nil
         local emptyKey = ResolvePlansEmptyStateKey(category)
         if ns.UI_ShowTabEmptyStateCard then
-            return ns.UI_ShowTabEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true }) + 10
+            return ns.UI_ShowTabEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true, sideInset = PlansContentPadH() }) + 10
         end
         local _, height = CreateEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true, sideInset = PlansContentPadH() })
         return yOffset + height + 10

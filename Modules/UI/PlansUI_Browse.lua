@@ -820,6 +820,8 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
     if ns.UI_ShowTabEmptyStateCard then
         return ns.UI_ShowTabEmptyStateCard(parent, tabKey, yOffset, {
             fillParent = true,
+            -- Same side inset as the Plans search bar / header (not full scroll-body width).
+            sideInset = (ns.UI_PlansContentPadH and ns.UI_PlansContentPadH()) or nil,
             cacheKey = "plans_browse_" .. (category or "browse"),
             titleText = titleStr,
             descText = descStr,
