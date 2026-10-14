@@ -1,5 +1,7 @@
 --[[ UI main window shell ]]
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local S = assert(ns.UIShell, "UI_MainShell: load Modules/UI.lua first")
 local B = assert(ns.UIShell._bind, "UI_MainShell: UIShell._bind missing")
 local ApplyMainNavGoldenShellLayout = B.ApplyMainNavGoldenShellLayout
@@ -346,7 +348,7 @@ function ns.UIShell.CreateMainWindow(self)
             local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
             closeIcon:SetSize(16, 16)
             closeIcon:SetPoint("CENTER")
-            closeIcon:SetAtlas("uitools-icon-close")
+            ns.UI_SetIcon(closeIcon, "close")
             closeIcon:SetVertexColor(0.9, 0.3, 0.3)
 
             closeBtn:SetScript("OnEnter", function(self)
@@ -584,7 +586,9 @@ function ns.UIShell.CreateMainWindow(self)
         -- on theme change. CreateThemeDivider returns a Frame, which this anchor-to-edge
         -- overlay cannot use.
         railDivider:SetColorTexture(div[1], div[2], div[3], div[4] or 1) -- WN_CHROME_ALLOW
-        railDivider:SetWidth(1)
+        -- One physical pixel, grid-snapped: stays 1px while the window is resized.
+        railDivider:SetWidth((ns.GetPixelScale and ns.GetPixelScale(navRail)) or 1)
+        if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(railDivider) end
         railDivider:SetPoint("TOPRIGHT", navRail, "TOPRIGHT", 0, 0)
         railDivider:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 0)
         if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
@@ -619,7 +623,7 @@ function ns.UIShell.CreateMainWindow(self)
         local railFooterH = ApplyNavRailFooterMetrics(f)
 
         local railFooterSep = navRailFooter:CreateTexture(nil, "ARTWORK")
-        railFooterSep:SetHeight(sepH)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(railFooterSep, "horizontal", sepH) else railFooterSep:SetHeight(sepH) end
         railFooterSep:SetPoint("TOPLEFT", navRailFooter, "TOPLEFT", railPad, 0)
         railFooterSep:SetPoint("TOPRIGHT", navRailFooter, "TOPRIGHT", -railPad, 0)
         local sepDiv = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
@@ -630,6 +634,7 @@ function ns.UIShell.CreateMainWindow(self)
         f._wnNavRailFooterSep = railFooterSep
 
         navRailScroll = CreateFrame("ScrollFrame", nil, navRail)
+        if ns.UI_KeepScrollOnPixelGrid then ns.UI_KeepScrollOnPixelGrid(navRailScroll) end
         navRailScroll:SetPoint("TOPLEFT", navRail, "TOPLEFT", railPad, 0)
         navRailScroll:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", -railPad, railPad + railFooterH)
         navRailScroll:EnableMouseWheel(true)
@@ -849,16 +854,20 @@ function ns.UIShell.CreateMainWindow(self)
                             child:Hide()
                         elseif child._wnKeepOnTabSwitch then
                             DetachKeptScrollChildOnMainTabSwitch(child)
-                        elseif child._wnProfColumnHeaderStrip then
-                            child._wnKeepOnTabSwitch = nil
-                            child:Hide()
-                            child:SetParent(recycleBin)
-                            child._wnPoolDrained = nil
-                            pendingDrain = pendingDrain + 1
                         else
-                            child:Hide()
-                            child:SetParent(recycleBin)
-                            child._wnPoolDrained = nil
+                            if child._wnProfColumnHeaderStrip then
+                                child._wnKeepOnTabSwitch = nil
+                            end
+                            -- Queue-based park: the drain pops from a Lua array instead of
+                            -- re-enumerating recycleBin:GetChildren() (O(total parked)).
+                            if ns.UI_ParkInRecycleBinForDrain then
+                                child._wnPoolDrained = nil
+                                ns.UI_ParkInRecycleBinForDrain(child)
+                            else
+                                child:Hide()
+                                child:SetParent(recycleBin)
+                                child._wnPoolDrained = nil
+                            end
                             pendingDrain = pendingDrain + 1
                         end
                     end
@@ -1156,7 +1165,7 @@ function ns.UIShell.CreateMainWindow(self)
         f.tabButtons.settings = settingsBtn
 
         local settingsAboutSep = f.navRailFooter:CreateTexture(nil, "ARTWORK")
-        settingsAboutSep:SetHeight(sepH)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(settingsAboutSep, "horizontal", sepH) else settingsAboutSep:SetHeight(sepH) end
         settingsAboutSep:SetPoint("LEFT", f.navRailFooter, "LEFT", RAIL_PAD, 0)
         settingsAboutSep:SetPoint("RIGHT", f.navRailFooter, "RIGHT", -RAIL_PAD, 0)
         local gapAbove = math.floor(footerBtnGap * 0.5)
@@ -1826,7 +1835,8 @@ function ns.UIShell.CreateMainWindow(self)
         f.footerBar = footerBar
 
         local footerTop = footerBar:CreateTexture(nil, "ARTWORK")
-        footerTop:SetHeight(1)
+        footerTop:SetHeight((ns.GetPixelScale and ns.GetPixelScale(footerBar)) or 1)
+        if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(footerTop) end
         footerTop:SetPoint("TOPLEFT", footerBar, "TOPLEFT", 0, 0)
         footerTop:SetPoint("TOPRIGHT", footerBar, "TOPRIGHT", 0, 0)
         if COLORS then

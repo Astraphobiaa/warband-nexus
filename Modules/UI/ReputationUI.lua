@@ -13,6 +13,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -39,7 +41,6 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 
 -- Import shared UI components
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
-local UI_SPACING = ns.UI_SPACING
 local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -113,12 +114,47 @@ local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
-local REP_ROW_HEIGHT = 30
+-- Row metric: UI_LAYOUT.TABLE.ROW_H.standard (SharedWidgets_TableKit list rows).
+local REP_ROW_HEIGHT = (GetLayout().TABLE and GetLayout().TABLE.ROW_H.standard) or 30
 local REP_ROW_GAP = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (ns.UI_LAYOUT and ns.UI_LAYOUT.dataRowGap) or 4
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local PAGE_STACK = GetLayout().PAGE_STACK or {} -- standard tab rhythm (SharedWidgets_Layout)
+
+-- REPUTATION ROW COLUMN MODEL (SharedWidgets_TableKit; defined + resolved once, base widths, no flex).
+-- Leading columns (chevron, standing) anchor LEFT at their x; trailing columns (badge, marker, progress)
+-- anchor from the row's RIGHT edge so they line up across indented sub-faction rows (row right edges
+-- match); the flex name column spans between. Kit convention: text sits CELL_PAD_X inside its column.
+local REP_ROW = {}
+do
+    local TK = ns.UI_TableKit
+    assert(TK and GetLayout().TABLE, "SharedWidgets_TableKit.lua must load before ReputationUI.lua")
+    local T = GetLayout().TABLE
+    local pad, gap = T.CELL_PAD_X, T.COL_GAP
+    REP_ROW.cols = {
+        { key = "chevron",  width = GetLayout().COLLAPSE_EXPAND_BUTTON_SIZE or 22, align = "CENTER" },
+        { key = "standing", width = 120 + pad * 2, align = "LEFT" },
+        { key = "name",     width = 0, flex = 1,   align = "LEFT" },
+        { key = "badge",    width = 220 + pad * 2, align = "LEFT" },
+        { key = "marker",   width = 42,            align = "RIGHT" }, -- paragon / check icons left of the bar
+        { key = "progress", width = 200,           align = "RIGHT" }, -- ApplyReputationRowProgressChrome bar
+    }
+    REP_ROW.widths, REP_ROW.offsets = {}, {}
+    TK.ResolveWidths(REP_ROW.cols, nil, REP_ROW.widths, REP_ROW.offsets, pad, gap)
+    local W = REP_ROW.widths
+    REP_ROW.pad = pad
+    REP_ROW.standingTextW = W[2] - pad * 2
+    REP_ROW.badgeTextW = W[4] - pad * 2
+    REP_ROW.progressW = W[6]
+    REP_ROW.progressRight = pad                                      -- bar RIGHT inset
+    local markerLeft = REP_ROW.progressRight + W[6] + gap + W[5]     -- from row right
+    local badgeLeft = markerLeft + gap + W[4]
+    REP_ROW.badgeLeftFromRight = badgeLeft - pad                     -- badge text LEFT, measured from row right
+    REP_ROW.nameRightBadge = badgeLeft + gap + pad                   -- name text RIGHT inset (badge shown)
+    REP_ROW.nameRightNoBadge = markerLeft + gap + pad                -- name text RIGHT inset (no badge)
+end
 
 -- REPUTATION FORMATTING & HELPERS
 
@@ -347,8 +383,7 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
         local function MakeBorder()
             local t = pb.bg:CreateTexture(nil, "BORDER")
             t:SetTexture("Interface\\Buttons\\WHITE8x8")
-            t:SetSnapToPixelGrid(false)
-            t:SetTexelSnappingBias(0)
+            if ns.UI_SnapRuleTexture then ns.UI_SnapRuleTexture(t) end
             t:SetDrawLayer("BORDER", 0)
             return t
         end
@@ -361,14 +396,14 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     end
 
     local pb = row._progressBar
-    local barWidth, barHeight = 200, 19
+    local barWidth, barHeight = REP_ROW.progressW, 19
     local borderInset = 1
     local fillInset = borderInset + 1
     local contentWidth = barWidth - (borderInset * 2)
 
     pb.bg:SetSize(barWidth, barHeight)
     pb.bg:ClearAllPoints()
-    pb.bg:SetPoint("RIGHT", -10, 0)
+    pb.bg:SetPoint("RIGHT", row, "RIGHT", -REP_ROW.progressRight, 0)
     pb.bg:Show()
 
     local bgColor = COLORS.bg
@@ -418,28 +453,31 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     local br, bgc, bb = borderColor[1], borderColor[2], borderColor[3]
     local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.88 or 0.58
 
+    -- Border textures opt out of pixel-grid snapping, so size them in physical pixels.
+    local px = (ns.GetPixelScale and ns.GetPixelScale(pb.bg)) or 1
+
     pb.borderTop:ClearAllPoints()
     pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
     pb.borderTop:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, 0)
-    pb.borderTop:SetHeight(1)
+    pb.borderTop:SetHeight(px)
     pb.borderTop:SetVertexColor(br, bgc, bb, ba)
 
     pb.borderBottom:ClearAllPoints()
     pb.borderBottom:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 0)
     pb.borderBottom:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 0)
-    pb.borderBottom:SetHeight(1)
+    pb.borderBottom:SetHeight(px)
     pb.borderBottom:SetVertexColor(br, bgc, bb, ba)
 
     pb.borderLeft:ClearAllPoints()
-    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -1)
-    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 1)
-    pb.borderLeft:SetWidth(1)
+    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -px)
+    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, px)
+    pb.borderLeft:SetWidth(px)
     pb.borderLeft:SetVertexColor(br, bgc, bb, ba)
 
     pb.borderRight:ClearAllPoints()
-    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -1)
-    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 1)
-    pb.borderRight:SetWidth(1)
+    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -px)
+    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, px)
+    pb.borderRight:SetWidth(px)
     pb.borderRight:SetVertexColor(br, bgc, bb, ba)
 
     local progressBg = pb.bg
@@ -522,6 +560,9 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     if baseReputationMaxed then
         if not row.checkFrame then
             row.checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)
+            if row.checkFrame and row.checkFrame.texture then
+                ns.UI_SetIcon(row.checkFrame.texture, "status_ok")
+            end
         end
         row.checkFrame:ClearAllPoints()
         row.checkFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -4, 0)
@@ -1135,7 +1176,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
 
         row.collapseBtn:ClearAllPoints()
-        row.collapseBtn:SetPoint("LEFT", 6, 0)
+        row.collapseBtn:SetPoint("LEFT", row, "LEFT", REP_ROW.offsets[1], 0)
         ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
 
         -- Click handlers (toggle subfaction visibility)
@@ -1184,15 +1225,14 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         standingColorCode = SemanticColorHex(COLORS.red)
     end
     
-    local repChevronW = (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
-    local textStartOffset = hasSubfactions and (6 + repChevronW + 4) or 10
+    local textStartOffset = (hasSubfactions and REP_ROW.offsets[2] or REP_ROW.offsets[1]) + REP_ROW.pad
 
     if standingWord ~= "" then
         -- Standing text
         if not row.standingText then
             row.standingText = FontManager:CreateFontString(row, "body", "OVERLAY")
             row.standingText:SetJustifyH("LEFT")
-            row.standingText:SetWidth(120)
+            row.standingText:SetWidth(REP_ROW.standingTextW)
         end
         row.standingText:ClearAllPoints()
         row.standingText:SetPoint("LEFT", textStartOffset, 0)
@@ -1208,7 +1248,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             row.separator = FontManager:CreateFontString(row, "body", "OVERLAY")
         end
         row.separator:ClearAllPoints()
-        row.separator:SetPoint("LEFT", row.standingText, "RIGHT", 10, 0)
+        row.separator:SetPoint("LEFT", row.standingText, "RIGHT", REP_ROW.pad, 0)
         row.separator:SetText(ThemeTextHex("Dim") .. "-|r")
         row.separator:Show()
         
@@ -1221,9 +1261,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             row.nameText:SetMaxLines(1)
         end
         row.nameText:ClearAllPoints()
-        row.nameText:SetPoint("LEFT", row.separator, "RIGHT", 12, 0)
-        local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)
-        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetPoint("LEFT", row.separator, "RIGHT", REP_ROW.pad, 0)
+        row.nameText:SetPoint("RIGHT", row, "RIGHT", -(characterInfo and REP_ROW.nameRightBadge or REP_ROW.nameRightNoBadge), 0)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
         ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
@@ -1241,8 +1280,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
         row.nameText:ClearAllPoints()
         row.nameText:SetPoint("LEFT", textStartOffset, 0)
-        local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)
-        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetPoint("RIGHT", row, "RIGHT", -(characterInfo and REP_ROW.nameRightBadge or REP_ROW.nameRightNoBadge), 0)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
         ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
@@ -1252,12 +1290,10 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         if not row.badgeText then
             row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
             row.badgeText:SetJustifyH("LEFT")
-            row.badgeText:SetWidth(220)
+            row.badgeText:SetWidth(REP_ROW.badgeTextW)
         end
-        local BADGE_ABSOLUTE_X = 475
-        local badgeLeftOffset = BADGE_ABSOLUTE_X - indent
         row.badgeText:ClearAllPoints()
-        row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
+        row.badgeText:SetPoint("LEFT", row, "RIGHT", -REP_ROW.badgeLeftFromRight, 0)
         
         if characterInfo.isAccountWide and not characterInfo.repProgressSplit then
             local label = ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide")
@@ -1365,7 +1401,7 @@ local function PopulateReputationRow(row, entry)
         end
 
         row.collapseBtn:ClearAllPoints()
-        row.collapseBtn:SetPoint("LEFT", 6, 0)
+        row.collapseBtn:SetPoint("LEFT", row, "LEFT", REP_ROW.offsets[1], 0)
         ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
 
         local function onSubfactionToggle()
@@ -1386,8 +1422,7 @@ local function PopulateReputationRow(row, entry)
     local standingNumber = ""
     local standingColorCode = ""
 
-    local repChevronW2 = (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
-    local textStartOffset = hasSubfactions and (6 + repChevronW2 + 4) or 10
+    local textStartOffset = (hasSubfactions and REP_ROW.offsets[2] or REP_ROW.offsets[1]) + REP_ROW.pad
 
     if reputation.friendship and reputation.friendship.reactionText then
         standingWord = reputation.friendship.reactionText
@@ -1417,7 +1452,7 @@ local function PopulateReputationRow(row, entry)
         if not row.standingText then
             row.standingText = FontManager:CreateFontString(row, "body", "OVERLAY")
             row.standingText:SetJustifyH("LEFT")
-            row.standingText:SetWidth(120)
+            row.standingText:SetWidth(REP_ROW.standingTextW)
         end
         row.standingText:ClearAllPoints()
         row.standingText:SetPoint("LEFT", textStartOffset, 0)
@@ -1432,7 +1467,7 @@ local function PopulateReputationRow(row, entry)
             row.separator = FontManager:CreateFontString(row, "body", "OVERLAY")
         end
         row.separator:ClearAllPoints()
-        row.separator:SetPoint("LEFT", row.standingText, "RIGHT", 10, 0)
+        row.separator:SetPoint("LEFT", row.standingText, "RIGHT", REP_ROW.pad, 0)
         row.separator:SetText(ThemeTextHex("Dim") .. "-|r")
         row.separator:Show()
 
@@ -1444,9 +1479,8 @@ local function PopulateReputationRow(row, entry)
             row.nameText:SetMaxLines(1)
         end
         row.nameText:ClearAllPoints()
-        row.nameText:SetPoint("LEFT", row.separator, "RIGHT", 12, 0)
-        local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)
-        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetPoint("LEFT", row.separator, "RIGHT", REP_ROW.pad, 0)
+        row.nameText:SetPoint("RIGHT", row, "RIGHT", -(characterInfo and REP_ROW.nameRightBadge or REP_ROW.nameRightNoBadge), 0)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
         ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
@@ -1463,8 +1497,7 @@ local function PopulateReputationRow(row, entry)
         end
         row.nameText:ClearAllPoints()
         row.nameText:SetPoint("LEFT", textStartOffset, 0)
-        local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)
-        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetPoint("RIGHT", row, "RIGHT", -(characterInfo and REP_ROW.nameRightBadge or REP_ROW.nameRightNoBadge), 0)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
         ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
@@ -1474,13 +1507,10 @@ local function PopulateReputationRow(row, entry)
         if not row.badgeText then
             row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
             row.badgeText:SetJustifyH("LEFT")
-            row.badgeText:SetWidth(220)
+            row.badgeText:SetWidth(REP_ROW.badgeTextW)
         end
-        local BADGE_ABSOLUTE_X = 475
-        local indent = entry.xOffset or 0
-        local badgeLeftOffset = BADGE_ABSOLUTE_X - indent
         row.badgeText:ClearAllPoints()
-        row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
+        row.badgeText:SetPoint("LEFT", row, "RIGHT", -REP_ROW.badgeLeftFromRight, 0)
 
         if characterInfo.isAccountWide and not characterInfo.repProgressSplit then
             local label = ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide")
@@ -1615,7 +1645,9 @@ function WarbandNexus:DrawReputationList(container, width)
             width - 20,
             100
         )
-        errorFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+        -- Parent is the already-inset results container: fill it (no second side inset).
+        errorFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
+        errorFrame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
         
         return yOffset + GetLayout().emptyStateSpacing + BASE_INDENT
     end
@@ -1678,8 +1710,8 @@ function WarbandNexus:DrawReputationList(container, width)
         GetReputationAggregateSnapshot(characters, factionMetadata)
     
     if not aggregatedHeaders or #aggregatedHeaders == 0 then
-        -- Show reputation-specific empty state
-        local yOffset = 100
+        -- Show reputation-specific empty state (parent = already-inset results container -> fillParent at 0)
+        local yOffset = 0
         
         -- Check if this is a search result or general "no data" state
         if reputationSearchText and reputationSearchText ~= "" then
@@ -2236,7 +2268,7 @@ function WarbandNexus:DrawReputationList(container, width)
             width - 20,
             60
         )
-        ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
+        ChainTopFrame(noticeFrame, PAGE_STACK.SECTION_GAP or SECTION_SPACING)
     end
 
     local totalReputations = 0
@@ -2258,32 +2290,18 @@ end
 -- REPUTATION TAB WRAPPER (Fixes focus issue)
 
 --- Reposition cached Reputation fixedHeader chrome (Collections/Items parity — WN-PERF tab revisit).
+--- Same UI_PageStack_Place calls and heights as the DrawReputationTab create path (no drift on repaint).
 local function RepositionReputationFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, searchH)
+    chrome = chrome or { headerParent = headerParent, yOffset = headerYOffset, side = contentSide }
     local titleCard = hdrCache.titleCard
-    titleCard:SetParent(headerParent)
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
-    else
-        titleCard:ClearAllPoints()
-        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    end
-    titleCard:Show()
     local titleH = titleCard:GetHeight()
     if not titleH or titleH <= 0 then titleH = 64 end
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleH)
-    else
-        headerYOffset = headerYOffset + titleH + (GetLayout().afterElement or 8)
-    end
+    headerYOffset = ns.UI_PageStack_Place(chrome, titleCard, titleH)
+    titleCard:Show()
     local searchBox = hdrCache.searchBox
     if searchBox then
-        searchBox:SetParent(headerParent)
-        searchBox:ClearAllPoints()
-        searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        headerYOffset = ns.UI_PageStack_Place(chrome, searchBox, searchH)
         searchBox:Show()
-        headerYOffset = headerYOffset + searchH + (GetLayout().afterElement or 8)
     end
     return headerYOffset
 end
@@ -2291,14 +2309,14 @@ end
 local function ApplyReputationResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, _animate, _fromResultsH, _fromScrollChildH)
     if not mainFrame or not scrollChild or not resultsContainer then return end
     local targetResultsH = math.max(listHeight or 1, 1)
-    local CONTENT_BOTTOM_PADDING = 8
-    local targetTabBodyH = 8 + (listHeight or 0)
+    local CONTENT_BOTTOM_PADDING = PAGE_STACK.BOTTOM_PAD or 12
+    local targetTabBodyH = (PAGE_STACK.BODY_TOP or 8) + (listHeight or 0)
     local targetScrollChildH = math.max(targetTabBodyH + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight())
 
     local Factory = ns.UI.Factory
     resultsContainer:SetHeight(targetResultsH)
     if ns.UI_SyncMainTabScrollChrome then
-        ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, 8 + (listHeight or 0))
+        ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, targetTabBodyH)
         return
     end
     scrollChild:SetHeight(targetScrollChildH)
@@ -2373,6 +2391,20 @@ function WarbandNexus:DrawReputationTab(parent)
             local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
             return mf and mf:IsShown() and mf.currentTab == "reputations"
         end
+
+        -- REPUTATION_CACHE_READY + REPUTATION_UPDATED are sent back-to-back by ReputationCacheService;
+        -- coalesce the burst into one next-frame data refresh instead of two synchronous redraws.
+        local repRefreshPending = false
+        local function ScheduleCoalescedReputationRefresh()
+            if repRefreshPending then return end
+            repRefreshPending = true
+            C_Timer.After(0, function()
+                repRefreshPending = false
+                if parent and IsReputationTabActive() then
+                    RefreshReputationTabData(parent, false)
+                end
+            end)
+        end
         
         -- Loading started - only refresh if Reputations tab is active (not parent:IsVisible â€” shared scroll child)
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_LOADING_STARTED, function()
@@ -2411,16 +2443,12 @@ function WarbandNexus:DrawReputationTab(parent)
                 parent._loadingPanel:HideLoading()
             end
             
-            if parent and IsReputationTabActive() then
-                RefreshReputationTabData(parent, false)
-            end
+            ScheduleCoalescedReputationRefresh()
         end)
         
         -- Real-time update event (single faction changed)
         WarbandNexus.RegisterMessage(ReputationUIEvents, Constants.EVENTS.REPUTATION_UPDATED, function(event, factionID)
-            if parent and IsReputationTabActive() then
-                RefreshReputationTabData(parent, false)
-            end
+            ScheduleCoalescedReputationRefresh()
         end)
     end
     
@@ -2451,9 +2479,9 @@ function WarbandNexus:DrawReputationTab(parent)
         local metricsEarly = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mfEarly)
         local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
         local titleH = (metricsEarly and metricsEarly.titleCardHeight) or 64
-        local blockGap = (metricsEarly and metricsEarly.blockGap) or 8
+        local blockGap = PAGE_STACK.BLOCK_GAP or 8
         local topM = (metricsEarly and metricsEarly.topMargin) or 0
-        local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+        local searchH = PAGE_STACK.SEARCH_HEIGHT or 32
         local headerH = topM + titleH + blockGap + searchH + blockGap
         local fixedHeaderEarly = mfEarly and mfEarly.fixedHeader
         if ns.UI_CommitTabFixedHeader then
@@ -2523,7 +2551,9 @@ function WarbandNexus:DrawReputationTab(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local repRightReserve = (tm.edgeInset or 0)
-    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    local searchH = PAGE_STACK.SEARCH_HEIGHT or 32
+    -- Page stack: create + RepositionReputationFixedHeader both place chrome via UI_PageStack_Place.
+    chrome = chrome or { headerParent = headerParent, yOffset = headerYOffset, side = contentSide }
     local hdrCache = mf and mf._wnReputationFixedHeaderCache
     local titleCard
     local headerChromeDone = false
@@ -2537,14 +2567,6 @@ function WarbandNexus:DrawReputationTab(parent)
     if not headerChromeDone then
     if mf and mf._wnReputationTitleCard then
         titleCard = mf._wnReputationTitleCard
-        titleCard:SetParent(headerParent)
-        titleCard:ClearAllPoints()
-        if chrome and ns.UI_AnchorTabTitleCard then
-            ns.UI_AnchorTabTitleCard(titleCard, chrome)
-        else
-            titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-            titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-        end
         titleCard:Show()
     else
         titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
@@ -2553,12 +2575,6 @@ function WarbandNexus:DrawReputationTab(parent)
             subtitleText = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband",
             textRightInset = repRightReserve,
         }))
-        if chrome and ns.UI_AnchorTabTitleCard then
-            ns.UI_AnchorTabTitleCard(titleCard, chrome)
-        else
-            titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-            titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-        end
         if mf then
             mf._wnReputationTitleCard = titleCard
         end
@@ -2574,11 +2590,7 @@ function WarbandNexus:DrawReputationTab(parent)
     
     local titleH = (titleCard and titleCard:GetHeight()) or 0
     if titleH <= 0 then titleH = 64 end
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleH)
-    else
-        headerYOffset = headerYOffset + titleH + (GetLayout().afterElement or 8)
-    end
+    headerYOffset = ns.UI_PageStack_Place(chrome, titleCard, titleH)
 
     local CreateSearchBox = ns.UI_CreateSearchBox
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
@@ -2590,9 +2602,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end, nil, reputationSearchText, "reputation")
     
-    searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-    searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    headerYOffset = headerYOffset + searchH + (GetLayout().afterElement or 8)
+    headerYOffset = ns.UI_PageStack_Place(chrome, searchBox, searchH)
 
     if not hdrCache then
         hdrCache = {}
@@ -2632,8 +2642,7 @@ function WarbandNexus:DrawReputationTab(parent)
     
     local container = parent.resultsContainer
     container:SetParent(parent)
-    container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -scrollTopY)
+    ns.UI_PageStack_AnchorBody(parent, container, scrollTopY)
     container:SetWidth(bodyWidth)
     container:SetHeight(1)
     container:Show()

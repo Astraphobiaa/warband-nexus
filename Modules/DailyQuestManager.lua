@@ -1008,8 +1008,8 @@ function WarbandNexus:ScanMidnightQuests()
         end
     end
 
-    -- Debug: dump scan results
-    if ns.DebugPrint then
+    -- Debug: dump scan results (ns.DebugPrint only emits in verbose mode; skip the per-WQ concat otherwise)
+    if ns.DebugPrint and ns.IsDebugVerboseEnabled and ns.IsDebugVerboseEnabled() then
         local a = quests.worldQuests
         ns.DebugPrint("|cff9370DB[DailyQuest]|r ScanMidnightQuests: worldQuests=" .. #a)
         for i = 1, #a do
@@ -1216,8 +1216,8 @@ function WarbandNexus:InitializeDailyQuestManager()
     end
     self._dailyQuestManagerInitialized = true
 
-    -- QUEST_TURNED_IN: dispatched by EventManager's consolidated handler (avoids AceEvent overwrite)
-    self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")
+    -- QUEST_TURNED_IN / QUEST_LOG_UPDATE: dispatched by EventManager's consolidated handlers.
+    -- Registering QUEST_LOG_UPDATE here replaced EventManager's profession-knowledge handler.
     -- PLAYER_ENTERING_WORLD: Core owns the AceEvent slot on the addon object (one handler
     -- per event per object) — registering here silently replaced Core's OnPlayerEnteringWorld
     -- for every zone/instance transition. Module-local raw frame is collision-free.
@@ -1225,6 +1225,7 @@ function WarbandNexus:InitializeDailyQuestManager()
         local pewFrame = CreateFrame("Frame")
         pewFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
         pewFrame:SetScript("OnEvent", function()
+            if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
             if WarbandNexus and WarbandNexus.OnDailyQuestLogin then
                 WarbandNexus:OnDailyQuestLogin()
             end
@@ -1234,28 +1235,16 @@ function WarbandNexus:InitializeDailyQuestManager()
 
     SyncDailyQuestPlanIndexes()
     WarbandNexus.RegisterMessage(DailyQuestManagerEvents, E.PLANS_UPDATED, function()
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
         RequestDailyQuestIndexRebuild()
     end)
 
-    -- Periodic check for weekly reset: when reset occurs, refresh daily plans
-    -- (expired weeklies are removed; new week's quests appear)
-    if C_Timer and C_Timer.NewTicker then
-        self.dailyQuestWeeklyCheckTime = time()
-        if self._dailyQuestWeeklyTicker then
-            self._dailyQuestWeeklyTicker:Cancel()
-            self._dailyQuestWeeklyTicker = nil
-        end
-        -- Weekly reset detection does not need 60s precision; longer interval cuts idle poll cost.
-        self._dailyQuestWeeklyTicker = C_Timer.NewTicker(300, function()
-            if not self.db or not self.db.global then return end
-            if ns.Utilities and ns.Utilities.IsModuleEnabled and not ns.Utilities:IsModuleEnabled("plans") then return end
-            if not self.db.global.plans then return end
-            if not WarbandNexus._hasDailyQuestPlanCache then return end
-            if not self.HasWeeklyResetOccurredSince then return end
-            if self:HasWeeklyResetOccurredSince(self.dailyQuestWeeklyCheckTime or 0) then
-                self:UpdateDailyQuestWeeklyReset()
-            end
-        end)
+    -- Weekly reset: ResetService arms exact-second timers and emits WN_WEEKLY_RESET_OCCURRED;
+    -- EventManager's centralized reset listener calls UpdateDailyQuestWeeklyReset. No idle poll.
+    self.dailyQuestWeeklyCheckTime = time()
+    if self._dailyQuestWeeklyTicker then
+        self._dailyQuestWeeklyTicker:Cancel()
+        self._dailyQuestWeeklyTicker = nil
     end
 end
 
@@ -1316,6 +1305,7 @@ function WarbandNexus:OnDailyQuestLogin()
 end
 
 function WarbandNexus:OnDailyQuestCompleted(event, questID)
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     ns.DebugPrint("|cff9370DB[DailyQuest]|r QUEST_TURNED_IN questID=" .. tostring(questID))
     if not self.db or not self.db.global or not self.db.global.plans then return end
 
@@ -1378,6 +1368,7 @@ function WarbandNexus:OnDailyQuestCompleted(event, questID)
 end
 
 function WarbandNexus:OnDailyQuestUpdate()
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     ns.DebugPrint("|cff9370DB[DailyQuest]|r QUEST_LOG_UPDATE triggered")
     if not self.db or not self.db.global or not self.db.global.plans then return end
 

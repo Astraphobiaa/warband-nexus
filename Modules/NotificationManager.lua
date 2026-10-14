@@ -15,6 +15,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
 local FontManager = ns.FontManager  -- Centralized font management
@@ -344,32 +346,33 @@ local function NM_ResolveToastFxSize(toastHost, toastWidth, toastHeight)
     return w, h
 end
 
----Optional entrance polish — default off; only explicit celebration gets a soft sheen.
+---Entrance polish on every toast; intensity scales with tier so frequent toasts stay calm.
+---  quiet (minimal/progress/reminder/compact): rim glow + icon flash + faint sheen
+---  standard: stronger rim glow + icon flash + sheen
+---  celebration (earned collectible/achievement): sun burst + all of the above
 local function NM_PlayToastEntranceEffects(toastHost, toastWidth, toastHeight)
     if not toastHost or toastHost.isClosing or toastHost._removed or not toastHost:IsShown() then
-        return false
-    end
-    local tier = toastHost._toastFxTier or "minimal"
-    if tier == "minimal" or tier == "progress" or tier == "reminder" or tier == "compact" then
         return false
     end
     local w, h = NM_ResolveToastFxSize(toastHost, toastWidth, toastHeight)
     if w < 1 or h < 1 then
         return false
     end
-    if tier == "standard" then
-        toastHost._toastFxSheenPeak = 0.36
-        NM_PlayToastSweepShine(toastHost, w, h)
-        return true
-    end
+    local tier = toastHost._toastFxTier or "minimal"
+    local edgePeak, flashPeak, sheenPeak
     if tier == "celebration" then
-        -- Achievement / collectible earned: warm radial sun burst + sheen sweep together.
-        toastHost._toastFxSheenPeak = 0.34
+        edgePeak, flashPeak, sheenPeak = 1, 0.85, 0.34
         NM_PlayToastSunGlow(toastHost, w, h)
-        NM_PlayToastSweepShine(toastHost, w, h)
-        return true
+    elseif tier == "standard" then
+        edgePeak, flashPeak, sheenPeak = 0.85, 0.7, 0.36
+    else
+        edgePeak, flashPeak, sheenPeak = 0.65, 0.5, 0.2
     end
-    return false
+    toastHost._toastFxSheenPeak = sheenPeak
+    NM_PlayToastSweepShine(toastHost, w, h)
+    ToastFx.PlayEdgeGlow(toastHost, w, h, edgePeak)
+    ToastFx.PlayIconFlash(toastHost, flashPeak)
+    return true
 end
 
 local function NM_AssignToastFxMetadata(toastHost, config, titleColor, iconFrame, backdropFrame)
@@ -1194,7 +1197,7 @@ function WarbandNexus:ShowModalNotification(config)
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
             edgeFile = "Interface\\BUTTONS\\WHITE8X8",
             tile = false,
-            edgeSize = 1,
+            edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(backdropFrameCompact)) or 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         backdropFrameCompact:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
@@ -1494,7 +1497,7 @@ function WarbandNexus:ShowModalNotification(config)
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
         tile = false,
-        edgeSize = 1,
+        edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(backdropFrame)) or 1,
         insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
     backdropFrame:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
@@ -1610,7 +1613,7 @@ function WarbandNexus:ShowModalNotification(config)
     end
     -- Edge shine spans full toast top edge
     local edgeShine = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    edgeShine:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(edgeShine, "horizontal", 1) else edgeShine:SetHeight(1) end
     edgeShine:SetPoint("TOPLEFT", effectsFrame, "TOPLEFT", 1, -1)
     edgeShine:SetPoint("TOPRIGHT", effectsFrame, "TOPRIGHT", -1, -1)
     edgeShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
@@ -1618,7 +1621,7 @@ function WarbandNexus:ShowModalNotification(config)
     edgeShine:SetBlendMode("ADD")
     -- Bottom edge shine
     local edgeShineBottom = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    edgeShineBottom:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(edgeShineBottom, "horizontal", 1) else edgeShineBottom:SetHeight(1) end
     edgeShineBottom:SetPoint("BOTTOMLEFT", effectsFrame, "BOTTOMLEFT", 1, 1)
     edgeShineBottom:SetPoint("BOTTOMRIGHT", effectsFrame, "BOTTOMRIGHT", -1, 1)
     edgeShineBottom:SetTexture("Interface\\BUTTONS\\WHITE8X8")

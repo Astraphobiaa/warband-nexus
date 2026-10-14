@@ -7,6 +7,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemIcon = C_Item.GetItemIconByID
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -315,6 +318,7 @@ function WarbandNexus:InitializePlanTracking()
     -- WEEKLY_REWARDS_UPDATE / CHALLENGE_MODE_COMPLETED / UPDATE_INSTANCE_INFO: owned by PvECacheService
     -- NOTE: Uses PlansManagerEvents as 'self' key to avoid overwriting PvEUI's handler.
     WarbandNexus.RegisterMessage(PlansManagerEvents, Constants.EVENTS.PVE_UPDATED, function()
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
         if WarbandNexus._DeferVaultPlanCheckFromPvE then
             WarbandNexus:_DeferVaultPlanCheckFromPvE()
         end
@@ -323,6 +327,7 @@ function WarbandNexus:InitializePlanTracking()
     -- already true, so WEEKLY_REWARDS_UPDATE does not always produce PVE_UPDATED. Use the separate
     -- event sink and the same debounce to refresh cached To-Do cards after the server response.
     WarbandNexus.RegisterEvent(PlansManagerEvents, "WEEKLY_REWARDS_UPDATE", function()
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
         if WarbandNexus._DeferVaultPlanCheckFromPvE then
             WarbandNexus:_DeferVaultPlanCheckFromPvE()
         end
@@ -337,6 +342,7 @@ function WarbandNexus:InitializePlanTracking()
     
     -- Daily quest updates
     WarbandNexus.RegisterMessage(PlansManagerEvents, E.QUEST_PROGRESS_UPDATED, function(event)
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
         if WarbandNexus.OnDailyQuestProgressUpdated then
             WarbandNexus:OnDailyQuestProgressUpdated(event)
         end
@@ -346,16 +352,36 @@ function WarbandNexus:InitializePlanTracking()
     local Constants = ns.Constants
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE then
         WarbandNexus.RegisterMessage(PlansManagerEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
+            if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
             WarbandNexus:UpdatePlanSources()
         end)
     end
     
     -- Initial checks after APIs are ready
     C_Timer.After(3, function()
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
         self:CheckPlansForCompletion()
         self:CheckWeeklyReset()
         self:UpdatePlanSources()
         self:PreResolvePlansData()
+    end)
+
+    -- Plans re-enable: the login-time checks above were skipped while the module was off.
+    WarbandNexus.RegisterMessage(PlansManagerEvents, E.MODULE_TOGGLED, function(_, moduleName, enabled)
+        if moduleName ~= "plans" or enabled ~= true then return end
+        C_Timer.After(0.5, function()
+            if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
+            WarbandNexus:CheckPlansForCompletion()
+            WarbandNexus:CheckWeeklyReset()
+            WarbandNexus:UpdatePlanSources()
+            WarbandNexus:PreResolvePlansData()
+            if WarbandNexus._DeferVaultPlanCheckFromPvE then
+                WarbandNexus:_DeferVaultPlanCheckFromPvE()
+            end
+            if WarbandNexus._dailyQuestManagerInitialized and WarbandNexus.OnDailyQuestLogin then
+                WarbandNexus:OnDailyQuestLogin()
+            end
+        end)
     end)
 end
 
@@ -451,6 +477,7 @@ end
     Checks if any plans were completed
 ]]
 function WarbandNexus:OnPlanCollectionUpdated(event, ...)
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     -- Immediate match on payload (WN_COLLECTIBLE_OBTAINED uses id=, not mountID=/speciesID=).
     -- Deferred CheckPlansForCompletion can miss mounts when GetMountInfoByID(..., isCollected) is secret right after learn.
     local data = ...

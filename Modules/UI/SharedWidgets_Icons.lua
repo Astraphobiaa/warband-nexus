@@ -4,6 +4,11 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemClassInfo = C_Item.GetItemClassInfo
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local Constants = ns.Constants
@@ -96,17 +101,9 @@ local function UIFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
 end
 
+--- Surface tier color: single implementation lives in SharedWidgets.lua (`ns.UI_ResolveSurfaceTierColor`).
 local function ResolveSurfaceTierColor(tier)
-    if ns.UI_ResolveSurfaceTierColor then
-        return ns.UI_ResolveSurfaceTierColor(tier)
-    end
-    local C = COLORS or {}
-    if tier == "rowEven" then
-        return C.surfaceRowEven or (UI_SPACING and UI_SPACING.ROW_COLOR_EVEN) or { 0.112, 0.112, 0.138, 0.96 }
-    elseif tier == "rowOdd" then
-        return C.surfaceRowOdd or (UI_SPACING and UI_SPACING.ROW_COLOR_ODD) or { 0.090, 0.090, 0.112, 0.96 }
-    end
-    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
+    return ns.UI_ResolveSurfaceTierColor(tier)
 end
 
 --- Square icon action button (reminder / track / delete / todo / link).
@@ -400,16 +397,17 @@ local function CreateParagonIcon(parent, size, hasRewardPending)
     if hasRewardPending then
         local checkTex = frame:CreateTexture(nil, "OVERLAY")
         checkTex:SetAllPoints()
-        -- Use same texture as the standalone checkmark (ReadyCheck-Ready)
-        checkTex:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        -- Registry status_ok (common-icon-checkmark; ReadyCheck-Ready file fallback)
+        ns.UI_SetIcon(checkTex, "status_ok")
         checkTex:SetSnapToPixelGrid(false)
         checkTex:SetTexelSnappingBias(0)
         frame.checkmark = checkTex
     end
     
-    -- Gray out if no reward pending
+    -- Dim (monochrome, reduced alpha) if no reward pending -- no grey tint
     if not hasRewardPending then
-        bagTex:SetVertexColor(0.5, 0.5, 0.5, 1)
+        local v = ns.UI_GetMonochromeIconVertex(0.45)
+        bagTex:SetVertexColor(v[1], v[2], v[3], v[4])
     end
     
     return frame
@@ -863,9 +861,7 @@ ns.UI_CreateClassIcon = CreateClassIcon
 -- FAVORITE ICON HELPERS
 
 -- Constants
-local FAVORITE_ICON_ATLAS = "transmog-icon-favorite"
-local FAVORITE_COLOR_ACTIVE = {1, 0.84, 0}  -- Gold
-local FAVORITE_COLOR_INACTIVE = {0.5, 0.5, 0.5}  -- Gray
+local FAVORITE_ICON_ATLAS = "transmog-icon-favorite"  -- fallback only; registry favorite_on/_off first
 
 --[[
     Get favorite icon atlas name
@@ -881,14 +877,20 @@ end
     @param isFavorite boolean - Whether character is favorited
 ]]
 local function StyleFavoriteIcon(texture, isFavorite)
-    texture:SetAtlas(FAVORITE_ICON_ATLAS)
+    -- No desaturated grey off state (GRAY BAN): Blizzard's own on/off star atlases.
     if isFavorite then
-        texture:SetDesaturated(false)
-        texture:SetVertexColor(unpack(FAVORITE_COLOR_ACTIVE))
+        if not ns.UI_SetIcon(texture, "favorite_on") then
+            texture:SetAtlas(FAVORITE_ICON_ATLAS)
+            texture:SetVertexColor(1, 1, 1, 1)
+        end
     else
-        texture:SetDesaturated(true)
-        texture:SetVertexColor(unpack(FAVORITE_COLOR_INACTIVE))
+        if not ns.UI_SetIcon(texture, "favorite_off") then
+            texture:SetAtlas(FAVORITE_ICON_ATLAS)
+            local vc = ns.UI_GetMonochromeIconVertex(0.45)
+            texture:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 0.45)
+        end
     end
+    texture:SetDesaturated(false)
 end
 
 --[[

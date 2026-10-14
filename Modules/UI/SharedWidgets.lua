@@ -6,6 +6,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -30,6 +32,8 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Pixel helpers: Modules/UI/SharedWidgets_Pixel.lua (ns.GetPixelScale / PixelSnap / ResetPixelScale)
 local GetPixelScale = ns.GetPixelScale
 local PixelSnap = ns.PixelSnap
+local PixelRound = ns.PixelRound
+local SnapRuleTexture = ns.UI_SnapRuleTexture
 local ResetPixelScale = ns.ResetPixelScale
 assert(GetPixelScale and PixelSnap, "SharedWidgets: SharedWidgets_Pixel must load first")
 
@@ -109,26 +113,13 @@ end
 --- Collection list row status: gold `common-icon-checkmark` when collected (canonical WN check).
 function ns.UI_ApplyCollectionRowStatusIcon(statusIcon, isCollected)
     if not statusIcon then return end
-    statusIcon:SetDesaturated(false)
     statusIcon:Show()
     if isCollected then
-        local ok = pcall(statusIcon.SetAtlas, statusIcon, "common-icon-checkmark", false)
-        if not ok then
-            statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-        end
         local g = COLORS and COLORS.gold
-        if g then
-            statusIcon:SetVertexColor(g[1], g[2], g[3], g[4] or 1)
-        else
-            statusIcon:SetVertexColor(1, 0.82, 0, 1)
-        end
+        ns.UI_SetIcon(statusIcon, "status_ok", { vertexColor = g or { 1, 0.82, 0, 1 } })
     else
-        local ok = pcall(statusIcon.SetAtlas, statusIcon, "Objective-Nub", false)
-        if not ok then
-            statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
-        end
-        local vc = ns.UI_GetMonochromeIconVertex(0.35)
-        statusIcon:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 0.35)
+        -- status_pending is mono: white (dark) / black (light) at alpha 0.35.
+        ns.UI_SetIcon(statusIcon, "status_pending", { alpha = 0.35 })
     end
 end
 
@@ -196,7 +187,7 @@ local function GetWnIconPaths()
         donate = (C and C.WN_ICON_DONATE) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Donate.tga",
         credits = (C and C.WN_ICON_CREDITS) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
         tracking = (C and C.WN_ICON_TRACKING) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
-        complete = "Interface\\RaidFrame\\ReadyCheck-Ready",
+        complete = "Interface\\RaidFrame\\ReadyCheck-Ready", -- file fallback; atlas via UI_ICONS.status_ok
     }
     return WN_ICON_PATHS
 end
@@ -209,7 +200,14 @@ function ns.UI_SetWnIconTexture(tex, iconKey, opts)
     local paths = GetWnIconPaths()
     local path = paths[iconKey]
     if not path then return false end
-    tex:SetTexture(path)
+    local usedAtlas = false
+    if iconKey == "complete" and not opts.texCoord then
+        -- Registry atlas (common-icon-checkmark); file path above stays the fallback.
+        usedAtlas = ns.UI_SetIcon(tex, "status_ok") and true or false
+    end
+    if not usedAtlas then
+        tex:SetTexture(path)
+    end
     local tc = opts.texCoord
     if tc and #tc >= 4 then
         tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
@@ -481,7 +479,7 @@ ns.UI_PLANS_CARD_METRICS = {
     browseCardHeight = PlansMetric(126),
     --- Vertical gap between To-Do List cards (Currency/Reputation row-gap parity).
     todoListCardGap = 10,
-    browseCardPadH = 12,
+    browseCardPadH = (UI_SPACING and UI_SPACING.PAGE_STACK and UI_SPACING.PAGE_STACK.SIDE) or 12,
     plansActionIconInset = 3,
     browseIconTopInset = PlansMetric(10),
     browseIconLeftInset = PlansMetric(10),
@@ -1238,9 +1236,9 @@ local function RefreshAccentStripes()
 end
 ns.UI_RefreshAccentStripes = RefreshAccentStripes
 
---- Accent-bordered control shell (search, stats strip): BackdropTemplate edge + left rail.
+--- Accent-bordered control shell (search, stats strip): standard border quartet + left rail.
 ---@param frame Frame
----@param opts table|nil `{ edgeSize, borderAlpha, showRail, railWidth, bg }`
+---@param opts table|nil `{ borderAlpha, showRail, railWidth, bg }`
 function ns.UI_ApplyAccentControlChrome(frame, opts)
     if not frame then return end
     if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then
@@ -1264,30 +1262,23 @@ function ns.UI_ApplyAccentControlChrome(frame, opts)
     else
         ar, ag, ab, aa = ThemeAPI.GetSubTabActiveBackdropRGBA(ac)
     end
-    local edge = opts.edgeSize or 2
     local borderA = opts.borderAlpha or 0.72
 
-    if not frame.SetBackdrop then
-        Mixin(frame, BackdropTemplateMixin)
+    -- Same border as every card/button: ApplyVisuals quartet at UI_GetBorderThickness
+    -- (whole physical pixels), not a backdrop edge with its own fixed edgeSize.
+    frame._wnMainShellBackdrop = nil
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(frame, { ar, ag, ab, aa or 0.98 }, { ac[1], ac[2], ac[3], borderA })
     end
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = edge,
-        insets = { left = edge, right = edge, top = edge, bottom = edge },
-    })
-    frame:SetBackdropColor(ar, ag, ab, aa or 0.98)
-    frame:SetBackdropBorderColor(ac[1], ac[2], ac[3], borderA)
-    frame._wnMainShellBackdrop = true
+    -- A flat-chrome pass may have hidden the quartet on this reused frame.
+    if frame.BorderTop then
+        frame.BorderTop:Show(); frame.BorderBottom:Show()
+        frame.BorderLeft:Show(); frame.BorderRight:Show()
+    end
     frame._borderType = "accent"
     frame._borderAlpha = borderA
     frame._bgType = "searchChrome"
-
-    if not frame._borderRegistered then
-        frame._borderRegistered = true
-        BORDER_REGISTRY[#BORDER_REGISTRY + 1] = frame
-    end
+    local edge = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or 1
 
     if opts.showRail == false then
         if frame._wnAccentLeftRail then frame._wnAccentLeftRail:Hide() end
@@ -1355,7 +1346,8 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     -- Create 4-texture border system (Create Once) - SANDWICH METHOD
     -- Borders are INSIDE the frame, using BORDER layer (between backdrop and content)
     if not frame.BorderTop then
-        local pixelScale = GetPixelScale(frame)  -- Pixel-perfect 1px thickness for this frame scale
+        -- 1 UI unit in whole physical pixels (crisp; same visual weight on every display)
+        local pixelScale = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or GetPixelScale(frame)
         
         -- Top border (INSIDE frame, at the top edge)
         frame.BorderTop = frame:CreateTexture(nil, "BORDER")
@@ -1363,9 +1355,9 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderTop:SetHeight(pixelScale)  -- Pixel-perfect 1px
-        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
-        frame.BorderTop:SetSnapToPixelGrid(false)
-        frame.BorderTop:SetTexelSnappingBias(0)
+        -- Exactly 1 physical px + grid snap = constant 1px during resize/scroll
+        -- (unsnapped, a sub-pixel offset smears it across 2px and it flickers).
+        SnapRuleTexture(frame.BorderTop)
         frame.BorderTop:SetDrawLayer("BORDER", 0)
         
         -- Bottom border (INSIDE frame, at the bottom edge)
@@ -1374,9 +1366,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderBottom:SetHeight(pixelScale)  -- Pixel-perfect 1px
-        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
-        frame.BorderBottom:SetSnapToPixelGrid(false)
-        frame.BorderBottom:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderBottom)
         frame.BorderBottom:SetDrawLayer("BORDER", 0)
         
         -- Left border (INSIDE frame, full height — overlaps corners, same color = invisible)
@@ -1385,8 +1375,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderLeft:SetWidth(pixelScale)
-        frame.BorderLeft:SetSnapToPixelGrid(false)
-        frame.BorderLeft:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderLeft)
         frame.BorderLeft:SetDrawLayer("BORDER", 0)
         
         -- Right border (INSIDE frame, full height — overlaps corners, same color = invisible)
@@ -1395,8 +1384,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderRight:SetWidth(pixelScale)
-        frame.BorderRight:SetSnapToPixelGrid(false)
-        frame.BorderRight:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderRight)
         frame.BorderRight:SetDrawLayer("BORDER", 0)
         
         -- Apply border color (only on creation)
@@ -1453,9 +1441,8 @@ end
 local function ApplyMainWindowShellBorderQuartet(frame, borderColor)
     if not frame or not borderColor then return end
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
-    local borderW = shell.MAIN_SHELL_FRAME_BORDER_WIDTH or 2
-    local pixelScale = GetPixelScale(frame)
-    if borderW < pixelScale then borderW = pixelScale end
+    -- Whole physical pixels (min 1) so the snapped edges never alternate thickness.
+    local borderW = PixelRound(shell.MAIN_SHELL_FRAME_BORDER_WIDTH or 2, frame, 1)
     local borderLayer = "OVERLAY"
     local borderSubLevel = 7
     if not frame.BorderTop then
@@ -1464,26 +1451,28 @@ local function ApplyMainWindowShellBorderQuartet(frame, borderColor)
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderTop:SetHeight(borderW)
-        frame.BorderTop:SetSnapToPixelGrid(false)
-        frame.BorderTop:SetTexelSnappingBias(0)
+        SnapRuleTexture(frame.BorderTop)
 
         frame.BorderBottom = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderBottom:SetHeight(borderW)
+        SnapRuleTexture(frame.BorderBottom)
 
         frame.BorderLeft = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderLeft:SetWidth(borderW)
+        SnapRuleTexture(frame.BorderLeft)
 
         frame.BorderRight = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderRight:SetWidth(borderW)
+        SnapRuleTexture(frame.BorderRight)
     else
         frame.BorderTop:SetHeight(borderW)
         frame.BorderBottom:SetHeight(borderW)
@@ -2208,6 +2197,54 @@ function ns.UI_CommitTabFixedHeader(mainFrame, yOffset)
         end
     end
     return yOffset or 0
+end
+
+--- PAGE STACK helpers (see UI_LAYOUT.PAGE_STACK). Create paths and Reposition* paths must both
+--- place chrome through these so a cached repaint can never drift from the first paint.
+
+---Place a fixedHeader block (title card, sub-tab bar, search box, stats line) at the current
+---chrome Y with symmetric +/-side anchors, then advance by height + gap.
+---@param chrome table from UI_BeginTabChromeLayout
+---@param frame Frame
+---@param height number|nil block height (nil = frame:GetHeight())
+---@param gapKey string|nil PAGE_STACK key for the gap after the block (default "BLOCK_GAP")
+---@return number newYOffset
+function ns.UI_PageStack_Place(chrome, frame, height, gapKey)
+    if not chrome or not frame or not chrome.headerParent then
+        return chrome and chrome.yOffset or 0
+    end
+    local ps = (UI_SPACING and UI_SPACING.PAGE_STACK) or {}
+    local y = chrome.yOffset or 0
+    local side = chrome.side or ps.SIDE or 12
+    if frame:GetParent() ~= chrome.headerParent then
+        frame:SetParent(chrome.headerParent)
+    end
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", chrome.headerParent, "TOPLEFT", side, -y)
+    frame:SetPoint("TOPRIGHT", chrome.headerParent, "TOPRIGHT", -side, -y)
+    if height then frame:SetHeight(height) end
+    local h = height or frame:GetHeight() or 0
+    local gap = ps[gapKey or "BLOCK_GAP"]
+    if gap == nil then gap = ps.BLOCK_GAP or 8 end
+    chrome.yOffset = y + h + gap
+    return chrome.yOffset
+end
+
+---Anchor a top-level body block (results container, content frame, empty-state host) inside the
+---scroll child with symmetric +/-side anchors at the same Y. Returns the body width.
+---@param parent Frame scroll child (or another full-width body host)
+---@param frame Frame
+---@param y number top offset (positive, downward); default PAGE_STACK.BODY_TOP
+---@return number bodyWidth
+function ns.UI_PageStack_AnchorBody(parent, frame, y)
+    if not parent or not frame then return 0 end
+    local ps = (UI_SPACING and UI_SPACING.PAGE_STACK) or {}
+    local side = ps.SIDE or 12
+    y = y or ps.BODY_TOP or 8
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", side, -y)
+    frame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -side, -y)
+    return math.max(1, (parent:GetWidth() or 0) - side * 2)
 end
 
 --- Debug tint overlays for scroll viewport / bar column (toggle: `/wn debug on`).
@@ -3096,7 +3133,7 @@ local function ForwardMouseWheelToScrollAncestor(frame, delta)
             local current = ancestor:GetVerticalScroll() or 0
             local maxScroll = ancestor:GetVerticalScrollRange() or 0
             local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
-            newScroll = PixelSnap(newScroll)
+            newScroll = PixelSnap(newScroll, ancestor)
             pcall(ancestor.SetVerticalScroll, ancestor, newScroll)
             return
         end
@@ -3145,7 +3182,7 @@ local TAB_HEADER_ICONS = {
     collections = "dragon-rostrum",
     professions = "Vehicle-HammerGold",
     gear = "VignetteEventElite",
-    settings = "mechagon-projects",
+    settings = ns.UI_GetIconAtlas("settings") or "mechagon-projects",
     about = "Campaign-QuestLog-Legendaryicon",
     qol = "Soulbinds_Tree_Conduit_Icon_Utility",
 }
@@ -3436,7 +3473,8 @@ local function ApplyTitleCardUnderline(titleCard, leftAnchor, rightAnchor, sp)
         titleCard._wnTitleUnderline = rule
     end
     rule:SetColorTexture(ac[1], ac[2], ac[3], ruleA)
-    rule:SetHeight(1)
+    rule:SetHeight(GetPixelScale(titleCard))
+    SnapRuleTexture(rule)
     rule:ClearAllPoints()
     rule:SetPoint("BOTTOMLEFT", leftAnchor, "BOTTOMLEFT", 0, -5)
     rule:SetPoint("BOTTOMRIGHT", rightAnchor, "BOTTOMRIGHT", 0, -5)
@@ -4368,8 +4406,6 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
             end)
         end
 
-        ApplyVisuals(f, { 0.04, 0.04, 0.06, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9 })
-
         local tryShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
         local tryInset = tryShell.FRAME_CONTENT_INSET or 2
         local tryHdrH = tryShell.TRY_COUNT_POPUP_HEADER_HEIGHT or 32
@@ -4382,6 +4418,23 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local headerTitle = FontManager:CreateFontString(header, UIFontRole("tryPopupHeader"), "OVERLAY")
         headerTitle:SetPoint("CENTER")
         headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
+
+        -- Close button: same IconRegistry "close" glyph + red tint as WindowFactory dialogs.
+        local tryCloseSz = math.max(16, tryHdrH - 8)
+        local tryCloseBtn = CreateFrame("Button", nil, header, "BackdropTemplate")
+        tryCloseBtn:SetSize(tryCloseSz, tryCloseSz)
+        tryCloseBtn:SetPoint("RIGHT", header, "RIGHT", -4, 0)
+        local tryCloseIcon = tryCloseBtn:CreateTexture(nil, "ARTWORK")
+        tryCloseIcon:SetSize(tryCloseSz - 10, tryCloseSz - 10)
+        tryCloseIcon:SetPoint("CENTER")
+        if not (ns.UI_SetIcon and ns.UI_SetIcon(tryCloseIcon, "close")) then
+            tryCloseIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+        end
+        tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3)
+        tryCloseBtn:SetScript("OnEnter", function() tryCloseIcon:SetVertexColor(1, 0.2, 0.2) end)
+        tryCloseBtn:SetScript("OnLeave", function() tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3) end)
+        tryCloseBtn:SetScript("OnClick", function() f:Hide() end)
+        f.closeBtn = tryCloseBtn
         ns.UI_SetTextColorRole(headerTitle, "Bright")
         f.headerTitle = headerTitle
 
@@ -4394,7 +4447,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local editBoxBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
         editBoxBg:SetSize(120, 28)
         editBoxBg:SetPoint("TOP", nameLabel, "BOTTOM", 0, -10)
-        ApplyVisuals(editBoxBg, { 0.02, 0.02, 0.03, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
+        f.editBoxBg = editBoxBg
 
         local editBox = CreateFrame("EditBox", nil, editBoxBg)
         editBox:SetPoint("TOPLEFT", 8, -4)
@@ -4416,33 +4469,43 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local saveBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
         saveBtn:SetSize(btnWidth, btnHeight)
         saveBtn:SetPoint("TOPRIGHT", editBoxBg, "BOTTOM", -4, -10)
-        ApplyVisuals(saveBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         local saveBtnText = FontManager:CreateFontString(saveBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         saveBtnText:SetPoint("CENTER")
         saveBtnText:SetText((ns.L and ns.L["SAVE"]) or "Save")
         ns.UI_SetTextColorRole(saveBtnText, "Bright")
         saveBtn:SetScript("OnEnter", function(self)
-            ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeHoverBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
         end)
         saveBtn:SetScript("OnLeave", function(self)
-            ApplyVisuals(self, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end)
         f.saveBtn = saveBtn
 
         local cancelBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
         cancelBtn:SetSize(btnWidth, btnHeight)
         cancelBtn:SetPoint("TOPLEFT", editBoxBg, "BOTTOM", 4, -10)
-        ApplyVisuals(cancelBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
         local cancelBtnText = FontManager:CreateFontString(cancelBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         cancelBtnText:SetPoint("CENTER")
         cancelBtnText:SetText(_G.CANCEL or "Cancel")
         ns.UI_SetTextColorRole(cancelBtnText, "Normal")
         cancelBtn:SetScript("OnEnter", function(self)
-            ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeHoverBackdrop(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
         end)
         cancelBtn:SetScript("OnLeave", function(self)
-            ApplyVisuals(self, { 0.08, 0.08, 0.10, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeBackdrop(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
         end)
+        f.cancelBtn = cancelBtn
+
+        --- Theme fills (re-run on every show: the frame is reused across light/dark toggles).
+        function f._wnApplyTryChrome()
+            local C = ns.UI_COLORS or COLORS
+            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or C.bg
+            ApplyVisuals(f, shell, { C.accent[1], C.accent[2], C.accent[3], 0.9 })
+            ApplyVisuals(header, { C.accentDark[1], C.accentDark[2], C.accentDark[3], 1 }, { C.accent[1], C.accent[2], C.accent[3], 0.6 })
+            ApplyVisuals(editBoxBg, ThemeAPI.GetControlChromeBackdrop(), { C.accent[1], C.accent[2], C.accent[3], 0.6 })
+            ApplyVisuals(saveBtn, ThemeAPI.GetControlChromeBackdrop(), { C.accent[1], C.accent[2], C.accent[3], 0.8 })
+            ApplyVisuals(cancelBtn, ThemeAPI.GetControlChromeBackdrop(), { C.border[1], C.border[2], C.border[3], 0.6 })
+        end
         cancelBtn:SetScript("OnClick", function() f:Hide() end)
 
         editBox:SetScript("OnEnterPressed", function()
@@ -4470,6 +4533,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
     end
 
     local popup = tryCountPopupFrame
+    if popup._wnApplyTryChrome then popup._wnApplyTryChrome() end
     popup.nameLabel:SetText(displayName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
 
     local currentCount = 0
@@ -4749,7 +4813,7 @@ local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecond
     -- Clock icon (16x16) - positioned to the LEFT of text
     local icon = container:CreateTexture(nil, "ARTWORK")
     icon:SetSize(16, 16)
-    icon:SetAtlas("characterupdate_clock-icon", true)
+    ns.UI_SetIcon(icon, "clock")
     icon:SetPoint("RIGHT", text, "LEFT", -4, 0)  -- 4px spacing from text
     
     -- Update function (uses shared Utilities:FormatTimeCompact)
@@ -4842,7 +4906,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
         GameTooltip:AddLine(" ")
         
         if dataSource:find("Cache") then
-            GameTooltip:AddLine("|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
+            GameTooltip:AddLine(ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) .. " " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
         elseif dataSource:find("LEGACY") then
             GameTooltip:AddLine("|cffffaa00⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
             GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_NEEDS_MIGRATION"]) or "Needs migration to cache service", 0.7, 0.7, 0.7)
@@ -4876,7 +4940,74 @@ ns.UI_CreateDBVersionBadge = CreateDBVersionBadge
 
 -- LOADING STATE WIDGETS (Standardized Progress Indicator)
 
+--- Looping spinner rotation via AnimationGroup (no per-frame Lua OnUpdate). Same pattern as the
+--- login sync bar in UI.lua (`spinGroup` Rotation + SetLooping("REPEAT")).
+--- Positive degrees = counter-clockwise, matching the previous SetRotation(+rad) OnUpdate (270 deg/s).
+local SPINNER_DEGREES_PER_SEC = 270
+local function AttachLoopingSpinnerRotation(host, tex)
+    if not tex or not tex.CreateAnimationGroup then return nil end
+    local ag = tex:CreateAnimationGroup()
+    local rot = ag:CreateAnimation("Rotation")
+    rot:SetDegrees(360)
+    rot:SetDuration(360 / SPINNER_DEGREES_PER_SEC)
+    ag:SetLooping("REPEAT")
+    if host and host.HookScript then
+        host:HookScript("OnShow", function()
+            if not ag:IsPlaying() then ag:Play() end
+        end)
+    end
+    ag:Play()
+    return ag
+end
+
+local LOADING_CARD_H = 108
+local LOADING_CARD_UPDATE_INTERVAL = 0.1 -- <= 10 Hz progress re-apply
+
+local function ReadLoadingPercent(state)
+    if not state then return 0 end
+    local lp = state.loadingProgress
+    local sp = state.scanProgress
+    local v = lp or sp or 0
+    if type(v) ~= "number" then return 0 end
+    if v ~= v then return 0 end
+    return math.min(100, math.max(0, math.floor(v + 0.5)))
+end
+
+--- Re-apply stage text / bar fill only when stage, percent or bar width changed.
+local function ApplyLoadingCardProgress(card)
+    local loadingState = card._wnLoadingState
+    if not loadingState then return end
+    local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
+    local progress = ReadLoadingPercent(loadingState)
+    if currentStage ~= card._wnLastStage or progress ~= card._wnLastProgress then
+        card._wnLastStage = currentStage
+        card._wnLastProgress = progress
+        card._wnProgressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
+    end
+    local bw = card._wnBarBg:GetWidth()
+    if bw and bw > 0 then
+        local fillW = math.max(1, bw * (progress / 100))
+        if fillW ~= card._wnLastFillW then
+            card._wnLastFillW = fillW
+            card._wnBarFill:SetWidth(fillW)
+        end
+    end
+end
+
+local function LoadingCard_OnUpdate(card, elapsed)
+    local loadingState = card._wnLoadingState
+    if not loadingState or not loadingState.isLoading then
+        card:SetScript("OnUpdate", nil)
+        return
+    end
+    card._wnUpdateAccum = (card._wnUpdateAccum or 0) + (elapsed or 0)
+    if card._wnUpdateAccum < LOADING_CARD_UPDATE_INTERVAL then return end
+    card._wnUpdateAccum = 0
+    ApplyLoadingCardProgress(card)
+end
+
 ---Create standardized loading state card with animated spinner and progress bar
+--- Cached per parent + title (`parent._wnLoadingStateCards`) and re-adopted on later calls.
 ---@return number newYOffset - New Y offset after card
 function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     if not loadingState or not loadingState.isLoading then
@@ -4884,40 +5015,14 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     end
     
     local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
-    local CARD_H = 108
-    local loadingCard = CreateCard(parent, CARD_H)
-    ApplyStandardCardElevatedChrome(loadingCard)
-    loadingCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    loadingCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    
-    -- Animated spinner
-    local spinnerFrame = ns.UI_CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
-    spinnerFrame:SetPoint("LEFT", 20, 0)
-    spinnerFrame:Show()
-    local spinner = spinnerFrame.texture
-    
-    -- Animate rotation on spinner only (avoid clobbering loadingCard OnUpdate); stop when hidden.
-    local rotation = 0
-    spinnerFrame:SetScript("OnUpdate", function(_, elapsed)
-        rotation = rotation + (elapsed * 270)
-        if spinner then
-            spinner:SetRotation(math.rad(rotation))
-        end
-    end)
-    loadingCard:HookScript("OnHide", function()
-        spinnerFrame:SetScript("OnUpdate", nil)
-        loadingCard:SetScript("OnUpdate", nil)
-    end)
-    
-    -- Loading title
-    local FontManager = ns.FontManager
-    local loadingText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardTitle"), "OVERLAY")
-    loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
-    loadingText:SetText("|cff00ccff" .. (title or ((ns.L and ns.L["LOADING"]) or "Loading...")) .. "|r")
-    
-    -- Progress indicator
-    local progressText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardProgress"), "OVERLAY")
-    progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
+    local CARD_H = LOADING_CARD_H
+    local titleStr = title or ((ns.L and ns.L["LOADING"]) or "Loading...")
+    local cache = parent and parent._wnLoadingStateCards
+    if parent and not cache then
+        cache = {}
+        parent._wnLoadingStateCards = cache
+    end
+    local loadingCard = cache and cache[titleStr]
 
     local BAR_W = 200
     if parent and parent.GetWidth then
@@ -4925,53 +5030,74 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
         local w = pw - (SIDE_MARGIN * 2) - 20 - 40 - 15 - 20
         BAR_W = math.min(280, math.max(120, w))
     end
-    local barBg = loadingCard:CreateTexture(nil, "ARTWORK")
-    barBg:SetSize(BAR_W, 5)
-    barBg:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", 0, -6)
-    local barTrack = COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
-    barBg:SetColorTexture(barTrack[1], barTrack[2], barTrack[3], barTrack[4] or 1)
-    local barFill = loadingCard:CreateTexture(nil, "OVERLAY")
-    barFill:SetHeight(5)
-    barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
-    barFill:SetWidth(1)
-    local acc = COLORS and COLORS.accent or {0.2, 0.6, 1}
-    barFill:SetColorTexture(acc[1], acc[2], acc[3], 0.9)
-    
-    local function ReadLoadingPercent(state)
-        if not state then return 0 end
-        local lp = state.loadingProgress
-        local sp = state.scanProgress
-        local v = lp or sp or 0
-        if type(v) ~= "number" then return 0 end
-        if v ~= v then return 0 end
-        return math.min(100, math.max(0, math.floor(v + 0.5)))
-    end
-    
-    local function ApplyProgressVisual()
-        local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
-        local progress = ReadLoadingPercent(loadingState)
-        progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
-        local bw = barBg:GetWidth()
-        if bw and bw > 0 then
-            barFill:SetWidth(math.max(1, bw * (progress / 100)))
-        end
-    end
-    ApplyProgressVisual()
-    
-    -- Hint text
-    local hintText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardHint"), "OVERLAY")
-    hintText:SetPoint("TOPLEFT", barBg, "BOTTOMLEFT", 0, -6)
-    hintText:SetPoint("RIGHT", loadingCard, "RIGHT", -16, 0)
-    ns.UI_SetTextColorRole(hintText, "Muted")
-    hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
-    
-    loadingCard:SetScript("OnUpdate", function()
-        if not loadingState.isLoading then
+
+    if not loadingCard then
+        loadingCard = CreateCard(parent, CARD_H)
+        ApplyStandardCardElevatedChrome(loadingCard)
+        
+        -- Animated spinner (AnimationGroup rotation; replays on card OnShow).
+        local spinnerFrame = ns.UI_CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
+        spinnerFrame:SetPoint("LEFT", 20, 0)
+        spinnerFrame:Show()
+        local spinner = spinnerFrame.texture
+        loadingCard._wnSpinGroup = AttachLoopingSpinnerRotation(loadingCard, spinner)
+        loadingCard:HookScript("OnHide", function()
             loadingCard:SetScript("OnUpdate", nil)
-            return
+        end)
+        
+        -- Loading title
+        local FontManager = ns.FontManager
+        local loadingText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardTitle"), "OVERLAY")
+        loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
+        loadingText:SetText("|cff00ccff" .. titleStr .. "|r")
+        loadingCard._wnTitleText = loadingText
+        
+        -- Progress indicator
+        local progressText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardProgress"), "OVERLAY")
+        progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
+        loadingCard._wnProgressText = progressText
+
+        local barBg = loadingCard:CreateTexture(nil, "ARTWORK")
+        barBg:SetSize(BAR_W, 5)
+        barBg:SetPoint("TOPLEFT", progressText, "BOTTOMLEFT", 0, -6)
+        local barTrack = COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
+        barBg:SetColorTexture(barTrack[1], barTrack[2], barTrack[3], barTrack[4] or 1)
+        loadingCard._wnBarBg = barBg
+        local barFill = loadingCard:CreateTexture(nil, "OVERLAY")
+        barFill:SetHeight(5)
+        barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
+        barFill:SetWidth(1)
+        local acc = COLORS and COLORS.accent or {0.2, 0.6, 1}
+        barFill:SetColorTexture(acc[1], acc[2], acc[3], 0.9)
+        loadingCard._wnBarFill = barFill
+        
+        -- Hint text
+        local hintText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardHint"), "OVERLAY")
+        hintText:SetPoint("TOPLEFT", barBg, "BOTTOMLEFT", 0, -6)
+        hintText:SetPoint("RIGHT", loadingCard, "RIGHT", -16, 0)
+        ns.UI_SetTextColorRole(hintText, "Muted")
+        hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
+
+        if cache then cache[titleStr] = loadingCard end
+    else
+        -- Re-adopt: content teardown may have parked the card in the recycle bin.
+        if loadingCard:GetParent() ~= parent then
+            loadingCard:SetParent(parent)
         end
-        ApplyProgressVisual()
-    end)
+        loadingCard._wnBarBg:SetWidth(BAR_W)
+    end
+
+    loadingCard:ClearAllPoints()
+    loadingCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    loadingCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+
+    loadingCard._wnLoadingState = loadingState
+    loadingCard._wnLastStage = nil
+    loadingCard._wnLastProgress = nil
+    loadingCard._wnLastFillW = nil
+    loadingCard._wnUpdateAccum = 0
+    ApplyLoadingCardProgress(loadingCard)
+    loadingCard:SetScript("OnUpdate", LoadingCard_OnUpdate)
     
     loadingCard:Show()
     
@@ -4992,7 +5118,7 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     errorCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Warning icon
-    local warningIconFrame = ns.UI_CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
+    local warningIconFrame = ns.UI_CreateIcon(errorCard, ns.UI_GetIconAtlas("warning") or "services-icon-warning", 24, true, nil, true)
     warningIconFrame:SetPoint("LEFT", 20, 0)
     warningIconFrame:Show()
     
@@ -5018,14 +5144,8 @@ function UI_CreateInlineLoadingSpinner(parent, anchorFrame, anchorPoint, xOffset
     spinnerFrame:SetPoint(anchorPoint, anchorFrame, anchorPoint, xOffset, yOffset)
     spinnerFrame:Show()
     
-    -- Animate rotation
-    local rotation = 0
-    spinnerFrame:SetScript("OnUpdate", function(_, elapsed)
-        rotation = rotation + (elapsed * 270)
-        if spinnerFrame and spinnerFrame.texture then
-            spinnerFrame.texture:SetRotation(math.rad(rotation))
-        end
-    end)
+    -- Animate rotation (AnimationGroup; no per-frame OnUpdate)
+    spinnerFrame._wnSpinGroup = AttachLoopingSpinnerRotation(spinnerFrame, spinnerFrame.texture)
     
     return spinnerFrame
 end
@@ -5048,11 +5168,7 @@ local function UI_CreateLoadingStatePanel(parent)
     local spinnerTex = spinnerFrame.texture
     panel._spinnerTex = spinnerTex
 
-    local rotation = 0
-    panel:SetScript("OnUpdate", function(_, elapsed)
-        rotation = rotation + (elapsed * 270)
-        if spinnerTex then spinnerTex:SetRotation(math.rad(rotation)) end
-    end)
+    panel._wnSpinGroup = AttachLoopingSpinnerRotation(panel, spinnerTex)
 
     -- Title
     local FM = ns.FontManager

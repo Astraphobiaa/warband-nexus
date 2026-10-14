@@ -7,6 +7,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 
@@ -796,7 +799,8 @@ function TooltipService:RenderCustomTooltip(frame, data)
             elseif line.type == "section_label" and frame.AddSectionLabel then
                 local c = line.color
                 if not c then
-                    local mr, mg, mb = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.7, 0.7, 0.72
+                    local mr, mg, mb = 0.7, 0.7, 0.72
+                    if ns.UI_GetTooltipLabelColor then mr, mg, mb = ns.UI_GetTooltipLabelColor() end
                     c = { mr, mg, mb }
                 end
                 frame:AddSectionLabel(line.text, c[1], c[2], c[3])
@@ -810,12 +814,14 @@ function TooltipService:RenderCustomTooltip(frame, data)
             elseif line.left and line.right then
                 local leftColor = line.leftColor
                 if not leftColor then
-                    local lr, lg, lb = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.7, 0.7, 0.72
+                    local lr, lg, lb = 0.7, 0.7, 0.72
+                    if ns.UI_GetTooltipLabelColor then lr, lg, lb = ns.UI_GetTooltipLabelColor() end
                     leftColor = { lr, lg, lb }
                 end
                 local rightColor = line.rightColor
                 if not rightColor then
-                    local rr, rg, rb = (ns.UI_GetTextRoleRGB and ns.UI_GetTextRoleRGB("Bright")) or 1, 1, 1
+                    local rr, rg, rb = 1, 1, 1
+                    if ns.UI_GetTextRoleRGB then rr, rg, rb = ns.UI_GetTextRoleRGB("Bright") end
                     rightColor = { rr, rg, rb }
                 end
                 frame:AddDoubleLine(
@@ -845,7 +851,8 @@ function TooltipService:RenderCustomTooltip(frame, data)
             elseif line.left then
                 local leftColor = line.leftColor
                 if not leftColor then
-                    local lr, lg, lb = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.7, 0.7, 0.72
+                    local lr, lg, lb = 0.7, 0.7, 0.72
+                    if ns.UI_GetTooltipLabelColor then lr, lg, lb = ns.UI_GetTooltipLabelColor() end
                     leftColor = { lr, lg, lb }
                 end
                 frame:AddLine(line.left, leftColor[1], leftColor[2], leftColor[3], line.wrap or false)
@@ -1025,7 +1032,8 @@ function TooltipService:RenderItemTooltip(frame, data)
             end
         end
         if sparse and renderedBodyLines == 0 then
-            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            local dr, dg, db = 0.7, 0.7, 0.7
+            if ns.UI_GetTooltipDescColor then dr, dg, db = ns.UI_GetTooltipDescColor() end
             frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", dr, dg, db)
         end
     else
@@ -1060,13 +1068,16 @@ function TooltipService:RenderItemTooltip(frame, data)
             end
         end
         if itemName then
-            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            local dr, dg, db = 0.7, 0.7, 0.7
+            if ns.UI_GetTooltipDescColor then dr, dg, db = ns.UI_GetTooltipDescColor() end
             frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading details...", dr, dg, db)
         elseif data.fallbackName then
-            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            local dr, dg, db = 0.7, 0.7, 0.7
+            if ns.UI_GetTooltipDescColor then dr, dg, db = ns.UI_GetTooltipDescColor() end
             frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", dr, dg, db)
         else
-            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            local dr, dg, db = 0.7, 0.7, 0.7
+            if ns.UI_GetTooltipDescColor then dr, dg, db = ns.UI_GetTooltipDescColor() end
             frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", dr, dg, db)
         end
     end
@@ -1351,7 +1362,8 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
     end
     local slotLabelColor
     do
-        local sr, sg, sb = (ns.UI_GetSemanticInfoColor and ns.UI_GetSemanticInfoColor()) or 0.7, 0.7, 0.9
+        local sr, sg, sb = 0.7, 0.7, 0.9
+        if ns.UI_GetSemanticInfoColor then sr, sg, sb = ns.UI_GetSemanticInfoColor() end
         slotLabelColor = { sr, sg, sb }
     end
     out[1] = { left = slotLabel, right = "", leftColor = slotLabelColor, rightColor = slotLabelColor }

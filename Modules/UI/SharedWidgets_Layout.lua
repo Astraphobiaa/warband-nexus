@@ -366,6 +366,57 @@ local UI_SPACING = {
     },
 }
 
+-- PAGE STACK: the one vertical rhythm every main tab follows (single source of truth).
+--   fixedHeader: [title] BLOCK_GAP [sub-tabs] BLOCK_GAP [search] BLOCK_GAP [stats line]
+--   scroll body: starts at BODY_TOP; sections SECTION_GAP apart, cards CARD_GAP apart.
+--   Every block uses symmetric +/-SIDE anchors. FLUSH = column-header grids (PvE, Professions)
+--   that sit directly under the title like a table head.
+UI_SPACING.PAGE_STACK = {
+    SIDE = 12,
+    BLOCK_GAP = 8,
+    BODY_TOP = 8,
+    SECTION_GAP = 12,
+    CARD_GAP = 10,
+    ROW_GAP = 0,
+    FLUSH = 0,
+    BOTTOM_PAD = 12,
+    SEARCH_HEIGHT = 32,
+    SUB_TAB_HEIGHT = 40,
+}
+do
+    -- Legacy names alias the page stack so the copies can no longer drift apart.
+    local ps = UI_SPACING.PAGE_STACK
+    UI_SPACING.SIDE_MARGIN = ps.SIDE
+    UI_SPACING.sideMargin = ps.SIDE
+    UI_SPACING.TAB_CHROME_BLOCK_GAP = ps.BLOCK_GAP
+    UI_SPACING.TAB_CHROME_SCROLL_TOP = ps.BODY_TOP
+    UI_SPACING.TAB_CHROME_CONTENT_BOTTOM_PAD = ps.BOTTOM_PAD
+    UI_SPACING.TAB_TITLE_TO_BODY_GAP = 0
+    UI_SPACING.SECTION_SPACING = ps.SECTION_GAP
+    UI_SPACING.CARD_GAP = ps.CARD_GAP
+    UI_SPACING.cardGap = ps.CARD_GAP
+    UI_SPACING.AFTER_ELEMENT = ps.BLOCK_GAP
+    UI_SPACING.afterElement = ps.BLOCK_GAP
+    if UI_SPACING.SUB_TAB then UI_SPACING.SUB_TAB.BTN_HEIGHT = ps.SUB_TAB_HEIGHT end
+    if UI_SPACING.MAIN_SHELL then UI_SPACING.MAIN_SHELL.CONTENT_PAD_X = ps.SIDE end
+    if UI_SPACING.MAIN_SCROLL then UI_SPACING.MAIN_SCROLL.CONTENT_PAD_X = ps.SIDE end
+end
+
+-- TABLE: shared table kit metrics (SharedWidgets_TableKit.lua). One source for list/grid surfaces:
+--   ROW_H      compact = dense lists, standard = storage/currency rows, identity = character rows (name + realm).
+--   HEADER_H   compact = icon over label column heads (PvP/PvE/Professions), text = single-line sortable heads.
+UI_SPACING.TABLE = {
+    ROW_H = { compact = 26, standard = 30, identity = 46 },
+    HEADER_H = { compact = 48, text = 28 },
+    CELL_PAD_X = 8,
+    COL_GAP = 8,
+    ICON = 20,
+    HEADER_ICON_TOP = 2,
+    HEADER_LABEL_GAP = 1,
+    SORT_ARROW = 10,
+    SORT_ARROW_GAP = 3,
+}
+
 -- Export to namespace (both names for compatibility)
 ns.UI_SPACING = UI_SPACING
 ns.UI_LAYOUT = UI_SPACING  -- Alias for backward compatibility

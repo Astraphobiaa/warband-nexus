@@ -8,6 +8,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants and ns.Constants.EVENTS
 local issecretvalue = issecretvalue
@@ -162,14 +165,11 @@ local function ResolveMailItemIlvl(itemID, link)
             ilvl = SafeMailNumber(ilvl)
             if ok and ilvl and ilvl > 0 then return ilvl end
         end
-        if GetDetailedItemLevelInfo then
-            local ok, ilvl = pcall(GetDetailedItemLevelInfo, link)
-            ilvl = SafeMailNumber(ilvl)
-            if ok and ilvl and ilvl > 0 then return ilvl end
-        end
     end
-    if itemID and C_Item and C_Item.GetCurrentItemLevel then
-        local ok, ilvl = pcall(C_Item.GetCurrentItemLevel, itemID)
+    -- No usable link: base item level from the ID. (C_Item.GetCurrentItemLevel takes an
+    -- ItemLocation, not an itemID — it can never read a mailbox item.)
+    if itemID and C_Item and C_Item.GetDetailedItemLevelInfo then
+        local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, itemID)
         ilvl = SafeMailNumber(ilvl)
         if ok and ilvl and ilvl > 0 then return ilvl end
     end

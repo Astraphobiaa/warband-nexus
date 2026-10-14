@@ -4,6 +4,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.CollectionsUI
 assert(M and M.state, "CollectionsUI_Shared.lua must load before this file")
 
@@ -902,7 +904,7 @@ function M.CreateModelViewer(parent, width, height)
     local headerRowBottom = Factory:CreateContainer(textOverlay, math.max(1, width), 1, false)
     if not headerRowBottom then
         headerRowBottom = CreateFrame("Frame", nil, textOverlay)
-        headerRowBottom:SetHeight(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(headerRowBottom, "horizontal", 1) else headerRowBottom:SetHeight(1) end
     end
     headerRowBottom:SetPoint("TOPLEFT", iconBorder, "BOTTOMLEFT", 0, 0)
     headerRowBottom:SetPoint("TOPRIGHT", nameText, "BOTTOMRIGHT", 0, 0)
@@ -2628,7 +2630,8 @@ local CONTENT_GAP = LAYOUT.CARD_GAP or 8
 
 -- Per–sub-tab title block in fixedHeader chrome (below sub-tab bar; not affected by list redraws).
 local COLLECTIONS_FIXED_SUBHEADER_H = 50
-local COLLECTIONS_FIXED_SUBHEADER_GAP = 6
+-- Page stack: the sub-header is a regular chrome block, so the gap after it is BLOCK_GAP.
+local COLLECTIONS_FIXED_SUBHEADER_GAP = ns.UI_LAYOUT.PAGE_STACK.BLOCK_GAP
 M.COLLECTIONS_FIXED_SUBHEADER_H = COLLECTIONS_FIXED_SUBHEADER_H
 
 local CONTENT_HEADER_LOCALE_KEYS = {
@@ -2681,9 +2684,15 @@ function M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
 end
 
 --- Anchor sub-tab title row in fixedHeader (survives scroll-body HideAll / repopulate).
-function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, tabKey)
+---@param chrome table|nil UI_BeginTabChromeLayout state; when given, placement goes through UI_PageStack_Place
+function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, tabKey, chrome)
     if not hdrCache or not headerParent then return headerYOffset end
     local row = hdrCache.contentSubHeader
+    -- Recent: the sub-tab button already names the view; no title row (search sits under the tabs).
+    if tabKey == "recent" then
+        if row then row:Hide() end
+        return headerYOffset
+    end
     local createdHeader = false
     if not row then
         createdHeader = true
@@ -2702,11 +2711,18 @@ function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, h
         row._subtitle:SetTextColor(1, 1, 1, 1)
         hdrCache.contentSubHeader = row
     end
-    row:SetParent(headerParent)
-    row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-    row:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-    row:SetHeight(COLLECTIONS_FIXED_SUBHEADER_H)
+    local nextY
+    if chrome and ns.UI_PageStack_Place then
+        chrome.yOffset = headerYOffset
+        nextY = ns.UI_PageStack_Place(chrome, row, COLLECTIONS_FIXED_SUBHEADER_H)
+    else
+        row:SetParent(headerParent)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+        row:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        row:SetHeight(COLLECTIONS_FIXED_SUBHEADER_H)
+        nextY = headerYOffset + COLLECTIONS_FIXED_SUBHEADER_H + COLLECTIONS_FIXED_SUBHEADER_GAP
+    end
     local parentLevel = headerParent:GetFrameLevel() or 0
     row:SetFrameLevel(parentLevel + 12)
     M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
@@ -2718,7 +2734,7 @@ function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, h
             chrome = "fixed",
         })
     end
-    return headerYOffset + COLLECTIONS_FIXED_SUBHEADER_H + COLLECTIONS_FIXED_SUBHEADER_GAP
+    return nextY
 end
 
 --- Legacy hook from Draw*Content: title lives in fixedHeader; body uses full content height.

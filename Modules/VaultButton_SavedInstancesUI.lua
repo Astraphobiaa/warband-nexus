@@ -101,11 +101,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     chev:SetSize(SAVED_GROUP_CHEVRON_SIZE, SAVED_GROUP_CHEVRON_SIZE)
     chev:SetPoint("RIGHT", -10, 0)
     function M.UpdateChevron()
-        if collapsed then
-            chev:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
-        else
-            chev:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
-        end
+        ns.UI_SetIcon(chev, collapsed and "chevron_down" or "chevron_up")
     end
     UpdateChevron()
     header._savedUpdateChevron = UpdateChevron
@@ -262,7 +258,7 @@ function M.BuildInstanceCard(parent, group, cardSize)
     local stripe = card:CreateTexture(nil, "ARTWORK")
     stripe:SetPoint("TOPLEFT", 1, -1)
     stripe:SetPoint("TOPRIGHT", -1, -1)
-    stripe:SetHeight(2)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(stripe, "horizontal", 2) else stripe:SetHeight(2) end
     stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
 
     local titleFS = FontManager and FontManager.CreateFontString

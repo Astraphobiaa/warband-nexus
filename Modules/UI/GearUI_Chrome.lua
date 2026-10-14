@@ -4,6 +4,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
 local COLORS = ns.UI_COLORS or {}
 local FontManager = ns.FontManager
@@ -48,7 +50,7 @@ local function ApplyModernGearBorderedSurface(frame, surfaceTier, accent, bgAlph
         tile = true,
         tileSize = 8,
         edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
+        edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or 1,
         insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
     frame:SetBackdropColor(bg[1], bg[2], bg[3], alpha)
@@ -168,7 +170,7 @@ function Chrome.CreateSectionHeader(parent, titleText, accent, opts)
     end
     if opts.underlineHeader then
         local rule = host:CreateTexture(nil, "BORDER")
-        rule:SetHeight(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(rule, "horizontal", 1) else rule:SetHeight(1) end
         rule:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", pad, 2)
         rule:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -pad, 2)
         rule:SetColorTexture(ac[1] * 0.45, ac[2] * 0.45, ac[3] * 0.45, 0.65)
@@ -270,7 +272,7 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
                 tile = true,
                 tileSize = 8,
-                edgeSize = 1,
+                edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(pill)) or 1,
             })
             local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
                 or COLORS.bgCard or COLORS.bgLight or COLORS.bg
@@ -293,7 +295,7 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
     end
 
     local rule = host:CreateTexture(nil, "ARTWORK")
-    rule:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(rule, "horizontal", 1) else rule:SetHeight(1) end
     rule:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", pad, 0)
     rule:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -pad, 0)
     rule:SetColorTexture(ac[1] * 0.25, ac[2] * 0.25, ac[3] * 0.25, 0.65)

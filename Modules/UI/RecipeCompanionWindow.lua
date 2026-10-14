@@ -20,6 +20,11 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
@@ -176,7 +181,7 @@ local WARBAND_ICON_W = 16
 local WARBAND_ICON_H = 16
 
 -- Green checkmark texture for fulfilled reagents
-local CHECK_ICON = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t"
+local CHECK_ICON = ns.UI_GetIconMarkup("status_ok", 14, 14, 0, 0)
 
 -- ── Row index counter (reset per render pass) ──
 local rowCounter = 0
@@ -369,7 +374,7 @@ end
 ]]
 local function CreateSeparator(parent, yOffset, width)
     local line = parent:CreateTexture(nil, "ARTWORK")
-    line:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(line, "horizontal", 1) else line:SetHeight(1) end
     line:SetPoint("TOPLEFT", PADDING, -yOffset)
     line:SetPoint("RIGHT", parent, "RIGHT", -PADDING, 0)
     line:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4)
@@ -495,7 +500,10 @@ local function RenderContent(scrollChild)
                     if ci == bestIdx then
                         local highlightBg = crafterRow:CreateTexture(nil, "ARTWORK", nil, -8)
                         highlightBg:SetAllPoints()
-                        highlightBg:SetColorTexture(0.15, 0.25, 0.10, 0.35)
+                        -- Semantic green wash (light-mode aware) instead of a fixed dark green.
+                        local hr, hg, hb = 0.15, 0.25, 0.10
+                        if ns.UI_GetSemanticGreenColor then hr, hg, hb = ns.UI_GetSemanticGreenColor() end
+                        highlightBg:SetColorTexture(hr, hg, hb, 0.15)
                     end
 
                     local nameOffset = PADDING + 10

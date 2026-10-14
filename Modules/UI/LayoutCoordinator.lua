@@ -188,7 +188,7 @@ local function ApplyShellChromeFull(frame, _reason)
             ns.UI_HideFrameBorderQuartet(frame)
         end
     elseif frame.BorderTop and ns.GetPixelScale then
-        local pixelScale = ns.GetPixelScale(frame) or 1
+        local pixelScale = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or ns.GetPixelScale(frame) or 1
         frame.BorderTop:SetHeight(pixelScale)
         frame.BorderBottom:SetHeight(pixelScale)
         frame.BorderLeft:SetWidth(pixelScale)

@@ -4,6 +4,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetCoinTextureString = C_CurrencyInfo.GetCoinTextureString
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 
@@ -238,6 +241,8 @@ local function ProcessMoneyChange()
 end
 
 local function ScheduleMoneyProcessing()
+    -- Module gate: the bank money log is an Items-tab feature.
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("items")) then return end
     if not WarbandNexus.bankIsOpen then
         return
     end
@@ -258,6 +263,7 @@ function WarbandNexus:LogMoneyTransactionImmediate(txType, amountCopper, expecte
     if not txType or (txType ~= "deposit" and txType ~= "withdraw") or not amountCopper or amountCopper <= 0 then
         return
     end
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("items")) then return end
     local charKey = GetCurrentCharKey()
     if not charKey then return end
     local _, classFile = UnitClass("player")
@@ -348,6 +354,7 @@ end
 
 function WarbandNexus:InitializeCharacterBankMoneyLogService()
     WarbandNexus.RegisterEvent(MoneyLogEvents, "BANKFRAME_OPENED", function()
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("items")) then return end
         local money = GetMoney()
         if issecretvalue and issecretvalue(money) then return end
         SaveSnapshot(money or 0, GetWarbandMoney())
@@ -362,6 +369,8 @@ function WarbandNexus:InitializeCharacterBankMoneyLogService()
         WarbandNexus._moneyLogProcessPending = false
         WarbandNexus._moneyLogDeferCount = nil
         ClearImmediateLogMarker()
+        -- Module gate after the state reset above (stale snapshot must still be cleared).
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("items")) then return end
 
         -- One-shot after a short delay: log any remaining delta (bank just closed, APIs may still be valid)
         if type(lastChar) == "number" or type(lastWarband) == "number" then

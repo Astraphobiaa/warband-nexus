@@ -42,6 +42,18 @@ SPLIT_GROUPS: list[dict] = [
         ],
         "export_ns": "ns.ItemsUI",
     },
+    {
+        "name": "CharactersUI",
+        "parent": ROOT / "Modules" / "UI" / "CharactersUI.lua",
+        "bind_marker": "ns.CharactersUI._bind",
+        "satellites": [
+            ROOT / "Modules" / "UI" / "CharactersUI_GoldCards.lua",
+            ROOT / "Modules" / "UI" / "CharactersUI_Row.lua",
+            ROOT / "Modules" / "UI" / "CharactersUI_ColumnHeader.lua",
+            ROOT / "Modules" / "UI" / "CharactersUI_Dialogs.lua",
+        ],
+        "export_ns": "ns.CharactersUI",
+    },
 ]
 
 # Call names that are never parent-bind helpers (control flow, Lua, common WoW).
@@ -56,7 +68,7 @@ SKIP_CALL_NAMES = frozenset({
     # Common WoW API globals (not parent-bind helpers)
     "IsControlKeyDown", "IsShiftKeyDown", "IsAltKeyDown", "GetAddOnMetadata",
     "IsInGuild", "GetGuildInfo", "UnitName", "GetRealmName", "UIParent",
-    "debugprofilestart", "debugprofilestop", "ReloadUI",
+    "debugprofilestart", "debugprofilestop", "ReloadUI", "GetMaxPlayerLevel",
 })
 
 # Prefixes / patterns for helpers that should come from parent _bind when called bare in satellites.

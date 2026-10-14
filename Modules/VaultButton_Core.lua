@@ -1,6 +1,8 @@
 --[[ Warband Nexus - Easy Access - VaultButton_Core.lua ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 ns.VaultButton = ns.VaultButton or {}
 local M = ns.VaultButton
 local WarbandNexus = ns.WarbandNexus
@@ -107,10 +109,10 @@ M.TRACK_ICONS = {
     manaflux   = "Interface\\Icons\\INV_Enchant_DustArcane",
     gildedStash = "Interface\\Icons\\Inv_cape_special_treasure_c_01",
 }
-M.KEYSTONE_ICON_ATLAS = "ChromieTime-32x32"
+-- Keystone icon: registry key "keystone" (fileID 525134, same as TRACK_ICONS.keystone); no verified atlas.
 
-M.CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-M.CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+M.CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+M.CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
 M.UPARROW = "|A:loottoast-arrow-green:12:12|a"
 
 -- Easy Access tooltip / menu copy (shared across VaultButton_* chunks via M)
@@ -136,7 +138,7 @@ function M.SyncEasyAccessThemeInk()
     M.EA_SECTION_COLOR[1], M.EA_SECTION_COLOR[2], M.EA_SECTION_COLOR[3] = br, bg, bb
     M.EA_FOOTER_COLOR[1], M.EA_FOOTER_COLOR[2], M.EA_FOOTER_COLOR[3] = mr, mg, mb
 end
-M.EA_STATUS_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
+M.EA_STATUS_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"  -- file fallback; atlas via UI_ICONS.status_ok
 M.EA_CAT_TIP = {
     raids = { key = "EA_TOOLTIP_CAT_RAID", fallback = "Raid", icon = M.TRACK_ICONS.raids },
     mythicPlus = { key = "EA_TOOLTIP_CAT_DUNGEON", fallback = "Dungeon", icon = M.TRACK_ICONS.mythicPlus },
@@ -318,7 +320,7 @@ function M.VBCreateEasyAccessSeparator(parent, leftPad, rightPad, y)
     end
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.40, 0.20, 0.58 }
     local sep = parent:CreateTexture(nil, "BORDER")
-    sep:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep, "horizontal", 1) else sep:SetHeight(1) end
     sep:SetPoint("TOPLEFT", parent, "TOPLEFT", leftPad or 0, y or 0)
     sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(rightPad or 0), y or 0)
     sep:SetColorTexture(accent[1], accent[2], accent[3], 0.55)
@@ -650,7 +652,7 @@ M.LAUNCHER_ACTION_DEFS = {
         kind = "settings",
         labelKey = "VAULT_BUTTON_MENU_SETTINGS", labelFallback = "Settings",
         settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS_DESC",
-        iconAtlas = "mechagon-projects",
+        iconAtlas = ns.UI_GetIconAtlas("settings") or "mechagon-projects",
         icon = "Interface\\Icons\\Trade_Engineering",
         menuLeftClick = false,
     },

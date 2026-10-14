@@ -4,6 +4,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local ColumnOrder = {}
 ns.ColumnOrder = ColumnOrder
 
@@ -186,7 +188,7 @@ local function PositionDropLine(parent, lineY)
     local line = parent._wnColDropLine
     if not line then
         line = parent:CreateTexture(nil, "OVERLAY", nil, 7)
-        line:SetHeight(2)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(line, "horizontal", 2) else line:SetHeight(2) end
         parent._wnColDropLine = line
     end
     local pTop = parent:GetTop()

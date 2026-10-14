@@ -1360,17 +1360,21 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     -- Store best runs for each dungeon
     for i = 1, #maps do
         local mapID = maps[i]
-        local _, level, _, onTime = C_MythicPlus.GetWeeklyBestForMap and C_MythicPlus.GetWeeklyBestForMap(mapID)
+        -- Returns durationSec, level, completionDate, affixIDs, members, dungeonScore (no on-time flag).
+        -- Assign outside `and`: `x = cond and Fn()` would truncate to the first return.
+        local level
+        if C_MythicPlus.GetWeeklyBestForMap then
+            local _
+            _, level = C_MythicPlus.GetWeeklyBestForMap(mapID)
+        end
         if level and level > 0 then
             local old = bestRunsBucket[mapID]
             local oldLevel = old and old.level or 0
-            local oldOnTime = old and old.onTime or false
             bestRunsBucket[mapID] = {
                 level = level,
-                onTime = onTime or false,
                 lastUpdate = time(),
             }
-            if oldLevel ~= level or oldOnTime ~= (onTime or false) then
+            if oldLevel ~= level then
                 updatedRuns = updatedRuns + 1
             end
         end
@@ -2153,8 +2157,8 @@ end
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
     DebugPrint("|cff9370DB[PvECache]|r [PvE Action] UpdatePvEData triggered")
-    -- Align with CollectPvEData / UI: no writes when PvE module disabled
-    if ns.Utilities and ns.Utilities.IsModuleEnabled and not ns.Utilities:IsModuleEnabled("pve") then
+    -- Module gate: PvE tab, Plans (vault plans) and VaultButton all consume this data.
+    if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then
         return
     end
     -- GUARD: Only update if character is tracked
@@ -3270,13 +3274,25 @@ local function SessionVaultWasClaimable(addon, charKey)
     return false
 end
 
+-- charKey -> true once the "Weekly Vault Ready" toast was shown this session.
+local vaultReadyToastShown = {}
+
+---Toast once per session while rewards wait (including rewards already waiting at login),
+---and again after a claim once a new reward appears. `wasClaimable` is not used: it reads
+---the live API, so at login it already reports "claimable" and the toast never fired.
 local function EmitVaultReadyToastIfNewlyClaimable(addon, charKey, wasClaimable, claimableNow)
-    if not claimableNow or wasClaimable then
+    if not charKey then return end
+    if not claimableNow then
+        vaultReadyToastShown[charKey] = nil  -- claimed / nothing waiting: re-arm
+        return
+    end
+    if vaultReadyToastShown[charKey] then
         return
     end
     if not addon or not addon.SendMessage or not Constants or not Constants.EVENTS then
         return
     end
+    vaultReadyToastShown[charKey] = true
     if Constants.EVENTS.VAULT_REWARD_AVAILABLE then
         addon:SendMessage(Constants.EVENTS.VAULT_REWARD_AVAILABLE, {
             charKey = charKey,
@@ -3459,6 +3475,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Vault warm-up: VaultScanner fires OnUIInteract at T+1s, server responds ~T+2-4s.
     -- Use the thinner API fallback only if the scanner did not populate rows.
     C_Timer.After(5, function()
+        if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
         local charKey = GetSessionCanonicalPvEKey()
         if not charKey then return end
@@ -3510,24 +3527,31 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Mythic+ events
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] CHALLENGE_MODE_COMPLETED triggered")
+        -- Module gate: keystone path always runs; vault/M+ refresh only while a consumer is on.
+        local vaultOn = (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled())
         
         -- Request fresh data from Blizzard APIs
         if C_MythicPlus then
             C_MythicPlus.RequestMapInfo()
-            C_MythicPlus.RequestRewards()
+            if vaultOn then
+                C_MythicPlus.RequestRewards()
+            end
         end
-        if C_WeeklyRewards then
+        if vaultOn and C_WeeklyRewards then
             C_WeeklyRewards.OnUIInteract()
         end
         
         if WarbandNexus.RequestKeystoneRefresh then
             WarbandNexus:RequestKeystoneRefresh("CHALLENGE_MODE_COMPLETED", true)
         end
-        ThrottledPvEUpdate()
+        if vaultOn then
+            ThrottledPvEUpdate()
+        end
     end)
     
     self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_NEW_WEEKLY_RECORD triggered")
+        if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         ThrottledPvEUpdate()
     end)
     
@@ -3538,7 +3562,10 @@ function WarbandNexus:RegisterPvECacheEvents()
         if WarbandNexus.RequestKeystoneRefresh then
             WarbandNexus:RequestKeystoneRefresh("CHALLENGE_MODE_MAPS_UPDATE", true)
         end
-        ThrottledPvEUpdate()
+        -- Keystone refresh above is always-on; the full PvE refresh is gated.
+        if (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then
+            ThrottledPvEUpdate()
+        end
     end)
     
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
@@ -3554,12 +3581,15 @@ function WarbandNexus:RegisterPvECacheEvents()
             WarbandNexus:SavePvECache()
         end
         
-        -- Then update with new data
-        ThrottledPvEUpdate()
+        -- Module gate: weekly prune above and keystone refresh below stay always-on.
+        if (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then
+            -- Then update with new data
+            ThrottledPvEUpdate()
 
-        -- Weekly reset just rolled over: last week's vault is now claimable, so pull fresh vault
-        -- data instead of waiting for the player to open the Great Vault.
-        WarbandNexus:RequestWeeklyVaultRefresh()
+            -- Weekly reset just rolled over: last week's vault is now claimable, so pull fresh vault
+            -- data instead of waiting for the player to open the Great Vault.
+            WarbandNexus:RequestWeeklyVaultRefresh()
+        end
 
         -- Also refresh keystone detection (new weekly key may be in bags)
         if WarbandNexus.RequestKeystoneRefresh then
@@ -3577,9 +3607,11 @@ function WarbandNexus:RegisterPvECacheEvents()
                 PruneAllPvEWeeklyData()
                 WarbandNexus:SavePvECache()
             end
-            ThrottledPvEUpdate()
-            if WarbandNexus.RequestWeeklyVaultRefresh then
-                WarbandNexus:RequestWeeklyVaultRefresh()
+            if (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then
+                ThrottledPvEUpdate()
+                if WarbandNexus.RequestWeeklyVaultRefresh then
+                    WarbandNexus:RequestWeeklyVaultRefresh()
+                end
             end
             if WarbandNexus.RequestKeystoneRefresh then
                 WarbandNexus:RequestKeystoneRefresh("WEEKLY_RESET_OCCURRED", true)
@@ -3591,12 +3623,14 @@ function WarbandNexus:RegisterPvECacheEvents()
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_UPDATE triggered")
         vaultDataFreshThisSession = true  -- Server has responded; HasAvailableRewards() is now reliable
+        if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         WarbandNexus:EnsureWeeklyRewardsFrameHooks()
         WarbandNexus:OnVaultDataReceived()
     end)
     
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_ITEM_CHANGED triggered")
+        if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         WarbandNexus:EnsureWeeklyRewardsFrameHooks()
         if WeeklyRewardsFrame and WeeklyRewardsFrame.IsShown and WeeklyRewardsFrame:IsShown() then
             ns._weeklyRewardsInteractCharKey = GetSessionCanonicalPvEKey()
@@ -3619,6 +3653,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Raid lockout events
     self:RegisterEvent("UPDATE_INSTANCE_INFO", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] UPDATE_INSTANCE_INFO triggered")
+        if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         -- A raid boss kill can fill a vault slot; ask for fresh vault data too (throttled).
         WarbandNexus:RequestWeeklyVaultRefresh()
         ThrottledPvEUpdate()
@@ -3628,6 +3663,8 @@ function WarbandNexus:RegisterPvECacheEvents()
     pcall(function()
         self:RegisterEvent("DELVES_ACCOUNT_DATA_ELEMENT_CHANGED", function()
             DebugPrint("|cff9370DB[PvECache]|r [PvE Event] DELVES_ACCOUNT_DATA_ELEMENT_CHANGED triggered")
+            -- Delve data feeds PvE (vault/delves) and Reputations (companion renown).
+            if not (ns.Utilities and ns.Utilities:IsAnyModuleEnabled("pve", "reputations")) then return end
             -- Delve completion can fill the world vault slot.
             WarbandNexus:RequestWeeklyVaultRefresh()
             ThrottledPvEUpdate()

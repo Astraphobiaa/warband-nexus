@@ -59,6 +59,7 @@ local RebuildTableFrame = function()
     end
     if S.tableFrame then
         S.tableFrame:Hide()
+        if ns.UI_UnregisterScaledFrame then ns.UI_UnregisterScaledFrame(S.tableFrame) end
         S.tableFrame = nil
         S.tableScroll = nil
         S.tableScrollHost = nil
@@ -66,7 +67,11 @@ local RebuildTableFrame = function()
         S.title = nil
         S.headerBg = nil
         S.separator = nil
+        for i = 1, #S.rows do
+            VBReleaseVaultTableRow(S.rows[i])
+        end
         S.rows = {}
+        S.tableEmptyText = nil
     end
     if wasShown then
         if savedX and savedY then
@@ -205,6 +210,8 @@ function M.BuildTableFrame()
 
     local f = M.VBContainer(UIParent, 1, 1, false, "WarbandNexusVaultTable")
     AddEscCloseFrame("WarbandNexusVaultTable")
+    -- Follow profile.uiScale like the Easy Access menu (VaultButton.lua) and WindowFactory shells.
+    if ns.UI_RegisterScaledFrame then ns.UI_RegisterScaledFrame(f) end
     f:SetClampedToScreen(true)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
@@ -259,8 +266,7 @@ function M.BuildTableFrame()
         local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
-        closeIcon:SetAtlas("uitools-icon-close")
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        ns.UI_SetIcon(closeIcon, "close", { vertexColor = { 0.9, 0.3, 0.3, 1 } })
         closeBtn:SetScript("OnClick", HideTable)
         closeBtn:SetScript("OnEnter", function()
             closeIcon:SetVertexColor(1, 0.2, 0.2)
@@ -275,7 +281,7 @@ function M.BuildTableFrame()
     -- Settings (gear) button — opens options frame
     local settingsBtn = VF:CreateButton(chrome, 28, 28, true)
     settingsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
-    settingsBtn:SetNormalAtlas("mechagon-projects")
+    settingsBtn:SetNormalAtlas(ns.UI_GetIconAtlas("settings") or "mechagon-projects")
     settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     settingsBtn:SetScript("OnClick", function() ToggleOptionsFrame(f, "RIGHT") end)
 
@@ -337,8 +343,8 @@ function M.BuildTableFrame()
     end
 
     local hx = 0
-    HCell("Character",  hx, COL_NAME,    false)              ; hx = hx + COL_NAME
-    HCell("iLvl",       hx, COL_ILVL,    false)              ; hx = hx + COL_ILVL
+    HCell(EAL("VAULT_SUMMARY_COL_NAME", "Character"), hx, COL_NAME, false)              ; hx = hx + COL_NAME
+    HCell(EAL("ILVL_SHORT", "iLvl"), hx, COL_ILVL, false)              ; hx = hx + COL_ILVL
     for _, cat in ipairs(GetEnabledCategoryDefs()) do
         HCell(nil,      hx, cat.width,    true,  cat.icon, cat.label) ; hx = hx + cat.width
     end
@@ -358,7 +364,7 @@ function M.BuildTableFrame()
         local mfName = (M.GetManafluxName and M.GetManafluxName()) or "Venomblight Manaflux"
         HCell(nil,      hx, COL_MANAFLUX,true,  GetCurrencyIcon(mfId, TRACK_ICONS.manaflux), mfName, nil, "currency", mfId) ; hx = hx + COL_MANAFLUX
     end
-    HCell("Status",     hx, COL_STATUS,  false)
+    HCell(EAL("PVE_HEADER_STATUS_SHORT", "Status"), hx, COL_STATUS, false)
 
     local dividerXs = BuildVaultTableColumnDividerXs(GetEnabledCategoryDefs(), columns)
     if ns.UI_SyncGridColumnDividers and #dividerXs > 0 then
@@ -408,15 +414,155 @@ function M.VBSyncVaultTableScrollBar(list, content, contentH)
     vf:UpdateScrollBarVisibility(S.tableScroll)
 end
 
+-- Sub-cells per raid/dungeon/world column; mirrors VAULT_TRACKER_SLOTS_PER_COL in VaultButton_Data.lua.
+local VAULT_COL_SUBCELLS = 3
+
+--- Pooled row cell: FontString created once per row/key, re-anchored on every refresh.
+function M.VBEnsureVaultRowCell(row, key, justifyH)
+    local fs = row[key]
+    if not fs then
+        fs = VBFontString(row, "body")
+        fs:SetJustifyH(justifyH or "CENTER")
+        fs:SetJustifyV("MIDDLE")
+        row[key] = fs
+    end
+    return fs
+end
+
+function M.VBPlaceVaultRowCell(fs, row, x, w)
+    fs:ClearAllPoints()
+    fs:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
+    fs:SetSize(w, ROW_H)
+    fs:Show()
+end
+
+function M.VBHideVaultRowCell(row, key)
+    if row[key] then row[key]:Hide() end
+end
+
+--- Pooled equivalent of ns.UI_BindVaultColumnCells: the three sub-cells of column `idx` are created
+--- once per row and re-bound (geometry + data) on refresh, so shift repaint only walks live cells.
+function M.VBBindPooledVaultColumnCells(row, idx, baseX, colWidth, bindData)
+    EnsureVaultShiftWatcher()
+    row._vbCatCells = row._vbCatCells or {}
+    local group = row._vbCatCells[idx]
+    if not group then
+        local fses, geom = {}, {}
+        for i = 1, VAULT_COL_SUBCELLS do
+            local fs = VBFontString(row, "body")
+            fs:SetJustifyH("CENTER")
+            fs:SetJustifyV("MIDDLE")
+            if fs.SetWordWrap then fs:SetWordWrap(false) end
+            if fs.SetMaxLines then fs:SetMaxLines(1) end
+            fses[i] = fs
+            geom[i] = { x = 0, w = 0 }
+        end
+        group = { fses = fses, row = row, slotGeom = geom }
+        row._vbCatCells[idx] = group
+    end
+    local slotW = math.floor(colWidth / VAULT_COL_SUBCELLS)
+    local extra = colWidth - (slotW * VAULT_COL_SUBCELLS)
+    local offset = baseX
+    for i = 1, VAULT_COL_SUBCELLS do
+        local w = slotW + ((i == VAULT_COL_SUBCELLS) and extra or 0)
+        local g = group.slotGeom[i]
+        g.x = offset
+        g.w = w
+        group.fses[i]:Show()
+        offset = offset + w
+    end
+    group.data = bindData
+    group.baseX = baseX
+    group.colWidth = colWidth
+    S.vaultColumnCellBindings[group.fses[1]] = group
+    M.PaintVaultTrackerColumnCells(group, { shiftHeld = IsShiftKeyDown and IsShiftKeyDown() })
+end
+
+--- Hide + unbind vault column groups `firstIdx..n` of a pooled row (column count shrank / row unused).
+function M.VBHideVaultColumnCellsFrom(row, firstIdx)
+    local groups = row and row._vbCatCells
+    if not groups then return end
+    for idx = firstIdx, #groups do
+        local fses = groups[idx].fses
+        S.vaultColumnCellBindings[fses[1]] = nil
+        for i = 1, #fses do fses[i]:Hide() end
+    end
+end
+
+function M.VBReleaseVaultTableRow(row)
+    if not row then return end
+    VBHideVaultColumnCellsFrom(row, 1)
+    row._vbEntry = nil
+    row:Hide()
+end
+
+function M.VBVaultRowOnEnter(self)
+    local e = self._vbEntry
+    if not e then return end
+    EnsureVaultShiftWatcher()
+    S.eaTooltipHover.anchor = self
+    S.eaTooltipHover.charKey = e.charKey
+    S.eaTooltipHover.entry = e
+    RefreshEasyAccessHoverTooltip()
+end
+
+function M.VBVaultRowOnLeave()
+    S.eaTooltipHover.anchor = nil
+    S.eaTooltipHover.charKey = nil
+    S.eaTooltipHover.entry = nil
+    WNTooltipHide()
+end
+
+-- Click row to open WN PvE tab
+function M.VBVaultRowOnMouseDown(self, btn)
+    if btn == "LeftButton" then
+        HideTable()
+        OpenWNPveTab()
+    end
+end
+
+--- Pooled vault table row: container + static textures + scripts are created once per index.
+function M.VBAcquireVaultTableRow(content, i, rowW)
+    local row = S.rows[i]
+    if not row then
+        row = ns.UI.Factory:CreateContainer(content, rowW, ROW_H, false)
+        row:EnableMouse(true)
+        -- Hover highlight
+        row._vbHl = row:CreateTexture(nil, "HIGHLIGHT")
+        row._vbHl:SetAllPoints()
+        -- Left stripe
+        row._vbStripe = row:CreateTexture(nil, "BORDER")
+        row._vbStripe:SetWidth(3)
+        row._vbStripe:SetPoint("TOPLEFT",    row, "TOPLEFT",    0, 0)
+        row._vbStripe:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        -- Row separator (shown for i > 1)
+        row._vbSep = row:CreateTexture(nil, "BORDER")
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(row._vbSep, "horizontal", 1) else row._vbSep:SetHeight(1) end
+        row._vbSep:SetPoint("TOPLEFT",  row, "TOPLEFT",  3, 0)
+        row._vbSep:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+        row:SetScript("OnEnter", VBVaultRowOnEnter)
+        row:SetScript("OnLeave", VBVaultRowOnLeave)
+        row:SetScript("OnMouseDown", VBVaultRowOnMouseDown)
+        S.rows[i] = row
+    end
+    row:SetWidth(rowW)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i-1)*ROW_H)
+    row:Show()
+    return row
+end
+
 RefreshTable = function()
     BuildTableFrame()
     local VF = ns.UI.Factory
     local tableW = GetTableWidth()
     local content = S.tableContent
     local list    = GetVaultCharList()
+    local rows    = S.rows
 
-    for _, row in ipairs(S.rows) do row:Hide() end
-    S.rows = {}
+    for i = #list + 1, #rows do
+        VBReleaseVaultTableRow(rows[i])
+    end
 
     if #list == 0 then
         local emptyLay = M.VBGetEasyAccessBodyLayout()
@@ -424,10 +570,15 @@ RefreshTable = function()
         local inset = emptyLay.inset
         local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2, true)
         content:SetSize(scrollInnerW, 40)
-        local msg = VBFontString(content, "body")
-        msg:SetPoint("CENTER", content, "CENTER")
+        local msg = S.tableEmptyText
+        if not msg then
+            msg = VBFontString(content, "body")
+            msg:SetPoint("CENTER", content, "CENTER")
+            S.tableEmptyText = msg
+        end
         ns.UI_SetTextColorRole(msg, "Dim")
-        msg:SetText("No vault activity this week.")
+        msg:SetText(EAL("EA_TOOLTIP_NO_WARBAND_VAULT", "No tracked vault activity this week."))
+        msg:Show()
         S.tableFrame:Show()
         VBSyncVaultTableScrollBar(list, content, 40)
         if C_Timer and C_Timer.After then
@@ -439,127 +590,98 @@ RefreshTable = function()
         end
         return
     end
+    if S.tableEmptyText then S.tableEmptyText:Hide() end
 
     local catDefs = GetEnabledCategoryDefs()
-    local columns = GetSettings().columns or {}
+    local settings = GetSettings()
+    local columns = settings.columns or {}
     local vaultColumnDividerXs = BuildVaultTableColumnDividerXs(catDefs, columns)
     local colors = GetThemeColors()
     local accent = colors.accent or {0.40, 0.20, 0.58}
     local borderC = colors.border or accent
     local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffd4af37"
     local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+    local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+    local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
+    local slotsReadyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_SLOTS_READY"]) or "Slots Ready"
+    local rowW = M.VBGetEasyAccessScrollChildWidth(tableW - VBGetFrameContentInset() * 2, true)
 
-    for i, e in ipairs(list) do
-        local row = VF:CreateContainer(content, M.VBGetEasyAccessScrollChildWidth(tableW - VBGetFrameContentInset() * 2, true), ROW_H, false)
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i-1)*ROW_H)
-        row:EnableMouse(true)
+    for i = 1, #list do
+        local e = list[i]
+        local row = VBAcquireVaultTableRow(content, i, rowW)
+        row._vbEntry = e
 
         if VF and VF.ApplyRowBackground then
             VF:ApplyRowBackground(row, i)
         else
-            local bg = row:CreateTexture(nil, "BACKGROUND")
-            bg:SetAllPoints()
+            if not row.bg then
+                row.bg = row:CreateTexture(nil, "BACKGROUND")
+                row.bg:SetAllPoints()
+            end
             local stripe = (i % 2 == 0) and (COLORS.surfaceRowEven or { 0.08, 0.08, 0.11, 0.95 })
                 or (COLORS.surfaceRowOdd or { 0.05, 0.05, 0.08, 0.95 })
-            bg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.95)
+            row.bg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.95)
         end
         if VF and VF.ApplyOnlineCharacterHighlight then
             VF:ApplyOnlineCharacterHighlight(row, e.isCurrent)
         end
 
-        -- Hover highlight
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(accent[1], accent[2], accent[3], 0.25)
-
-        -- Left stripe
-        local stripe = row:CreateTexture(nil, "BORDER")
-        stripe:SetWidth(3)
-        stripe:SetPoint("TOPLEFT",    row, "TOPLEFT",    0, 0)
-        stripe:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        row._vbHl:SetColorTexture(accent[1], accent[2], accent[3], 0.25)
         if e.isReady then
-            stripe:SetColorTexture(0.2, 0.9, 0.3, 1)
+            row._vbStripe:SetColorTexture(0.2, 0.9, 0.3, 1)
         else
-            stripe:SetColorTexture(accent[1], accent[2], accent[3], 1)
+            row._vbStripe:SetColorTexture(accent[1], accent[2], accent[3], 1)
         end
-
-        -- Row separator
         if i > 1 then
-            local rowSep = row:CreateTexture(nil, "BORDER")
-            rowSep:SetHeight(1)
-            rowSep:SetPoint("TOPLEFT",  row, "TOPLEFT",  3, 0)
-            rowSep:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
-            rowSep:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.5)
+            row._vbSep:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.5)
+            row._vbSep:Show()
+        else
+            row._vbSep:Hide()
         end
 
         -- Name
         local x = 0
-        local nameFS = VBFontString(row, "body")
-        nameFS:SetPoint("TOPLEFT", row, "TOPLEFT", x+6, 0)
-        nameFS:SetSize(COL_NAME-6, ROW_H)
-        nameFS:SetJustifyH("LEFT")
-        nameFS:SetJustifyV("MIDDLE")
+        local nameFS = VBEnsureVaultRowCell(row, "_vbName", "LEFT")
+        VBPlaceVaultRowCell(nameFS, row, x + 6, COL_NAME - 6)
         nameFS:SetText(FormatCharacterName(e))
         x = x + COL_NAME
 
         -- iLvl
-        local ilvlFS = VBFontString(row, "body")
-        ilvlFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
-        ilvlFS:SetSize(COL_ILVL, ROW_H)
-        ilvlFS:SetJustifyH("CENTER")
-        ilvlFS:SetJustifyV("MIDDLE")
+        local ilvlFS = VBEnsureVaultRowCell(row, "_vbIlvl")
+        VBPlaceVaultRowCell(ilvlFS, row, x, COL_ILVL)
         ilvlFS:SetText(e.itemLevel > 0
             and (goldHex .. string.format("%d", math.floor(e.itemLevel)) .. "|r")
             or  DASH)
         x = x + COL_ILVL
 
         -- Vault columns
-        local allSlots = {}
-        for _, cat in ipairs(catDefs) do
+        for c = 1, #catDefs do
+            local cat = catDefs[c]
             local slots = GetSlotData(e.charKey, cat.key)
-            allSlots[cat.key] = slots
-            local settings = GetSettings()
-            local bindPayload = {
+            VBBindPooledVaultColumnCells(row, c, x, cat.width, {
                 slots = slots,
                 category = cat.key,
                 showRewardProgress = settings.showRewardProgress,
                 showRewardItemLevel = settings.showRewardItemLevel,
                 vaultLootClaimable = e.isReady == true,
-            }
-            if ns.UI_BindVaultColumnCells then
-                ns.UI_BindVaultColumnCells(row, x, cat.width, bindPayload)
-            else
-                local fs = VBFontString(row, "body")
-                fs:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
-                fs:SetSize(cat.width, ROW_H)
-                fs:SetJustifyH("CENTER")
-                fs:SetJustifyV("MIDDLE")
-                if ns.UI_BindVaultColumnDisplay then
-                    ns.UI_BindVaultColumnDisplay(fs, bindPayload)
-                else
-                    fs:SetText(SlotSymbols(slots, cat.key, e.isReady))
-                end
-            end
+            })
             x = x + cat.width
         end
+        VBHideVaultColumnCellsFrom(row, #catDefs + 1)
 
         local b = e.bounty
         if columns.bounty ~= false then
-            local bountyFS = VBFontString(row, "body")
-            bountyFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
-            bountyFS:SetSize(COL_BOUNTY, ROW_H)
-            bountyFS:SetJustifyH("CENTER")
-            bountyFS:SetJustifyV("MIDDLE")
+            local bountyFS = VBEnsureVaultRowCell(row, "_vbBounty")
+            VBPlaceVaultRowCell(bountyFS, row, x, COL_BOUNTY)
             bountyFS:SetText(b == nil and DASH or (b and CHECK or CROSS))
             x = x + COL_BOUNTY
+        else
+            VBHideVaultRowCell(row, "_vbBounty")
         end
 
         if columns.gildedStash == true then
-            local stashFS = VBFontString(row, "body")
-            stashFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
-            stashFS:SetSize(COL_STASH, ROW_H)
-            stashFS:SetJustifyH("CENTER")
-            stashFS:SetJustifyV("MIDDLE")
+            local stashFS = VBEnsureVaultRowCell(row, "_vbStash")
+            VBPlaceVaultRowCell(stashFS, row, x, COL_STASH)
             if stashFS.SetWordWrap then stashFS:SetWordWrap(false) end
             local stash = e.gildedStash
             if not stash then
@@ -571,16 +693,15 @@ RefreshTable = function()
                 stashFS:SetText(color .. (stash.current or 0) .. "|r" .. mutedHex .. "/|r" .. goldHex .. (stash.max or 4) .. "|r")
             end
             x = x + COL_STASH
+        else
+            VBHideVaultRowCell(row, "_vbStash")
         end
 
         -- Nebulous Voidcore (current / seasonMax)
         local vc = e.voidcore
         if columns.voidcore ~= false then
-            local voidcoreFS = VBFontString(row, "body")
-            voidcoreFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
-            voidcoreFS:SetSize(COL_VOIDCORE, ROW_H)
-            voidcoreFS:SetJustifyH("CENTER")
-            voidcoreFS:SetJustifyV("MIDDLE")
+            local voidcoreFS = VBEnsureVaultRowCell(row, "_vbVoidcore")
+            VBPlaceVaultRowCell(voidcoreFS, row, x, COL_VOIDCORE)
             if not vc then
                 voidcoreFS:SetText(DASH)
             else
@@ -593,29 +714,24 @@ RefreshTable = function()
                 end
             end
             x = x + COL_VOIDCORE
+        else
+            VBHideVaultRowCell(row, "_vbVoidcore")
         end
 
         -- Dawnlight Manaflux
         if columns.manaflux == true then
-            local manafluxFS = VBFontString(row, "body")
-            manafluxFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
-            manafluxFS:SetSize(COL_MANAFLUX, ROW_H)
-            manafluxFS:SetJustifyH("CENTER")
-            manafluxFS:SetJustifyV("MIDDLE")
+            local manafluxFS = VBEnsureVaultRowCell(row, "_vbManaflux")
+            VBPlaceVaultRowCell(manafluxFS, row, x, COL_MANAFLUX)
             local mf = e.manaflux
             manafluxFS:SetText(mf and (goldHex .. (mf.quantity or 0) .. "|r") or DASH)
             x = x + COL_MANAFLUX
+        else
+            VBHideVaultRowCell(row, "_vbManaflux")
         end
 
         -- Status
-        local statusFS = VBFontString(row, "body")
-        statusFS:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
-        statusFS:SetSize(COL_STATUS, ROW_H)
-        statusFS:SetJustifyH("CENTER")
-        statusFS:SetJustifyV("MIDDLE")
-        local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
-        local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
-        local slotsReadyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_SLOTS_READY"]) or "Slots Ready"
+        local statusFS = VBEnsureVaultRowCell(row, "_vbStatus")
+        VBPlaceVaultRowCell(statusFS, row, x, COL_STATUS)
         if e.isReady then
             statusFS:SetText("|cff44ff44" .. readyLabel .. "|r")
         elseif (e.slots or 0) > 0 then
@@ -624,34 +740,9 @@ RefreshTable = function()
             statusFS:SetText("|cffffd700" .. pendingLabel .. "|r")
         end
 
-        if ns.UI_SyncGridColumnDividers and #vaultColumnDividerXs > 0 then
+        if ns.UI_SyncGridColumnDividers then
             ns.UI_SyncGridColumnDividers(row, vaultColumnDividerXs, ROW_H)
         end
-
-        -- Row tooltip: readable vault summary (table cells keep icons)
-        row:SetScript("OnEnter", function(self)
-            EnsureVaultShiftWatcher()
-            S.eaTooltipHover.anchor = self
-            S.eaTooltipHover.charKey = e.charKey
-            S.eaTooltipHover.entry = e
-            RefreshEasyAccessHoverTooltip()
-        end)
-        row:SetScript("OnLeave", function()
-            S.eaTooltipHover.anchor = nil
-            S.eaTooltipHover.charKey = nil
-            S.eaTooltipHover.entry = nil
-            WNTooltipHide()
-        end)
-
-        -- Click row to open WN PvE tab
-        row:SetScript("OnMouseDown", function(self, btn)
-            if btn == "LeftButton" then
-                HideTable()
-                OpenWNPveTab()
-            end
-        end)
-
-        table.insert(S.rows, row)
     end
 
     local visRows  = math.min(#list, MAX_ROWS)

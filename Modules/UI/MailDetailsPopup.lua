@@ -5,6 +5,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
@@ -51,8 +53,21 @@ local LAYOUT = {
     ITEM_GRID_GAP = 10,
 }
 
-local POPUP_W = LAYOUT.CONTENT_W + (LAYOUT.PAD * 2) + SCROLLBAR_LANE
 local POPUP_H = 620
+
+--- WindowFactory shell side inset (classic dialog-box backdrop; 0 in modern full-bleed).
+local function DialogInset()
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        local bd = ns.UI_CLASSIC_DIALOG_BACKDROP and ns.UI_CLASSIC_DIALOG_BACKDROP.insets
+        return (bd and bd.left) or 0
+    end
+    return 0
+end
+
+--- POPUP_W = CONTENT_W + PAD*2 + scrollbar lane + DIALOG_INSET*2 (resolved per open: theme can change).
+local function ResolvePopupWidth()
+    return LAYOUT.CONTENT_W + (LAYOUT.PAD * 2) + SCROLLBAR_LANE + (DialogInset() * 2)
+end
 
 local MAIL_ICON_FROM = "Interface\\Icons\\INV_Letter_15"
 local MAIL_ICON_SUBJECT = "Interface\\Icons\\INV_Misc_Note_06"
@@ -499,9 +514,11 @@ local function BuildMessageCard(scrollChild, msg, mailIndex, cardW, yTop, scanne
 end
 
 local function ResolveScrollChildWidth(contentFrame)
+    -- Match the scroll viewport exactly (content frame minus pads and scrollbar lane); a
+    -- CONTENT_W floor would overhang the viewport when the window is clamped to a small screen.
     local cfW = contentFrame and contentFrame:GetWidth()
     if cfW and cfW > 0 then
-        return max(LAYOUT.CONTENT_W, floor(cfW - (LAYOUT.PAD * 2) - SCROLLBAR_LANE + 0.5))
+        return max(1, floor(cfW - (LAYOUT.PAD * 2) - SCROLLBAR_LANE + 0.5))
     end
     return LAYOUT.CONTENT_W
 end
@@ -513,8 +530,11 @@ function WarbandNexus:ShowMailDetailsPopup(char)
     local MailSnapshot = ns.MailSnapshot
     if not MailSnapshot or not MailSnapshot.CharHasPendingMail(char) then return end
 
+    -- Close (not Hide): releases the click-outside overlay, scale + WindowManager registration.
     local existing = _G["WarbandNexus_MailDetailsPopup"]
-    if existing and existing.Hide then
+    if existing and existing.Close then
+        existing.Close()
+    elseif existing and existing.Hide then
         existing:Hide()
     end
 
@@ -540,7 +560,7 @@ function WarbandNexus:ShowMailDetailsPopup(char)
         name = "MailDetailsPopup",
         title = L("MAIL_DETAILS_TITLE", "Mail Details"),
         icon = "Interface\\Minimap\\Tracking\\Mailbox",
-        width = POPUP_W,
+        width = ResolvePopupWidth(),
         height = POPUP_H,
         preventDuplicates = false,
     })
@@ -679,7 +699,7 @@ if WarbandNexus and WarbandNexus.RegisterMessage and E and E.CHARACTER_UPDATED t
 
         local MailSnapshot = ns.MailSnapshot
         if not MailSnapshot or not MailSnapshot.CharHasPendingMail(activeChar) then
-            dialog:Hide()
+            if dialog.Close then dialog.Close() else dialog:Hide() end
             return
         end
 

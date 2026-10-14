@@ -14,6 +14,9 @@ local colorPickerHookInstalled = false
 local colorPickerTicker = nil
 local lastR, lastG, lastB = nil, nil, nil
 local colorPickerConfirmed = false
+-- True only between a WN theme-picker open and the next ColorPickerFrame hide; the global
+-- ColorPickerFrame hooks no-op otherwise so other addons' / Blizzard pickers are untouched.
+local colorPickerOwnedByWN = false
 
 -- HELPER FUNCTIONS (DRY - Don't Repeat Yourself)
 
@@ -1331,13 +1334,19 @@ local options = {
 -- instead of during OnInitialize. Hooking Blizzard frames during addon init can taint
 -- the frame's script handler chain, causing ADDON_ACTION_FORBIDDEN on /reload in TWW.
 local function InstallColorPickerPreviewHook()
-    if colorPickerHookInstalled then return end
+    -- Called right before every WN theme picker open: arm ownership for this open.
+    if colorPickerHookInstalled then
+        colorPickerOwnedByWN = true
+        return
+    end
     -- Don't hook Blizzard frames during combat
     if InCombatLockdown() then return end
     if not ColorPickerFrame then return end
     colorPickerHookInstalled = true
+    colorPickerOwnedByWN = true
     
     ColorPickerFrame:HookScript("OnShow", function()
+        if not colorPickerOwnedByWN then return end
         colorPickerConfirmed = false
         
         if WarbandNexus and WarbandNexus.ShowMainWindow then
@@ -1360,7 +1369,7 @@ local function InstallColorPickerPreviewHook()
         end
         
         colorPickerTicker = C_Timer.NewTicker(0.05, function()
-            if not ColorPickerFrame:IsShown() then
+            if not colorPickerOwnedByWN or not ColorPickerFrame:IsShown() then
                 return
             end
             
@@ -1388,17 +1397,22 @@ local function InstallColorPickerPreviewHook()
     
     if okayButton then
         okayButton:HookScript("OnClick", function()
+            -- Unguarded on purpose: OK's own handler hides the picker (our OnHide clears
+            -- ownership) before this post-hook runs; the delayed revert reads this flag.
             colorPickerConfirmed = true
         end)
     end
     
     if cancelButton then
         cancelButton:HookScript("OnClick", function()
+            -- Unguarded on purpose (see OK hook): ownership is cleared by OnHide first.
             colorPickerConfirmed = false
         end)
     end
     
     ColorPickerFrame:HookScript("OnHide", function()
+        if not colorPickerOwnedByWN then return end
+        colorPickerOwnedByWN = false
         if colorPickerTicker then
             colorPickerTicker:Cancel()
             colorPickerTicker = nil

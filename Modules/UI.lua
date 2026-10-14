@@ -4,6 +4,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 
 -- UIShell table early so UI_MainShell / UI_TabHost satellites can attach (bind filled before stubs).
@@ -881,6 +883,11 @@ local function StartCustomDrag(frame)
         -- Convert physical pixels back to the frame's coordinate space
         local newLeft = newLeftPx / frameScale
         local newTop = newTopPx / frameScale
+        -- Whole physical pixels: a sub-pixel origin smears every 1px line inside the window.
+        if ns.PixelSnap then
+            newLeft = ns.PixelSnap(newLeft, self)
+            newTop = ns.PixelSnap(newTop, self)
+        end
         
         self:ClearAllPoints()
         self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", newLeft, newTop)
@@ -902,6 +909,18 @@ local function NormalizeFramePosition(frame)
     if not frame or not frame.GetLeft or not frame.GetTop then return end
     local left, top = GetUIParentBOTTOMLEFTAnchorOffsets(frame)
     if left == nil or top == nil then return end
+    if ns.PixelSnap then
+        left = ns.PixelSnap(left, frame)
+        top = ns.PixelSnap(top, frame)
+        -- Saved/restored sizes may be off-grid (older saves, scale change); snap only when needed.
+        local w, h = frame:GetWidth(), frame:GetHeight()
+        if w and h and w > 0 and h > 0 then
+            local sw, sh = ns.PixelSnap(w, frame), ns.PixelSnap(h, frame)
+            if math.abs(sw - w) > 0.001 or math.abs(sh - h) > 0.001 then
+                frame:SetSize(sw, sh)
+            end
+        end
+    end
 
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
@@ -956,6 +975,12 @@ local function StartCustomResize(frame)
         local minW, minH, maxW, maxH = GetMainWindowGeometryBounds()
         local nw = math.min(maxW, math.max(minW, (self._resizeOrigW or 0) + dw))
         local nh = math.min(maxH, math.max(minH, (self._resizeOrigH or 0) + dh))
+        -- Whole physical pixels: right/bottom-anchored lines otherwise land on a new
+        -- sub-pixel offset every frame and visibly change thickness while dragging.
+        if ns.PixelSnap then
+            nw = ns.PixelSnap(nw, self)
+            nh = ns.PixelSnap(nh, self)
+        end
         self:SetSize(nw, nh)
     end)
 end
@@ -1288,45 +1313,79 @@ ns.UIShell._recycleBinDrainGen = 0
 local RECYCLE_BIN_DRAIN_MS_BUDGET = 6
 local RECYCLE_BIN_DRAIN_MAX_SUBTREES = 2
 
+-- Drain queue (Lua array, head/tail cursors): frames parked for pool release are appended here so drain
+-- slices never re-enumerate recycleBin:GetChildren() (O(total parked) per slice + C-stack risk at huge counts).
+local _recycleBinDrainQueue = {}
+local _recycleBinDrainHead = 1
+local _recycleBinDrainTail = 0
+
+local function QueueRecycleBinDrainFrame(child)
+    if not child or child._wnPoolDrainQueued then return end
+    child._wnPoolDrained = nil
+    child._wnPoolDrainQueued = true
+    _recycleBinDrainTail = _recycleBinDrainTail + 1
+    _recycleBinDrainQueue[_recycleBinDrainTail] = child
+end
+
+--- Hide + reparent to recycleBin and enqueue for async pool drain (preferred over raw SetParent(recycleBin)).
+function ns.UI_ParkInRecycleBinForDrain(child)
+    if not child or not child.Hide then return end
+    child:Hide()
+    if recycleBin then
+        child:SetParent(recycleBin)
+    end
+    QueueRecycleBinDrainFrame(child)
+end
+
 local function ScheduleRecycleBinPoolDrain(pendingCount)
     if not pendingCount or pendingCount < 1 then return end
-    ns.UIShell._recycleBinDrainGen = (ns.UIShell._recycleBinDrainGen or 0) + 1
-    local drainGen = ns.UIShell._recycleBinDrainGen
-    local remaining = pendingCount
-
-    local function drainSlice()
-        if drainGen ~= ns.UIShell._recycleBinDrainGen or remaining <= 0 or not recycleBin then return end
-        local t0 = debugprofilestop()
+    if not recycleBin then return end
+    -- Legacy callers park with SetParent(recycleBin) + `_wnPoolDrained = nil` without enqueueing:
+    -- snapshot once here (not per slice) to pick those up.
+    if (_recycleBinDrainTail - _recycleBinDrainHead + 1) < pendingCount then
         local nc = PackVariadicInto(_uiChildEnumScratch, recycleBin:GetChildren())
-        local drained = 0
         for i = 1, nc do
             local child = _uiChildEnumScratch[i]
             if child and not child._wnPoolDrained then
-                if ReleasePooledRowsInSubtree then
-                    ReleasePooledRowsInSubtree(child)
-                end
-                child._wnPoolDrained = true
-                drained = drained + 1
-                remaining = remaining - 1
-                if drained >= RECYCLE_BIN_DRAIN_MAX_SUBTREES or remaining <= 0 then
-                    break
-                end
-                if debugprofilestop() - t0 >= RECYCLE_BIN_DRAIN_MS_BUDGET then
-                    break
+                QueueRecycleBinDrainFrame(child)
+            end
+        end
+    end
+    ns.UIShell._recycleBinDrainGen = (ns.UIShell._recycleBinDrainGen or 0) + 1
+    local drainGen = ns.UIShell._recycleBinDrainGen
+
+    local function drainSlice()
+        if drainGen ~= ns.UIShell._recycleBinDrainGen or not recycleBin then return end
+        local t0 = debugprofilestop()
+        local drained = 0
+        while _recycleBinDrainHead <= _recycleBinDrainTail do
+            local child = _recycleBinDrainQueue[_recycleBinDrainHead]
+            _recycleBinDrainQueue[_recycleBinDrainHead] = nil
+            _recycleBinDrainHead = _recycleBinDrainHead + 1
+            if child then
+                child._wnPoolDrainQueued = nil
+                -- Skip frames re-adopted by a live parent since being parked.
+                if not child._wnPoolDrained and child:GetParent() == recycleBin then
+                    if ReleasePooledRowsInSubtree then
+                        ReleasePooledRowsInSubtree(child)
+                    end
+                    child._wnPoolDrained = true
+                    drained = drained + 1
+                    if drained >= RECYCLE_BIN_DRAIN_MAX_SUBTREES then
+                        break
+                    end
+                    if debugprofilestop() - t0 >= RECYCLE_BIN_DRAIN_MS_BUDGET then
+                        break
+                    end
                 end
             end
         end
-        if remaining <= 0 or drainGen ~= ns.UIShell._recycleBinDrainGen then return end
-        local more = false
-        local nc2 = PackVariadicInto(_uiChildEnumScratch, recycleBin:GetChildren())
-        for i = 1, nc2 do
-            local child = _uiChildEnumScratch[i]
-            if child and not child._wnPoolDrained then
-                more = true
-                break
-            end
+        if _recycleBinDrainHead > _recycleBinDrainTail then
+            _recycleBinDrainHead = 1
+            _recycleBinDrainTail = 0
+            return
         end
-        if more and C_Timer and C_Timer.After then
+        if C_Timer and C_Timer.After then
             C_Timer.After(0, drainSlice)
         end
     end
@@ -1788,7 +1847,7 @@ local function UpdateTabVisibility(f)
                         -- Pooled per-button rail separator; sepColor is theme-sourced and
                         -- the texture is repainted by the theme pass above.
                         sep:SetColorTexture(sepColor[1], sepColor[2], sepColor[3], sepColor[4] or 1) -- WN_CHROME_ALLOW
-                        sep:SetHeight(sepH)
+                        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep, "horizontal", sepH) else sep:SetHeight(sepH) end
                         sep:ClearAllPoints()
                         sep:SetPoint("LEFT", railHost, "LEFT", railPad, 0)
                         sep:SetPoint("RIGHT", railHost, "RIGHT", -railPad, 0)
@@ -2080,7 +2139,7 @@ ns.UI_UpdateMainFrameTabButtonStates = UpdateTabButtonStates
     copy-to-clipboard `EditBox` popups (`FULLSCREEN_DIALOG`).
   - `trackingChip` + nested `BackdropTemplate` hosts: compact tracking strip.
   - `CreateTabButton` inner `Button`: main nav tabs (custom width math + atlas + `ApplyHighlight`).
-  - `WarbandNexusLoadingOverlay`: standalone init bar (named, draggable, polling lifecycle).
+  - `WarbandNexusLoadingOverlay`: standalone init bar (named, draggable, LoadingTracker listener lifecycle).
 
   Factory candidates (later PRs; match anchors/levels exactly):
   - Layout shells: `header`, `nav`, `content`, `viewportBorder`, `fixedHeader`, `columnHeaderClip` /
@@ -2630,18 +2689,16 @@ function WarbandNexus:OpenOptions()
 end
 
 -- Floating bar that appears on screen during init, independent of the addon window.
--- Uses lightweight polling (0.5s ticker) to track LoadingTracker state.
--- AceEvent message hooks don't work from standalone contexts (plain tables
--- can't register as AceEvent receivers), so polling is the reliable approach.
+-- Driven by LoadingTracker:SetChangeListener (coalesced), no polling ticker.
 --
--- LIFECYCLE: Ticker runs for up to MAX_POLL_LIFETIME seconds after PLAYER_LOGIN.
+-- LIFECYCLE: Listener stays attached for up to MAX_POLL_LIFETIME seconds after PLAYER_LOGIN.
 -- This covers both the initial login (tracked chars: ~15s) and the delayed
 -- post-confirmation flow (user clicks "Tracked" at T+2.5s+: adds ~5s of ops).
--- Ticker is NOT cancelled on first completion â€” new operations can be registered
+-- Listener is NOT detached on first completion â€” new operations can be registered
 -- after the user confirms tracking, and the bar will reappear automatically.
 do
     local loadingOverlay
-    local pollTicker
+    local overlayListenerArmed
     local completedShown = false
     local wasSyncComplete = false
     local syncCompletePopulateFired = false
@@ -2671,7 +2728,7 @@ do
         bar:SetBackdrop({
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
             edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeSize = 1,
+            edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(bar)) or 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         local loadBarBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.06, 0.06, 0.09, 1 }
@@ -2790,8 +2847,8 @@ do
                         bar.spinGroup:Stop()
                         bar:Hide()
                     end
-                    -- Do NOT cancel ticker here: new operations may be registered
-                    -- after user confirms tracking. Ticker auto-stops after MAX_POLL_LIFETIME.
+                    -- Do NOT detach listener here: new operations may be registered
+                    -- after user confirms tracking. Listener auto-detaches after MAX_POLL_LIFETIME.
                 end)
             end
             return
@@ -2831,30 +2888,46 @@ do
         bar.progressText:SetText(format("%d / %d", done, total))
     end
 
-    -- Start polling after PLAYER_LOGIN.
-    -- Ticker runs for up to MAX_POLL_LIFETIME seconds, then auto-cancels.
-    -- Intentionally raw: PLAYER_LOGIN latch for overlay polling ticker (WN_FACTORY inventory).
+    -- Event-driven: LoadingTracker calls the change listener on every Register/Complete; updates are
+    -- coalesced (OVERLAY_UPDATE_COALESCE_SEC). Listener detaches after MAX_POLL_LIFETIME seconds.
+    local OVERLAY_UPDATE_COALESCE_SEC = 0.1
+    local overlayUpdatePending = false
+    local overlayListenerActive = false
+
+    local function RunCoalescedOverlayUpdate()
+        overlayUpdatePending = false
+        if overlayListenerActive then
+            UpdateLoadingOverlay()
+        end
+    end
+
+    local function OnLoadingTrackerChanged()
+        if not overlayListenerActive or overlayUpdatePending then return end
+        overlayUpdatePending = true
+        C_Timer.After(OVERLAY_UPDATE_COALESCE_SEC, RunCoalescedOverlayUpdate)
+    end
+
+    -- Intentionally raw: PLAYER_LOGIN latch for overlay listener (WN_FACTORY inventory).
     local eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("PLAYER_LOGIN")
     eventFrame:SetScript("OnEvent", function()
         C_Timer.After(1.5, function()
             pollStartTime = GetTime()
             UpdateLoadingOverlay()
-            if not pollTicker then
-                pollTicker = C_Timer.NewTicker(0.5, function()
-                    if GetTime() - pollStartTime > MAX_POLL_LIFETIME then
-                        if pollTicker then
-                            pollTicker:Cancel()
-                            pollTicker = nil
-                        end
-                        -- Avoid leaving the sync bar visible forever if LoadingTracker never completes (e.g. rare init errors)
-                        if loadingOverlay and loadingOverlay:IsShown() then
-                            if loadingOverlay.spinGroup then loadingOverlay.spinGroup:Stop() end
-                            loadingOverlay:Hide()
-                        end
-                        return
+            if not overlayListenerArmed and ns.LoadingTracker and ns.LoadingTracker.SetChangeListener then
+                overlayListenerArmed = true
+                overlayListenerActive = true
+                ns.LoadingTracker:SetChangeListener(OnLoadingTrackerChanged)
+                C_Timer.After(MAX_POLL_LIFETIME, function()
+                    overlayListenerActive = false
+                    if ns.LoadingTracker and ns.LoadingTracker.SetChangeListener then
+                        ns.LoadingTracker:SetChangeListener(nil)
                     end
-                    UpdateLoadingOverlay()
+                    -- Avoid leaving the sync bar visible forever if LoadingTracker never completes (e.g. rare init errors)
+                    if loadingOverlay and loadingOverlay:IsShown() then
+                        if loadingOverlay.spinGroup then loadingOverlay.spinGroup:Stop() end
+                        loadingOverlay:Hide()
+                    end
                 end)
             end
         end)

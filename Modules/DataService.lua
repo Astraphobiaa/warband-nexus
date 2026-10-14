@@ -5,6 +5,12 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+-- Global GetSpecialization/GetSpecializationInfo are deprecated aliases of these (11.2.0).
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
+local GetDetailedItemLevelInfo = C_Item.GetDetailedItemLevelInfo
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -296,6 +302,31 @@ local function CollectPlayerLocation()
     }
 end
 
+-- Fields of a CollectRestedData() snapshot that the UI actually reads (updatedAt excluded).
+local RESTED_COMPARE_FIELDS = {
+    "exhaustionID", "restStateName", "restStateFactor", "isRestingArea",
+    "currentRestedXP", "currentXP", "maxXP", "restedCapXP",
+}
+
+---True when the new rested snapshot differs from the stored one (secret values count as changed).
+---PLAYER_XP_UPDATE / UPDATE_EXHAUSTION / PLAYER_UPDATE_RESTING fire far more often than the values move.
+local function RestedSnapshotChanged(oldRested, newRested)
+    if type(oldRested) ~= "table" or type(newRested) ~= "table" then
+        return oldRested ~= newRested
+    end
+    for i = 1, #RESTED_COMPARE_FIELDS do
+        local field = RESTED_COMPARE_FIELDS[i]
+        local a, b = oldRested[field], newRested[field]
+        if issecretvalue and (issecretvalue(a) or issecretvalue(b)) then
+            return true
+        end
+        if a ~= b then
+            return true
+        end
+    end
+    return false
+end
+
 ---Update character data in DB (called by event handlers)
 ---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
 ---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
@@ -342,7 +373,7 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         charData.level = lv
         
     elseif dataType == "spec" then
-        local specIndex = GetSpecialization()
+        local specIndex = GetSpecialization and GetSpecialization()
         if specIndex and GetSpecializationInfo then
             local specID, specName, _, specIcon = GetSpecializationInfo(specIndex)
             charData.specID = specID
@@ -368,9 +399,11 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
         -- Raw fractional value (same convention as SaveCurrentCharacterData / OnItemLevelChanged);
         -- integer displays floor at render time.
-        local newItemLevel = tonumber(avgItemLevelEquipped) or 0
-        
-        charData.itemLevel = newItemLevel
+        local newItemLevel = tonumber(avgItemLevelEquipped)
+        -- 0/nil = gear not streamed in yet; keep the stored value (same rule as the save path).
+        if newItemLevel and newItemLevel > 0 then
+            charData.itemLevel = newItemLevel
+        end
         
     elseif dataType == "guild" then
         local newGn, ambiguous = nil, false
@@ -413,6 +446,15 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
             newRested.maxXP = existingRested.maxXP
             local capMul = GetRestedCapMultiplier(charData.raceFile)
             newRested.restedCapXP = math.floor(existingRested.maxXP * capMul)
+        end
+        -- Unchanged snapshot: refresh timestamps in place, skip the WN_CHARACTER_UPDATED
+        -- emit (it drives a full Characters-tab PopulateContent on every XP tick).
+        if not RestedSnapshotChanged(existingRested, newRested) then
+            if type(existingRested) == "table" and newRested then
+                existingRested.updatedAt = newRested.updatedAt
+            end
+            charData.lastSeen = time()
+            return
         end
         charData.rested = newRested
     end
@@ -708,8 +750,12 @@ function WarbandNexus:SaveMinimalCharacterData()
     local totalCopper = SafeGetMoneyCopperFromEntry(existingEntry)
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")
-    local guildName = IsInGuild() and GetGuildInfo("player") or nil
-    if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
+    local guildName, guildAmbiguous = nil, false
+    if self.GetSafePlayerGuildName then
+        guildName, guildAmbiguous = self:GetSafePlayerGuildName()
+    end
+    -- Name not loaded yet while still in a guild: keep the stored guild.
+    if guildAmbiguous and existingEntry then guildName = existingEntry.guildName end
     -- Get gender
     local gender = UnitSex("player")
     local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
@@ -932,8 +978,17 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
     if issecretvalue and level and issecretvalue(level) then return _saveProfEnd(false) end
-    local guildName = IsInGuild() and GetGuildInfo("player") or nil
-    if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
+    -- ambiguous = in a guild but the name is not loaded yet (or secret); resolved below
+    -- against the stored row so a login race does not erase the guild.
+    local guildName, guildAmbiguous = nil, false
+    if self.GetSafePlayerGuildName then
+        guildName, guildAmbiguous = self:GetSafePlayerGuildName()
+    elseif IsInGuild() then
+        guildName = GetGuildInfo("player")
+        if not guildName or (issecretvalue and issecretvalue(guildName)) then
+            guildName, guildAmbiguous = nil, true
+        end
+    end
     
     -- Store as single totalCopper (Lua number = 64-bit)
     -- GetMoney() may be a secret value in some contexts — use SafeGetMoneyCopperFromEntry
@@ -976,6 +1031,9 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     local isNew = (existingSnapshot == nil)
 
     local existingEntry = existingSnapshot
+    if guildAmbiguous and existingEntry then
+        guildName = existingEntry.guildName
+    end
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
     local preserveTimePlayed = existingEntry and existingEntry.timePlayed
     local preserveConcentration       = existingEntry and existingEntry.concentration
@@ -1061,6 +1119,10 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     if GetSpecialization and GetSpecializationInfo then
         local idx = GetSpecialization()
         if idx then specID, specName, _, specIcon = GetSpecializationInfo(idx) end
+    end
+    -- Spec index is nil while talents load; a spec is never un-chosen, so keep the stored one.
+    if not specID and existingEntry then
+        specID, specName, specIcon = existingEntry.specID, existingEntry.specName, existingEntry.specIcon
     end
     
     -- Hero Talent (Midnight 12.0+)
@@ -1276,7 +1338,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         self:UpdateCurrencyData()
 
         -- Keep equipped-gear cache fresh for Gear tab.
-        if self.ScanEquippedGear then
+        if self.ScanEquippedGear and ns.Utilities and ns.Utilities:IsModuleEnabled("gear") then
             self:ScanEquippedGear()
         end
     end
@@ -1572,8 +1634,9 @@ function WarbandNexus:UpdateCharacterGold()
 
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()
-    if not name or name == "" or not realm or realm == "" then return false end
+    -- Secret check first: no `not` / `==` on a value that may be secret.
     if (issecretvalue and issecretvalue(name)) or (issecretvalue and issecretvalue(realm)) then return false end
+    if not name or name == "" or not realm or realm == "" then return false end
 
     local legacyKey = U.GetCharacterKey and U:GetCharacterKey(name, realm)
     local storageKey = U.GetCharacterStorageKey and U:GetCharacterStorageKey(self)

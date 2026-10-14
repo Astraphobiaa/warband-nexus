@@ -202,7 +202,11 @@ function Q.Install(ctx)
         f.questMutexNotice:SetJustifyH("LEFT")
         f.questMutexNotice:SetWordWrap(true)
         f.questMutexNotice:SetMaxLines(2)
-        f.questMutexNotice:SetTextColor(0.92, 0.72, 0.42)
+        do -- semantic caution (light-mode aware) instead of a fixed amber
+            local cr, cg, cb = 0.92, 0.72, 0.42
+            if ns.UI_GetSemanticOrangeColor then cr, cg, cb = ns.UI_GetSemanticOrangeColor() end
+            f.questMutexNotice:SetTextColor(cr, cg, cb)
+        end
         f.questMutexNotice:Hide()
         WireMutexHoverTip(questTrackLabel, "_questMutexTipText")
         WireMutexHoverTip(questTrackCheck, "_questMutexTipText")
@@ -423,7 +427,7 @@ function Q.Install(ctx)
         f.questSectionScrollChild = typeListHost
 
         local questSplitLine = questPickSplit:CreateTexture(nil, "ARTWORK")
-        questSplitLine:SetWidth(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(questSplitLine, "vertical", 1) else questSplitLine:SetWidth(1) end
         questSplitLine:SetColorTexture(borderCol[1], borderCol[2], borderCol[3], 0.45)
         questSplitLine:SetPoint("TOPLEFT", typePanel, "TOPRIGHT", math.floor(qcSplitGap * 0.5), 0)
         questSplitLine:SetPoint("BOTTOMLEFT", typePanel, "BOTTOMRIGHT", math.ceil(qcSplitGap * 0.5), 0)
@@ -791,7 +795,7 @@ function Q.Install(ctx)
                         row.labelFs:SetJustifyH("LEFT")
                         local hk = entry.headerKey or ""
                         local ht = LocaleRow(hk, hk)
-                        row.labelFs:SetText("|cffcccccc" .. ht .. "|r")
+                        row.labelFs:SetText(PickerBrightHex() .. ht .. "|r")
                         row:SetHeight(hdrRowH)
                         estH = estH + hdrRowH + 2
                     elseif entry.eventKey and isWorldEvents then

@@ -301,6 +301,8 @@ L["CUSTOM_HEADER_COL_CHARACTER"] = "Personaje"
 L["CUSTOM_HEADER_COL_LEVEL"] = "Nivel"
 L["CUSTOM_HEADER_COL_REALM"] = "Reino"
 L["CUSTOM_HEADER_COL_SECTION"] = "Sección"
+L["CHARS_COL_GUILD"] = "Hermandad"
+L["CHARS_COL_LAST_SEEN"] = "Última conexión"
 L["CUSTOM_HEADER_SECTION_NONE"] = NONE or "Ninguna"
 L["CUSTOM_HEADER_LOCK_TOOLTIP_TITLE"] = "Bloquear sección"
 L["CUSTOM_HEADER_LOCK_TOOLTIP_DESC"] = "Bloquea esta sección para proteger a sus personajes contra traslados accidentales."
@@ -398,6 +400,7 @@ L["EMPTY_WARBAND_BANK_TITLE"] = "No hay objetos en el banco de banda guerrera"
 L["EMPTY_WARBAND_BANK_DESC"] = "Abre tu banco de banda guerrera para escanear objetos.\nLos objetos se guardan en caché automáticamente en la primera visita."
 L["EMPTY_GUILD_BANK_TITLE"] = "No hay objetos en el banco de hermandad"
 L["EMPTY_GUILD_BANK_DESC"] = "Abre tu banco de hermandad para escanear objetos.\nLos objetos se guardan en caché automáticamente en la primera visita."
+L["GUILD_BANK_NOT_SCANNED_ON"] = "Aún sin escanear: abre el banco de hermandad con %s."
 L["GUILD_BANK_SCAN_COMPLETE"] = "Banco de hermandad escaneado: %d objetos. Tooltips de búsqueda WN actualizados."
 L["EMPTY_STORAGE_TITLE"] = "Sin datos de almacenamiento"
 L["EMPTY_STORAGE_DESC"] = "Los objetos se escanean al abrir bancos o bolsas.\nVisita un banco para empezar a rastrear tu almacenamiento."
@@ -1234,23 +1237,43 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V3518"] = [=[v3.5.18 (2026-10-12)
+L["CHANGELOG_V360"] = [=[v3.6.0 (2026-10-14)
 
-Centralized daily and weekly reset system, profession slot preservation and self-healing, and native in-game clock formatting.
+Full support for patch 12.1.5, a sharper and more consistent interface, a reworked Bank tab and a broad performance pass.
 
 Added:
-- Added centralized daily and weekly reset management that automatically refreshes lockouts, plans, and quests on reset.
+- Added animated entrance effects to notifications (glow, icon flash and shine) that scale with how important the alert is.
+- Added a close button to the Try Count window.
 
 Updated:
-- Updated reset countdowns and clock times to natively respect your in-game 12-hour or 24-hour time preferences.
+- Updated the addon for patch 12.1.5.
+- Borders, dividers and lines now stay crisp and the same thickness at any UI scale, and no longer flicker while you resize or scroll a window.
+- Every border in the addon now has the same weight: cards, buttons, dropdowns, search bars, input fields and sliders.
+- Headers, tabs, search bars and content now use the same spacing and alignment on every tab, so pages no longer shift when you switch between them.
+- Tables across the addon share one look: matching row heights, column spacing, sort arrows and status icons.
+- Turning a module off now fully stops its background work, unless another enabled module needs that data.
+- Bank tab reorganized: Bags and Bank show your current character, Warband shows your other characters' items (Personal) and your Warband Bank (Warband), and Guild Bank lists each character's guild with its stored items.
+- All pop-up windows now share the same title bar, close button, Escape-to-close, dragging and UI scale, including Money Logs, Gold Target, Reagent Deposit, Mail Details, Reminders, plan windows and character dialogs.
+- The Custom Plan and Weekly Vault windows have a cleaner, more compact layout with evenly spaced fields.
+- Windows that hold a table now size it to fit, so no column is cut off (Money Logs, Reagent Deposit).
+- Removed the "Recent Obtains" title and tightened the spacing on the Collections Recent view.
+- Removed the icon from the Filter button.
+- Faster tab switching and scrolling, with less memory churn in Storage, tooltips, lists and the Weekly Vault button.
 
 Fixed:
-- Fixed secondary profession slots occasionally being wiped from character data upon logout or partial background scans.
-- Fixed switching between professions inside the Trade Skill window failing to track the newly selected profession.
-- Fixed missing profession slots on alt characters by automatically reconstructing them from saved progression data.
-- Fixed stale Mythic+ keystones and weekly lockouts failing to clear immediately when the weekly reset boundary passes.
-- Fixed an infinite UI redraw loop occurring when opening the Professions tab.
-- Fixed profession rows and column dividers failing to render completely on characters without scanned recipe data.
+- Fixed errors caused by item and coin functions that patch 12.1.5 removed (including Collections scanning errors).
+- Fixed the "Weekly Vault Ready" reminder not appearing at login.
+- Fixed currencies, guild, specialization and item level sometimes showing blank after a temporary data hiccup; the last known value is now kept.
+- Fixed Mythic+ weekly best not showing correctly.
+- Fixed Bank rows overlapping after switching tabs, and the Personal section expanding or collapsing everything at once.
+- Fixed the Guild Bank losing items from tabs you had not opened during that visit, and characters' guilds not being listed.
+- Fixed the To-Do empty-state card being wider than the header and search bar.
+- Fixed the Money Logs table not filling the window and the Amount column being cut off.
+- Fixed the Gold Target input field having no border.
+- Fixed the Gear tab character selector looking thinner than the buttons next to it.
+- Fixed an invisible layer that blocked your next click after confirming character tracking.
+- Fixed the Mail Details window leaving an invisible layer behind when reopened.
+- Fixed search box hint text not hiding when you click into the box.
 
 CurseForge: Warband Nexus]=]
 

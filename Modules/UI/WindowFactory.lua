@@ -5,6 +5,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
@@ -71,6 +73,8 @@ end
 ---@field iconIsAtlas boolean|nil If true, icon is an atlas name (default false)
 ---@field onClose function|nil Callback when dialog closes
 ---@field preventDuplicates boolean|nil Prevent multiple instances (default true)
+---@field persistent boolean|nil Reusable shell built once by the caller: Close only hides (overlay, scale
+---  registration, WindowManager entry and the global name stay). Caller caches the frame and re-Shows it.
 
 ---Creates a standardized external window/dialog with modern UI features
 ---@param config ExternalWindowConfig Configuration table
@@ -244,11 +248,11 @@ local function CreateExternalWindow(config)
         if not closeBtn then AbortIncompleteExternalWindow() return nil end
         closeBtn:SetPoint("RIGHT", -8, 0)
 
-        -- Close icon using WoW atlas
+        -- Close icon (IconRegistry "close": WN stroke X, tinted below)
         local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
-        closeIcon:SetAtlas("uitools-icon-close")
+        ns.UI_SetIcon(closeIcon, "close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
 
         -- Hover effects
@@ -276,7 +280,16 @@ local function CreateExternalWindow(config)
     if not closeBtn then AbortIncompleteExternalWindow() return nil end
     
     -- Close function (onClose called once here only; OnHide must not call it again)
+    local persistent = (config.persistent == true)
     local function CloseDialog()
+        if persistent then
+            -- Reused shell: OnHide below hides the click-outside overlay; OnShow brings it back.
+            if config.onClose then
+                config.onClose()
+            end
+            dialog:Hide()
+            return
+        end
         local bin = ns.UI_RecycleBin
         local overlay = dialog._clickOutsideFrame
         if overlay then
@@ -374,6 +387,50 @@ local function CreateExternalWindow(config)
     return dialog, contentFrame, header
 end
 
+--- Re-apply theme-dependent shell chrome (frame fill, header band, body fill) on a live external window.
+--- Mirrors the create path above; for persistent shells that survive a theme toggle.
+---@param dialog Frame Frame returned by CreateExternalWindow
+local function RefreshExternalWindowChrome(dialog)
+    if not dialog or not COLORS then return end
+    local shellBg = COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
+    local useClassicShell = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    if useClassicShell and ns.UI_ApplyBlizzardDialogBackdrop then
+        local classicBg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bg)
+            or shellBg
+        ns.UI_ApplyBlizzardDialogBackdrop(dialog, classicBg)
+    elseif ApplyMainWindowShellFill then
+        ApplyMainWindowShellFill(dialog, shellBg)
+    end
+
+    local header = dialog._wnExternalHeader
+    if header and useClassicShell and ns.UI_ApplyClassicInteriorFlatFill then
+        ns.UI_ApplyClassicInteriorFlatFill(header, { 0, 0, 0, 0 })
+    elseif header and ApplyVisuals
+            and (not ns.UI_CanApplyCustomChrome or ns.UI_CanApplyCustomChrome(header)) then
+        local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
+            or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+        local headerBg = (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
+            or (COLORS.accentDark and { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 })
+            or COLORS.bgCard
+        ApplyVisuals(header, headerBg, headerBorder)
+    end
+
+    local contentFill = dialog._wnExternalContentFill
+    if contentFill then
+        if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+            contentFill:Hide()
+        else
+            local viewportBg = COLORS.surfaceViewport or COLORS.bg
+            contentFill:SetColorTexture(viewportBg[1], viewportBg[2], viewportBg[3], viewportBg[4] or 0.98)
+            contentFill:Show()
+        end
+    end
+
+    if ns.UI_RaiseMainWindowShellBorderOverlay then
+        ns.UI_RaiseMainWindowShellBorderOverlay(dialog)
+    end
+end
+
 -- ACHIEVEMENT CRITERIA POPUP (Shared, pooled frame)
 
 local achievementPopup = nil  -- Single shared frame, reused across clicks
@@ -408,6 +465,10 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         local popup = Factory:CreateContainer(UIParent, POPUP_WIDTH, 180, false, "WarbandNexus_AchievementPopup")
         if not popup then return end
         popup:EnableMouse(true)
+        -- Follow profile.uiScale like CreateExternalWindow shells (pooled: registered once).
+        if ns.UI_RegisterScaledFrame then
+            ns.UI_RegisterScaledFrame(popup)
+        end
 
         -- WindowManager: standardized strata/level + ESC + combat hide
         if ns.WindowManager then
@@ -485,7 +546,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         
         -- Separator line
         popup._separator = popup:CreateTexture(nil, "ARTWORK")
-        popup._separator:SetHeight(1)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(popup._separator, "horizontal", 1) else popup._separator:SetHeight(1) end
         popup._separator:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
         
         -- Description
@@ -549,8 +610,8 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     
     -- Title: status icon + achievement name + (Planned) indicator
     local statusIcon = completed
-        and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14:0:0|t"
-        or  "|TInterface\\RaidFrame\\ReadyCheck-NotReady:14:14:0:0|t"
+        and ns.UI_GetIconMarkup("status_ok", 14, 14, 0, 0)
+        or  ns.UI_GetIconMarkup("status_fail", 14, 14, 0, 0)
     local nameColor = completed and SemanticGreenHex() or ThemeTextHex("Bright")
     local plannedTag = ""
     local WarbandNexus = ns.WarbandNexus
@@ -716,6 +777,7 @@ end
 -- NAMESPACE EXPORTS
 
 ns.UI_CreateExternalWindow = CreateExternalWindow
+ns.UI_RefreshExternalWindowChrome = RefreshExternalWindowChrome
 ns.UI_ShowAchievementPopup = ShowAchievementPopup
 ns.UI_HideAchievementPopup = HideAchievementPopup
 

@@ -4,6 +4,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
@@ -104,8 +106,10 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     
     if not dialog then return end  -- Already open or creation failed
     
-    local yOffset = 12
-    local PADDING = 12
+    -- One side pad for every popup (UI_LAYOUT.PAGE_STACK.SIDE); body starts one pad below the header.
+    local pageStack = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK) or {}
+    local PADDING = pageStack.SIDE or 12
+    local yOffset = PADDING
     local contentWidth = contentFrame:GetWidth()
     
     -- Enabled checkbox (using shared themed widget)
@@ -289,12 +293,11 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     inputBox:SetAutoFocus(false)
     inputBox:SetMaxLetters(15)
     inputBox:SetNumeric(false)
+    -- Factory:CreateEditBox is bare; shared input chrome (border quartet, theme-refreshed).
+    if ns.UI_ApplyInputChrome then
+        ns.UI_ApplyInputChrome(inputBox)
+    end
     if not Factory or not Factory.CreateEditBox then
-        if ApplyVisuals then
-            local chrome = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-                or { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1 }
-            ApplyVisuals(inputBox, chrome, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
-        end
         inputBox:SetFontObject(GameFontHighlight)
         if FontManager and FontManager.ApplyFontToEditBox then
             FontManager:ApplyFontToEditBox(inputBox, "body")
@@ -453,7 +456,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         local extDlgHeaderH = mainShellLayout.HEADER_BAR_HEIGHT
             or mainShellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT
             or 40
-        local bodyH = yOffset + summaryCard:GetHeight() + PADDING + 12
+        local bodyH = yOffset + summaryCard:GetHeight() + (pageStack.BOTTOM_PAD or 12)
         dialog:SetHeight(extDlgHeaderH + bodyH)
     end
     
@@ -467,8 +470,8 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         local charSettings = self.db.char.goldManagement
         local usingChar = charSettings and charSettings.perCharacter
         
-        local checkMark = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t "
-        local crossMark = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t "
+        local checkMark = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) .. " "
+        local crossMark = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0) .. " "
         
         -- Profile column
         local profLabel = (L and L["GOLD_MGMT_PROFILE_TITLE"]) or "Profile"
@@ -537,10 +540,8 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         local ac = COLORS.accent
         ns.UI_SetTextColorRole(modeLabel, "Bright")
         ns.UI_SetTextColorRole(targetLabel, "Bright")
-        if inputBox and ApplyVisuals then
-            local chrome = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-                or { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1 }
-            ApplyVisuals(inputBox, chrome, { ac[1], ac[2], ac[3], 0.6 })
+        if inputBox and ns.UI_ApplyInputChrome then
+            ns.UI_ApplyInputChrome(inputBox)
         end
         if sep and sep.Show then
             sep:Show()

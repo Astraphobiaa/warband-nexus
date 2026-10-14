@@ -13,6 +13,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
@@ -359,7 +361,7 @@ local function GetAchievementRequirementsText(achievementID)
         for i = 1, #summary.criteria do
             local row = summary.criteria[i]
             if row.hasName and row.name then
-                local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                local icon = row.completed and ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) or ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
                 local color = row.completed and (PLAN_COLORS.completed or "|cff44ff44") or PCol("incomplete")
                 local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
                 parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(row.name) .. "|r" .. progress
@@ -1217,13 +1219,20 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
     local TooltipService = ns.TooltipService
     if not TooltipService then return end
 
-    local lblR, lblG, lblB = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.6, 0.6, 0.6
-    local bodyR, bodyG, bodyB = (ns.UI_GetTooltipBodyColor and ns.UI_GetTooltipBodyColor()) or 0.8, 0.8, 0.8
-    local noteR, noteG, noteB = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
-    local goldR, goldG, goldB = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.82, 0
-    local greenR, greenG, greenB = (ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor()) or 0.3, 1, 0.3
-    local brightR, brightG, brightB = (ns.UI_GetTextRoleRGB and ns.UI_GetTextRoleRGB("Bright")) or 1, 1, 1
-    local reqR, reqG, reqB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 1, 0.5, 0.5
+    local lblR, lblG, lblB = 0.6, 0.6, 0.6
+    if ns.UI_GetTooltipLabelColor then lblR, lblG, lblB = ns.UI_GetTooltipLabelColor() end
+    local bodyR, bodyG, bodyB = 0.8, 0.8, 0.8
+    if ns.UI_GetTooltipBodyColor then bodyR, bodyG, bodyB = ns.UI_GetTooltipBodyColor() end
+    local noteR, noteG, noteB = 0.7, 0.7, 0.7
+    if ns.UI_GetTooltipDescColor then noteR, noteG, noteB = ns.UI_GetTooltipDescColor() end
+    local goldR, goldG, goldB = 1, 0.82, 0
+    if ns.UI_GetSemanticGoldColor then goldR, goldG, goldB = ns.UI_GetSemanticGoldColor() end
+    local greenR, greenG, greenB = 0.3, 1, 0.3
+    if ns.UI_GetSemanticGreenColor then greenR, greenG, greenB = ns.UI_GetSemanticGreenColor() end
+    local brightR, brightG, brightB = 1, 1, 1
+    if ns.UI_GetTextRoleRGB then brightR, brightG, brightB = ns.UI_GetTextRoleRGB("Bright") end
+    local reqR, reqG, reqB = 1, 0.5, 0.5
+    if ns.UI_GetSemanticRedColor then reqR, reqG, reqB = ns.UI_GetSemanticRedColor() end
     local zoneR, zoneG, zoneB = greenR, greenG, greenB
     local rewardLblR, rewardLblG, rewardLblB = greenR, greenG, greenB
     local rewardValR, rewardValG, rewardValB = greenR, greenG, greenB
@@ -1434,6 +1443,8 @@ local function RefreshTrackerContentImmediate()
     local filtered = {}
     local fullWidthPlans = {}
     local trackerEligibleTotal = 0
+    -- Pooled list-row keys still eligible this pass (rows for other keys are evicted below).
+    local eligibleRowKeys = {}
     local planDoneMemo = {}
     local function memoIsPlanDone(plan)
         local v = planDoneMemo[plan]
@@ -1456,6 +1467,7 @@ local function RefreshTrackerContentImmediate()
             -- unknown type
         elseif not memoIsPlanDone(plan) then
             trackerEligibleTotal = trackerEligibleTotal + 1
+            if plan.id ~= nil then eligibleRowKeys[plan.id] = true end
             if currentCategoryKey == nil or plan.type == currentCategoryKey then
                 filtered[#filtered + 1] = plan
             end
@@ -1479,13 +1491,21 @@ local function RefreshTrackerContentImmediate()
         return aID < bID
     end)
 
-    -- Clear existing children (frames AND their FontStrings)
+    -- Clear existing children (frames AND their FontStrings). Pooled list rows / empty-state frame
+    -- (`_wnTrackerPooled`) are only hidden here and re-bound below; everything else is parked.
     local bin = ns.UI_RecycleBin
     local children = { scrollChild:GetChildren() }
     for ci = 1, #children do
         local c = children[ci]
         c:Hide()
-        if bin then c:SetParent(bin) else c:SetParent(nil) end
+        if not c._wnTrackerPooled then
+            if bin then c:SetParent(bin) else c:SetParent(nil) end
+        end
+    end
+    local rowPool = scrollChild._wnTrackerRowPool
+    if not rowPool then
+        rowPool = {}
+        scrollChild._wnTrackerRowPool = rowPool
     end
     -- Also clear any orphan regions (FontStrings created directly on scrollChild)
     local regions = { scrollChild:GetRegions() }
@@ -1504,18 +1524,31 @@ local function RefreshTrackerContentImmediate()
     end
 
     if #fullWidthPlans == 0 and #filtered == 0 then
-        local emptyFrame = Factory and Factory:CreateContainer(scrollChild, width, 50, false)
+        local emptyFrame = scrollChild._wnTrackerEmptyFrame
+        local empty = emptyFrame and emptyFrame._wnEmptyText
         if not emptyFrame then
-            emptyFrame = CreateFrame("Frame", nil, scrollChild)
-            emptyFrame:SetSize(width, 50)
+            emptyFrame = Factory and Factory:CreateContainer(scrollChild, width, 50, false)
+            if not emptyFrame then
+                emptyFrame = CreateFrame("Frame", nil, scrollChild)
+            end
+            emptyFrame._wnTrackerPooled = true
+            scrollChild._wnTrackerEmptyFrame = emptyFrame
         end
-        local empty = FontManager:CreateFontString(emptyFrame, "body", "OVERLAY")
-        empty:SetPoint("TOPLEFT", PADDING, -12)
+        if emptyFrame:GetParent() ~= scrollChild then
+            emptyFrame:SetParent(scrollChild)
+        end
+        emptyFrame:SetSize(width, 50)
+        if not empty then
+            empty = FontManager:CreateFontString(emptyFrame, "body", "OVERLAY")
+            empty:SetPoint("TOPLEFT", PADDING, -12)
+            empty:SetWordWrap(true)
+            empty:SetJustifyH("CENTER")
+            emptyFrame._wnEmptyText = empty
+        end
         empty:SetWidth(math.max(1, width))
-        empty:SetWordWrap(true)
-        empty:SetJustifyH("CENTER")
         local noPlansText = (ns.L and ns.L["NO_PLANS_IN_CATEGORY"]) or "No plans in this category.\nAdd plans from the Plans tab."
         empty:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff666666") .. noPlansText .. "|r")
+        emptyFrame:Show()
         trackerRowOrder[#trackerRowOrder + 1] = emptyFrame
     else
         for i = 1, #filtered do
@@ -1659,13 +1692,38 @@ local function RefreshTrackerContentImmediate()
                 onExpandPopulate = onExpandPopulate,
             }
 
-            local row = CreateExpandableRow(scrollChild, width, collapsedH, rowData, isExpanded, function(expanded)
-                if plan.type == "achievement" and plan.achievementID then
-                    expandedAchievements[plan.achievementID] = expanded
-                else
-                    expandedPlans[plan.id] = expanded
+            -- POOLING by plan id: collapsed rows with unchanged expandability are re-bound in place
+            -- (ns.UI_RebindTodoBrowseRow); expanded rows or changed canExpand are recreated (old path).
+            local poolKey = plan.id
+            local canExpandKey = canExpand and true or false
+            local row = (poolKey ~= nil) and rowPool[poolKey] or nil
+            if row and (row.isExpanded or isExpanded or row._wnTrackerCanExpand ~= canExpandKey
+                or not ns.UI_RebindTodoBrowseRow) then
+                rowPool[poolKey] = nil
+                row._wnTrackerPooled = nil
+                row:Hide()
+                if bin then row:SetParent(bin) else row:SetParent(nil) end
+                row = nil
+            end
+            if row then
+                if row:GetParent() ~= scrollChild then
+                    row:SetParent(scrollChild)
                 end
-            end)
+                ns.UI_RebindTodoBrowseRow(row, width, rowData)
+            else
+                row = CreateExpandableRow(scrollChild, width, collapsedH, rowData, isExpanded, function(expanded)
+                    if plan.type == "achievement" and plan.achievementID then
+                        expandedAchievements[plan.achievementID] = expanded
+                    else
+                        expandedPlans[plan.id] = expanded
+                    end
+                end)
+                if row and poolKey ~= nil then
+                    row._wnTrackerPooled = true
+                    row._wnTrackerCanExpand = canExpandKey
+                    rowPool[poolKey] = row
+                end
+            end
             if row then
             -- ExpandableRowFactory paints unified To-Do card chrome; do not stack row/icon borders (PlansUI parity).
 
@@ -1684,37 +1742,73 @@ local function RefreshTrackerContentImmediate()
                 end
                 rightOffset = rightOffset + w + ACTION_GAP
             end
-            local delBtn = ns.UI_CreateIconActionButton and ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, "delete", {
-                frameLevelOffset = 10,
-                onClick = function()
-                    WarbandNexus:RemovePlan(plan.id)
-                    RefreshTrackerContent()
-                end,
-                tooltipTitle = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
-                tooltipAnchor = "ANCHOR_TOP",
-            })
-            if delBtn then anchorHeaderAction(delBtn) end
-            if plan.type == "custom" and not memoIsPlanDone(plan) and ns.UI_CreateIconActionButton then
-                local completeBtn = ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, "complete", {
+            -- Header action buttons are cached on the (pooled) row; click handlers read row state so a
+            -- re-bound row always acts on its current plan.
+            row._wnTrackerPlanId = plan.id
+            row._wnTrackerPlanDone = memoIsPlanDone(plan)
+            local delBtn = row._wnTrackerDelBtn
+            if not delBtn and ns.UI_CreateIconActionButton then
+                delBtn = ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, "delete", {
                     frameLevelOffset = 10,
                     onClick = function()
-                        if WarbandNexus.CompleteCustomPlan and plan.id then
-                            WarbandNexus:CompleteCustomPlan(plan.id)
-                            RefreshTrackerContent()
-                        end
+                        WarbandNexus:RemovePlan(row._wnTrackerPlanId)
+                        RefreshTrackerContent()
                     end,
-                    tooltipTitle = (ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan",
+                    tooltipTitle = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
                     tooltipAnchor = "ANCHOR_TOP",
                 })
-                if completeBtn then anchorHeaderAction(completeBtn) end
+                row._wnTrackerDelBtn = delBtn
+            end
+            if delBtn then
+                delBtn:Show()
+                anchorHeaderAction(delBtn)
+            end
+            local completeBtn = row._wnTrackerCompleteBtn
+            if plan.type == "custom" and not memoIsPlanDone(plan) and ns.UI_CreateIconActionButton then
+                if not completeBtn then
+                    completeBtn = ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, "complete", {
+                        frameLevelOffset = 10,
+                        onClick = function()
+                            local pid = row._wnTrackerPlanId
+                            if WarbandNexus.CompleteCustomPlan and pid then
+                                WarbandNexus:CompleteCustomPlan(pid)
+                                RefreshTrackerContent()
+                            end
+                        end,
+                        tooltipTitle = (ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan",
+                        tooltipAnchor = "ANCHOR_TOP",
+                    })
+                    row._wnTrackerCompleteBtn = completeBtn
+                end
+                if completeBtn then
+                    completeBtn:Show()
+                    anchorHeaderAction(completeBtn)
+                end
+            elseif completeBtn then
+                completeBtn:Hide()
+            end
+            local achPin = row._wnTrackerAchPin
+            if achPin and row._wnTrackerAchPinID ~= plan.achievementID then
+                achPin:Hide()
+                achPin = nil
+                row._wnTrackerAchPin = nil
             end
             if plan.type == "achievement" and plan.achievementID and Factory.CreateAchievementTrackPinButton then
-                local achPin = Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
-                    size = ACTION_SIZE,
-                    frameLevelOffset = 30,
-                    isDisabled = function() return memoIsPlanDone(plan) end,
-                })
-                if achPin then anchorHeaderAction(achPin) end
+                if not achPin then
+                    achPin = Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
+                        size = ACTION_SIZE,
+                        frameLevelOffset = 30,
+                        isDisabled = function() return row._wnTrackerPlanDone == true end,
+                    })
+                    row._wnTrackerAchPin = achPin
+                    row._wnTrackerAchPinID = plan.achievementID
+                end
+                if achPin then
+                    achPin:Show()
+                    anchorHeaderAction(achPin)
+                end
+            elseif achPin then
+                achPin:Hide()
             end
             if ns.UI_PlansSyncTitleRightInset then
                 ns.UI_PlansSyncTitleRightInset(row, rightOffset)
@@ -1725,6 +1819,16 @@ local function RefreshTrackerContentImmediate()
             trackerRowOrder[#trackerRowOrder + 1] = row
         end
     end
+    end
+
+    -- Evict pooled rows whose plan is gone / completed (bounded pool = current eligible plans).
+    for key, prow in pairs(rowPool) do
+        if not eligibleRowKeys[key] then
+            rowPool[key] = nil
+            prow._wnTrackerPooled = nil
+            prow:Hide()
+            if bin then prow:SetParent(bin) else prow:SetParent(nil) end
+        end
     end
 
     RepositionTrackerRows()
@@ -2179,7 +2283,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- One chrome pair for all three header utility buttons (close / collapse / gear), matching the
     -- main window exactly: UI_GetCloseButtonBackdrop + UI_GetNavRailDividerColor.
     local chromeBorder = GetUtilityButtonBorder()
-    local closeR, closeG, closeB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 0.9, 0.3, 0.3
+    local closeR, closeG, closeB = 0.9, 0.3, 0.3
+    if ns.UI_GetSemanticRedColor then closeR, closeG, closeB = ns.UI_GetSemanticRedColor() end
     closeBtn = CreateTrackerHeaderIconButton(header, utilityBtnSize)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -headerUtilityRight, 0)
     if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals then
@@ -2188,7 +2293,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local closeTex = closeBtn:CreateTexture(nil, "ARTWORK")
     closeTex:SetSize(16, 16)
     closeTex:SetPoint("CENTER")
-    closeTex:SetAtlas("uitools-icon-close")
+    ns.UI_SetIcon(closeTex, "close")
     closeTex:SetVertexColor(closeR, closeG, closeB)
     closeBtn._wnCloseTex = closeTex
     closeBtn:SetScript("OnEnter", function()
@@ -2224,8 +2329,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local function SetCollapseChevron(isCollapsed)
         local key = isCollapsed and "chevron_down" or "chevron_up"
         if not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(collapseTex, key)) then
-            collapseTex:SetAtlas(isCollapsed and "glues-characterSelect-icon-arrowDown-small-hover"
-                or "glues-characterSelect-icon-arrowUp-small-hover")
+            ns.UI_SetIcon(collapseTex, key)
         end
         -- Tint through the shared header-utility helper, not a hand-picked text color.
         ApplyTrackerUtilityIconStyle(collapseTex, false)
@@ -2293,10 +2397,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local gearTex = gearBtn:CreateTexture(nil, "ARTWORK")
     gearTex:SetSize(16, 16)
     gearTex:SetPoint("CENTER")
-    -- Same gear glyph the Vault Tracker header uses (VaultButton_Table.lua SetNormalAtlas
-    -- "mechagon-projects"). The old Trade_Engineering spell icon, desaturated, rendered as a
-    -- muddy blob that matched neither the chevron next to it nor the other windows.
-    if not (gearTex.SetAtlas and pcall(gearTex.SetAtlas, gearTex, "mechagon-projects", false)) then
+    -- IconRegistry "settings" (questlog-icon-setting; "mechagon-projects" has no 12.1.5 FrameXML ref).
+    -- The old Trade_Engineering spell icon, desaturated, rendered as a muddy blob that matched
+    -- neither the chevron next to it nor the other windows.
+    if not ns.UI_SetIcon(gearTex, "settings") then
         gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
         gearTex:SetTexCoord(0.06, 0.94, 0.06, 0.94)
         gearTex:SetDesaturated(true)

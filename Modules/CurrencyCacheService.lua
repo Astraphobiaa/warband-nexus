@@ -884,8 +884,11 @@ local function FetchCurrencyFromAPI(currencyID)
     local maxWeekly = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
     local normCap = NormalizationCapFromCurrencyInfo(currencyID, info)
     local rawQty = SafeCurrencyNumber(info.quantity)
-    if rawQty == nil then rawQty = 0 end
-    local normalizedQuantity = NormalizeQuantity(rawQty, normCap, info.useTotalEarnedForMaxQty)
+    -- nil/secret quantity = unknown, NOT zero: writers keep the last stored value.
+    local normalizedQuantity = nil
+    if rawQty ~= nil then
+        normalizedQuantity = NormalizeQuantity(rawQty, normCap, info.useTotalEarnedForMaxQty)
+    end
     -- Display cap: weekly cap for Dawncrests / coffer shards (progress), season cap otherwise.
     local displayCap
     if IsSeasonProgressSplitCurrency(currencyID, info) and maxWeekly > 0 then
@@ -1006,9 +1009,11 @@ local function UpdateSingleCurrency(currencyID, eventHint)
         return false
     end
     
-    local mergedQty, usedEventHint = MergeCurrencyQuantityWithEventHint(oldQuantity, currencyData.quantity or 0, eventHint)
+    local liveQty = currencyData.quantity
+    if liveQty == nil then liveQty = oldQuantity end  -- unreadable: keep the stored value
+    local mergedQty, usedEventHint = MergeCurrencyQuantityWithEventHint(oldQuantity, liveQty, eventHint)
     local newQuantity = mergedQty
-    if usedEventHint then
+    if usedEventHint or currencyData.quantity == nil then
         currencyData.quantity = newQuantity
     end
     local te = currencyData.totalEarned
@@ -1390,6 +1395,9 @@ end
 ---Perform full scan of all currencies (Direct DB architecture).
 ---Builds a proper header tree from Blizzard's API hierarchy (supports Midnight+).
 function CurrencyCache:PerformFullScan(bypassThrottle)
+    -- Set when the header tree missed listed currencies: write without wiping so the
+    -- missed rows keep their last good quantity until the retry scan completes.
+    local hierarchyIncomplete = false
     DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan triggered (bypass=" .. tostring(bypassThrottle) .. ")")
     if not bypassThrottle and InCombatLockdown and InCombatLockdown() then
         self.pendingPostCombatScan = true
@@ -1512,6 +1520,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
             DebugPrint("|cffFF6B6B[CurrencyCache]|r Incomplete hierarchy: " .. missing
                 .. " listed currencies had no header — skipping prune, retrying scan")
             apiListed = nil
+            hierarchyIncomplete = true
             if not self.hierarchyRetryPending then
                 self.hierarchyRetryPending = true
                 C_Timer.After(3, function()
@@ -1566,7 +1575,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     -- as "gains" (see user report: full Dawncrest totals printed on every login).
     -- Subsequent scans (event-driven during play) leave the flag false and emit normally.
     local wasInitialScan = CurrencyCache.suppressCurrencyGainChatUntilScan
-    self:UpdateAll(currencyDataArray)
+    self:UpdateAll(currencyDataArray, hierarchyIncomplete)
     if wasInitialScan then
         CurrencyCache.suppressCurrencyGainChatUntilScan = false
     end
@@ -1586,7 +1595,8 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
 end
 
 ---Update all currencies in DB (lean format: only quantity per currency).
-function CurrencyCache:UpdateAll(currencyDataArray)
+---@param keepExisting boolean|nil true = merge only (partial scan); do not wipe this character's rows
+function CurrencyCache:UpdateAll(currencyDataArray, keepExisting)
     if not currencyDataArray or #currencyDataArray == 0 then
         return false
     end
@@ -1602,12 +1612,24 @@ function CurrencyCache:UpdateAll(currencyDataArray)
     end
 
     -- Clear ONLY current character's data (preserve other characters)
+    -- Rows whose quantity was unreadable this scan keep their stored value across the wipe.
+    local keptQty
+    local oldRows = db.currencies[currentCharKey]
+    if oldRows then
+        for i = 1, #currencyDataArray do
+            local data = currencyDataArray[i]
+            if data.currencyID and data.quantity == nil and oldRows[data.currencyID] ~= nil then
+                keptQty = keptQty or {}
+                keptQty[data.currencyID] = oldRows[data.currencyID]
+            end
+        end
+    end
     if not db.currencies[currentCharKey] then
         db.currencies[currentCharKey] = {}
-    else
+    elseif not keepExisting then
         wipe(db.currencies[currentCharKey])
     end
-    if db.totalEarned and db.totalEarned[currentCharKey] then
+    if not keepExisting and db.totalEarned and db.totalEarned[currentCharKey] then
         wipe(db.totalEarned[currentCharKey])
     end
     
@@ -1619,7 +1641,9 @@ function CurrencyCache:UpdateAll(currencyDataArray)
     for i = 1, #currencyDataArray do
         local data = currencyDataArray[i]
         if data.currencyID then
-            db.currencies[currentCharKey][data.currencyID] = data.quantity or 0
+            local qty = data.quantity
+            if qty == nil then qty = (keptQty and keptQty[data.currencyID]) or 0 end
+            db.currencies[currentCharKey][data.currencyID] = qty
             local teFull = data.totalEarned
             local rowApi = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(data.currencyID)
             if teFull ~= nil and type(teFull) == "number" and rowApi and IsSeasonProgressSplitCurrency(data.currencyID, rowApi) then

@@ -1,6 +1,8 @@
 --[[ Warband Nexus - Easy Access - VaultButton.lua entry ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = assert(ns.VaultButton)
 local WarbandNexus = ns.WarbandNexus
 local S = M.state
@@ -392,7 +394,7 @@ function M.BuildMenu()
             f.eaSummarySep = M.VBCreateEasyAccessSeparator(f, lay.inset, lay.inset, sepY)
         else
             local summarySep = f:CreateTexture(nil, "BORDER")
-            summarySep:SetHeight(1)
+            if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(summarySep, "horizontal", 1) else summarySep:SetHeight(1) end
             summarySep:SetPoint("TOPLEFT", f, "TOPLEFT", lay.inset, sepY)
             summarySep:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.inset, sepY)
             if M.VBIsClassicChrome and M.VBIsClassicChrome() then
@@ -597,10 +599,14 @@ function M.BuildButton()
 
     -- Polled hover detection (OnEnter/OnLeave can flicker when alpha=0 with hideUntilMouseover,
     -- and Blizzard mouse events don't always fire reliably for low-alpha frames). Throttled to
-    -- 100ms to keep cost trivial.
+    -- 100ms to keep cost trivial. Interaction-scoped: OnEnter (button or badge) arms the poll and
+    -- it detaches itself once the cursor is off every hit region and hover state is cleared.
+    -- Mouse-enabled frames keep receiving OnEnter at alpha 0 (hideUntilMouseover), so arming
+    -- only needs the enter edge; the poll keeps the flicker-proof state machine.
     btn._hoverPoll = 0
     btn._hovering  = false
-    btn:SetScript("OnUpdate", function(self, elapsed)
+    local HoverPollOnUpdate
+    HoverPollOnUpdate = function(self, elapsed)
         self._hoverPoll = (self._hoverPoll or 0) + elapsed
         if self._hoverPoll < 0.1 then return end
         self._hoverPoll = 0
@@ -647,7 +653,21 @@ function M.BuildButton()
             WNTooltipHide()
             if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
         end
-    end)
+        if not over and not self._hovering and not self._hoveringBadge then
+            self._hoverPollActive = false
+            self:SetScript("OnUpdate", nil)
+        end
+    end
+    local function ArmHoverPoll()
+        if btn._hoverPollActive then return end
+        btn._hoverPollActive = true
+        btn._hoverPoll = 0.1  -- evaluate on the next frame (same latency as the old always-on poll)
+        btn:SetScript("OnUpdate", HoverPollOnUpdate)
+    end
+    btn:HookScript("OnEnter", ArmHoverPoll)
+    -- ScriptRegion OnEnter (warcraft.wiki.gg UIHANDLER_OnEnter; HasScript lists OnEnter on ScriptRegion).
+    if badgeBg.HasScript and badgeBg:HasScript("OnEnter") then badgeBg:HookScript("OnEnter", ArmHoverPoll) end
+    if badge.HasScript and badge:HasScript("OnEnter") then badge:HookScript("OnEnter", ArmHoverPoll) end
 
     btn:SetScript("OnDragStart", function(self)
         dragged = true

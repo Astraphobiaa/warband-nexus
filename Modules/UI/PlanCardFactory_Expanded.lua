@@ -5,6 +5,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
 
@@ -108,11 +110,7 @@ function PlanCardFactory:CreateExpandButton(card, isExpanded)
     -- Create arrow icon texture
     local arrowTexture = expandButton:CreateTexture(nil, "OVERLAY")
     arrowTexture:SetAllPoints(expandButton)
-    if isExpanded then
-        arrowTexture:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
-    else
-        arrowTexture:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
-    end
+    ns.UI_SetIcon(arrowTexture, isExpanded and "chevron_up" or "chevron_down")
     expandButton.arrowTexture = arrowTexture
     
     card._expandButton = expandButton
@@ -126,11 +124,7 @@ end
 ]]
 function PlanCardFactory:UpdateExpandButtonIcon(card, isExpanded)
     if card._expandButton and card._expandButton.arrowTexture then
-        if isExpanded then
-            card._expandButton.arrowTexture:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
-        else
-            card._expandButton.arrowTexture:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
-        end
+        ns.UI_SetIcon(card._expandButton.arrowTexture, isExpanded and "chevron_up" or "chevron_down")
     end
 end
 
@@ -374,9 +368,9 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 iconLabel:SetWidth(ICON_COL_WIDTH)
                 iconLabel:SetJustifyH("CENTER")
                 if data.completed then
-                    iconLabel:SetText("|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t")
+                    iconLabel:SetText(ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0))
                 else
-                    iconLabel:SetText("|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t")
+                    iconLabel:SetText(ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0))
                 end
                 
                 if linkedID and ShowAchievementPopup and not data.completed then

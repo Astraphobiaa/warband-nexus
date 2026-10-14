@@ -301,6 +301,36 @@ function Utilities:IsModuleEnabled(moduleName)
     return modules[moduleName] ~= false
 end
 
+--- True when at least one of the given module keys is enabled (varargs; no table alloc).
+--- Used to keep a shared producer running while any consumer module is on.
+function Utilities:IsAnyModuleEnabled(...)
+    local n = select("#", ...)
+    for i = 1, n do
+        local key = select(i, ...)
+        if key and self:IsModuleEnabled(key) then
+            return true
+        end
+    end
+    return false
+end
+
+--- Vault / M+ / lockout producer gate: PvE tab, Plans (weekly vault plans), the always-on
+--- VaultButton (profile.vaultButton.enabled) and the "Weekly Vault Ready" toast all consume
+--- pveCache vault data.
+function Utilities:IsPvEVaultConsumerEnabled()
+    if self:IsAnyModuleEnabled("pve", "plans") then
+        return true
+    end
+    local db = ns.WarbandNexus and ns.WarbandNexus.db
+    local profile = db and db.profile
+    local vb = profile and profile.vaultButton
+    if vb and vb.enabled then
+        return true
+    end
+    local notifs = profile and profile.notifications
+    return (notifs and notifs.enabled and notifs.showVaultReminder ~= false) and true or false
+end
+
 -- MIDNIGHT 12.0 SECRET-VALUE GUARDS
 -- WoW 12.0 (Midnight) can return "secret" values from secure APIs; using them
 -- in string ops, comparisons, or as table keys causes ADDON_ACTION_FORBIDDEN.

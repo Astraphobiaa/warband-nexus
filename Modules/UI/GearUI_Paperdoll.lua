@@ -4,6 +4,12 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemGem = C_Item.GetItemGem
+local GetItemIcon = C_Item.GetItemIconByID
 local WarbandNexus, FontManager = ns.WarbandNexus, ns.FontManager
 
 local PD = {} -- module fn table (WN-CODE-lua-local-limit: keep chunk locals under ~120)
@@ -941,7 +947,7 @@ function PD.ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
             end
         end)
     end
-    local stats = (GetItemStats and GetItemStats(itemLink)) or {}
+    local stats = (C_Item.GetItemStats and C_Item.GetItemStats(itemLink)) or {}
     local emptyFromStats = 0
     for k, v in pairs(stats) do
         if type(k) == "string" and not (issecretvalue and issecretvalue(k)) and string.find(k, "EMPTY_SOCKET_", 1, true) then
@@ -1416,7 +1422,7 @@ function PD.GearSlotApplyDeferredEnchantGemInspect(btn)
     end
 
     st.hasEnchant = PD.ItemLinkHasEnchantment(link)
-    local stats = GetItemStats and GetItemStats(link) or {}
+    local stats = (C_Item.GetItemStats and C_Item.GetItemStats(link)) or {}
     st.isMissingGem = false
     for k, v in pairs(stats) do
         if type(k) == "string" and not (issecretvalue and issecretvalue(k)) and string.find(k, "EMPTY_SOCKET_", 1, true) then
@@ -1920,7 +1926,8 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
         ilvlFs:SetPoint("LEFT", bar, "LEFT", 0, 0)
         ilvlFs:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
         ilvlFs:SetJustifyH("CENTER")
-        local gr, gg, gb = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.9, 0
+        local gr, gg, gb = 1, 0.9, 0
+        if ns.UI_GetSemanticGoldColor then gr, gg, gb = ns.UI_GetSemanticGoldColor() end
         ilvlFs:SetTextColor(gr, gg, gb, 1)
         if ns.UI_ApplyOverlayLabelShadow then
             ns.UI_ApplyOverlayLabelShadow(ilvlFs)
@@ -2109,7 +2116,7 @@ function PD.ApplyGearOfflineCenterChrome(centerRef, classFile)
         chrome:EnableMouseWheel(false)
         chrome.isPersistentRowElement = true
         local topLine = chrome:CreateTexture(nil, "ARTWORK", nil, 2)
-        topLine:SetHeight(2)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(topLine, "horizontal", 2) else topLine:SetHeight(2) end
         topLine:SetPoint("TOPLEFT", chrome, "TOPLEFT", 0, -1)
         topLine:SetPoint("TOPRIGHT", chrome, "TOPRIGHT", 0, -1)
         chrome._topLine = topLine
@@ -2123,7 +2130,7 @@ function PD.ApplyGearOfflineCenterChrome(centerRef, classFile)
         barBg:SetColorTexture(0, 0, 0, 0.5)
         chrome._barBg = barBg
         local barClassLine = bar:CreateTexture(nil, "BORDER", nil, 1)
-        barClassLine:SetHeight(2)
+        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(barClassLine, "horizontal", 2) else barClassLine:SetHeight(2) end
         barClassLine:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
         barClassLine:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
         chrome._barClassLine = barClassLine
@@ -2701,7 +2708,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
                 pill:SetBackdrop({
                     bgFile = "Interface\\Buttons\\WHITE8X8",
                     edgeFile = "Interface\\Buttons\\WHITE8X8",
-                    edgeSize = 1,
+                    edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(pill)) or 1,
                     insets = { left = 0, right = 0, top = 0, bottom = 0 },
                 })
                 local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
@@ -2714,7 +2721,8 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
             portrait._pill = pill
             local pillLabel = FontManager:CreateFontString(pill, GFR("gearPortraitMeta"), "OVERLAY")
             pillLabel:SetPoint("CENTER", pill, "CENTER", 0, 0)
-            local gr, gg, gb = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.82, 0
+            local gr, gg, gb = 1, 0.82, 0
+            if ns.UI_GetSemanticGoldColor then gr, gg, gb = ns.UI_GetSemanticGoldColor() end
             pillLabel:SetTextColor(gr, gg, gb, 1)
             if ns.UI_ApplyOverlayLabelShadow then
                 ns.UI_ApplyOverlayLabelShadow(pillLabel)
@@ -2822,7 +2830,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     if not modelBorder then
         modelBorder = PaperdollLayoutHost(card, 1, 1)
         if modelBorder.SetBackdrop then
-            modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+            modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(modelBorder)) or 1 })
         end
         modelBorder.isPersistentRowElement = true
         ns._gearModelBorder = modelBorder
@@ -3903,7 +3911,8 @@ function ns.GearUI_Paperdoll.RefreshTheme()
             portrait._pill:SetBackdropBorderColor(accent[1] * 0.5, accent[2] * 0.5, accent[3] * 0.5, pillBorderA)
         end
         if portrait._pillLabel then
-            local gr, gg, gb = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.82, 0
+            local gr, gg, gb = 1, 0.82, 0
+            if ns.UI_GetSemanticGoldColor then gr, gg, gb = ns.UI_GetSemanticGoldColor() end
             portrait._pillLabel:SetTextColor(gr, gg, gb, 1)
             if ns.UI_ApplyOverlayLabelShadow then ns.UI_ApplyOverlayLabelShadow(portrait._pillLabel) end
         end

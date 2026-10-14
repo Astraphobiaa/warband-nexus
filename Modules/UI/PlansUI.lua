@@ -8,6 +8,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
@@ -347,6 +349,7 @@ local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or GetLayout().sideMargin or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or GetLayout().topMargin or 8
+local PAGE_STACK = GetLayout().PAGE_STACK
 
 --- Search bar + card grid share this inset inside the Plans scroll body (see ns.UI_PlansContentPadH).
 local function PlansContentPadH()
@@ -579,6 +582,8 @@ end
 
 ns.TeardownPlansScrollChildBrowseArtifacts = TeardownPlansScrollChildBrowseArtifacts
 
+local RepositionPlansFixedHeader  -- forward declare (defined above DrawPlansTab)
+
 --- Partial To-Do refresh: category bar + scroll body only (no full PopulateContent).
 function WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, toCat)
     local mf = self.UI and self.UI.mainFrame
@@ -605,7 +610,15 @@ function WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, toCat)
         mf._plansPlannedLabel:SetAlpha(plannedLocked and 0.42 or 1)
     end
 
-    -- To-Do List needs the scroll search bar (fixed header only on first DrawPlansTab).
+    -- Search box is fixedHeader chrome: re-place the cached header for the new category (same path as
+    -- DrawPlansTab) so the box swaps / hides and the header height follows.
+    local hdrCache = mf._plansFixedHeaderCache
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    if hdrCache and hdrCache.titleCard and chrome then
+        RepositionPlansFixedHeader(hdrCache, chrome.headerParent, chrome, chrome.yOffset, chrome.side, nil, currentCategory)
+    end
+
+    -- To-Do List repaints through the full populate (virtual host + card cache).
     if currentCategory == "active" then
         if self.SendMessage then
             self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
@@ -636,7 +649,7 @@ function WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, toCat)
         yOffset = self:DrawBrowser(parent, yOffset, width, currentCategory)
     end
 
-    parent:SetHeight(math.max((yOffset or 0) + 20, 1))
+    parent:SetHeight(math.max((yOffset or 0) + PAGE_STACK.BOTTOM_PAD, 1))
     if ns.UI_EnsureMainScrollLayout then
         ns.UI_EnsureMainScrollLayout()
     end
@@ -668,7 +681,7 @@ function ns.PlansUI_RefreshActiveList()
     local yOffset = mf._plansScrollBodyStartY
         or ((ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8)
     local endY = WarbandNexus:DrawActivePlans(parent, yOffset, width, "active")
-    parent:SetHeight(math.max((endY or 0) + 20, 1))
+    parent:SetHeight(math.max((endY or 0) + PAGE_STACK.BOTTOM_PAD, 1))
     if ns.UI_EnsureMainScrollLayout then
         ns.UI_EnsureMainScrollLayout()
     end
@@ -752,12 +765,6 @@ end
 -- Throttle state for scan progress UI refreshes
 local lastUIRefresh = 0
 
--- Icons (no unicode - use game textures)
-local ICON_CHECK = "Interface\\RaidFrame\\ReadyCheck-Ready"
-local ICON_WAITING = "Interface\\RaidFrame\\ReadyCheck-Waiting"
-local ICON_CROSS = "Interface\\RaidFrame\\ReadyCheck-NotReady"
-local ICON_GOLD = "Interface\\MONEYFRAME\\UI-GoldIcon"
-
 local Browse = ns.PlansUI_Browse
 assert(Browse and Browse.Install, "load PlansUI_Browse.lua before PlansUI.lua")
 Browse.Install(WarbandNexus, {
@@ -777,35 +784,40 @@ Browse.Install(WarbandNexus, {
 -- MAIN DRAW FUNCTION
 
 --- Reposition cached Plans fixedHeader chrome (Collections/Items parity — WN-PERF tab revisit).
-local function RepositionPlansFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, subtitleTextContent)
+--- Page stack: title BLOCK_GAP sub-tab bar BLOCK_GAP [search BLOCK_GAP]; same Place calls as the create path.
+---@param searchCategory string|nil category whose header search box to show (nil = none, e.g. module off)
+function RepositionPlansFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, subtitleTextContent, searchCategory)
     local titleCard = hdrCache.titleCard
     titleCard:SetParent(headerParent)
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
-    else
-        titleCard:ClearAllPoints()
-        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    end
     titleCard:Show()
     if hdrCache.subtitleText and subtitleTextContent then
         hdrCache.subtitleText:SetText(subtitleTextContent)
     end
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    if chrome then
+        chrome.yOffset = headerYOffset
+        headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
     else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        titleCard:ClearAllPoints()
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        headerYOffset = headerYOffset + titleCard:GetHeight() + PAGE_STACK.BLOCK_GAP
     end
     local categoryBar = hdrCache.categoryBar
     if categoryBar then
         categoryBar:SetParent(headerParent)
-        categoryBar:ClearAllPoints()
-        categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
         categoryBar:Show()
         ApplyPlansCategoryBarActive(categoryBar, currentCategory)
-        local blockGap = (ns.UI_LAYOUT and ns.UI_LAYOUT.TAB_CHROME_BLOCK_GAP) or (GetLayout().afterElement) or 8
-        headerYOffset = headerYOffset + (categoryBar:GetHeight() or 40) + blockGap
+        if chrome then
+            headerYOffset = ns.UI_PageStack_Place(chrome, categoryBar)
+        else
+            categoryBar:ClearAllPoints()
+            categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+            categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+            headerYOffset = headerYOffset + (categoryBar:GetHeight() or PAGE_STACK.SUB_TAB_HEIGHT) + PAGE_STACK.BLOCK_GAP
+        end
+    end
+    if chrome and Browse.PlaceHeaderSearch then
+        headerYOffset = Browse.PlaceHeaderSearch(chrome, searchCategory)
     end
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if ns.UI_CommitTabFixedHeader then
@@ -851,7 +863,7 @@ function WarbandNexus:DrawPlansTab(parent)
     local width = (metrics and metrics.contentWidth)
         or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
         or (parent:GetWidth() or 600)
-    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local scrollTopY = PAGE_STACK.BODY_TOP
 
     -- Check if module is enabled (early check for buttons)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false
@@ -883,7 +895,8 @@ function WarbandNexus:DrawPlansTab(parent)
     local hdrCache = mf and mf._plansFixedHeaderCache
     local headerChromeDone = false
     if hdrCache and hdrCache.titleCard and hdrCache.categoryBar then
-        headerYOffset = RepositionPlansFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, subtitleTextContent)
+        headerYOffset = RepositionPlansFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, subtitleTextContent,
+            moduleEnabled and currentCategory or nil)
         if mf._plansApplyPlannedBrowseLockVisuals then
             mf._plansApplyPlannedBrowseLockVisuals()
         end
@@ -1169,10 +1182,10 @@ function WarbandNexus:DrawPlansTab(parent)
     -- Check if module is disabled (before showing controls)
     if not moduleEnabled then
         titleCard:Show()
-        if ns.UI_AdvanceTabChromeYOffset then
-            headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        if chrome then
+            headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
         else
-            headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+            headerYOffset = headerYOffset + titleCard:GetHeight() + PAGE_STACK.BLOCK_GAP
         end
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
@@ -1181,13 +1194,12 @@ function WarbandNexus:DrawPlansTab(parent)
     end
 
     titleCard:Show()
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
-        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    if chrome then
+        headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
     else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        headerYOffset = headerYOffset + titleCard:GetHeight() + PAGE_STACK.BLOCK_GAP
     end
+    if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     
     local maxWidth = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
         or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
@@ -1231,23 +1243,15 @@ function WarbandNexus:DrawPlansTab(parent)
             end)
         end,
     })
-    if categoryBar then
-        categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    end
-
-    local totalHeight = categoryBar and categoryBar:GetHeight() or 40
     if mf then
         mf._plansCategoryBar = categoryBar
     end
-    
-    local blockGap = (metrics and metrics.blockGap) or (GetLayout().TAB_CHROME_BLOCK_GAP) or (GetLayout().afterElement) or 8
-    headerYOffset = headerYOffset + totalHeight + blockGap
-
-    if ns.UI_CommitTabFixedHeader then
-        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
-    elseif fixedHeader then
-        fixedHeader:SetHeight(headerYOffset)
+    if categoryBar and chrome then
+        headerYOffset = ns.UI_PageStack_Place(chrome, categoryBar)
+    elseif categoryBar then
+        categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        headerYOffset = headerYOffset + (categoryBar:GetHeight() or PAGE_STACK.SUB_TAB_HEIGHT) + PAGE_STACK.BLOCK_GAP
     end
 
     if mf then
@@ -1256,6 +1260,16 @@ function WarbandNexus:DrawPlansTab(parent)
             subtitleText = plansSubtitleText,
             categoryBar = categoryBar,
         }
+    end
+    -- Search row (cached per category on _plansFixedHeaderCache.searchBoxes; hidden on Weekly Progress).
+    if chrome and Browse.PlaceHeaderSearch then
+        headerYOffset = Browse.PlaceHeaderSearch(chrome, currentCategory)
+    end
+
+    if ns.UI_CommitTabFixedHeader then
+        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+    elseif fixedHeader then
+        fixedHeader:SetHeight(headerYOffset)
     end
     end -- not headerChromeDone
 
@@ -1336,35 +1350,14 @@ function WarbandNexus:DrawPlansTab(parent)
     end
 
     local function PaintPlansScrollBody()
+        -- Search lives in the fixedHeader (Browse.PlaceHeaderSearch): body starts at BODY_TOP.
         local bodyY = scrollTopY
-        if currentCategory == "active" then
-        local padH = PlansContentPadH()
-        local searchPlaceholder = (ns.L and ns.L["SEARCH_PLANS"]) or "Search plans..."
-        local initialSearch = ns._plansActiveSearch or ""
-        local searchBar = CreateSearchBox(parent, width, searchPlaceholder, function(text)
-            ns._plansActiveSearch = (text ~= "") and text or nil
-            if ns.UI_ScheduleSearchRefresh then
-                ns.UI_ScheduleSearchRefresh("plans_active", function()
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
-                end)
-            else
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
-            end
-        end, nil, initialSearch, "plans_active")
-        searchBar:SetPoint("TOPLEFT", padH, -bodyY)
-        searchBar:SetPoint("TOPRIGHT", -padH, -bodyY)
-        searchBar:Show()
-
-        local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
-        bodyY = bodyY + searchH + GetLayout().afterElement
-        end
-
         if currentCategory == "active" or currentCategory == "daily_tasks" then
             bodyY = self:DrawActivePlans(parent, bodyY, width, currentCategory)
         else
             bodyY = self:DrawBrowser(parent, bodyY, width, currentCategory)
         end
-        return bodyY + 20
+        return bodyY + PAGE_STACK.BOTTOM_PAD
     end
 
     if parent._preparedByPopulate and not parent._plansBodyDeferScheduled then
@@ -1540,10 +1533,10 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
     if #filteredPlans == 0 then
         if ns.UI_ShowTabEmptyStateCard then
-            return ns.UI_ShowTabEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true }) + 10
+            return ns.UI_ShowTabEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = false, sideInset = PAGE_STACK.SIDE })
         end
-        local _, height = CreateEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true })
-        return yOffset + height + 10
+        local _, height = CreateEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = false, sideInset = PAGE_STACK.SIDE })
+        return yOffset + height
     end
 
     local CATEGORIES = ns.QUEST_CATEGORIES or {}
@@ -1569,7 +1562,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         local resetIcon = resetBar:CreateTexture(nil, "ARTWORK")
         resetIcon:SetSize(16, 16)
         resetIcon:SetPoint("LEFT", 12, 0)
-        resetIcon:SetAtlas("characterupdate_clock-icon", true)
+        ns.UI_SetIcon(resetIcon, "clock")
 
         local resetLabel = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
         resetLabel:SetPoint("LEFT", resetIcon, "RIGHT", 6, 0)
@@ -2004,8 +1997,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                     local emptyIcon = emptyRow:CreateTexture(nil, "ARTWORK")
                     emptyIcon:SetSize(14, 14)
                     emptyIcon:SetPoint("LEFT", 14, 0)
-                    emptyIcon:SetAtlas("Objective-Nub", false)
-                    emptyIcon:SetVertexColor(0.4, 0.4, 0.4)
+                    ns.UI_SetIcon(emptyIcon, "status_pending", { alpha = 0.4 })
                     local emptyFs = FontManager:CreateFontString(emptyRow, "body", "OVERLAY")
                     emptyFs:SetPoint("LEFT", 32, 0)
                     ns.UI_SetTextColorRole(emptyFs, "Dim")
@@ -2038,11 +2030,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                             statusIcon:SetAtlas("common-icon-checkmark", false)
                             statusIcon:SetVertexColor(0.27, 1, 0.27)
                         elseif quest.isLocked then
-                            statusIcon:SetAtlas("Padlock", false)
-                            statusIcon:SetVertexColor(1, 0.6, 0.2)
+                            ns.UI_SetIcon(statusIcon, "lock", { vertexColor = { 1, 0.6, 0.2, 1 } })
                         else
-                            statusIcon:SetAtlas("Objective-Nub", false)
-                            statusIcon:SetVertexColor(0.6, 0.6, 0.6)
+                            ns.UI_SetIcon(statusIcon, "status_pending", { alpha = 0.6 })
                         end
 
                         local titleFs = FontManager:CreateFontString(row, isSub and "small" or "body", "OVERLAY")
@@ -2076,8 +2066,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                     objIcon:SetAtlas("common-icon-checkmark", false)
                                     objIcon:SetVertexColor(0.27, 1, 0.27)
                                 else
-                                    objIcon:SetAtlas("Objective-Nub", false)
-                                    objIcon:SetVertexColor(0.5, 0.5, 0.5)
+                                    ns.UI_SetIcon(objIcon, "status_pending", { alpha = 0.5 })
                                 end
 
                                 local objText = obj.text or format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
@@ -2296,10 +2285,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         parent._plansCardLayoutManager = nil
         local emptyKey = ResolvePlansEmptyStateKey(category)
         if ns.UI_ShowTabEmptyStateCard then
-            return ns.UI_ShowTabEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true }) + 10
+            return ns.UI_ShowTabEmptyStateCard(parent, emptyKey, yOffset, { fillParent = false, sideInset = PAGE_STACK.SIDE })
         end
-        local _, height = CreateEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true })
-        return yOffset + height + 10
+        local _, height = CreateEmptyStateCard(parent, emptyKey, yOffset, { fillParent = false, sideInset = PAGE_STACK.SIDE })
+        return yOffset + height
     end
     
     local PCM = ns.UI_PLANS_CARD_METRICS
@@ -2951,14 +2940,72 @@ function WarbandNexus:ShowCustomPlanDialog()
         self.addCustomBtn:SetAlpha(0.5)
     end
 
-    local PAD = 12
-    local DIALOG_W = 480
-    local DIALOG_H = 520
+    -- All dialog geometry lives here; blocks stack top-down via relative anchors.
+    local ps = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK) or {}
+    local shellLayout = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local LAYOUT = {
+        PAD = ps.SIDE or 12,
+        BLOCK_GAP = ps.BLOCK_GAP or 8,
+        SECTION_GAP = ps.SECTION_GAP or 12,
+        BOTTOM_PAD = ps.BOTTOM_PAD or 12,
+        HEADER_H = shellLayout.HEADER_BAR_HEIGHT or shellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT or 40,
+        DIALOG_W = 480,
+        MIN_CONTENT_W = 280,
+        CHAR_HDR_H = 45,
+        CHAR_ICON = 36,
+        CHAR_ICON_INNER = 28,
+        CHAR_ICON_X = 12,
+        CHAR_NAME_GAP = 10,
+        LABEL_H = 16,          -- reserve; grown to the measured font height below
+        LABEL_GAP = 6,         -- label -> its control
+        INPUT_H = 35,
+        INPUT_INSET_X = 8,
+        INPUT_INSET_Y = 2,
+        MIN_INPUT_W = 120,
+        TOGGLE_H = 28,
+        TOGGLE_GAP = ps.BLOCK_GAP or 8,
+        STEPPER = 28,
+        STEPPER_GAP = 12,
+        UNIT_GAP = 10,
+        COUNT_W = 30,
+        COUNT_W_INFINITE = 56,
+        DURATION_LABEL_W = 160,
+        CHECK_ROW_H = 20,
+        CHECK_LABEL_GAP = 8,
+        FOOTER_BTN_W = 100,
+        FOOTER_BTN_GAP = 10,
+        BUTTON_H = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32,
+    }
+    -- Duration row: stepper line, gap, "repeat forever" checkbox line.
+    LAYOUT.DURATION_H = LAYOUT.STEPPER + LAYOUT.LABEL_GAP + LAYOUT.CHECK_ROW_H
+    local PAD = LAYOUT.PAD
     local classicBd = ns.UI_CLASSIC_DIALOG_BACKDROP and ns.UI_CLASSIC_DIALOG_BACKDROP.insets
-    local shellInset = (ns.UI_IsClassicMode and ns.UI_IsClassicMode() and classicBd and classicBd.left) or 0
-    local CONTENT_W = math.max(280, DIALOG_W - (shellInset * 2) - (PAD * 2))
-    local INPUT_H = 35
-    local CHAR_HDR_H = 45
+    local isClassicShell = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    local shellInset = (isClassicShell and classicBd and classicBd.left) or 0
+    local shellInsetV = (isClassicShell and classicBd and ((classicBd.top or 0) + (classicBd.bottom or 0))) or 0
+    local CONTENT_W = math.max(LAYOUT.MIN_CONTENT_W, LAYOUT.DIALOG_W - (shellInset * 2) - (PAD * 2))
+    local INPUT_H = LAYOUT.INPUT_H
+    local CHAR_HDR_H = LAYOUT.CHAR_HDR_H
+
+    --- Sum of the stacked blocks (duration row is always reserved so toggling never clips).
+    local function StackedDialogHeight(labelH)
+        local fieldH = labelH + LAYOUT.LABEL_GAP + INPUT_H + LAYOUT.SECTION_GAP
+        local contentH = PAD + CHAR_HDR_H + LAYOUT.SECTION_GAP
+            + fieldH * 2
+            + labelH + LAYOUT.LABEL_GAP + LAYOUT.TOGGLE_H
+            + LAYOUT.BLOCK_GAP + LAYOUT.DURATION_H
+            + LAYOUT.SECTION_GAP + LAYOUT.BUTTON_H + LAYOUT.BOTTOM_PAD
+        return LAYOUT.HEADER_H + shellInsetV + contentH
+    end
+
+    --- Full-width stacking: TOP edges hang under `prev` with symmetric left/right edges.
+    local function StackBelow(frame, prev, gap, height)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -gap)
+        frame:SetPoint("TOPRIGHT", prev, "BOTTOMRIGHT", 0, -gap)
+        if height then frame:SetHeight(height) end
+    end
+    local DIALOG_H = StackedDialogHeight(LAYOUT.LABEL_H)
 
     -- Get character info
     local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
@@ -2972,7 +3019,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         title = (ns.L and ns.L["CREATE_CUSTOM_PLAN"]) or "Create Custom Plan",
         icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
         iconIsAtlas = true,
-        width = DIALOG_W,
+        width = LAYOUT.DIALOG_W,
         height = DIALOG_H,
         onClose = function()
             -- Re-enable Add Custom button
@@ -2994,7 +3041,12 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Character section with icon (using Factory pattern)
     local charFrame = ns.UI.Factory:CreateContainer(contentFrame, CONTENT_W, CHAR_HDR_H, false)
-    charFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD)
+    if ns.UI_PageStack_AnchorBody then
+        ns.UI_PageStack_AnchorBody(contentFrame, charFrame, PAD)
+    else
+        charFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD)
+        charFrame:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -PAD, -PAD)
+    end
     
     -- Get race-gender info
     local _, englishRace = UnitRace("player")
@@ -3002,8 +3054,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
     
     -- Character race icon with border (using Factory pattern)
-    local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
-    iconContainer:SetPoint("LEFT", 12, 0)
+    local iconContainer = ns.UI.Factory:CreateContainer(charFrame, LAYOUT.CHAR_ICON, LAYOUT.CHAR_ICON)
+    iconContainer:SetPoint("LEFT", LAYOUT.CHAR_ICON_X, 0)
     
     -- Apply border with class color (thin icon well in classic)
     if ApplyPlansChrome then
@@ -3011,13 +3063,13 @@ function WarbandNexus:ShowCustomPlanDialog()
     end
     
     -- Character race icon (using atlas)
-    local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
+    local charIconFrame = CreateIcon(iconContainer, raceAtlas, LAYOUT.CHAR_ICON_INNER, true, nil, true)
     charIconFrame:SetPoint("CENTER", 0, 0)
     charIconFrame:Show()
     
     -- Character name with class color (larger font)
     local charText = FontManager:CreateFontString(charFrame, "title", "OVERLAY")
-    charText:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
+    charText:SetPoint("LEFT", iconContainer, "RIGHT", LAYOUT.CHAR_NAME_GAP, 0)
     if classColors then
         charText:SetTextColor(classColors.r, classColors.g, classColors.b)
     elseif ns.UI_GetSemanticGoldColor then
@@ -3030,22 +3082,24 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Title label
     local titleLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    titleLabel:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 14))
     local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
     titleLabel:SetText(mutedHex .. ((ns.L and ns.L["TITLE_LABEL"]) or "Title:") .. "|r")
+    -- One label height for every field label: reserve, grown to the live font height.
+    local labelH = math.max(LAYOUT.LABEL_H, math.ceil(titleLabel:GetStringHeight() or 0))
+    titleLabel:SetJustifyH("LEFT")
+    StackBelow(titleLabel, charFrame, LAYOUT.SECTION_GAP, labelH)
     
     -- Title input container (using Factory pattern)
     local titleInputBg = ns.UI.Factory:CreateContainer(contentFrame, CONTENT_W, INPUT_H)
-    titleInputBg:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 36))
+    StackBelow(titleInputBg, titleLabel, LAYOUT.LABEL_GAP, INPUT_H)
     
-    -- Apply border to input
-    if ApplyPlansChrome then
-        ApplyPlansChrome(titleInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    if ns.UI_ApplyInputChrome then
+        ns.UI_ApplyInputChrome(titleInputBg)
     end
     
     local titleInput = ns.UI.Factory:CreateEditBox(titleInputBg)
-    titleInput:SetSize(math.max(120, CONTENT_W - 16), INPUT_H - 4)
-    titleInput:SetPoint("LEFT", 8, 0)
+    titleInput:SetSize(math.max(LAYOUT.MIN_INPUT_W, CONTENT_W - LAYOUT.INPUT_INSET_X * 2), INPUT_H - LAYOUT.INPUT_INSET_Y * 2)
+    titleInput:SetPoint("LEFT", LAYOUT.INPUT_INSET_X, 0)
     ns.UI_SetTextColorRole(titleInput, "Bright")
     titleInput:SetAutoFocus(false)
     titleInput:SetMaxLetters(32)  -- Max 32 characters
@@ -3068,21 +3122,21 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Description label
     local descLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    descLabel:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 84))
+    descLabel:SetJustifyH("LEFT")
+    StackBelow(descLabel, titleInputBg, LAYOUT.SECTION_GAP, labelH)
     descLabel:SetText(mutedHex .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
     
     -- Description input container (scrollable, single line) (using Factory pattern)
     local descInputBg = ns.UI.Factory:CreateContainer(contentFrame, CONTENT_W, INPUT_H)
-    descInputBg:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 106))
+    StackBelow(descInputBg, descLabel, LAYOUT.LABEL_GAP, INPUT_H)
     
-    -- Apply border to input
-    if ApplyPlansChrome then
-        ApplyPlansChrome(descInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    if ns.UI_ApplyInputChrome then
+        ns.UI_ApplyInputChrome(descInputBg)
     end
     
     local descInput = ns.UI.Factory:CreateEditBox(descInputBg)
-    descInput:SetSize(math.max(120, CONTENT_W - 16), INPUT_H - 4)
-    descInput:SetPoint("LEFT", 8, 0)
+    descInput:SetSize(math.max(LAYOUT.MIN_INPUT_W, CONTENT_W - LAYOUT.INPUT_INSET_X * 2), INPUT_H - LAYOUT.INPUT_INSET_Y * 2)
+    descInput:SetPoint("LEFT", LAYOUT.INPUT_INSET_X, 0)
     ns.UI_SetTextColorRole(descInput, "Bright")
     descInput:SetAutoFocus(false)
     descInput:SetMultiLine(false)  -- Single line only - prevents Enter from creating new lines
@@ -3154,7 +3208,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Reset Cycle selection
     local resetLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    resetLabel:SetPoint("TOPLEFT", 12, -215)
+    resetLabel:SetJustifyH("LEFT")
+    StackBelow(resetLabel, descInputBg, LAYOUT.SECTION_GAP, labelH)
     resetLabel:SetText(mutedHex .. ((ns.L and ns.L["RESET_CYCLE_LABEL"]) or "Reset Cycle:") .. "|r")
     
     local PlanDlgF = ns.UI and ns.UI.Factory
@@ -3175,22 +3230,31 @@ function WarbandNexus:ShowCustomPlanDialog()
     local selectedCycleCount = 7  -- Default cycle count
     local selectedInfiniteRepeat = false
     
-    local function CreateResetToggle(parent, label, value, xOffset)
-        local btn = PlanDlgF and PlanDlgF:CreateButton(parent, 120, 28, false)
+    -- Three equal toggle columns across the content width; the last absorbs rounding.
+    local TOGGLE_COUNT = 3
+    local toggleColW = math.floor((CONTENT_W - LAYOUT.TOGGLE_GAP * (TOGGLE_COUNT - 1)) / TOGGLE_COUNT)
+
+    local function CreateResetToggle(parent, label, value, colIndex)
+        local colW = toggleColW
+        if colIndex == TOGGLE_COUNT then
+            colW = CONTENT_W - (toggleColW + LAYOUT.TOGGLE_GAP) * (TOGGLE_COUNT - 1)
+        end
+        local btn = PlanDlgF and PlanDlgF:CreateButton(parent, colW, LAYOUT.TOGGLE_H, false)
         if btn then btn._wnPlanDlgFactoryToggle = true end
         local useClassic = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
         if not btn and useClassic then
             btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-            btn:SetSize(120, 28)
+            btn:SetSize(colW, LAYOUT.TOGGLE_H)
             btn:SetText("")
             btn._wnBlizzardButton = true
             btn._wnPlanDlgFactoryToggle = true
         elseif not btn and not useClassic then
             btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetSize(colW, LAYOUT.TOGGLE_H)
             btn:SetBackdrop({
                 bgFile = "Interface\\BUTTONS\\WHITE8X8",
                 edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-                edgeSize = 1,
+                edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(btn)) or 1,
                 insets = { left = 1, right = 1, top = 1, bottom = 1 },
             })
             btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
@@ -3199,7 +3263,8 @@ function WarbandNexus:ShowCustomPlanDialog()
             ApplyPlansChrome(btn, { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1 },
                 { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
         end
-        btn:SetPoint("TOPLEFT", xOffset, -237)
+        btn:SetSize(colW, LAYOUT.TOGGLE_H)
+        btn:SetPoint("TOPLEFT", resetLabel, "BOTTOMLEFT", (colIndex - 1) * (toggleColW + LAYOUT.TOGGLE_GAP), -LAYOUT.LABEL_GAP)
 
         local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
         text:SetPoint("CENTER")
@@ -3211,42 +3276,47 @@ function WarbandNexus:ShowCustomPlanDialog()
         return btn
     end
     
-    local resetBtnNone = CreateResetToggle(contentFrame, (ns.L and ns.L["RESET_NONE"]) or "None", "none", 12)
-    local resetBtnDaily = CreateResetToggle(contentFrame, (ns.L and ns.L["DAILY_RESET"]) or "Daily Reset", "daily", 142)
-    local resetBtnWeekly = CreateResetToggle(contentFrame, (ns.L and ns.L["WEEKLY_RESET"]) or "Weekly Reset", "weekly", 272)
+    local resetBtnNone = CreateResetToggle(contentFrame, (ns.L and ns.L["RESET_NONE"]) or "None", "none", 1)
+    local resetBtnDaily = CreateResetToggle(contentFrame, (ns.L and ns.L["DAILY_RESET"]) or "Daily Reset", "daily", 2)
+    local resetBtnWeekly = CreateResetToggle(contentFrame, (ns.L and ns.L["WEEKLY_RESET"]) or "Weekly Reset", "weekly", 3)
     
     local resetButtons = { resetBtnNone, resetBtnDaily, resetBtnWeekly }
     
     -- Duration row (hidden by default, shown when Daily/Weekly selected)
-    local durationRow = PlanDlgF and PlanDlgF:CreateContainer(contentFrame, 420, 54, false)
+    local durationRow = PlanDlgF and PlanDlgF:CreateContainer(contentFrame, CONTENT_W, LAYOUT.DURATION_H, false)
     if not durationRow then
         durationRow = CreateFrame("Frame", nil, contentFrame)
-        durationRow:SetSize(420, 54)
+        durationRow:SetSize(CONTENT_W, LAYOUT.DURATION_H)
     end
-    durationRow:SetPoint("TOPLEFT", 12, -275)
+    -- Spans the toggle row exactly (first toggle's left edge .. last toggle's right edge).
+    durationRow:ClearAllPoints()
+    durationRow:SetPoint("TOPLEFT", resetBtnNone, "BOTTOMLEFT", 0, -LAYOUT.BLOCK_GAP)
+    durationRow:SetPoint("TOPRIGHT", resetBtnWeekly, "BOTTOMRIGHT", 0, -LAYOUT.BLOCK_GAP)
+    durationRow:SetHeight(LAYOUT.DURATION_H)
     durationRow:Hide()
     
     local durationLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
-    durationLabel:SetPoint("TOPLEFT", 0, -2)
+    durationLabel:SetPoint("LEFT", durationRow, "TOPLEFT", 0, -LAYOUT.STEPPER / 2)
     ns.UI_SetTextColorRole(durationLabel, "Muted")
     
     -- Minus button (paired with Factory +plusBtn where SharedWidgets Factory is live)
-    local minusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
+    local minusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, LAYOUT.STEPPER, LAYOUT.STEPPER, false)
     if minusBtn then minusBtn._wnPlanDlgDurStepper = true end
     local chromeBg = ControlChromeBackdrop()
     local planDlgClassic = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
     if not minusBtn and planDlgClassic then
         minusBtn = CreateFrame("Button", nil, durationRow, "UIPanelButtonTemplate")
-        minusBtn:SetSize(28, 28)
+        minusBtn:SetSize(LAYOUT.STEPPER, LAYOUT.STEPPER)
         minusBtn:SetText("-")
         minusBtn._wnBlizzardButton = true
         minusBtn._wnPlanDlgDurStepper = true
     elseif not minusBtn and not planDlgClassic then
         minusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
+        minusBtn:SetSize(LAYOUT.STEPPER, LAYOUT.STEPPER)
         minusBtn:SetBackdrop({
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
             edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeSize = 1,
+            edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(minusBtn)) or 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         minusBtn:SetBackdropColor(chromeBg[1], chromeBg[2], chromeBg[3], chromeBg[4] or 1)
@@ -3254,7 +3324,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     elseif minusBtn and ApplyPlansChrome then
         ApplyPlansChrome(minusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end
-    minusBtn:SetPoint("TOPLEFT", 160, -2)
+    minusBtn:SetPoint("TOPLEFT", durationRow, "TOPLEFT", LAYOUT.DURATION_LABEL_W, 0)
     if minusBtn._wnBlizzardButton then
         minusBtn:SetText("-")
     else
@@ -3266,25 +3336,26 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Count display
     local countDisplay = FontManager:CreateFontString(durationRow, "title", "OVERLAY")
-    countDisplay:SetPoint("TOPLEFT", minusBtn, "TOPRIGHT", 12, 0)
+    countDisplay:SetPoint("LEFT", minusBtn, "RIGHT", LAYOUT.STEPPER_GAP, 0)
     ns.UI_SetTextColorRole(countDisplay, "Bright")
-    countDisplay:SetWidth(30)
+    countDisplay:SetWidth(LAYOUT.COUNT_W)
     countDisplay:SetJustifyH("CENTER")
     
-    local plusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
+    local plusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, LAYOUT.STEPPER, LAYOUT.STEPPER, false)
     if plusBtn then plusBtn._wnPlanDlgDurStepper = true end
     if not plusBtn and planDlgClassic then
         plusBtn = CreateFrame("Button", nil, durationRow, "UIPanelButtonTemplate")
-        plusBtn:SetSize(28, 28)
+        plusBtn:SetSize(LAYOUT.STEPPER, LAYOUT.STEPPER)
         plusBtn:SetText("+")
         plusBtn._wnBlizzardButton = true
         plusBtn._wnPlanDlgDurStepper = true
     elseif not plusBtn and not planDlgClassic then
         plusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
+        plusBtn:SetSize(LAYOUT.STEPPER, LAYOUT.STEPPER)
         plusBtn:SetBackdrop({
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
             edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeSize = 1,
+            edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(plusBtn)) or 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         plusBtn:SetBackdropColor(chromeBg[1], chromeBg[2], chromeBg[3], chromeBg[4] or 1)
@@ -3292,7 +3363,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     elseif plusBtn and ApplyPlansChrome then
         ApplyPlansChrome(plusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end
-    plusBtn:SetPoint("TOPLEFT", countDisplay, "TOPRIGHT", 12, 0)
+    plusBtn:SetPoint("LEFT", countDisplay, "RIGHT", LAYOUT.STEPPER_GAP, 0)
     if plusBtn._wnBlizzardButton then
         plusBtn:SetText("+")
     else
@@ -3310,20 +3381,21 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Unit label after count
     local unitLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
-    unitLabel:SetPoint("TOPLEFT", plusBtn, "TOPRIGHT", 10, 0)
+    unitLabel:SetPoint("LEFT", plusBtn, "RIGHT", LAYOUT.UNIT_GAP, 0)
     ns.UI_SetTextColorRole(unitLabel, "Muted")
 
     local foreverCb = CreateThemedCheckbox(durationRow, false)
+    local foreverY = -(LAYOUT.STEPPER + LAYOUT.LABEL_GAP)
     if foreverCb then
-        foreverCb:SetPoint("TOPLEFT", durationRow, "TOPLEFT", 0, -34)
+        foreverCb:SetPoint("TOPLEFT", durationRow, "TOPLEFT", 0, foreverY)
     end
     local foreverLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
     if foreverCb then
-        foreverLabel:SetPoint("LEFT", foreverCb, "RIGHT", 8, 0)
+        foreverLabel:SetPoint("LEFT", foreverCb, "RIGHT", LAYOUT.CHECK_LABEL_GAP, 0)
     else
-        foreverLabel:SetPoint("TOPLEFT", durationRow, "TOPLEFT", 0, -34)
+        foreverLabel:SetPoint("TOPLEFT", durationRow, "TOPLEFT", 0, foreverY)
     end
-    foreverLabel:SetPoint("TOPRIGHT", durationRow, "TOPRIGHT", 0, -34)
+    foreverLabel:SetPoint("TOPRIGHT", durationRow, "TOPRIGHT", 0, foreverY)
     foreverLabel:SetJustifyH("LEFT")
     ns.UI_SetTextColorRole(foreverLabel, "Muted")
     foreverLabel:SetWordWrap(true)
@@ -3374,13 +3446,13 @@ function WarbandNexus:ShowCustomPlanDialog()
         if selectedInfiniteRepeat then
             minusBtn:Disable()
             plusBtn:Disable()
-            countDisplay:SetWidth(56)
+            countDisplay:SetWidth(LAYOUT.COUNT_W_INFINITE)
             countDisplay:SetText("--")
             unitLabel:SetText("")
         else
             minusBtn:Enable()
             plusBtn:Enable()
-            countDisplay:SetWidth(30)
+            countDisplay:SetWidth(LAYOUT.COUNT_W)
             UpdateDurationDisplay()
             UpdateUnitLabel()
         end
@@ -3488,8 +3560,9 @@ function WarbandNexus:ShowCustomPlanDialog()
     UpdateResetButtons()
     
     -- Buttons (symmetrically centered with more spacing from inputs)
-    local saveBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["SAVE"]) or "Save", 100)
-    saveBtn:SetPoint("BOTTOM", -55, 12)
+    local footerX = (LAYOUT.FOOTER_BTN_W + LAYOUT.FOOTER_BTN_GAP) / 2
+    local saveBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["SAVE"]) or "Save", LAYOUT.FOOTER_BTN_W)
+    saveBtn:SetPoint("BOTTOM", -footerX, LAYOUT.BOTTOM_PAD)
     saveBtn:SetScript("OnClick", function()
         local title = titleInput:GetText()
         local description = descInput:GetText()
@@ -3506,11 +3579,16 @@ function WarbandNexus:ShowCustomPlanDialog()
         end
     end)
     
-    local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", 100)
-    cancelBtn:SetPoint("BOTTOM", 55, 12)
+    local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", LAYOUT.FOOTER_BTN_W)
+    cancelBtn:SetPoint("BOTTOM", footerX, LAYOUT.BOTTOM_PAD)
     cancelBtn:SetScript("OnClick", function()
         dialog.Close()
     end)
+
+    -- Re-derive the dialog height when the live label font is taller than the reserve.
+    if labelH ~= LAYOUT.LABEL_H then
+        dialog:SetHeight(StackedDialogHeight(labelH))
+    end
     
     dialog:Show()
     titleInput:SetFocus()
@@ -3620,14 +3698,54 @@ end
 
 function WarbandNexus:ShowWeeklyPlanDialog()
     local COLORS = ns.UI_COLORS
-    local PAD = 14
-    local VAULT_DLG_W = 640
-    local VAULT_DLG_H_HAS = 280
-    local VAULT_DLG_H_NEW = 468
+    -- All dialog geometry lives here; the create form stacks top-down via relative anchors.
+    local ps = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK) or {}
+    local shellLayout = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local LAYOUT = {
+        PAD = ps.SIDE or 12,
+        BLOCK_GAP = ps.BLOCK_GAP or 8,
+        SECTION_GAP = ps.SECTION_GAP or 12,
+        BOTTOM_PAD = ps.BOTTOM_PAD or 12,
+        HEADER_H = shellLayout.HEADER_BAR_HEIGHT or shellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT or 40,
+        DIALOG_W = 640,
+        DIALOG_H_HAS = 280,    -- "plan already exists" notice (wrapped text height is runtime)
+        MIN_CONTENT_W = 320,
+        CHAR_HDR_H = 48,
+        CHAR_ICON = 36,
+        CHAR_ICON_INNER = 28,
+        CHAR_NAME_GAP = 10,
+        PROGRESS_HEADER_H = 20,
+        COL_SPACING = 16,
+        -- Card height = icon + title + slot row + padding (no per-slot panel fills).
+        ICON_TOP_PAD = 10,
+        ICON_SIZE = 48,
+        TITLE_UNDER_ICON = 6,
+        TITLE_BLOCK = 26,
+        BAND_TOP_GAP = 6,
+        SLOT_STAR = 24,
+        SLOT_STAR_TEXT_GAP = 6,
+        SLOT_TEXT_BLOCK = 22,
+        CARD_BOTTOM_PAD = 10,
+        FOOTER_BTN_W = 120,
+        FOOTER_BTN_GAP = 10,
+        BUTTON_H = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32,
+    }
+    LAYOUT.SLOTS_BAND_H = LAYOUT.SLOT_STAR + LAYOUT.SLOT_STAR_TEXT_GAP + LAYOUT.SLOT_TEXT_BLOCK
+    LAYOUT.COL_H = LAYOUT.ICON_TOP_PAD + LAYOUT.ICON_SIZE + LAYOUT.TITLE_UNDER_ICON + LAYOUT.TITLE_BLOCK
+        + LAYOUT.BAND_TOP_GAP + LAYOUT.SLOTS_BAND_H + LAYOUT.CARD_BOTTOM_PAD
+    local PAD = LAYOUT.PAD
+    local VAULT_DLG_W = LAYOUT.DIALOG_W
     local classicBd = ns.UI_CLASSIC_DIALOG_BACKDROP and ns.UI_CLASSIC_DIALOG_BACKDROP.insets
-    local shellInset = (ns.UI_IsClassicMode and ns.UI_IsClassicMode() and classicBd and classicBd.left) or 0
-    local CONTENT_W = math.max(320, VAULT_DLG_W - (shellInset * 2) - (PAD * 2))
-    local CHAR_HDR_H = 48
+    local isClassicShell = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    local shellInset = (isClassicShell and classicBd and classicBd.left) or 0
+    local shellInsetV = (isClassicShell and classicBd and ((classicBd.top or 0) + (classicBd.bottom or 0))) or 0
+    local CONTENT_W = math.max(LAYOUT.MIN_CONTENT_W, VAULT_DLG_W - (shellInset * 2) - (PAD * 2))
+    local CHAR_HDR_H = LAYOUT.CHAR_HDR_H
+    -- Create form: char bar, progress header, card row, footer buttons.
+    local VAULT_DLG_H_NEW = LAYOUT.HEADER_H + shellInsetV
+        + PAD + CHAR_HDR_H + LAYOUT.SECTION_GAP
+        + LAYOUT.PROGRESS_HEADER_H + LAYOUT.BLOCK_GAP + LAYOUT.COL_H
+        + LAYOUT.SECTION_GAP + LAYOUT.BUTTON_H + LAYOUT.BOTTOM_PAD
 
     -- Get current character info
     local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
@@ -3642,7 +3760,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         title = (ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker",
         icon = "Interface\\Icons\\INV_Misc_Note_06",  -- Same as Daily Quest
         width = VAULT_DLG_W,
-        height = existingPlan and VAULT_DLG_H_HAS or VAULT_DLG_H_NEW
+        height = existingPlan and LAYOUT.DIALOG_H_HAS or VAULT_DLG_H_NEW
     })
     
     -- If dialog creation failed (duplicate), return
@@ -3663,7 +3781,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         
         local warningText = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
         warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -15)
-        warningText:SetText("|cffff9900" .. ((ns.L and ns.L["WEEKLY_PLAN_EXISTS"]) or "Weekly Plan Already Exists") .. "|r")
+        local warnR, warnG, warnB = 1, 0.6, 0
+        if ns.UI_GetSemanticOrangeColor then warnR, warnG, warnB = ns.UI_GetSemanticOrangeColor() end
+        warningText:SetTextColor(warnR, warnG, warnB)
+        warningText:SetText((ns.L and ns.L["WEEKLY_PLAN_EXISTS"]) or "Weekly Plan Already Exists")
         
         local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
@@ -3671,7 +3792,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         infoText:SetWordWrap(true)
         infoText:SetJustifyH("CENTER")
         local descText = (ns.L and ns.L["WEEKLY_PLAN_EXISTS_DESC"] and format(ns.L["WEEKLY_PLAN_EXISTS_DESC"], currentName .. "-" .. currentRealm)) or (currentName .. "-" .. currentRealm .. " already has an active weekly vault plan. You can find it in the 'My Plans' category.")
-        infoText:SetText("|cffaaaaaa" .. descText .. "|r")
+        ns.UI_SetTextColorRole(infoText, "Muted")
+        infoText:SetText(descText)
         
         -- Calculate text height to position button below
         local textHeight = infoText:GetStringHeight()
@@ -3688,7 +3810,12 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         -- Same horizontal band as the three vault cards (symmetric content pad).
         local charBarW = CONTENT_W
         local charFrame = ns.UI.Factory:CreateContainer(contentFrame, charBarW, CHAR_HDR_H, false)
-        charFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD)
+        if ns.UI_PageStack_AnchorBody then
+            ns.UI_PageStack_AnchorBody(contentFrame, charFrame, PAD)
+        else
+            charFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD)
+            charFrame:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -PAD, -PAD)
+        end
         
         -- Character race and class info
         local _, currentClass = UnitClass("player")
@@ -3698,7 +3825,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
         
         -- Character race icon with border (centered within charFrame) (using Factory pattern)
-        local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
+        local iconContainer = ns.UI.Factory:CreateContainer(charFrame, LAYOUT.CHAR_ICON, LAYOUT.CHAR_ICON)
         iconContainer:SetPoint("LEFT", 0, 0)  -- Start from left edge
         
         -- Apply thin icon well (classic) / accent border (modern)
@@ -3707,13 +3834,13 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         end
         
         -- Character race icon (using atlas)
-        local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
+        local charIconFrame = CreateIcon(iconContainer, raceAtlas, LAYOUT.CHAR_ICON_INNER, true, nil, true)
         charIconFrame:SetPoint("CENTER", 0, 0)
         charIconFrame:Show()
         
         -- Character name with class color (larger font)
         local charName = FontManager:CreateFontString(charFrame, "title", "OVERLAY")
-        charName:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
+        charName:SetPoint("LEFT", iconContainer, "RIGHT", LAYOUT.CHAR_NAME_GAP, 0)
         if classColors then
             charName:SetTextColor(classColors.r, classColors.g, classColors.b)
         else
@@ -3744,29 +3871,25 @@ function WarbandNexus:ShowWeeklyPlanDialog()
 
         if progress then
             local progressHeader = FontManager:CreateFontString(contentFrame, "header", "OVERLAY")
-            progressHeader:SetPoint("TOP", 0, -78)
+            progressHeader:SetPoint("TOPLEFT", charFrame, "BOTTOMLEFT", 0, -LAYOUT.SECTION_GAP)
+            progressHeader:SetPoint("TOPRIGHT", charFrame, "BOTTOMRIGHT", 0, -LAYOUT.SECTION_GAP)
+            progressHeader:SetHeight(LAYOUT.PROGRESS_HEADER_H)
+            progressHeader:SetJustifyH("CENTER")
             ns.UI_SetTextColorRole(progressHeader, "Bright")
             progressHeader:SetText((ns.L and ns.L["CURRENT_PROGRESS"]) or "Current Progress")
 
             -- Card row: three equal columns; width from content column budget.
-            local contentW = CONTENT_W
-            local rowSidePad = 0
-            local colSpacing = 16
-            local usable = contentW - 2 * rowSidePad
-            local colWidth = math.floor((usable - 2 * colSpacing) / 3)
+            local colSpacing = LAYOUT.COL_SPACING
+            local colWidth = math.floor((CONTENT_W - 2 * colSpacing) / 3)
             local totalWidth = colWidth * 3 + colSpacing * 2
-            -- Card height = icon + title + slot row + padding (no per-slot panel fills).
-            local ICON_TOP_PAD = 10
-            local ICON_SIZE = 48
-            local TITLE_UNDER_ICON = 6
-            local TITLE_BLOCK = 26
-            local BAND_TOP_GAP = 6
-            local SLOT_STAR = 24
-            local SLOT_STAR_TEXT_GAP = 6
-            local SLOT_TEXT_BLOCK = 22
-            local CARD_BOTTOM_PAD = 10
-            local slotsBandH = SLOT_STAR + SLOT_STAR_TEXT_GAP + SLOT_TEXT_BLOCK
-            local colHeight = ICON_TOP_PAD + ICON_SIZE + TITLE_UNDER_ICON + TITLE_BLOCK + BAND_TOP_GAP + slotsBandH + CARD_BOTTOM_PAD
+            local ICON_TOP_PAD = LAYOUT.ICON_TOP_PAD
+            local ICON_SIZE = LAYOUT.ICON_SIZE
+            local TITLE_UNDER_ICON = LAYOUT.TITLE_UNDER_ICON
+            local BAND_TOP_GAP = LAYOUT.BAND_TOP_GAP
+            local SLOT_STAR = LAYOUT.SLOT_STAR
+            local SLOT_STAR_TEXT_GAP = LAYOUT.SLOT_STAR_TEXT_GAP
+            local slotsBandH = LAYOUT.SLOTS_BAND_H
+            local colHeight = LAYOUT.COL_H
             local startX = -(totalWidth / 2) + (colWidth / 2)
             local accentBorder = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.95 }
             local unselectedBorder = { 0.32, 0.32, 0.36, 0.8 }
@@ -3784,7 +3907,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 end
 
                 local col = ns.UI.Factory:CreateContainer(contentFrame, colWidth, colHeight)
-                col:SetPoint("TOP", xPos, -100)
+                col:SetPoint("TOP", progressHeader, "BOTTOM", xPos, -LAYOUT.BLOCK_GAP)
                 col:SetClipsChildren(true)
 
                 -- Large category icon
@@ -3932,13 +4055,12 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 {2, 4, 8},  -- Thresholds
                 "world"
             )
-            
-            contentY = contentY - 95
         end
         
         -- Buttons (symmetrically centered)
-        local createBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["CREATE_PLAN"]) or "Create Plan", 120)
-        createBtn:SetPoint("BOTTOM", -65, 8)
+        local footerX = (LAYOUT.FOOTER_BTN_W + LAYOUT.FOOTER_BTN_GAP) / 2
+        local createBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["CREATE_PLAN"]) or "Create Plan", LAYOUT.FOOTER_BTN_W)
+        createBtn:SetPoint("BOTTOM", -footerX, LAYOUT.BOTTOM_PAD)
         createBtn:SetScript("OnClick", function()
             -- Create the weekly plan with selected slots
             local plan = self:CreateWeeklyPlan(currentName, currentRealm, selectedSlots)
@@ -3948,8 +4070,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             end
         end)
         
-        local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", 120)
-        cancelBtn:SetPoint("BOTTOM", 65, 8)
+        local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", LAYOUT.FOOTER_BTN_W)
+        cancelBtn:SetPoint("BOTTOM", footerX, LAYOUT.BOTTOM_PAD)
         cancelBtn:SetScript("OnClick", function()
             dialog.Close()
         end)

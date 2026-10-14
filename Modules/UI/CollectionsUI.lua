@@ -4,6 +4,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.CollectionsUI
 assert(M and M.state, "CollectionsUI_Shared.lua must load first")
 
@@ -14,7 +16,6 @@ local format = string.format
 local AFTER_ELEMENT = M.AFTER_ELEMENT
 local SEARCH_ROW_HEIGHT = M.SEARCH_ROW_HEIGHT
 local CONTENT_INSET = M.CONTENT_INSET
-local SUBTAB_BTN_HEIGHT = 40
 local COLLECTIONS_TITLE_CARD_HEIGHT = M.COLLECTIONS_TITLE_CARD_HEIGHT
 local COLLECTION_HEAVY_DELAY = M.COLLECTION_HEAVY_DELAY
 local HideEmptyStateCard = M.HideEmptyStateCard
@@ -133,6 +134,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
     local headerYOffset = (chrome and chrome.yOffset) or 0
     local sideMargin = (chrome and chrome.side) or (metrics and metrics.sideMargin) or (LAYOUT.SIDE_MARGIN or 12)
     local width = (metrics and metrics.contentWidth) or ((parent:GetWidth() or 680) - 20)
+    -- Page stack: title / sub-tabs / sub-header / search all go through UI_PageStack_Place (create and
+    -- cached paths identical). Fallback chrome only matters if the shell has no fixedHeader.
+    chrome = chrome or { mainFrame = mf, headerParent = headerParent, yOffset = headerYOffset, side = sideMargin }
 
     HideEmptyStateCard(parent, "collections")
 
@@ -141,14 +145,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
     if hdrCache and hdrCache.titleCard then
         M.CollectionsSubTabTrace("DrawCollectionsTab_fixedHeader_reuse", { sub = M.state.currentSubTab })
-        hdrCache.titleCard:SetParent(headerParent)
-        if chrome and ns.UI_AnchorTabTitleCard then
-            ns.UI_AnchorTabTitleCard(hdrCache.titleCard, chrome)
-        else
-            hdrCache.titleCard:ClearAllPoints()
-            hdrCache.titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-            hdrCache.titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        end
+        headerYOffset = ns.UI_PageStack_Place(chrome, hdrCache.titleCard)
         if ns.UI_HideTitleCardUnderline then ns.UI_HideTitleCardUnderline(hdrCache.titleCard) end
         hdrCache.titleCard:Show()
 
@@ -175,30 +172,16 @@ function WarbandNexus:DrawCollectionsTab(parent)
             if hdrCache.collectionsHeaderIcon.icon then hdrCache.collectionsHeaderIcon.icon:Show() end
         end
 
-        if ns.UI_AdvanceTabChromeYOffset then
-            headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, hdrCache.titleCard and hdrCache.titleCard:GetHeight())
-        else
-            headerYOffset = headerYOffset + (M.GetLayout().afterHeader or 72)
-        end
-
-        hdrCache.subTabBar:SetParent(headerParent)
-        hdrCache.subTabBar:ClearAllPoints()
-        hdrCache.subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        hdrCache.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        headerYOffset = ns.UI_PageStack_Place(chrome, hdrCache.subTabBar)
         hdrCache.subTabBar:SetActiveTab(M.state.currentSubTab)
         hdrCache.subTabBar:Show()
         M.state.subTabBar = hdrCache.subTabBar
 
-        headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
-
         if M.LayoutCollectionsFixedSubHeader then
-            headerYOffset = M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, M.state.currentSubTab)
+            headerYOffset = M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, M.state.currentSubTab, chrome)
         end
 
-        hdrCache.searchRow:SetParent(headerParent)
-        hdrCache.searchRow:ClearAllPoints()
-        hdrCache.searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        hdrCache.searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        headerYOffset = ns.UI_PageStack_Place(chrome, hdrCache.searchRow, SEARCH_ROW_HEIGHT)
         hdrCache.searchRow:Show()
 
         hdrCache.filterRow:SetParent(hdrCache.searchRow)
@@ -211,8 +194,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end
         M.LayoutCollectionsSearchBar(hdrCache)
         M.UpdateCollectionsSearchPlaceholder(hdrCache, M.state.currentSubTab)
-
-        headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     else
         M.CollectionsSubTabTrace("DrawCollectionsTab_fixedHeader_create", { sub = M.state.currentSubTab })
         hdrCache = {}
@@ -226,12 +207,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
             titleText = "|cff" .. hexColor .. ((ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections") .. "|r",
             subtitleText = (ns.L and ns.L["COLLECTIONS_SUBTITLE"]) or "Mounts, pets, and toys overview",
         })
-        if chrome and ns.UI_AnchorTabTitleCard then
-            ns.UI_AnchorTabTitleCard(titleCard, chrome)
-        else
-            titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-            titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        end
         hdrCache.titleCard = titleCard
 
         hdrCache.collectionsHeaderIcon = headerIcon
@@ -240,11 +215,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         hdrCache.collectionsSubtitleText = subtitleText
 
         titleCard:Show()
-        if ns.UI_AdvanceTabChromeYOffset then
-            headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
-        else
-            headerYOffset = headerYOffset + (M.GetLayout().afterHeader or 72)
-        end
+        headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
 
         if ns.UI_HideTitleCardExpandCollapseControls then
             ns.UI_HideTitleCardExpandCollapseControls(parent)
@@ -281,7 +252,18 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end
             local perfOn = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()
             local wallStart = perfOn and GetTime() or nil
-            M.ScheduleCollectionsSubTabRedraw(fromSub, tabKey, wallStart)
+            if (fromSub == "recent") ~= (tabKey == "recent") then
+                -- Recent has no title row: the fixedHeader height changes, so relayout the whole
+                -- tab (cached header path) instead of a body-only redraw.
+                local refreshMsg = Constants and Constants.EVENTS and Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED
+                if refreshMsg then
+                    WarbandNexus:SendMessage(refreshMsg, { tab = "collections", skipCooldown = true })
+                else
+                    M.ScheduleCollectionsSubTabRedraw(fromSub, tabKey, wallStart)
+                end
+            else
+                M.ScheduleCollectionsSubTabRedraw(fromSub, tabKey, wallStart)
+            end
             local hc = M.state._fixedHeaderCache
             if hc and hc.filterRow then
                 if M.state.currentSubTab == "recent" then hc.filterRow:Hide() else hc.filterRow:Show() end
@@ -289,16 +271,13 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.UpdateCollectionsSearchPlaceholder(hc, tabKey)
             end
         end)
-        subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        headerYOffset = ns.UI_PageStack_Place(chrome, subTabBar)
         subTabBar:SetActiveTab(M.state.currentSubTab)
         hdrCache.subTabBar = subTabBar
         M.state.subTabBar = subTabBar
 
-        headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
-
         if M.LayoutCollectionsFixedSubHeader then
-            headerYOffset = M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, M.state.currentSubTab)
+            headerYOffset = M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, M.state.currentSubTab, chrome)
         end
 
         local rowWsr = math.max(200, headerParent:GetWidth() or ((headerParent.GetParent and headerParent:GetParent() and headerParent:GetParent():GetWidth()) or 660))
@@ -307,8 +286,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
             searchRow = CreateFrame("Frame", nil, headerParent)
             searchRow:SetHeight(SEARCH_ROW_HEIGHT)
         end
-        searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         hdrCache.searchRow = searchRow
 
         local FILTER_BLOCK_WIDTH = 200
@@ -410,7 +387,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end
         M.LayoutCollectionsSearchBar(hdrCache)
 
-        headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
+        headerYOffset = ns.UI_PageStack_Place(chrome, searchRow, SEARCH_ROW_HEIGHT)
     end
 
     if ns.UI_CommitTabFixedHeader then
@@ -419,34 +396,26 @@ function WarbandNexus:DrawCollectionsTab(parent)
         fixedHeader:SetHeight(headerYOffset)
     end
 
-    local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local yOffset = LAYOUT.PAGE_STACK.BODY_TOP
 
     local scrollFrame = parent:GetParent()
     local viewHeight = (scrollFrame and scrollFrame:GetHeight()) or 450
     local bottomPad = 0
     local contentHeight = math.max(250, viewHeight - yOffset - bottomPad)
-    local parentWidth = parent:GetWidth() or 680
-    local contentWidth = math.max(1, parentWidth - (sideMargin * 2))
-    if M.state.currentSubTab == "recent" and ns.UI_ResolveMainTabBodyWidth then
-        local bodyW = ns.UI_ResolveMainTabBodyWidth(mf, parent)
-        if bodyW and bodyW > 0 then
-            contentWidth = bodyW
-        end
-    end
 
+    -- Body block: create and cached paths share UI_PageStack_AnchorBody (symmetric SIDE, BODY_TOP).
     local contentFrame = M.state.contentFrame
     if contentFrame then
         contentFrame:SetParent(parent)
-        contentFrame:ClearAllPoints()
+        local contentWidth = ns.UI_PageStack_AnchorBody(parent, contentFrame, yOffset)
         contentFrame:SetSize(contentWidth, contentHeight)
-        contentFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", sideMargin, -yOffset)
         contentFrame:Show()
         contentFrame._wnKeepOnTabSwitch = true
         M.state.contentFrame = contentFrame
     else
-        contentFrame = Factory:CreateContainer(parent, contentWidth, contentHeight, false)
+        contentFrame = Factory:CreateContainer(parent, 1, contentHeight, false)
+        local contentWidth = ns.UI_PageStack_AnchorBody(parent, contentFrame, yOffset)
         contentFrame:SetSize(contentWidth, contentHeight)
-        contentFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", sideMargin, -yOffset)
         contentFrame:Show()
         contentFrame._wnKeepOnTabSwitch = true
         M.state.contentFrame = contentFrame
@@ -629,29 +598,39 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end
         end)
 
+        -- One new collectible fires both COLLECTION_UPDATED and COLLECTIBLE_OBTAINED (often
+        -- PLANS_UPDATED too); share one trailing timer so the sub-tab rebuilds once.
+        local collectionRedrawPending = false
+        local function ScheduleCoalescedCollectionRedraw()
+            if collectionRedrawPending then return end
+            collectionRedrawPending = true
+            C_Timer.After(0.05, function()
+                collectionRedrawPending = false
+                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
+                RedrawActiveCollectionSubTab()
+            end)
+        end
+
         local updatedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED) or "WN_COLLECTION_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, updatedName, function(_, updatedType)
             if updatedType ~= "mount" and updatedType ~= "pet" and updatedType ~= "toy" and updatedType ~= "achievement" then return end
             InvalidateCollectionCachesForType(updatedType)
-            C_Timer.After(0.05, function()
-                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                RedrawActiveCollectionSubTab()
-            end)
+            ScheduleCoalescedCollectionRedraw()
         end)
 
         local plansUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.PLANS_UPDATED) or "WN_PLANS_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, plansUpdatedName, function()
-            C_Timer.After(0.05, function()
-                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                RedrawActiveCollectionSubTab()
-            end)
+            ScheduleCoalescedCollectionRedraw()
         end)
 
         local trackingUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED) or "WN_ACHIEVEMENT_TRACKING_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, trackingUpdatedName, function(_, payload)
-            if not payload or not payload.achievementID then return end
+            if not payload or not payload.achievementID then
+                -- Bulk tracking change: router no longer repopulates the collections tab, redraw here.
+                ScheduleCoalescedCollectionRedraw()
+                return
+            end
             C_Timer.After(0.05, function()
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
@@ -664,13 +643,16 @@ function WarbandNexus:DrawCollectionsTab(parent)
         local obtainedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTIBLE_OBTAINED) or "WN_COLLECTIBLE_OBTAINED"
         WarbandNexus.RegisterMessage(CUIListeners, obtainedName, function(_, data)
             if not data or not data.type then return end
-            if data.type ~= "mount" and data.type ~= "pet" and data.type ~= "toy" and data.type ~= "achievement" then return end
+            if data.type ~= "mount" and data.type ~= "pet" and data.type ~= "toy" and data.type ~= "achievement" then
+                -- Other types (illusion, title, ...) still land in the Recent ring; this module is the
+                -- sole Collections-tab redraw owner (UI_RefreshRouter skips the collections tab).
+                if M.state.currentSubTab == "recent" then
+                    ScheduleCoalescedCollectionRedraw()
+                end
+                return
+            end
             InvalidateCollectionCachesForType(data.type)
-            C_Timer.After(0.05, function()
-                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
-                RedrawActiveCollectionSubTab()
-            end)
+            ScheduleCoalescedCollectionRedraw()
         end)
 
         local metadataReadyName = (Constants and Constants.EVENTS and Constants.EVENTS.ITEM_METADATA_READY) or "WN_ITEM_METADATA_READY"

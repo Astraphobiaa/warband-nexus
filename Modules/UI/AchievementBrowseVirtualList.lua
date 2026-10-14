@@ -5,6 +5,9 @@
     Layout contract: `UI_AchievementBrowse_BuildFlatList` owns every position. A collapsed category
     contributes its header and nothing else — no nested wrap/body frames, no frame measurement, no
     second height model to drift against on collapse/expand.
+
+    Windowing (cull, pooling, scroll-space mapping for the Plans outer scroll) is VirtualListModule's
+    `virtualHeaders` mode; this file owns the model, the header pool and the populate lifecycle.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -31,7 +34,6 @@ ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE = 1.155
 local ACH_ROW_GAP = 4
 local SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
 local PADDING = SIDE_MARGIN
-local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
 local HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
 -- Must match CreateCollapsibleHeader / section wraps (same bug class as Collections mount lists).
 local COLLAPSE_HEADER_HEIGHT_ACH = LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT or 36
@@ -132,37 +134,16 @@ local function PackVariadicInto(dest, ...)
     return n
 end
 
---- Pixels from scroll content top down to `listFrame` top (TOP→TOP anchor chain). Fallback nil if ambiguous.
-local function ListTopOffsetDownFromScrollContent(listFrame, scrollContent)
-    if not listFrame or not scrollContent then return nil end
-    local sum = 0
-    local f = listFrame
-    while f do
-        if f == scrollContent then
-            return sum
-        end
-        local p = f:GetParent()
-        if not p then return nil end
-        local delta = nil
-        local n = f.GetNumPoints and f:GetNumPoints() or 0
-        for i = 1, n do
-            local pt, rel, rp, x, yo = f:GetPoint(i)
-            if rel == p and rp and (rp == "TOPLEFT" or rp == "TOP") and pt and (pt == "TOPLEFT" or pt == "TOPRIGHT") then
-                delta = -(yo or 0)
-                break
-            end
-        end
-        if delta == nil then return nil end
-        sum = sum + delta
-        f = p
-    end
-    return nil
-end
-
 --- Flat list for virtual scrolling (headers + rows). Mirrors Collections achievement grouping.
----@param listOpts table|nil Optional `{ rowHeightScale = number }` (default 1; Plans/Collections pass `ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE`).
+---@param listOpts table|nil Optional `{ rowHeightScale = number, outList = table }` (scale default 1; Plans/Collections pass `ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE`).
 function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listOpts)
-    local flat = {}
+    -- `listOpts.outList`: refill a caller-owned table in place (VirtualListModule keeps windowing it).
+    local flat = listOpts and listOpts.outList
+    if type(flat) == "table" then
+        wipe(flat)
+    else
+        flat = {}
+    end
     local yOffset = 0
     local rowCounter = 0
     local baseRowH = LAYOUT.ROW_HEIGHT or 26
@@ -271,6 +252,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
                 height = achRowStride,
                 rowPaintHeight = achRowH,
                 indent = rowIndent,
+                xOffset = rowIndent,  -- VirtualListModule row anchor X
             }
             yOffset = yOffset + achRowStride
         end
@@ -313,7 +295,8 @@ end
 --[[
     opts.state — table with achievement browse fields (same shape as collectionsState):
       achievementListScrollFrame, achievementListScrollChild, _achFlatList, _achHeaderPool,
-      _achVisibleRowFrames, _achListWidth, _achListSelectedID, _achListOnSelect, _achListContentFrame,
+      _achVisibleRowFrames (mirror of the VirtualListModule visible list: { frame, index, isHeader }),
+      _achListWidth, _achListSelectedID, _achListOnSelect, _achListContentFrame,
       _achListCollapsedHeaders, _achListRefreshVisible, _achListRebuild (set by this populate)
     Plans To-Do only (optional): _achUseOuterScroll, _achOuterScrollFrame, _achOuterScrollChild (tab scrollChild),
       _achOuterScrollActive — virtual rows use main tab ScrollFrame (single scrollbar). Hook uses ns._plansAchOuterVirtualState.
@@ -328,6 +311,9 @@ end
     opts.collectionsSubTabGen — optional; Collections sub-tab switch abort
     opts.plansCategoryGen — optional; Plans To-Do browse category switch abort
     opts.rowHeightScale — optional number passed to BuildFlatList (Plans & Collections achievements use `ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE`).
+
+    Windowing runs on VirtualListModule (virtualHeaders mode): headers and rows are both culled + pooled
+    against the one flat model, so a collapse/expand is "rebuild model in place -> re-window".
 ]]
 
 -- Headers are virtual items in the same flat model as rows, so only the ones inside the viewport exist
@@ -377,38 +363,6 @@ local function ReleaseAchievementHeader(state, header)
     pool[#pool + 1] = header
 end
 
---- Recycle every frame the list currently shows (headers to the header pool, rows to the caller's pool).
-local function ReleaseAchievementVisibleFrames(state, releaseRowFrame)
-    local visible = state._achVisibleRowFrames
-    if not visible then return end
-    local entryPool = state._achVisEntryPool
-    if not entryPool then
-        entryPool = {}
-        state._achVisEntryPool = entryPool
-    end
-    for i = 1, #visible do
-        local v = visible[i]
-        if v then
-            local frame = v.frame
-            if frame then
-                if v.isHeader then
-                    ReleaseAchievementHeader(state, frame)
-                else
-                    frame:Hide()
-                    frame:ClearAllPoints()
-                    releaseRowFrame(frame)
-                end
-            end
-            v.frame = nil
-            v.isHeader = nil
-            entryPool[#entryPool + 1] = v
-        end
-    end
-    wipe(visible)
-end
-
-ns.UI_AchievementBrowse_ReleaseVisibleFrames = ReleaseAchievementVisibleFrames
-
 function ns.UI_AchievementBrowse_Populate(opts)
     if not opts or not opts.scrollChild or not Factory then return end
     if _populateAchievementBrowseBusy then
@@ -426,8 +380,9 @@ function ns.UI_AchievementBrowse_Populate(opts)
     local acquireRow = opts.acquireRow
     local releaseRowFrame = opts.releaseRowFrame
     local scheduleVisibleSync = opts.scheduleVisibleSync
+    local VLM = ns.VirtualListModule
 
-    if type(acquireRow) ~= "function" or type(releaseRowFrame) ~= "function" then
+    if type(acquireRow) ~= "function" or type(releaseRowFrame) ~= "function" or not VLM then
         _populateAchievementBrowseBusy = false
         InvokeAchievementBrowseListReady(opts)
         DrainAchievementBrowsePopulateQueue()
@@ -438,11 +393,12 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     scrollChild:SetWidth(listWidth)
 
-    ReleaseAchievementVisibleFrames(state, releaseRowFrame)
+    -- Recycle the previous paint (rows -> caller pool, headers -> header pool) before the sweep below.
+    VLM.ReleaseVisibleRows(scrollChild)
 
     -- Purge leftovers from an earlier draw. Pooled headers stay parented here (recycled in place, so the
     -- list never pays a reparent storm); anything still shown is an orphan from a caller that dropped
-    -- `_achVisibleRowFrames` and must go back to the pool rather than linger at a stale position.
+    -- its visible list and must go back to the pool rather than linger at a stale position.
     local nch = PackVariadicInto(_achChildEnumScratch, scrollChild:GetChildren())
     for i = 1, nch do
         local c = _achChildEnumScratch[i]
@@ -462,18 +418,21 @@ function ns.UI_AchievementBrowse_Populate(opts)
         _achRegionEnumScratch[i]:Hide()
     end
 
-    local listBuildOpts = nil
-    if (opts.rowHeightScale and type(opts.rowHeightScale) == "number") or opts.searchActive or opts.hideEmptyCategories then
-        listBuildOpts = {}
-        if opts.rowHeightScale and type(opts.rowHeightScale) == "number" then
-            listBuildOpts.rowHeightScale = opts.rowHeightScale
-        end
-        if opts.searchActive then
-            listBuildOpts.searchActive = true
-        end
-        if opts.hideEmptyCategories then
-            listBuildOpts.hideEmptyCategories = true
-        end
+    -- Stable flat-list table: rebuilt IN PLACE on collapse/expand so VirtualListModule keeps windowing
+    -- the same reference (no re-Setup per toggle).
+    local flatStore = state._achFlatList
+    if type(flatStore) ~= "table" then
+        flatStore = {}
+    end
+    local listBuildOpts = { outList = flatStore }
+    if opts.rowHeightScale and type(opts.rowHeightScale) == "number" then
+        listBuildOpts.rowHeightScale = opts.rowHeightScale
+    end
+    if opts.searchActive then
+        listBuildOpts.searchActive = true
+    end
+    if opts.hideEmptyCategories then
+        listBuildOpts.hideEmptyCategories = true
     end
 
     local onContentHeight = opts.onContentHeight
@@ -491,11 +450,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
     end
 
     local function refreshVisibleInternal()
-        ns.UI_AchievementBrowse_UpdateVisibleRange({
-            state = state,
-            acquireRow = acquireRow,
-            releaseRowFrame = releaseRowFrame,
-        })
+        VLM.RepaintVisible(scrollChild)
     end
 
     --- Section toggle: flip the model flag, rebuild O(n), re-window. No reflow pass, no measurement.
@@ -516,30 +471,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
         refreshVisibleInternal()
     end
 
-    local function ensureAchievementBrowseScrollHooks()
-        local scrollFrame = state.achievementListScrollFrame
-        if not scrollFrame then return end
-        state._achListRefreshVisible = refreshVisibleInternal
-        if state._achUseOuterScroll then
-            state._achOuterScrollActive = true
-            ns._plansAchOuterVirtualState = state
-            if scrollFrame.HookScript and not ns._plansAchOuterScrollHooked then
-                ns._plansAchOuterScrollHooked = true
-                scrollFrame:HookScript("OnVerticalScroll", function()
-                    local st = ns._plansAchOuterVirtualState
-                    if st and st._achOuterScrollActive and st._achListRefreshVisible then
-                        st._achListRefreshVisible()
-                    end
-                end)
-            end
-        else
-            scrollFrame:SetScript("OnVerticalScroll", function()
-                refreshVisibleInternal()
-            end)
-        end
-    end
-
-    -- Bind list state before the first window pass (UpdateVisibleRange reads all of it).
+    -- Bind list state before the first window pass (row/header acquire reads all of it).
     state._achSectionBodies = nil
     state._achListWidth = listWidth
     state._achListSelectedID = opts.selectedAchievementID
@@ -602,12 +534,70 @@ function ns.UI_AchievementBrowse_Populate(opts)
         end
     end
 
-    ensureAchievementBrowseScrollHooks()
-    refreshVisibleInternal()
-    if type(scheduleVisibleSync) == "function" then
-        scheduleVisibleSync(refreshVisibleInternal)
+    -- Plans To-Do rides the main tab ScrollFrame (single scrollbar): VirtualListModule maps the model Y
+    -- into that scroll content's space itself (nested container -> scroll-space cull).
+    local listScrollFrame = state.achievementListScrollFrame
+    local windowScrollFrame = listScrollFrame
+    if state._achUseOuterScroll and state._achOuterScrollFrame then
+        windowScrollFrame = state._achOuterScrollFrame
     end
+
+    if windowScrollFrame then
+        -- Rows: the caller's acquire paints + pools; VirtualListModule re-anchors at (indent, -yOffset).
+        -- Release adapters skip hidden frames: Plans teardown may already have pooled them itself.
+        VLM.SetupVirtualList({ scroll = windowScrollFrame }, scrollChild, 0, flatList, {
+            createRowFn = function(_, it)
+                return acquireRow(scrollChild, state._achListWidth or listWidth, it,
+                    state._achListSelectedID or state.selectedAchievementID, state._achListOnSelect,
+                    state._achListRedrawFn, state._achListContentFrame)
+            end,
+            releaseRowFn = function(f)
+                if not f:IsShown() then return end
+                f:Hide()
+                f:ClearAllPoints()
+                releaseRowFrame(f)
+            end,
+            virtualHeaders = true,
+            acquireHeaderFn = function(_, it)
+                return AcquireAchievementHeader(state, scrollChild, it, state._achListWidth or listWidth, onHeaderToggle)
+            end,
+            releaseHeaderFn = function(f)
+                if f:IsShown() then
+                    ReleaseAchievementHeader(state, f)
+                end
+            end,
+            onVisibleChanged = function(vis)
+                state._achVisibleRowFrames = vis
+            end,
+            noStaggeredRepaint = true,
+        })
+
+        state._achListRefreshVisible = refreshVisibleInternal
+        if state._achUseOuterScroll then
+            state._achOuterScrollActive = true
+            ns._plansAchOuterVirtualState = state
+            if listScrollFrame and listScrollFrame.HookScript and not ns._plansAchOuterScrollHooked then
+                ns._plansAchOuterScrollHooked = true
+                listScrollFrame:HookScript("OnVerticalScroll", function()
+                    local st = ns._plansAchOuterVirtualState
+                    if st and st._achOuterScrollActive and st._achListRefreshVisible then
+                        st._achListRefreshVisible()
+                    end
+                end)
+            end
+        elseif listScrollFrame then
+            listScrollFrame:SetScript("OnVerticalScroll", refreshVisibleInternal)
+        end
+    end
+    -- Re-show deferred list chrome before the first window pass: VirtualListModule skips paints on
+    -- hidden containers.
     EndAchievementBrowseDeferredChrome()
+    if windowScrollFrame then
+        refreshVisibleInternal()
+        if type(scheduleVisibleSync) == "function" then
+            scheduleVisibleSync(refreshVisibleInternal)
+        end
+    end
     do
         local cui = ns.CollectionsUI
         if cui and cui.CollectionsSubTabTrace then
@@ -617,99 +607,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
     InvokeAchievementBrowseListReady(opts)
     _populateAchievementBrowseBusy = false
     DrainAchievementBrowsePopulateQueue()
-end
-
---- Overscan so a scroll delta never exposes an unbuilt header/row edge.
-local ACH_WINDOW_OVERSCAN = ROW_HEIGHT * 3
-
-function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
-    local state = opts and opts.state
-    local acquireRow = opts and opts.acquireRow
-    local releaseRowFrame = opts and opts.releaseRowFrame
-    if not state or type(acquireRow) ~= "function" or type(releaseRowFrame) ~= "function" then return end
-
-    local flatList = state._achFlatList
-    local useOuter = state._achUseOuterScroll == true
-    local scrollFrame = useOuter and state._achOuterScrollFrame or state.achievementListScrollFrame
-    local scrollChild = state.achievementListScrollChild
-    if not flatList or not scrollChild then return end
-    if not scrollFrame then
-        useOuter = false
-        scrollFrame = state.achievementListScrollFrame
-    end
-    if not scrollFrame then return end
-
-    local scrollTop = scrollFrame:GetVerticalScroll() or 0
-    local visibleHeight = scrollFrame:GetHeight() or 0
-    local windowTop = scrollTop - ACH_WINDOW_OVERSCAN
-    local windowBottom = scrollTop + visibleHeight + ACH_WINDOW_OVERSCAN
-
-    -- Plans To-Do rides the main tab ScrollFrame: shift model Y into that scroll content's space.
-    local listTopInContent = 0
-    if useOuter then
-        local scrollContent = scrollFrame.GetScrollChild and scrollFrame:GetScrollChild()
-        local walked = scrollContent and ListTopOffsetDownFromScrollContent(scrollChild, scrollContent)
-        if walked ~= nil then
-            listTopInContent = walked
-        else
-            local outerChild = state._achOuterScrollChild
-            if outerChild then
-                local ot = outerChild:GetTop()
-                local at = scrollChild:GetTop()
-                if ot and at then
-                    listTopInContent = ot - at
-                end
-            end
-        end
-    end
-
-    -- Entry tables + the outer list are reused across refreshes (this runs per scroll delta).
-    local visible = state._achVisibleRowFrames
-    local entryPool = state._achVisEntryPool
-    if not entryPool then
-        entryPool = {}
-        state._achVisEntryPool = entryPool
-    end
-    if visible then
-        ReleaseAchievementVisibleFrames(state, releaseRowFrame)
-    else
-        visible = {}
-        state._achVisibleRowFrames = visible
-    end
-
-    local cf = state._achListContentFrame
-    local selectedID = state._achListSelectedID or state.selectedAchievementID
-    local onSelect = state._achListOnSelect
-    local listWidth = state._achListWidth or scrollChild:GetWidth()
-    local redrawFn = state._achListRedrawFn
-    local onHeaderToggle = state._achHeaderToggleFn
-
-    for i = 1, #flatList do
-        local it = flatList[i]
-        local top = (it.yOffset or 0) + listTopInContent
-        local bottomEdge = top + (it.height or ROW_HEIGHT)
-        if bottomEdge > windowTop and top < windowBottom then
-            local frame, isHeader
-            if it.type == "row" then
-                frame = acquireRow(scrollChild, listWidth, it, selectedID, onSelect, redrawFn, cf)
-            elseif it.type == "header" and onHeaderToggle then
-                frame = AcquireAchievementHeader(state, scrollChild, it, listWidth, onHeaderToggle)
-                isHeader = true
-            end
-            if frame then
-                local entry = entryPool[#entryPool]
-                if entry then
-                    entryPool[#entryPool] = nil
-                else
-                    entry = {}
-                end
-                entry.frame = frame
-                entry.isHeader = isHeader
-                entry.flatIndex = i
-                visible[#visible + 1] = entry
-            end
-        end
-    end
 end
 
 local WarbandNexus = ns.WarbandNexus

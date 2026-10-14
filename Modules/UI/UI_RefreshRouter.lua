@@ -5,6 +5,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
 ns.UI_RefreshRouter = ns.UI_RefreshRouter or {}
 
@@ -259,13 +261,12 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         SchedulePopulateContent(true)
     end)
     
-    -- Collection scan complete: collections needs immediate paint; plans browse coalesces (avoid redraw loop).
+    -- Collection scan complete: plans browse coalesces (avoid redraw loop). Collections tab is owned by
+    -- CollectionsUI.lua (invalidate caches + sub-tab redraw); a shell PopulateContent here doubled it.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
         if HiddenOrMissing() then return end
         local tab = f.currentTab
-        if tab == "collections" then
-            SchedulePopulateContent(true)
-        elseif tab == "plans" then
+        if tab == "plans" then
             SchedulePopulateContent()
         end
     end)
@@ -514,18 +515,26 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCIES_UPDATED, refreshCurrency)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_GAINED, refreshCurrency)
-    -- CurrencyUI.lua registers DrawCurrencyTab on CACHE_READY when active; avoid double PopulateContent here.
+    -- Currency tab: this router is the single redraw owner. FullScan sends CACHE_READY then
+    -- CURRENCY_UPDATED back-to-back; both land on the same populate debounce = one rebuild per burst.
+    -- skipCooldown: CACHE_READY must never be dropped (it ends the tab's loading state).
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_CACHE_READY, function()
         if HiddenOrMissing() then return end
-        if f.currentTab == "currency" then return end
+        if f.currentTab == "currency" then
+            SchedulePopulateContent(true)
+            return
+        end
         refreshCurrency()
     end)
 
     -- Collections: obtained/scan results + achievement tracking flips need to redraw cards.
     -- Plans tab also reads obtained state for try-counter rows; Statistics tab shows collection counts.
+    -- Collections tab: CollectionsUI.lua owns its coalesced sub-tab redraw (ScheduleCoalescedCollectionRedraw);
+    -- a shell PopulateContent here rebuilt the same sub-tab a second time.
     local function refreshCollection()
         if HiddenOrMissing() then return end
-        if f.currentTab == "collections" or f.currentTab == "plans" or f.currentTab == "stats" then
+        if f.currentTab == "collections" then return end
+        if f.currentTab == "plans" or f.currentTab == "stats" then
             -- Plans browse: coalesce COLLECTION_UPDATED storms during background scans (skipCooldown rebuild loop).
             if f.currentTab == "plans" then
                 SchedulePopulateContent()
@@ -755,6 +764,22 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)
+        -- Module off = its external windows close too (runs even while the main window is hidden).
+        if enabled == false then
+            if moduleName == "professions" then
+                if ns.RecipeCompanionWindow and ns.RecipeCompanionWindow.Hide then
+                    ns.RecipeCompanionWindow.Hide()
+                end
+                -- Same path as the window's own close button (CreateContainer global name).
+                local profInfo = _G.WarbandNexus_ProfessionInfo
+                if profInfo and profInfo:IsShown() then profInfo:Hide() end
+            elseif moduleName == "plans" then
+                local tracker = _G.WarbandNexus_PlansTracker
+                if tracker and tracker:IsShown() and WarbandNexus.TogglePlansTrackerWindow then
+                    WarbandNexus:TogglePlansTrackerWindow()
+                end
+            end
+        end
         if HiddenOrMissing() or not f.tabButtons then return end
         -- Map module name to tab key (currencies -> currency; others same)
         local tabKey = (moduleName == "currencies") and "currency" or moduleName

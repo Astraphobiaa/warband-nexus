@@ -4,6 +4,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
@@ -2075,7 +2077,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local clearIcon = clearBtn:CreateTexture(nil, "ARTWORK")
     clearIcon:SetSize(12, 12)
     clearIcon:SetPoint("CENTER")
-    clearIcon:SetAtlas("uitools-icon-close")
+    ns.UI_SetIcon(clearIcon, "close")
     clearIcon:SetVertexColor(0.9, 0.3, 0.3)
 
     clearBtn:SetScript("OnClick", function()
@@ -3315,6 +3317,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local d = WarbandNexus._notifCoordDialog
         if d then
             d:Hide()
+            if ns.UI_UnregisterScaledFrame then ns.UI_UnregisterScaledFrame(d) end
             WarbandNexus._notifCoordDialog = nil
         end
     end
@@ -3490,6 +3493,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
         dlg._syncFromHolder(holder)
         dlg:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+        -- Follow profile.uiScale like every other addon dialog (unregistered in Close).
+        if ns.UI_RegisterScaledFrame then ns.UI_RegisterScaledFrame(dlg) end
         dlg:Show()
     end
 
@@ -5090,7 +5095,7 @@ function WarbandNexus:DrawSettingsTab(parent)
     local chrome = (mf and ns.UI_BeginTabChromeLayout) and ns.UI_BeginTabChromeLayout(mf) or nil
     local side = (chrome and chrome.side) or 12
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
-    local navW = shell.SETTINGS_NAV_WIDTH or 148
+    local navW = shell.SETTINGS_NAV_WIDTH or 160
     local navGap = shell.SETTINGS_NAV_GAP or 10
     local SUI = ns.SettingsUI
     local activePanel = (SUI and SUI.GetActivePanel and SUI.GetActivePanel()) or "general"
@@ -5111,16 +5116,24 @@ function WarbandNexus:DrawSettingsTab(parent)
             showUnderline = false,
         }))
         if titleCard then
-            if ns.UI_AnchorTabTitleCard then
-                ns.UI_AnchorTabTitleCard(titleCard, chrome)
-            end
             titleCard:Show()
-            if ns.UI_AdvanceTabChromeYOffset then
+            if ns.UI_PageStack_Place then
+                local headerBody = ns.UI_PageStack_Place(chrome, titleCard)
+                if ns.UI_CommitTabFixedHeader then
+                    ns.UI_CommitTabFixedHeader(mf, headerBody)
+                end
+            elseif ns.UI_AdvanceTabChromeYOffset then
+                if ns.UI_AnchorTabTitleCard then
+                    ns.UI_AnchorTabTitleCard(titleCard, chrome)
+                end
                 local headerBody = ns.UI_AdvanceTabChromeYOffset(chrome.yOffset, titleCard:GetHeight())
                 if ns.UI_CommitTabFixedHeader then
                     ns.UI_CommitTabFixedHeader(mf, headerBody)
                 end
             elseif mf and mf.fixedHeader then
+                if ns.UI_AnchorTabTitleCard then
+                    ns.UI_AnchorTabTitleCard(titleCard, chrome)
+                end
                 mf.fixedHeader:SetHeight((chrome.yOffset or 0) + (titleCard:GetHeight() or 64) + 8)
             end
             -- Settings header divider removed (user: no box/line under the settings header).
@@ -5139,9 +5152,13 @@ function WarbandNexus:DrawSettingsTab(parent)
         BuildSettings(parent, w, { startYOffset = startY, sideInset = side, panel = activePanel })
         return parent:GetHeight() or 1
     end
-    bodyRow:ClearAllPoints()
-    bodyRow:SetPoint("TOPLEFT", parent, "TOPLEFT", side, startY)
-    bodyRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -side, startY)
+    if ns.UI_PageStack_AnchorBody then
+        ns.UI_PageStack_AnchorBody(parent, bodyRow, -startY)
+    else
+        bodyRow:ClearAllPoints()
+        bodyRow:SetPoint("TOPLEFT", parent, "TOPLEFT", side, startY)
+        bodyRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -side, startY)
+    end
 
     local navCol = ns.UI.Factory:CreateContainer(bodyRow, navW, 1, false)
     local host = ns.UI.Factory:CreateContainer(bodyRow, 1, 1, false)

@@ -70,8 +70,10 @@ function SearchResultsRenderer:PrepareContainer(container)
     end
     for i = 1, #children do
         local child = children[i]
-        if IsProtected and IsProtected(child, container) then
+        if (IsProtected and IsProtected(child, container)) or child._wnStorPooled then
+            -- Storage StorPool sections stay parented to the results container (reused next pass).
             child:Hide()
+            if child._wnStorPooled then child:ClearAllPoints() end
         else
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end

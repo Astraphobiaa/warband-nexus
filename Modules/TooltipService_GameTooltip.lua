@@ -5,6 +5,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
 local strsplit = strsplit
@@ -318,7 +321,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
 
         -- Prepend green checkmark for collected items (inline texture for reliable rendering)
         if collected then
-            displayLink = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14:0:0|t " .. displayLink
+            displayLink = ns.UI_GetIconMarkup("status_ok", 14, 14, 0, 0) .. " " .. displayLink
         end
 
         -- Append yellow (Planned) for items in the player's Plans list
@@ -398,8 +401,8 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 end
 
                 local yieldIcon = yieldCollected
-                    and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-                    or  "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                    and ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+                    or  ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
                 local yieldColor = yieldCollected and "ff00ff00" or "ff999999"
                 local typeLabel = yield.type == "mount" and "Mount"
                     or yield.type == "pet" and "Pet"
@@ -584,7 +587,7 @@ local function RunGameTooltipInjection(tooltip, data, fn)
         end
     end
 
-    pcall(fn)
+    pcall(fn, tooltip, data)  -- zero-arg closures ignore the args; hoisted bodies read them
 end
 
 local function ParseItemIDFromItemLink(link)
@@ -637,6 +640,19 @@ local GUILD_VAULT_ICON_ATLAS = "Warfronts-FieldMapIcons-Neutral-Banner-Minimap"
 local ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H = 16, 16
 local ITEM_COUNT_RIGHT_R, ITEM_COUNT_RIGHT_G, ITEM_COUNT_RIGHT_B = 0.3, 0.9, 0.3
 local ITEM_COUNT_BANK_R, ITEM_COUNT_BANK_G, ITEM_COUNT_BANK_B = 0.8, 0.8, 0.8
+
+-- Item-count icon markup: fixed atlas + fixed ITEM_COUNT_ICON_W/H size (no theme/font input), so cache per
+-- atlas once a non-empty markup was produced. Empty results are retried next hover.
+local itemCountAtlasMarkupCache = {}
+local function CachedItemCountAtlasMarkup(atlas)
+    local markup = itemCountAtlasMarkupCache[atlas]
+    if markup then return markup end
+    markup = SafeAtlasMarkup(atlas, ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
+    if markup ~= "" then
+        itemCountAtlasMarkupCache[atlas] = markup
+    end
+    return markup
+end
 
 local function FormatBagBankCountText(bagIcon, bankIcon, bagCount, bankCount)
     bagCount = bagCount or 0
@@ -693,8 +709,18 @@ local function ResolveLiveCharacterLabel(liveChar)
     return (ns.L and ns.L["HEADER_CURRENT_CHARACTER"]) or "Current Character"
 end
 
+-- Scratch state for BuildWNItemCountRows (one hover at a time, consumed synchronously).
+-- Returned rows are only valid until the next BuildWNItemCountRows call.
+local itemCountScratch = {
+    otherChars = {},
+    charRows = {}, charRowPool = {},
+    rows = {}, rowPool = {},
+    whiteClassColor = { r = 1, g = 1, b = 1 },
+}
+
 local function SplitLiveAndAltCharacters(characters)
-    local liveChar, otherChars = nil, {}
+    local liveChar, otherChars = nil, itemCountScratch.otherChars
+    wipe(otherChars)
     if not characters then return liveChar, otherChars end
     for i = 1, #characters do
         local char = characters[i]
@@ -726,7 +752,52 @@ local function SumGuildCounts(guilds)
     return total
 end
 
+local function CompareItemCountCharRows(a, b)
+    if a.count ~= b.count then return a.count > b.count end
+    return (a.label or "") < (b.label or "")
+end
+
+local function AddItemCountCharRow(charRows, char, isLive, altLabel)
+    if not char then return end
+    local bag = char.bagCount or 0
+    local bank = char.bankCount or 0
+    if bag <= 0 and bank <= 0 then return end
+    local cc = RAID_CLASS_COLORS[char.classFile] or itemCountScratch.whiteClassColor
+    local n = #charRows + 1
+    local pool = itemCountScratch.charRowPool
+    local row = pool[n]
+    if not row then
+        row = {}
+        pool[n] = row
+    end
+    row.label = isLive and ResolveLiveCharacterLabel(char) or (char.charName or altLabel)
+    row.bag = bag
+    row.bank = bank
+    row.count = bag + bank
+    row.cr, row.cg, row.cb = cc.r, cc.g, cc.b
+    charRows[n] = row
+end
+
+local function PushItemCountRow(rows, label, rightText, lr, lg, lb)
+    if not rightText then return end
+    local n = #rows + 1
+    local pool = itemCountScratch.rowPool
+    local row = pool[n]
+    if not row then
+        row = {}
+        pool[n] = row
+    end
+    row.hint, row.text = nil, nil
+    row.left = label
+    row.right = rightText
+    row.lr, row.lg, row.lb = lr, lg, lb
+    row.rr, row.rg, row.rb = ITEM_COUNT_RIGHT_R, ITEM_COUNT_RIGHT_G, ITEM_COUNT_RIGHT_B
+    row.balanced = true
+    rows[n] = row
+end
+
 --- Build WN Search item-count rows (online / alts / warband / guild).
+--- Returned rows are pooled scratch: consume them before the next call (both callers paint synchronously).
 function GT.BuildWNItemCountRows(itemID, isShift)
     if not itemID or not WarbandNexus or not WarbandNexus.GetDetailedItemCountsFast then
         return nil, 0
@@ -738,10 +809,10 @@ function GT.BuildWNItemCountRows(itemID, isShift)
     local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
     if not details then return nil, 0 end
 
-    local bagIcon = SafeAtlasMarkup("Banker", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
-    local bankIcon = SafeAtlasMarkup("VignetteLoot", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
-    local warbandIcon = SafeAtlasMarkup("warbands-icon", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
-    local guildIcon = SafeAtlasMarkup(GUILD_VAULT_ICON_ATLAS, ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
+    local bagIcon = CachedItemCountAtlasMarkup("Banker")
+    local bankIcon = CachedItemCountAtlasMarkup("VignetteLoot")
+    local warbandIcon = CachedItemCountAtlasMarkup("warbands-icon")
+    local guildIcon = CachedItemCountAtlasMarkup(GUILD_VAULT_ICON_ATLAS)
 
     local liveChar, otherChars = SplitLiveAndAltCharacters(details.characters)
     local guildTotal = SumGuildCounts(details.guilds)
@@ -752,29 +823,13 @@ function GT.BuildWNItemCountRows(itemID, isShift)
 
     -- Unified character list (live + alts), ranked by how much of the item each holds.
     -- Non-shift shows only the top holders; Shift reveals the full roster.
-    local charRows = {}
-    local function AddCharRow(char, isLive)
-        if not char then return end
-        local bag = char.bagCount or 0
-        local bank = char.bankCount or 0
-        if bag <= 0 and bank <= 0 then return end
-        local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-        charRows[#charRows + 1] = {
-            label = isLive and ResolveLiveCharacterLabel(char) or (char.charName or altLabel),
-            bag = bag,
-            bank = bank,
-            count = bag + bank,
-            cr = cc.r, cg = cc.g, cb = cc.b,
-        }
-    end
-    AddCharRow(liveChar, true)
+    local charRows = itemCountScratch.charRows
+    wipe(charRows)
+    AddItemCountCharRow(charRows, liveChar, true, altLabel)
     for i = 1, #otherChars do
-        AddCharRow(otherChars[i], false)
+        AddItemCountCharRow(charRows, otherChars[i], false, altLabel)
     end
-    table.sort(charRows, function(a, b)
-        if a.count ~= b.count then return a.count > b.count end
-        return (a.label or "") < (b.label or "")
-    end)
+    table.sort(charRows, CompareItemCountCharRows)
 
     local total = (details.warbandBank or 0) + guildTotal
     for i = 1, #charRows do
@@ -782,18 +837,8 @@ function GT.BuildWNItemCountRows(itemID, isShift)
     end
     if total <= 0 then return nil, 0 end
 
-    local rows = {}
-
-    local function pushRow(label, rightText, lr, lg, lb)
-        if not rightText then return end
-        rows[#rows + 1] = {
-            left = label,
-            right = rightText,
-            lr = lr, lg = lg, lb = lb,
-            rr = ITEM_COUNT_RIGHT_R, rg = ITEM_COUNT_RIGHT_G, rb = ITEM_COUNT_RIGHT_B,
-            balanced = true,
-        }
-    end
+    local rows = itemCountScratch.rows
+    wipe(rows)
 
     -- Top holders shown by default; the rest fold behind Shift.
     local TOP_CHARACTER_ROWS = 5
@@ -801,12 +846,12 @@ function GT.BuildWNItemCountRows(itemID, isShift)
     for i = 1, shownChars do
         local c = charRows[i]
         local right = FormatBagBankCountText(bagIcon, bankIcon, c.bag, c.bank)
-        pushRow(c.label, right, c.cr, c.cg, c.cb)
+        PushItemCountRow(rows, c.label, right, c.cr, c.cg, c.cb)
     end
 
     if (details.warbandBank or 0) > 0 then
         local lr, lg, lb = ResolveGoldLabelRGB()
-        pushRow(
+        PushItemCountRow(rows,
             FormatLeftLabelWithIcon(warbandIcon, warbandLabel),
             warbandIcon .. " : " .. details.warbandBank,
             lr, lg, lb
@@ -815,7 +860,7 @@ function GT.BuildWNItemCountRows(itemID, isShift)
 
     if guildTotal > 0 then
         local lr, lg, lb = ResolveInfoLabelRGB()
-        pushRow(
+        PushItemCountRow(rows,
             FormatLeftLabelWithIcon(guildIcon, guildLabel),
             guildIcon .. " : " .. guildTotal,
             lr, lg, lb
@@ -823,14 +868,22 @@ function GT.BuildWNItemCountRows(itemID, isShift)
     end
 
     if not isShift and #charRows > TOP_CHARACTER_ROWS then
-        rows[#rows + 1] = {
-            hint = true,
-            text = (ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list",
-        }
+        local n = #rows + 1
+        local pool = itemCountScratch.rowPool
+        local hintRow = pool[n]
+        if not hintRow then
+            hintRow = {}
+            pool[n] = hintRow
+        end
+        hintRow.hint = true
+        hintRow.text = (ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list"
+        rows[n] = hintRow
     end
 
     return rows, total
 end
+
+local BALANCED_LINE_OPTS = { balanced = true }  -- read-only (TooltipFactory reads opts.balanced)
 
 local function PaintRowsToSink(sink, rows, total)
     if not sink or not rows or #rows == 0 then return false end
@@ -852,7 +905,7 @@ local function PaintRowsToSink(sink, rows, total)
                     row.left, row.right,
                     row.lr, row.lg, row.lb,
                     row.rr, row.rg, row.rb,
-                    { balanced = true }
+                    BALANCED_LINE_OPTS
                 )
             else
                 addDouble(sink,
@@ -865,7 +918,7 @@ local function PaintRowsToSink(sink, rows, total)
     end
 
     local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-    addDouble(sink, totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1, { balanced = true })
+    addDouble(sink, totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1, BALANCED_LINE_OPTS)
     return true
 end
 
@@ -953,28 +1006,29 @@ local function InstallGameTooltipInjectionClearHooks()
     -- Token deduplication is now driven safely by TooltipData.dataInstanceID lifecycle in pure Lua.
 end
 
+-- Reusable GameTooltip sink for PaintRowsToSink (target tooltip set per call, cleared after).
+local gameTooltipCountSink = { tooltip = nil }
+function gameTooltipCountSink.AddLine(sink, text, r, g, b, wrap)
+    sink.tooltip:AddLine(text, r, g, b, wrap)
+end
+function gameTooltipCountSink.AddDoubleLine(sink, left, right, lr, lg, lb, rr, rg, rb)
+    local tooltip = sink.tooltip
+    return pcall(tooltip.AddDoubleLine, tooltip, left, right, lr, lg, lb, rr, rg, rb)
+end
+
 local function AppendWNItemCountLines(tooltip, itemID)
     if not tooltip or not itemID or not tooltip.AddLine or not tooltip.AddDoubleLine then
         return false
-    end
-
-    local function SafeAddDoubleLine(left, right, lr, lg, lb, rr, rg, rb)
-        return pcall(tooltip.AddDoubleLine, tooltip, left, right, lr, lg, lb, rr, rg, rb)
     end
 
     local isShift = IsShiftKeyDown and IsShiftKeyDown() or false
     local rows, total = GT.BuildWNItemCountRows(itemID, isShift)
     if not rows then return false end
 
-    local sink = {
-        AddLine = function(_, text, r, g, b, wrap)
-            tooltip:AddLine(text, r, g, b, wrap)
-        end,
-        AddDoubleLine = function(_, left, right, lr, lg, lb, rr, rg, rb, opts)
-            SafeAddDoubleLine(left, right, lr, lg, lb, rr, rg, rb)
-        end,
-    }
+    local sink = gameTooltipCountSink
+    sink.tooltip = tooltip
     local painted = PaintRowsToSink(sink, rows, total)
+    sink.tooltip = nil
     if painted then
         RegisterItemCountShiftTooltip(tooltip, itemID)
     end
@@ -1067,6 +1121,47 @@ local function AppendWNKeystoneLines(tooltip, hyperlink)
     return true
 end
 
+local function InjectItemCountTooltipLines(tooltip, data, itemID, isKeystone, countToken)
+    local injected
+    if isKeystone then
+        injected = AppendWNKeystoneLines(tooltip, data and data.hyperlink)
+    else
+        injected = AppendWNItemCountLines(tooltip, itemID)
+    end
+    if injected then
+        MarkTooltipInjectionDone(tooltip, countToken)
+    end
+end
+
+local function ItemTooltipCollectibleOwned(id)
+    if not id then return false end
+    if PlayerHasToy then
+        local okToy, hasToy = pcall(PlayerHasToy, id)
+        if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
+            return true
+        end
+    end
+    if C_MountJournal and C_MountJournal.GetMountFromItem then
+        local ok1, mountID = pcall(C_MountJournal.GetMountFromItem, id)
+        if ok1 and mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+            local ok2, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
+            if ok2 and isCollected == true and not (issecretvalue and issecretvalue(isCollected)) then
+                return true
+            end
+        end
+    end
+    if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+        local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id)
+        if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+            local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
+            if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function GT.InitializeGameTooltipHook(service)
     -- Modern TWW API (taint-safe)
     if not TooltipDataProcessor then
@@ -1078,8 +1173,8 @@ function GT.InitializeGameTooltipHook(service)
 
     -- ITEM TOOLTIP — single post-call (counts + planned + container drops)
     -- One TooltipDataProcessor registration avoids triple invocation per hover.
-    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        RunGameTooltipInjection(tooltip, data, function()
+    -- Body is created once here (not per hover); RunGameTooltipInjection passes (tooltip, data).
+    local function ItemTooltipPostCallBody(tooltip, data)
         if IsBlizzardWidgetTooltip(tooltip) then return end
         local itemID = ResolveItemTooltipID(data)
         -- dataInstanceID can be secret in Midnight — sanitize before `or`/tostring below.
@@ -1096,17 +1191,7 @@ function GT.InitializeGameTooltipHook(service)
                 local countToken = (isKeystone and "keystone:" or "counts:")
                     .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
                 if not TooltipInjectionAlreadyDone(tooltip, countToken) then
-                    local ok, err = pcall(function()
-                        local injected
-                        if isKeystone then
-                            injected = AppendWNKeystoneLines(tooltip, data and data.hyperlink)
-                        else
-                            injected = AppendWNItemCountLines(tooltip, itemID)
-                        end
-                        if injected then
-                            MarkTooltipInjectionDone(tooltip, countToken)
-                        end
-                    end)
+                    local ok, err = pcall(InjectItemCountTooltipLines, tooltip, data, itemID, isKeystone, countToken)
                     if not ok and WarbandNexus.Debug then
                         WarbandNexus:Debug("[Tooltip] Item count inject error for itemID " .. tostring(itemID) .. ": " .. tostring(err))
                     end
@@ -1116,35 +1201,6 @@ function GT.InitializeGameTooltipHook(service)
 
         -- "(Planned)" indicator
         if WarbandNexus and tooltip and tooltip.AddLine and itemID then
-            local function ItemTooltipCollectibleOwned(id)
-                if not id then return false end
-                if PlayerHasToy then
-                    local okToy, hasToy = pcall(PlayerHasToy, id)
-                    if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
-                        return true
-                    end
-                end
-                if C_MountJournal and C_MountJournal.GetMountFromItem then
-                    local ok1, mountID = pcall(C_MountJournal.GetMountFromItem, id)
-                    if ok1 and mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
-                        local ok2, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
-                        if ok2 and isCollected == true and not (issecretvalue and issecretvalue(isCollected)) then
-                            return true
-                        end
-                    end
-                end
-                if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                    local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id)
-                    if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
-                        local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
-                        if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
-                            return true
-                        end
-                    end
-                end
-                return false
-            end
-
             local planned = false
             if WarbandNexus.IsItemPlanned then
                 planned = WarbandNexus:IsItemPlanned(nil, itemID)
@@ -1209,7 +1265,9 @@ function GT.InitializeGameTooltipHook(service)
                 end
             end
         end
-        end)
+    end
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        RunGameTooltipInjection(tooltip, data, ItemTooltipPostCallBody)
     end)
 
     service:Debug("Item tooltip hook initialized (counts + planned + container drops)")
@@ -1913,7 +1971,7 @@ function GT.InstallConcentrationTooltipHook(service)
                 if IsBlizzardWidgetTooltip(tooltip) then return end
                 if HasAlreadyInjected(tooltip) then return end
 
-                if WarbandNexus and WarbandNexus.Debug then
+                if WarbandNexus and WarbandNexus.Debug and ns.IsDebugModeEnabled and ns.IsDebugModeEnabled() then
                     WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, currencyID=" .. tostring(data.id))
                 end
 

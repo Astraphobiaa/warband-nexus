@@ -20,9 +20,20 @@ local allComplete = false
 -- Reused list for GetPendingLabels(); do not cache the return value across calls.
 local pendingLabelsScratch = {}
 
--- Most consumers poll tracker state directly (UI sync bar).
+-- Optional single change listener (UI sync bar). Called synchronously on every Register/Complete;
+-- the listener is expected to coalesce (it replaces the old 0.5s overlay polling ticker).
+local changeListener
+
+--- Set (or clear with nil) the change listener. fn() receives no args; read state via Get*/Is* methods.
+function Tracker:SetChangeListener(fn)
+    changeListener = fn
+end
+
 -- Keep addon-message broadcasts opt-in to avoid startup event spam.
 local function EmitLoadingMessage(eventName)
+    if changeListener then
+        changeListener()
+    end
     if ns.LOADING_TRACKER_EMIT_MESSAGES ~= true then
         return
     end

@@ -198,19 +198,24 @@ local next = next
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
-local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
+-- Row metric: UI_LAYOUT.TABLE.ROW_H.standard (SharedWidgets_TableKit list rows).
+local ROW_HEIGHT = (GetLayout().TABLE and GetLayout().TABLE.ROW_H.standard) or GetLayout().ROW_HEIGHT or 26
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local PAGE_STACK = GetLayout().PAGE_STACK or {} -- standard tab rhythm (SharedWidgets_Layout)
 
---- List row geometry: anchor chain (name â†” badge â†” amount) so columns never overlap (WN-UI-layout).
+--- List row geometry: anchor chain (name <-> badge <-> amount) so columns never overlap (WN-UI-layout).
+--- Column positions / gaps come from the shared list-row column model (FramePoolFactory CURRENCY_ROW_COLS).
+local CURRENCY_ROW_MODEL = ns.UI_LIST_ROW_COLUMNS
+assert(CURRENCY_ROW_MODEL and CURRENCY_ROW_MODEL.currency, "FramePoolFactory.lua must load before CurrencyUI.lua")
 local CURRENCY_LIST_ROW = {
-    TEXT_LEFT = 43,
-    COL_GAP = 6,
-    AMOUNT_RIGHT_PAD = 10,
+    TEXT_LEFT = CURRENCY_ROW_MODEL.currency.nameLeft,
+    COL_GAP = CURRENCY_ROW_MODEL.textGap,
+    AMOUNT_RIGHT_PAD = CURRENCY_ROW_MODEL.currency.amountRightPad,
     AMOUNT_MIN_W = 94,
     AMOUNT_MAX_W = 230,
     BADGE_MAX_W = 200,
@@ -925,7 +930,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 SearchStateManager:UpdateResults("currency", 0)
                 return height
             end
-            local yOffset = 100
+            local yOffset = 0 -- parent is the already-inset results container (fillParent)
             local _, height = CreateEmptyStateCard(parent, "currency", yOffset, { fillParent = true })
             SearchStateManager:UpdateResults("currency", 0)
             return yOffset + height
@@ -1330,7 +1335,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 SearchStateManager:UpdateResults("currency", 0)
                 return height
             end
-            local yOffset = 100
+            local yOffset = 0 -- parent is the already-inset results container (fillParent)
             local _, height = CreateEmptyStateCard(parent, "currency", yOffset, { fillParent = true })
             SearchStateManager:UpdateResults("currency", 0)
             return yOffset + height
@@ -1345,7 +1350,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         width - 20,
         60
     )
-    ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
+    ChainTopFrame(noticeFrame, PAGE_STACK.SECTION_GAP or SECTION_SPACING)
     
     -- Update SearchStateManager with result count (leaf rows in rendered header tree).
     local totalCurrencies = CountAggregatedCurrencyLeaves(aggregated.warbandTransferable)
@@ -1362,14 +1367,15 @@ end
 local function ApplyCurrencyResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, _animate, _fromResultsH, _fromScrollChildH)
     if not mainFrame or not scrollChild or not resultsContainer then return end
     local targetResultsH = math.max(listHeight or 1, 1)
-    local CONTENT_BOTTOM_PADDING = 8
-    local targetTabBodyH = 8 + (listHeight or 0)
+    local CONTENT_BOTTOM_PADDING = PAGE_STACK.BOTTOM_PAD or 12
+    local bodyTop = PAGE_STACK.BODY_TOP or 8
+    local targetTabBodyH = bodyTop + (listHeight or 0)
     local targetScrollChildH = math.max(targetTabBodyH + CONTENT_BOTTOM_PADDING, mainFrame.scroll:GetHeight())
 
     local Factory = ns.UI.Factory
     resultsContainer:SetHeight(targetResultsH)
     if ns.UI_SyncMainTabScrollChrome then
-        ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, 8 + (listHeight or 0))
+        ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, targetTabBodyH)
         return
     end
     scrollChild:SetHeight(targetScrollChildH)
@@ -1440,11 +1446,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_CACHE_READY, function()
-            if parent and IsCurrencyTabActive() then
-                WarbandNexus:DrawCurrencyTab(parent)
-            end
-        end)
+        -- WN_CURRENCY_CACHE_READY: owned by UI_RefreshRouter (same populate debounce as CURRENCY_UPDATED).
+        -- FullScan sends both back-to-back; drawing here too meant an immediate rebuild + a second one 100ms later.
         
         WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_CACHE_CLEARED, function()
             if parent and IsCurrencyTabActive() then
@@ -1507,7 +1510,10 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
 
-    local headerParent = fixedHeader or parent
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    -- Page stack: every chrome block goes through UI_PageStack_Place.
+    chrome = chrome or { headerParent = headerParent, yOffset = headerYOffset, side = PAGE_STACK.SIDE or SIDE_MARGIN }
+    local bodyTop = PAGE_STACK.BODY_TOP or 8
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
     
@@ -1527,12 +1533,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         subtitleText = subtitle,
         textRightInset = currencyToolbarReserve,
     })
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
-    else
-        titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    end
+    headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
     
     local showZeroBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
         preset = "action",
@@ -1562,28 +1563,22 @@ function WarbandNexus:DrawCurrencyTab(parent)
 
     titleCard:Show()
     
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
-    else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
-    end
-    
     -- If module is disabled, show disabled state card (in scroll area)
     if not moduleEnabled then
         if ns.UI_HideTitleCardExpandCollapseControls then
             ns.UI_HideTitleCardExpandCollapseControls(parent)
         end
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["CURRENCY_DISABLED_TITLE"]) or "Currency Tracking")
-        return 8 + cardHeight
+        local cardHeight = CreateDisabledCard(parent, bodyTop, (ns.L and ns.L["CURRENCY_DISABLED_TITLE"]) or "Currency Tracking")
+        return bodyTop + cardHeight
     end
     
     if ns.CurrencyLoadingState and ns.CurrencyLoadingState.isLoading then
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
-            local newYOffset = UI_CreateLoadingStateCard(parent, 8, ns.CurrencyLoadingState, (ns.L and ns.L["CURRENCY_LOADING_TITLE"]) or "Loading Currency Data")
+            local newYOffset = UI_CreateLoadingStateCard(parent, bodyTop, ns.CurrencyLoadingState, (ns.L and ns.L["CURRENCY_LOADING_TITLE"]) or "Loading Currency Data")
             return newYOffset
         end
     end
@@ -1600,11 +1595,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         end
     end, nil, currencySearchText, "currency")
     
-    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
-    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
-    headerYOffset = headerYOffset + searchH + GetLayout().afterElement
+    headerYOffset = ns.UI_PageStack_Place(chrome, searchBox, PAGE_STACK.SEARCH_HEIGHT or 32)
     
     -- Set fixedHeader height so scroll area starts below it
     if ns.UI_CommitTabFixedHeader then
@@ -1624,9 +1615,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         container = ns.UI.Factory:CreateContainer(parent)
         parent.resultsContainer = container
     end
-    container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", parent, "TOPLEFT", SIDE_MARGIN, -8)
-    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, -8)
+    ns.UI_PageStack_AnchorBody(parent, container, bodyTop)
     container:SetWidth(bodyWidth)
     container:SetHeight(1)
     container:Show()
@@ -1634,7 +1623,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local listHeight = self:DrawCurrencyList(container, bodyWidth)
     ApplyCurrencyResultsHeight(WarbandNexus.UI and WarbandNexus.UI.mainFrame, parent, container, listHeight, false)
     
-    return 8 + listHeight
+    return bodyTop + listHeight
 end
 
 if ns.UI_RegisterTabViewportResize then

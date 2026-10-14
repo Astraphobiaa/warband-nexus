@@ -739,6 +739,7 @@ end
     Coalesce rapid WN_PVE_UPDATED bursts (login / cache refresh) before reconciling vault plans.
 ]]
 function WarbandNexus:_DeferVaultPlanCheckFromPvE()
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     if self._wnVaultPlanCheckTimer then
         self._wnVaultPlanCheckTimer:Cancel()
         self._wnVaultPlanCheckTimer = nil
@@ -756,6 +757,8 @@ end
     NOTE: Named OnPvEUpdateCheckPlans to avoid collision with PvECacheService:OnVaultDataReceived
 ]]
 function WarbandNexus:OnPvEUpdateCheckPlans()
+    -- Module gate: also covers the ENCOUNTER_END registration in InitializePlanTracking.
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     if not self.db or not self.db.global or not self.db.global.plans then
         return
     end

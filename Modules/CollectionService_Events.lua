@@ -1,5 +1,9 @@
 --[[ CollectionService NEW_* handlers (ops split) ]]
 local _, ns = ...
+
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetItemIcon = C_Item.GetItemIconByID
+local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -48,37 +52,40 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         return
     end
 
-    -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
-    RT.collectionCache.owned.mounts[mountID] = true
-    self:RemoveFromUncollected("mount", mountID)
+    -- Module gate: store/cache writes only while Collections or Plans consume them; toast below always runs.
+    if ns.Utilities and ns.Utilities:IsAnyModuleEnabled("collections", "plans") then
+        -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
+        RT.collectionCache.owned.mounts[mountID] = true
+        self:RemoveFromUncollected("mount", mountID)
 
-    if not RT.collectionStore.mount then RT.collectionStore.mount = {} end
-    local m = RT.collectionStore.mount[mountID]
-    local storeChanged = false
-    if not m then
-        local sourceText = ""
-        if C_MountJournal.GetMountInfoExtraByID then
-            local _, description, src = C_MountJournal.GetMountInfoExtraByID(mountID)
-            if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
-        end
-        RT.collectionStore.mount[mountID] = {
-            id = mountID, name = name, icon = icon, source = sourceText, sourceType = sourceType, description = "",
-            creatureDisplayID = nil, collected = true,
-        }
-        storeChanged = true
-    else
-        if m.collected ~= true then
-            m.collected = true
+        if not RT.collectionStore.mount then RT.collectionStore.mount = {} end
+        local m = RT.collectionStore.mount[mountID]
+        local storeChanged = false
+        if not m then
+            local sourceText = ""
+            if C_MountJournal.GetMountInfoExtraByID then
+                local _, description, src = C_MountJournal.GetMountInfoExtraByID(mountID)
+                if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
+            end
+            RT.collectionStore.mount[mountID] = {
+                id = mountID, name = name, icon = icon, source = sourceText, sourceType = sourceType, description = "",
+                creatureDisplayID = nil, collected = true,
+            }
             storeChanged = true
+        else
+            if m.collected ~= true then
+                m.collected = true
+                storeChanged = true
+            end
+            -- Backfill sourceType if missing (DB migration from pre-3.0 store entries)
+            if sourceType and m.sourceType ~= sourceType then
+                m.sourceType = sourceType
+                storeChanged = true
+            end
         end
-        -- Backfill sourceType if missing (DB migration from pre-3.0 store entries)
-        if sourceType and m.sourceType ~= sourceType then
-            m.sourceType = sourceType
-            storeChanged = true
+        if storeChanged then
+            self:SaveCollectionStore()
         end
-    end
-    if storeChanged then
-        self:SaveCollectionStore()
     end
 
     -- Dedup layers only gate NOTIFICATIONS — data update above always runs
@@ -191,38 +198,41 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         return
     end
 
-    -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
-    RT.collectionCache.owned.pets[speciesID] = true
-    self:RemoveFromUncollected("pet", speciesID)
+    -- Module gate: store/cache writes only while Collections or Plans consume them; toast below always runs.
+    if ns.Utilities and ns.Utilities:IsAnyModuleEnabled("collections", "plans") then
+        -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
+        RT.collectionCache.owned.pets[speciesID] = true
+        self:RemoveFromUncollected("pet", speciesID)
 
-    if not RT.collectionStore.pet then RT.collectionStore.pet = {} end
-    local p = RT.collectionStore.pet[speciesID]
-    local storeChanged = false
-    -- Existing sourceTypeIndex from prior scan; backfilled if a fresh scan ran (rare on real-time path).
-    local sourceTypeIndex = ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[speciesID] or (p and p.sourceTypeIndex)
-    if not p then
-        local sourceText = ""
-        if C_PetJournal.GetPetInfoBySpeciesID then
-            local _, _, _, _, src = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-            if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
-        end
-        RT.collectionStore.pet[speciesID] = {
-            id = speciesID, name = name, icon = icon, source = sourceText, sourceTypeIndex = sourceTypeIndex, description = "",
-            creatureDisplayID = displayID, collected = true,
-        }
-        storeChanged = true
-    else
-        if p.collected ~= true then
-            p.collected = true
+        if not RT.collectionStore.pet then RT.collectionStore.pet = {} end
+        local p = RT.collectionStore.pet[speciesID]
+        local storeChanged = false
+        -- Existing sourceTypeIndex from prior scan; backfilled if a fresh scan ran (rare on real-time path).
+        local sourceTypeIndex = ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[speciesID] or (p and p.sourceTypeIndex)
+        if not p then
+            local sourceText = ""
+            if C_PetJournal.GetPetInfoBySpeciesID then
+                local _, _, _, _, src = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+                if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
+            end
+            RT.collectionStore.pet[speciesID] = {
+                id = speciesID, name = name, icon = icon, source = sourceText, sourceTypeIndex = sourceTypeIndex, description = "",
+                creatureDisplayID = displayID, collected = true,
+            }
             storeChanged = true
+        else
+            if p.collected ~= true then
+                p.collected = true
+                storeChanged = true
+            end
+            if sourceTypeIndex and p.sourceTypeIndex ~= sourceTypeIndex then
+                p.sourceTypeIndex = sourceTypeIndex
+                storeChanged = true
+            end
         end
-        if sourceTypeIndex and p.sourceTypeIndex ~= sourceTypeIndex then
-            p.sourceTypeIndex = sourceTypeIndex
-            storeChanged = true
+        if storeChanged then
+            self:SaveCollectionStore()
         end
-    end
-    if storeChanged then
-        self:SaveCollectionStore()
     end
 
     -- Dedup layers only gate NOTIFICATIONS — data update above always runs
@@ -309,15 +319,18 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
 
     local icon = GetItemIcon(itemID)
 
-    -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
-    RT.collectionCache.owned.toys[itemID] = true
-    self:RemoveFromUncollected("toy", itemID)
+    -- Module gate: store/cache writes only while Collections or Plans consume them; toast below always runs.
+    if ns.Utilities and ns.Utilities:IsAnyModuleEnabled("collections", "plans") then
+        -- ALWAYS update collected status in store (data correctness must not depend on notification dedup)
+        RT.collectionCache.owned.toys[itemID] = true
+        self:RemoveFromUncollected("toy", itemID)
 
-    if not RT.collectionStore.toy then RT.collectionStore.toy = {} end
-    local t = RT.collectionStore.toy[itemID]
-    if not t then
-        RT.collectionStore.toy[itemID] = { id = itemID, name = name }
-        self:SaveCollectionStore()
+        if not RT.collectionStore.toy then RT.collectionStore.toy = {} end
+        local t = RT.collectionStore.toy[itemID]
+        if not t then
+            RT.collectionStore.toy[itemID] = { id = itemID, name = name }
+            self:SaveCollectionStore()
+        end
     end
 
     -- Dedup layers only gate NOTIFICATIONS — data update above always runs

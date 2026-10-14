@@ -359,7 +359,7 @@ function M.AppendVaultStatusLine(lines, isReady, isPending, slotsEarned)
         right = "|cff888888" .. DASH .. "|r"
     end
     lines[#lines + 1] = {
-        left = EAIconLabel(M.EA_STATUS_ICON, nil, "PVE_HEADER_STATUS_SHORT", "Status"),
+        left = EAIconLabel(M.EA_STATUS_ICON, ns.UI_GetIconAtlas("status_ok"), "PVE_HEADER_STATUS_SHORT", "Status"),
         right = right,
         leftColor = M.EA_LABEL_COLOR,
         rightColor = M.EA_VALUE_COLOR,
@@ -498,7 +498,7 @@ function M.AppendCharacterVaultTooltipLines(lines, charKey, entry)
 
     if ShowEasyAccessDisplay("tooltipKeystone") then
         lines[#lines + 1] = {
-            left = EAIconLabel(TRACK_ICONS.keystone, KEYSTONE_ICON_ATLAS, "EA_TOOLTIP_KEYSTONE_LABEL", "Keystone"),
+            left = EAIconLabel(TRACK_ICONS.keystone, nil, "EA_TOOLTIP_KEYSTONE_LABEL", "Keystone"),
             right = FormatKeystoneTooltipRight(charKey, charRow),
             leftColor = M.EA_LABEL_COLOR,
             rightColor = M.EA_VALUE_COLOR,

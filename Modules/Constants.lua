@@ -14,9 +14,9 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.5.18",
+    ADDON_VERSION = "3.6.0",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-10-12",
+    ADDON_RELEASE_DATE = "2026-10-14",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -58,7 +58,7 @@ local Constants = {
 
     -- EXPANSION TARGETING
 
-    CURRENT_EXPANSION_INTERFACE = 120100,   -- Midnight 12.1.0 (## Interface in TOC; must match WarbandNexus.toc)
+    CURRENT_EXPANSION_INTERFACE = 120105,   -- Midnight 12.1.5 (## Interface in TOC; must match WarbandNexus.toc)
     CURRENT_EXPANSION_NAME = "Midnight",    -- Used for filtering profession content to latest expansion
     
     -- CACHE VERSIONS

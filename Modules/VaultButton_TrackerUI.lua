@@ -1,6 +1,8 @@
 --[[ Warband Nexus - Easy Access - VaultButton_TrackerUI.lua ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = assert(ns.VaultButton)
 local WarbandNexus = ns.WarbandNexus
 local S = M.state
@@ -85,6 +87,8 @@ function M.BuildOptionsFrame()
 
     local f = M.VBContainer(UIParent, 1, 1, false, "WarbandNexusVaultButtonOptions")
     AddEscCloseFrame("WarbandNexusVaultButtonOptions")
+    -- Follow profile.uiScale like the Easy Access menu (VaultButton.lua) and WindowFactory shells.
+    if ns.UI_RegisterScaledFrame then ns.UI_RegisterScaledFrame(f) end
     f:SetSize(286, 372)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(210)
@@ -131,7 +135,7 @@ function M.BuildOptionsFrame()
         local closeIcon = close:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
-        closeIcon:SetAtlas("uitools-icon-close")
+        ns.UI_SetIcon(closeIcon, "close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         close:SetScript("OnClick", function() f:Hide() end)
         close:SetScript("OnEnter", function()

@@ -1,5 +1,7 @@
 --[[ PvEUI deferred body paint (ops split) — load after PvEUI.lua + PvEUI_CharList.lua ]]
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local C_Timer = C_Timer
 local InCombatLockdown = InCombatLockdown
@@ -10,6 +12,71 @@ local SIDE_MARGIN = (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 12
 local function PvEStackBodyWidth(scrollPaintW, contentSide)
     local side = contentSide or SIDE_MARGIN
     return math.max(1, (tonumber(scrollPaintW) or 1) - 2 * side)
+end
+
+-- Column header strip: SharedWidgets_TableKit compact mode (icon over label, gap-centred dividers).
+local TK = ns.UI_TableKit
+assert(TK, "SharedWidgets_TableKit.lua must load before PvEUI_BodyPaint.lua")
+local PvEHeader = {}
+-- Icon slot (icon + 4) sits 4px under the strip top with the label flush under it (pre-TableKit PvE metrics).
+local PVE_HEADER_ICON_TOP = 4
+local PVE_HEADER_LABEL_GAP = 0
+
+--- TableKit applyIcon hook: atlas first (vault status), else the kit draws col.icon (fileID / file path).
+function PvEHeader.ApplyIcon(tex, col, size)
+    local atlas = col and col.iconAtlas
+    if not atlas or not tex.SetAtlas then return false end
+    local ok = pcall(tex.SetAtlas, tex, atlas)
+    if not ok or not (tex.GetAtlas and tex:GetAtlas()) then return false end
+    if ns.UI_EnsureTextureFullColor then ns.UI_EnsureTextureFullColor(tex) end
+    return true
+end
+
+--- Fill the TableKit header fields on this draw's column copies: compact label (crest quality hex), tooltip, gapAfter.
+function PvEHeader.PrepareColumns(L, columns, gapAfterFn)
+    local n = #columns
+    local secret = L.issecretvalue
+    for i = 1, n do
+        local col = columns[i]
+        col.gapAfter = (i < n) and gapAfterFn(i) or nil
+        local text, hex = L.PvE_BuildCompactHeaderLabel(col)
+        if text ~= "" and hex and hex ~= "ffffff" then
+            text = "|cff" .. hex .. text .. "|r"
+        end
+        col.label = text
+        local tip = col.tooltipTitle
+        if not tip and col.crestCurrencyId then
+            local meta = L.GetPvECachedCurrencyDisplay(col.crestCurrencyId)
+            tip = meta and meta.name
+        end
+        if tip and secret and secret(tip) then tip = nil end
+        col.tooltip = tip or col.key or ""
+        col.tooltipIcon = col.iconAtlas or col.icon
+        col.tooltipIconIsAtlas = col.iconAtlas ~= nil
+    end
+end
+
+--- Pooled header strip (L._pveDrawPool.colHeaderRow keeps its name: fast path + teardown key on it).
+function PvEHeader.EnsureStrip(L, parent, height, iconSize)
+    local pool = L._pveDrawPool
+    local strip = pool.colHeaderRow
+    if not strip then
+        strip = TK.CreateHeaderStrip(parent, {
+            mode = "compact",
+            height = height,
+            iconSize = iconSize,
+            iconTop = PVE_HEADER_ICON_TOP,
+            labelGap = PVE_HEADER_LABEL_GAP,
+            labelRole = "Bright",
+            activeLabelRole = "Bright",
+            dividers = true,
+            applyIcon = PvEHeader.ApplyIcon,
+        })
+        pool.colHeaderRow = strip
+    end
+    strip:SetParent(parent)
+    if strip.bg then strip.bg:Hide() end
+    return strip
 end
 
 local PVE_NIGHTMARE_TASK_ICON = "Interface\\Icons\\Spell_Shadow_Nightmare"
@@ -64,10 +131,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
             or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
         parent._wnPveContentSide = contentSide
-        scrollTopY = (ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0
+        -- FLUSH grid: column header row starts at the top of the scroll body (no BODY_TOP gap).
+        scrollTopY = ns.UI_LAYOUT.PAGE_STACK.FLUSH
     else
         contentSide = parent._wnPveContentSide or L.SIDE_MARGIN
-        scrollTopY = opts.scrollTopY or ((ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0)
+        scrollTopY = opts.scrollTopY or ns.UI_LAYOUT.PAGE_STACK.FLUSH
         local mfBody = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
         metrics = mfBody and ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mfBody)
         stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
@@ -315,13 +383,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     end
 
     titleCard:Show()
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight(), 0)
-        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    -- FLUSH exception: title -> column-header grid gap is PAGE_STACK.FLUSH (same as RepositionPveFixedHeader).
+    if chrome and ns.UI_PageStack_Place then
+        headerYOffset = ns.UI_PageStack_Place(chrome, titleCard, nil, "FLUSH")
     else
-        headerYOffset = headerYOffset + (titleCard:GetHeight() or 64)
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        headerYOffset = headerYOffset + (titleCard:GetHeight() or 64) + ns.UI_LAYOUT.PAGE_STACK.FLUSH
     end
+    if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
 
     if mf then
         mf._pveFixedHeaderCache = {
@@ -536,6 +604,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             key = "vault_status",
             label = "",
             width = L.PVE_STATUS_COL_W,
+            iconAtlas = ns.UI_GetIconAtlas("status_ok"),
             icon = "Interface\\RaidFrame\\ReadyCheck-Ready",
             tooltipTitle = GetLocalizedText("PVE_COL_VAULT_STATUS", "Vault Status"),
             headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
@@ -591,8 +660,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         if not L.ns.Utilities:IsModuleEnabled("pve") then
             L.WarbandNexus._pveVaultTooltipCharsSnapshot = {}
             local CreateDisabledCard = L.ns.UI_CreateDisabledModuleCard
-            local cardHeight = CreateDisabledCard(parent, scrollTopY, GetLocalizedText("PVE_TITLE", "PvE Progress"))
-            return scrollTopY + cardHeight
+            -- No column header in the disabled state: standard body top, not the FLUSH grid top.
+            local bodyTop = L.ns.UI_LAYOUT.PAGE_STACK.BODY_TOP
+            local cardHeight = CreateDisabledCard(parent, bodyTop, GetLocalizedText("PVE_TITLE", "PvE Progress"))
+            return bodyTop + cardHeight
         end
 
         local chr = L._pveDrawPool.colHeaderRow
@@ -950,16 +1021,14 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     end
 
     -- Wide enough for left cluster + name + level/ilvl + inline columns â†’ horizontal scrollbar when needed
-    local inlineTotal = 0
-    for pci = 1, #PVE_COLUMNS do
-        inlineTotal = inlineTotal + PVE_COLUMNS[pci].width
-    end
-    for gi = 1, #PVE_COLUMNS - 1 do
-        inlineTotal = inlineTotal + GapBetweenColumns(gi)
-    end
-    inlineTotal = inlineTotal + COL_RIGHT_MARGIN
+    -- TableKit resolves widths/offsets once; header cells, row cells and dividers all read these x positions.
+    PvEHeader.PrepareColumns(L, PVE_COLUMNS, GapBetweenColumns)
     local gridInlineStartX = (L.PvE_ComputeInlineColumnsStartPx and L.PvE_ComputeInlineColumnsStartPx(nameWidth)) or 400
-    local pveColumnDividerXs = (L.BuildPvEInlineColumnDividerXs and L.BuildPvEInlineColumnDividerXs(gridInlineStartX, PVE_COLUMNS, GapBetweenColumns)) or {}
+    -- Per-draw tables: chunked row paint (pumpPvePaint) closes over them across frames.
+    local colWidths, colOffsets, pveColumnDividerXs = {}, {}, {}
+    local inlineTotal = TK.ResolveWidths(PVE_COLUMNS, nil, colWidths, colOffsets, gridInlineStartX, L.PVE_COL_SPACING)
+        + COL_RIGHT_MARGIN
+    TK.BuildDividerXs(colWidths, colOffsets, #PVE_COLUMNS, pveColumnDividerXs)
     local minScrollW = 2 * contentSide + gridInlineStartX + inlineTotal
     local viewportPaintW = (stackWidth and stackWidth > 0) and (stackWidth + 2 * contentSide) or minScrollW
     local pveGridW = math.max(minScrollW, viewportPaintW)
@@ -978,19 +1047,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         columnHeaderClip:Hide()
     end
 
-    L.PvEParkAllColHeaderLabels()
-    local colHeaderRow = L._pveDrawPool.colHeaderRow
-    if colHeaderRow then
-        colHeaderRow:SetParent(parent)
-        colHeaderRow:Show()
-    else
-        colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, pveStackW, COL_HEADER_HEIGHT)
-        if not colHeaderRow then
-            colHeaderRow = CreateFrame("Frame", nil, parent)
-            colHeaderRow:SetSize(pveStackW, COL_HEADER_HEIGHT)
-        end
-        L._pveDrawPool.colHeaderRow = colHeaderRow
-    end
+    local colHeaderRow = PvEHeader.EnsureStrip(L, parent, COL_HEADER_HEIGHT, COL_ICON_SIZE)
     colHeaderRow._wnKeepOnTabSwitch = true
     colHeaderRow:SetHeight(COL_HEADER_HEIGHT)
     colHeaderRow:ClearAllPoints()
@@ -998,108 +1055,14 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     if colHeaderRow.SetWidth then
         colHeaderRow:SetWidth(math.max(1, pveStackW))
     end
-    if colHeaderRow.bg then
-        colHeaderRow.bg:Hide()
-    end
-
-    local function BuildCompactHeaderLabel(col)
-        return L.PvE_BuildCompactHeaderLabel(col)
-    end
-
-    local colX = gridInlineStartX
-    for hci = 1, #PVE_COLUMNS do
-        local col = PVE_COLUMNS[hci]
-
-        if col.icon or col.iconAtlas then
-            local hitW, hitH = COL_ICON_SIZE + 4, COL_ICON_SIZE + 4
-            local hitFrame = L._pveDrawPool.colHeaderHits[col.key]
-            if hitFrame then
-                hitFrame:SetParent(colHeaderRow)
-                hitFrame:Show()
-            else
-                local PUFHdr = L.ns.UI and L.ns.UI.Factory
-                hitFrame = PUFHdr and PUFHdr:CreateContainer(colHeaderRow, hitW, hitH, false)
-                if not hitFrame then
-                    hitFrame = CreateFrame("Frame", nil, colHeaderRow)
-                    hitFrame:SetSize(hitW, hitH)
-                end
-                L._pveDrawPool.colHeaderHits[col.key] = hitFrame
-            end
-            hitFrame:SetSize(hitW, hitH)
-            hitFrame:SetPoint("LEFT", colHeaderRow, "LEFT", colX + (col.width - hitW) * 0.5, 6)
-
-            local iconTex = hitFrame._pveIconTex
-            if not iconTex then
-                iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
-                hitFrame._pveIconTex = iconTex
-            end
-            iconTex:SetSize(COL_ICON_SIZE, COL_ICON_SIZE)
-            iconTex:SetPoint("CENTER")
-            if col.iconAtlas and iconTex.SetAtlas then
-                iconTex:SetTexture(nil)
-                pcall(function()
-                    iconTex:SetAtlas(col.iconAtlas)
-                end)
-                local okAtlas = iconTex.GetAtlas and iconTex:GetAtlas()
-                if not okAtlas and col.icon then
-                    iconTex:SetTexture(col.icon)
-                    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                end
-            elseif col.icon then
-                iconTex:SetTexture(col.icon)
-                iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            end
-            if ns.UI_EnsureTextureFullColor then
-                ns.UI_EnsureTextureFullColor(iconTex)
-            end
-
-            local compactLabel, compactHex = BuildCompactHeaderLabel(col)
-            if compactLabel ~= "" then
-                L.PvEAcquireColHeaderLabel(colHeaderRow, col.key, hitFrame, compactLabel, compactHex, col.width)
-            end
-
-            if L.ShowTooltip then
-                hitFrame:EnableMouse(true)
-                local tooltipTitle = col.tooltipTitle
-                if not tooltipTitle then
-                    if col.crestCurrencyId then
-                        local meta = L.GetPvECachedCurrencyDisplay(col.crestCurrencyId)
-                        tooltipTitle = meta and meta.name
-                    end
-                    tooltipTitle = tooltipTitle or col.key or ""
-                end
-                hitFrame:SetScript("OnEnter", function(self)
-                    L.ShowTooltip(self, {
-                        type = "custom",
-                        icon = col.iconAtlas or col.icon,
-                        iconIsAtlas = col.iconAtlas ~= nil,
-                        title = tooltipTitle,
-                        lines = {},
-                    })
-                end)
-                hitFrame:SetScript("OnLeave", function()
-                    if L.HideTooltip then L.HideTooltip() end
-                end)
-                L.BindForwardScrollWheel(hitFrame)
-            end
-        end
-
-        colX = colX + col.width
-        if hci < #PVE_COLUMNS then
-            colX = colX + GapBetweenColumns(hci)
-        end
-    end
-
-    if L.UI_SyncGridColumnDividers and #pveColumnDividerXs > 0 then
-        L.UI_SyncGridColumnDividers(colHeaderRow, pveColumnDividerXs, COL_HEADER_HEIGHT)
-    end
+    colHeaderRow:SetColumns(PVE_COLUMNS, colWidths, colOffsets, #PVE_COLUMNS)
 
     colHeaderRow:Show()
     yOffset = yOffset + COL_HEADER_HEIGHT + L.PVE_COLUMN_HEADER_PAD
 
     parent._pveSectionShellOrder = {}
     parent._pveColHeaderBottomY = yOffset
-    parent._pveShellSectionGap = 4
+    parent._pveShellSectionGap = L.PVE_SECTION_SHELL_GAP
 
     local totalLHBox = { v = yOffset }
     -- Same vertical rhythm as Characters virtual rows: `betweenRows` (often 0) after each 46px row.
@@ -1702,8 +1665,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 return lines
             end
 
-            -- Shared grid X: header + every row (see PvE_ComputeInlineColumnsStartPx / row chrome).
-            local inlineX = gridInlineStartX
+            -- Shared grid X: header + every row read colOffsets / colWidths (TK.ResolveWidths above).
             local colValuesByKey = {}
 
             local mutedC = L.COLORS.textMuted or { 0.53, 0.53, 0.53, 1 }
@@ -2001,8 +1963,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 local col = PVE_COLUMNS[ci]
                 local val = colValuesByKey[col.key]
                 if val then
-                    local cw = col.width
-                    local colCenterX = inlineX + cw * 0.5
+                    local cw = colWidths[ci]
+                    local colCenterX = colOffsets[ci] + cw * 0.5
                     local cell = L.PvEAcquireInlineCell(charHeader, charKey, col.key)
                     local colText = cell.fs
                     colText:SetPoint("CENTER", charHeader, "LEFT", colCenterX, 0)
@@ -2085,10 +2047,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                         cell.hit:SetScript("OnEnter", nil)
                         cell.hit:SetScript("OnLeave", nil)
                         cell.hit:SetScript("OnMouseUp", nil)
-                    end
-                    inlineX = inlineX + cw
-                    if ci < #PVE_COLUMNS then
-                        inlineX = inlineX + GapBetweenColumns(ci)
                     end
                 end
             end

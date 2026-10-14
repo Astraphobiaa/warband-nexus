@@ -5,6 +5,8 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
 local FontManager = ns.FontManager
@@ -175,7 +177,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         parent._wnPlansActiveHost:Hide()
     end
 
-    -- Use SharedWidgets search bar (like Items tab)
+    -- Search box lives in the fixedHeader chrome (Browse.PlaceHeaderSearch); the body starts with results.
     -- Persistent results container reused across sub-tab switches. Creating a fresh container per click
     -- (and reparenting every card into it) was the reparent storm behind the 6-7s freeze. The virtual grid
     -- keeps its pooled cards parented to this one container for the whole session.
@@ -185,7 +187,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         resultsContainer:SetParent(parent)
     end
     if not resultsContainer then
-        resultsContainer = CreateResultsContainer(parent, yOffset + 40, padH)
+        resultsContainer = CreateResultsContainer(parent, yOffset, padH)
         if resultsContainer then
             resultsContainer._wnPlansBrowseKeep = true
             -- Canonical persistent-host contract (parity with Collections/Gear/PvE/Items): on a MAIN tab
@@ -196,48 +198,105 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
             parent._wnPlansBrowsePersistent = resultsContainer
         end
     else
-        resultsContainer:ClearAllPoints()
-        resultsContainer:SetPoint("TOPLEFT", padH, -(yOffset + 40))
-        resultsContainer:SetPoint("TOPRIGHT", -padH, 0)
+        if ns.UI_PageStack_AnchorBody then
+            ns.UI_PageStack_AnchorBody(parent, resultsContainer, yOffset)
+        else
+            resultsContainer:ClearAllPoints()
+            resultsContainer:SetPoint("TOPLEFT", padH, -yOffset)
+            resultsContainer:SetPoint("TOPRIGHT", -padH, 0)
+        end
         resultsContainer:SetHeight(1)
         resultsContainer:Show()
     end
     if resultsContainer then
-        resultsContainer._plansBrowseTopInset = yOffset + 40
+        resultsContainer._plansBrowseTopInset = yOffset
     end
     if resultsContainer and SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
         SearchResultsRenderer:PrepareContainer(resultsContainer)
     end
-    
-    -- Create unique search ID for this category (e.g., "plans_mount", "plans_pet")
+
     local searchId = "plans_" .. (category or "unknown"):lower()
     local initialSearchText = SearchStateManager:GetQuery(searchId)
-    
-    local searchPlaceholder = format((ns.L and ns.L["SEARCH_CATEGORY_FORMAT"]) or "Search %s...", category)
-    local searchContainer = CreateSearchBox(parent, width, searchPlaceholder, function(text)
-        -- Update search state via SearchStateManager (debounced at search box)
-        SearchStateManager:SetSearchQuery(searchId, text)
-        
-        -- Prepare container for rendering
-        if resultsContainer then
-            SearchResultsRenderer:PrepareContainer(resultsContainer)
-        end
-        
-        -- Redraw only results in the container
-        local resultsYOffset = 0
-        self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, text)
-    end, nil, initialSearchText or "", searchId)
-    searchContainer:SetPoint("TOPLEFT", padH, -yOffset)
-    searchContainer:SetPoint("TOPRIGHT", -padH, -yOffset)
-    
-    yOffset = yOffset + 40
-    
+
     -- Initial draw of results
     local resultsYOffset = 0
     local actualResultsHeight = self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, initialSearchText or "")
 
     local measuredH = (resultsContainer and resultsContainer.GetHeight and resultsContainer:GetHeight()) or actualResultsHeight
     return yOffset + math.max(measuredH or 0, actualResultsHeight or 0, 1)
+end
+
+--- To-Do chrome search: one cached box per searchable category, placed in the fixedHeader directly
+--- under the sub-tab bar (PAGE_STACK). Weekly Progress has no search. DrawPlansTab (create + cached
+--- header) and RefreshPlansCategoryBodyOnly all route through here so the header never drifts.
+local PLANS_HEADER_SEARCH_NONE = { daily_tasks = true }
+
+local function ResolvePlansHeaderSearchId(category)
+    if not category or PLANS_HEADER_SEARCH_NONE[category] then return nil end
+    if category == "active" then return "plans_active" end
+    return "plans_" .. category:lower()
+end
+
+local function CreatePlansHeaderSearchBox(headerParent, width, category, searchId)
+    if searchId == "plans_active" then
+        local placeholder = (ns.L and ns.L["SEARCH_PLANS"]) or "Search plans..."
+        return CreateSearchBox(headerParent, width, placeholder, function(text)
+            ns._plansActiveSearch = (text ~= "") and text or nil
+            local E = ns.Constants and ns.Constants.EVENTS
+            local function requestRefresh()
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+            end
+            if ns.UI_ScheduleSearchRefresh then
+                ns.UI_ScheduleSearchRefresh("plans_active", requestRefresh)
+            else
+                requestRefresh()
+            end
+        end, nil, ns._plansActiveSearch or "", searchId)
+    end
+    local placeholder = format((ns.L and ns.L["SEARCH_CATEGORY_FORMAT"]) or "Search %s...", category)
+    return CreateSearchBox(headerParent, width, placeholder, function(text)
+        -- Update search state via SearchStateManager (debounced at search box)
+        SearchStateManager:SetSearchQuery(searchId, text)
+        if (ns.PlansUI_GetCurrentCategory and ns.PlansUI_GetCurrentCategory()) ~= category then return end
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local scrollChild = mf and mf.scrollChild
+        local resultsContainer = scrollChild and scrollChild._wnPlansBrowsePersistent
+        if not resultsContainer then return end
+        SearchResultsRenderer:PrepareContainer(resultsContainer)
+        -- Redraw only results in the persistent container
+        local width2 = mf._plansContentWidth or ResolvePlansContentWidth(scrollChild, 400)
+        WarbandNexus:DrawBrowserResults(resultsContainer, 0, width2, category, text)
+    end, nil, SearchStateManager:GetQuery(searchId) or "", searchId)
+end
+
+---@param chrome table from ns.UI_BeginTabChromeLayout (yOffset = row under the sub-tab bar)
+---@param category string|nil current Plans category; nil hides every header search box
+---@return number yOffset after the search block (unchanged when the category has no search)
+function Browse.PlaceHeaderSearch(chrome, category)
+    if not chrome or not chrome.headerParent then return chrome and chrome.yOffset or 0 end
+    local mf = chrome.mainFrame
+    local hdrCache = mf and mf._plansFixedHeaderCache
+    if not hdrCache then return chrome.yOffset or 0 end
+    local boxes = hdrCache.searchBoxes
+    if not boxes then
+        boxes = {}
+        hdrCache.searchBoxes = boxes
+    end
+    local searchId = ResolvePlansHeaderSearchId(category)
+    for id, box in pairs(boxes) do
+        if id ~= searchId then box:Hide() end
+    end
+    if not searchId then return chrome.yOffset or 0 end
+    local box = boxes[searchId]
+    if not box then
+        local w = (chrome.metrics and chrome.metrics.contentWidth) or 400
+        box = CreatePlansHeaderSearchBox(chrome.headerParent, w, category, searchId)
+        boxes[searchId] = box
+    end
+    local ps = ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK
+    ns.UI_PageStack_Place(chrome, box, ps and ps.SEARCH_HEIGHT)
+    box:Show()
+    return chrome.yOffset
 end
 
 -- ACHIEVEMENTS BROWSE (To-Do ▸ Achievements) — Collections-parity virtual list + collapsible headers (AchievementBrowseVirtualList).
@@ -817,6 +876,7 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
     local tabKey = "plans_" .. (category or "mount")
     if ns.UI_ShowTabEmptyStateCard then
         return ns.UI_ShowTabEmptyStateCard(parent, tabKey, yOffset, {
+            -- parent is the browse results container, already inset by PAGE_STACK.SIDE: fill it.
             fillParent = true,
             cacheKey = "plans_browse_" .. (category or "browse"),
             titleText = titleStr,
@@ -1077,7 +1137,7 @@ function ns.UI_PrewarmBrowseGrid()
 
     local host = parent._wnPlansBrowsePersistent
     if not host then
-        host = CreateResultsContainer(parent, 48, PlansContentPadH())
+        host = CreateResultsContainer(parent, ns.UI_LAYOUT.PAGE_STACK.BODY_TOP, PlansContentPadH())
         if not host then return end
         host._wnPlansBrowseKeep = true
         host._wnKeepOnTabSwitch = true  -- canonical persistent-host contract (see DrawBrowser)
@@ -1093,7 +1153,6 @@ function ns.UI_PrewarmBrowseGrid()
 
     local PCM = ns.UI_PLANS_CARD_METRICS
     local collapsedH = (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)) or 78
-    local sideMargin = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
 
     local function parkHostBackHidden()
         for i = 1, #pool do
@@ -1101,10 +1160,9 @@ function ns.UI_PrewarmBrowseGrid()
             if c then c:Hide() end
         end
         host:Hide()
-        host:ClearAllPoints()
         host:SetParent(parent)
-        host:SetPoint("TOPLEFT", sideMargin, -48)
-        host:SetPoint("TOPRIGHT", -sideMargin, 0)
+        -- Same body anchor DrawBrowser uses (search lives in the fixedHeader, results start at BODY_TOP).
+        ns.UI_PageStack_AnchorBody(parent, host, ns.UI_LAYOUT.PAGE_STACK.BODY_TOP)
         host:SetHeight(1)
     end
 

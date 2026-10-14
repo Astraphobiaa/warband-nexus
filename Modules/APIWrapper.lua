@@ -6,6 +6,9 @@
 
 local ADDON_NAME, ns = ...
 
+-- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
+local GetCoinTextureString = C_CurrencyInfo.GetCoinTextureString
+
 local WarbandNexus = ns.WarbandNexus
 
 -- MONEY/GOLD UTILITIES

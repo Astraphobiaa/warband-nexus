@@ -5,6 +5,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 ns.PvEUI = ns.PvEUI or {}
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
@@ -16,8 +18,8 @@ local FormatNumber = ns.UI_FormatNumber or function(n)
     return tostring(num)
 end
 
-local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+local VAULT_SLOT_CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+local VAULT_SLOT_CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
 local VAULT_SLOT_UPARROW = "|A:loottoast-arrow-green:12:12|a"
 local issecretvalue = issecretvalue
 
@@ -949,7 +951,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
         -- Row separator line (except for first row)
         if rowIndex > 1 then
             local sep = rowFrame:CreateTexture(nil, "BORDER")
-            sep:SetHeight(1)
+            if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep, "horizontal", 1) else sep:SetHeight(1) end
             sep:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", leftPad, 0)
             sep:SetPoint("TOPRIGHT", rowFrame, "TOPRIGHT", -rightPad, 0)
             if compactSlotStyle then

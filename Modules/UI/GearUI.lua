@@ -11,6 +11,8 @@
 ]]
 
 local _, ns = ...
+-- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
+local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus, FontManager = ns.WarbandNexus, ns.FontManager
 
 --- Tek merkez: Modules/FontManager.lua → FONT_ROLE
@@ -2287,9 +2289,9 @@ local function ApplyGearControlChromeIdle(btn)
     end
     local bg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
         or COLORS.bgCard or COLORS.bgLight or COLORS.bg
-    local border = (ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor())
-        or COLORS.border or COLORS.borderLight or { 0.35, 0.35, 0.38, 1 }
-    local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.45
+    -- Same stroke as title-toolbar buttons (accent @ 0.6) so selector and Hide match.
+    local border = COLORS.accent or { 0.5, 0.5, 0.5 }
+    local borderA = 0.6
     if ApplyVisuals then
         ApplyVisuals(btn, bg, { border[1], border[2], border[3], borderA })
     elseif btn.SetBackdropColor then
@@ -2307,12 +2309,11 @@ local function WireGearControlChromeHover(btn)
         if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(self) then return end
         local hover = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop())
             or COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
-        local border = (ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor())
-            or COLORS.border or COLORS.borderLight or { 0.35, 0.35, 0.38, 1 }
+        local border = COLORS.accent or { 0.5, 0.5, 0.5 }
         if ApplyVisuals then
-            ApplyVisuals(self, hover, { border[1], border[2], border[3], 0.55 })
+            ApplyVisuals(self, hover, { border[1], border[2], border[3], 0.85 })
         elseif self.SetBackdropBorderColor then
-            self:SetBackdropBorderColor(border[1], border[2], border[3], 0.55)
+            self:SetBackdropBorderColor(border[1], border[2], border[3], 0.85)
         end
     end)
     btn:SetScript("OnLeave", function(self)
@@ -2506,7 +2507,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             btn:SetBackdrop({
                 bgFile   = "Interface\\Buttons\\WHITE8X8",
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
-                edgeSize = 1,
+                edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(btn)) or 1,
                 insets   = { left = 0, right = 0, top = 0, bottom = 0 },
             })
         end
@@ -3226,7 +3227,10 @@ function WarbandNexus:DrawGearTab(parent)
         end)
     end
 
-    if ns.UI_AdvanceTabChromeYOffset then
+    if chrome and ns.UI_PageStack_Place then
+        headerYOffset = ns.UI_PageStack_Place(chrome, headerCard)
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mfGearFrame, headerYOffset) end
+    elseif ns.UI_AdvanceTabChromeYOffset then
         headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, headerCard:GetHeight())
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mfGearFrame, headerYOffset) end
     else
@@ -3245,10 +3249,15 @@ function WarbandNexus:DrawGearTab(parent)
         local hideTh = GetLowLevelHideThreshold(profile)
         local gearEmptyKey = (hideTh > 0 and HasAnyTrackedCharacters()) and "gear_filter" or "gear"
         local emptyH
+        -- PAGE_STACK: empty card sits on the scroll child itself -> BODY_TOP with symmetric SIDE inset.
+        local emptyTop = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
         if ns.UI_ShowTabEmptyStateCard then
-            emptyH = ns.UI_ShowTabEmptyStateCard(parent, gearEmptyKey, TOP_MARGIN, { fillParent = true })
+            emptyH = ns.UI_ShowTabEmptyStateCard(parent, gearEmptyKey, emptyTop, {
+                fillParent = false,
+                sideInset = SIDE_MARGIN,
+            })
         else
-            emptyH = TOP_MARGIN + 200
+            emptyH = emptyTop + 200
         end
         return math.max(tonumber(emptyH) or 200, GearResultsViewportHeight(mfGearFrame))
     end
@@ -3258,7 +3267,7 @@ function WarbandNexus:DrawGearTab(parent)
     if ns.UI_ParkScrollChildSharedHosts then
         ns.UI_ParkScrollChildSharedHosts(parent, "gear")
     end
-    local yOffset = -TOP_MARGIN
+    local yOffset = -((ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8)  -- PAGE_STACK.BODY_TOP
     GearOpenTracePhase("enter scroll paint", splitPaperDollToNextTick)
     if mfGear and not splitPaperDollToNextTick then
         mfGear._gearDeferChainActive = false
@@ -3368,7 +3377,7 @@ function WarbandNexus:DrawGearTab(parent)
             GearOpenTraceBlock("DrawPaperDollCard", debugprofilestop() - tCard)
         end
         pGearSliceStop("Gear_paperDollDraw")
-        local outH = math.abs(yOffset) + TOP_MARGIN
+        local outH = math.abs(yOffset) + ((ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12)
         local mfOut = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         pGearSliceStart("Gear_populateSig")
         local tSig = gearOpenLog and debugprofilestop() or nil

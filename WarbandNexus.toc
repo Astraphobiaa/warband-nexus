@@ -1,8 +1,8 @@
-## Interface: 120100
+## Interface: 120105
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 3.5.18
+## Version: 3.6.0
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections, Blizzard_AchievementUI
@@ -44,6 +44,9 @@ Core.lua
 # Config.lua requires ns.Constants — must load after Modules\Constants.lua
 Modules\Constants.lua
 Config.lua
+# IconRegistry: needs only ns.Constants at load; theme vertex (SharedWidgets) resolved lazily.
+# Early so load-time markup in TooltipService/VaultButton/FormatHelpers can use ns.UI_GetIconMarkup.
+Modules\UI\IconRegistry.lua
 Modules\DebugPrint.lua
 Modules\Profiler.lua
 Modules\Profiler_TraceUI.lua
@@ -156,6 +159,7 @@ Modules\UI\SharedWidgets_Collapsible.lua
 Modules\UI\SharedWidgets_Factory_Chrome.lua
 Modules\UI\SharedWidgets_Factory.lua
 Modules\UI\SharedWidgets_RowPool.lua
+Modules\UI\SharedWidgets_TableKit.lua
 Modules\UI\SharedWidgets_Search.lua
 Modules\UI\SharedWidgets_EmptyState.lua
 Modules\UI\SharedWidgets_CharacterFilter.lua
@@ -191,6 +195,10 @@ Modules\UI\SettingsUI.lua
 Modules\UI\CharacterTrackingDialog.lua
 Modules\UI\MailDetailsPopup.lua
 Modules\UI\CharactersUI.lua
+Modules\UI\CharactersUI_GoldCards.lua
+Modules\UI\CharactersUI_Row.lua
+Modules\UI\CharactersUI_ColumnHeader.lua
+Modules\UI\CharactersUI_Dialogs.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
 Modules\UI\ItemsUI.lua

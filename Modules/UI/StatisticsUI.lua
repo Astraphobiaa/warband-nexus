@@ -32,14 +32,21 @@ local InvalidateStatsCache
     Called during addon startup to register for data update events
 ]]
 function WarbandNexus:InitializeStatisticsUI()
+    -- Same-frame bursts (COLLECTION_UPDATED + PLANS_UPDATED + MONEY_UPDATED for one loot) collapse
+    -- into one refresh request; the shell's populate debounce then coalesces across frames.
+    local statsRefreshPending = false
     local function refreshStatsIfVisible()
         InvalidateStatsCache()
-
-        if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
-            if self.SendMessage then
-                self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
+        if statsRefreshPending then return end
+        statsRefreshPending = true
+        C_Timer.After(0, function()
+            statsRefreshPending = false
+            if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
+                if self.SendMessage then
+                    self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
+                end
             end
-        end
+        end)
     end
 
     -- Register for collection and character wealth update events
@@ -55,9 +62,9 @@ function WarbandNexus:InitializeStatisticsUI()
             refreshStatsIfVisible()
         end
     end)
+    -- Stats tab shows collections, To-Do counts, Warband Wealth (character gold + warband bank money)
+    -- and Most Played. Nothing reads bag/item contents, so ITEMS_UPDATED / BAGS_UPDATED are not wired.
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.MONEY_UPDATED, refreshStatsIfVisible)
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.ITEMS_UPDATED, refreshStatsIfVisible)
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.BAGS_UPDATED, refreshStatsIfVisible)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.PLANS_UPDATED, refreshStatsIfVisible)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.CHARACTER_UPDATED, function(_, payload)
         if payload and payload.dataType == "gold" then
@@ -81,29 +88,48 @@ local GW_COL_SILVER_W = 52
 local GW_COL_GOLD_W = 108
 local GW_NAME_RIGHT_INSET = -(GW_MONEY_PAD_R + GW_COL_GOLD_W + GW_COL_SILVER_W + GW_COL_COPPER_W + 8)
 
-local function PaintStatisticsMoneyColumns(parent, anchorY, copper, iconSize)
+---@param slot table|nil When given, the three FontStrings are cached on it and reused on repaint.
+local function PaintStatisticsMoneyColumns(parent, anchorY, copper, iconSize, slot)
     if not FormatMoneyPartsColumn then return end
     copper = tonumber(copper) or 0
     iconSize = iconSize or GW_MONEY_ICON_ROW
     local gStr, sStr, cStr = FormatMoneyPartsColumn(copper, iconSize)
 
-    local cFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    local cFs = slot and slot.moneyC
+    if not cFs then
+        cFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+        cFs:SetWidth(GW_COL_COPPER_W)
+        cFs:SetJustifyH("RIGHT")
+        if slot then slot.moneyC = cFs end
+    end
+    cFs:ClearAllPoints()
     cFs:SetPoint("RIGHT", parent, "TOPRIGHT", -GW_MONEY_PAD_R, anchorY)
-    cFs:SetWidth(GW_COL_COPPER_W)
-    cFs:SetJustifyH("RIGHT")
     cFs:SetText(cStr)
+    cFs:Show()
 
-    local sFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    local sFs = slot and slot.moneyS
+    if not sFs then
+        sFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+        sFs:SetWidth(GW_COL_SILVER_W)
+        sFs:SetJustifyH("RIGHT")
+        if slot then slot.moneyS = sFs end
+    end
+    sFs:ClearAllPoints()
     sFs:SetPoint("RIGHT", parent, "TOPRIGHT", -(GW_MONEY_PAD_R + GW_COL_COPPER_W), anchorY)
-    sFs:SetWidth(GW_COL_SILVER_W)
-    sFs:SetJustifyH("RIGHT")
     sFs:SetText(sStr)
+    sFs:Show()
 
-    local gFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    local gFs = slot and slot.moneyG
+    if not gFs then
+        gFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+        gFs:SetWidth(GW_COL_GOLD_W)
+        gFs:SetJustifyH("RIGHT")
+        if slot then slot.moneyG = gFs end
+    end
+    gFs:ClearAllPoints()
     gFs:SetPoint("RIGHT", parent, "TOPRIGHT", -(GW_MONEY_PAD_R + GW_COL_COPPER_W + GW_COL_SILVER_W), anchorY)
-    gFs:SetWidth(GW_COL_GOLD_W)
-    gFs:SetJustifyH("RIGHT")
     gFs:SetText(gStr)
+    gFs:Show()
 end
 local FormatNumber = ns.UI_FormatNumber
 
@@ -185,9 +211,24 @@ local function SemanticToyHex()
     return "|cffff66ff"
 end
 
-local function PaintStatisticsClassRow(parent, rowCenterY, rowH, classFile, charName, nameRightInset)
+---@param slot table|nil When given, stripe + name FontString are cached on it and reused on repaint.
+local function PaintStatisticsClassRow(parent, rowCenterY, rowH, classFile, charName, nameRightInset, slot)
     local barH = rowH - 4
-    local colorBar = (ns.UI_CreateClassColorStripe and ns.UI_CreateClassColorStripe(parent, parent, 15, rowCenterY, 3, barH, classFile))
+    local colorBar = slot and slot.colorBar
+    if colorBar then
+        colorBar:SetSize(3, barH)
+        colorBar:ClearAllPoints()
+        colorBar:SetPoint("LEFT", parent, "TOPLEFT", 15, rowCenterY)
+        local cr, cg, cb = 0.8, 0.8, 0.8
+        if ns.UI_GetClassColorRaw then
+            cr, cg, cb = ns.UI_GetClassColorRaw(classFile)
+        end
+        colorBar:SetColorTexture(cr, cg, cb, 1)
+        colorBar:Show()
+    else
+        colorBar = (ns.UI_CreateClassColorStripe and ns.UI_CreateClassColorStripe(parent, parent, 15, rowCenterY, 3, barH, classFile))
+    end
+    if slot then slot.colorBar = colorBar end
     if not colorBar then
         colorBar = parent:CreateTexture(nil, "ARTWORK")
         colorBar:SetSize(3, barH)
@@ -197,21 +238,116 @@ local function PaintStatisticsClassRow(parent, rowCenterY, rowH, classFile, char
             cr, cg, cb = ns.UI_GetClassColorForSurface(classFile)
         end
         colorBar:SetColorTexture(cr, cg, cb, 1)
+        if slot then slot.colorBar = colorBar end
     end
-    local nameText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    local nameText = slot and slot.nameText
+    if not nameText then
+        nameText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+        nameText:SetWordWrap(false)
+        nameText:SetJustifyH("LEFT")
+        if FontManager and FontManager.ApplyFont then
+            FontManager:ApplyFont(nameText, "body")
+        end
+        if slot then slot.nameText = nameText end
+    end
+    nameText:ClearAllPoints()
     nameText:SetPoint("LEFT", colorBar, "RIGHT", 8, 0)
     nameText:SetPoint("RIGHT", parent, "RIGHT", nameRightInset or -120, 0)
-    nameText:SetWordWrap(false)
-    nameText:SetJustifyH("LEFT")
     if ns.UI_FormatClassColoredName then
         nameText:SetText(ns.UI_FormatClassColoredName(charName, classFile))
     else
         nameText:SetText(charName or "")
     end
-    if FontManager and FontManager.ApplyFont then
-        FontManager:ApplyFont(nameText, "body")
-    end
+    nameText:Show()
     return nameText, colorBar
+end
+
+--- Hide every cached widget of a pooled Warband Wealth / Most Played row slot.
+local function HideStatisticsRowSlot(slot)
+    if not slot then return end
+    if slot.bg then slot.bg:Hide() end
+    if slot.colorBar then slot.colorBar:Hide() end
+    if slot.nameText then slot.nameText:Hide() end
+    if slot.moneyC then slot.moneyC:Hide() end
+    if slot.moneyS then slot.moneyS:Hide() end
+    if slot.moneyG then slot.moneyG:Hide() end
+    if slot.timeText then slot.timeText:Hide() end
+end
+
+--- Pooled striped row background on a cached card.
+local function PaintStatisticsRowBg(card, slot, rowIndex, rowTop, rowH)
+    local rowBg = slot.bg
+    if not rowBg then
+        rowBg = card:CreateTexture(nil, "BACKGROUND", nil, 1)
+        slot.bg = rowBg
+    end
+    rowBg:ClearAllPoints()
+    rowBg:SetPoint("TOPLEFT", card, "TOPLEFT", 10, rowTop)
+    rowBg:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, rowTop)
+    rowBg:SetHeight(rowH)
+    local stripe = (rowIndex % 2 == 0) and (COLORS.surfaceRowEven or COLORS.bgLight)
+        or (COLORS.surfaceRowOdd or COLORS.bg)
+    stripe = stripe or { 0.768, 0.760, 0.744, 0.98 }
+    rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.98)
+    rowBg:Show()
+end
+
+local function ToggleStatisticsExpandState(stateKey)
+    if not ns._statisticsExpandedStates then
+        ns._statisticsExpandedStates = {}
+    end
+    ns._statisticsExpandedStates[stateKey] = not (ns._statisticsExpandedStates[stateKey] or false)
+    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
+end
+
+--- Expand/collapse arrow + "N more characters" on a cached card (PlanCardFactory glues atlas pattern).
+--- Scripts are bound once and read the live expand state, so the card can be repainted in place.
+local function PaintStatisticsExpandToggle(card, toggle, stateKey, hasOverflow, isExpanded, hiddenCount, bottomPad)
+    toggle.active = hasOverflow == true
+    if not hasOverflow then
+        if toggle.btn then toggle.btn:Hide() end
+        if toggle.moreText then toggle.moreText:Hide() end
+        return
+    end
+    local expandBtn = toggle.btn
+    if not expandBtn then
+        expandBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
+        expandBtn:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -10, bottomPad)
+        expandBtn:EnableMouse(true)
+        local arrowTex = expandBtn:CreateTexture(nil, "OVERLAY")
+        arrowTex:SetAllPoints(expandBtn)
+        expandBtn:SetScript("OnClick", function()
+            ToggleStatisticsExpandState(stateKey)
+        end)
+        -- Entire card toggles too (only while the overflow toggle is active).
+        card:SetScript("OnMouseDown", function(_, button)
+            if button == "LeftButton" and toggle.active then
+                ToggleStatisticsExpandState(stateKey)
+            end
+        end)
+        toggle.btn = expandBtn
+        toggle.arrowTex = arrowTex
+    end
+    ns.UI_SetIcon(toggle.arrowTex, isExpanded and "chevron_up" or "chevron_down")
+    expandBtn:Show()
+    card:EnableMouse(true)
+
+    if isExpanded then
+        if toggle.moreText then toggle.moreText:Hide() end
+        return
+    end
+    local moreText = toggle.moreText
+    if not moreText then
+        moreText = FontManager:CreateFontString(card, "small", "OVERLAY")
+        moreText:SetPoint("RIGHT", expandBtn, "LEFT", -4, 0)
+        moreText:SetJustifyH("RIGHT")
+        toggle.moreText = moreText
+    end
+    local moreLabel = hiddenCount > 1
+        and ((ns.L and ns.L["MORE_CHARACTERS_PLURAL"]) or "more characters")
+        or ((ns.L and ns.L["MORE_CHARACTERS"]) or "more character")
+    moreText:SetText(ThemeTextHex("Muted") .. hiddenCount .. " " .. moreLabel .. "|r")
+    moreText:Show()
 end
 
 local STAT_CARD_H = 90
@@ -228,11 +364,11 @@ local function ParkStatisticsHeavyDynamicCards(parent)
             frame:SetParent(bin)
         end
     end
-    park(b.goldCard)
-    park(b.mpCard)
+    -- Warband Wealth / Most Played cards are cached on the bundle and repainted in place
+    -- (PaintHeavyStatisticsBody re-shows them); only hide here so a no-data pass leaves nothing behind.
+    if b.goldCard then b.goldCard:Hide() end
+    if b.mpCard then b.mpCard:Hide() end
     park(b.storageCard)
-    b.goldCard = nil
-    b.mpCard = nil
     b.storageCard = nil
     b.storageTitle = nil
     b.storageCols = nil
@@ -318,8 +454,10 @@ end
 local function RepositionStatisticsFixedHeader(hdrCache, headerParent, chrome, headerYOffset, SIDE)
     local titleCard = hdrCache.titleCard
     titleCard:SetParent(headerParent)
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    if chrome and ns.UI_PageStack_Place then
+        titleCard:Show()
+        chrome.yOffset = headerYOffset
+        return ns.UI_PageStack_Place(chrome, titleCard)
     else
         titleCard:ClearAllPoints()
         titleCard:SetPoint("TOPLEFT", SIDE, -headerYOffset)
@@ -523,7 +661,8 @@ function WarbandNexus:DrawStatistics(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
     local SIDE = metrics and metrics.sideMargin or SIDE_MARGIN
-    local CARD_GAP_M = metrics and metrics.cardGap or (GetLayout().CARD_GAP or 10)
+    local pageStack = GetLayout().PAGE_STACK or {}
+    local CARD_GAP_M = pageStack.CARD_GAP or (metrics and metrics.cardGap) or 10
     local width = (metrics and metrics.contentWidth)
         or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
         or (parent:GetWidth() or 600)
@@ -537,14 +676,7 @@ function WarbandNexus:DrawStatistics(parent)
     -- Hide previous empty state
     HideEmptyStateCard(parent, "statistics")
 
-    -- Check for data availability
     local allCharacters = self:GetAllCharacters() or {}
-    if #allCharacters == 0 then
-        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-        local _, height = CreateEmptyStateCard(parent, "statistics", headerYOffset)
-        return headerYOffset + (height or 120)
-    end
 
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -576,7 +708,10 @@ function WarbandNexus:DrawStatistics(parent)
     end
 
     titleCard:Show()
-    if ns.UI_AdvanceTabChromeYOffset then
+    if chrome and ns.UI_PageStack_Place then
+        headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    elseif ns.UI_AdvanceTabChromeYOffset then
         headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
     else
@@ -590,7 +725,14 @@ function WarbandNexus:DrawStatistics(parent)
     end
 
     local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
-    local sectionGap = (metrics and metrics.sectionGap) or CARD_GAP_M or 10
+    local sectionGap = pageStack.SECTION_GAP or (metrics and metrics.sectionGap) or 12
+
+    -- No characters: title card stays in the fixedHeader; empty card is the first body block (BODY_TOP, +/-SIDE).
+    if #allCharacters == 0 then
+        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
+        local _, height = CreateEmptyStateCard(parent, "statistics", yOffset, { sideInset = SIDE })
+        return yOffset + (height or 120)
+    end
     local ApplyPanelCardChrome = ns.UI_ApplyStandardCardElevatedChrome
 
     -- Tab pool revisit: allow deferred heavy body on every PopulateContent pass (not only first visit).
@@ -623,7 +765,7 @@ function WarbandNexus:DrawStatistics(parent)
     local COLL_COLS = 3
     local availableW = width - leftMargin - rightMargin
     local cardW = (availableW - cardSpacing * (COLL_COLS - 1)) / COLL_COLS
-    local collRowStep = STAT_CARD_H + sectionGap
+    local collRowStep = STAT_CARD_H + cardSpacing  -- grid rows are cards: CARD_GAP, same as columns
     local collectionRowY = yOffset
     local collLayoutSig = "3x2:h7:" .. math.floor(cardW + 0.5)
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
@@ -820,6 +962,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local warbandBankCopper = ns.Utilities:GetWarbandBankMoney() or 0
     local grandTotalCopper = totalCharCopper + warbandBankCopper
+    local goldShown, mpShown = false, false
     
     if #goldChars > 0 then
         if not ns._statisticsExpandedStates then
@@ -838,121 +981,109 @@ function WarbandNexus:DrawStatistics(parent)
             goldCardHeight = goldCardHeight + GW_ROW_HEIGHT + GW_ROW_SPACING
         end
         
-        local goldCard = CreateCard(parent, goldCardHeight)
+        -- Cached per parent (like the collection-card bundle): create chrome once, repaint content.
+        local goldCard = heavyBundle.goldCard
+        local gw = heavyBundle.goldWidgets
+        if not goldCard or not gw then
+            goldCard = CreateCard(parent, goldCardHeight)
+            if ApplyPanelCardChrome then ApplyPanelCardChrome(goldCard) end
+
+            local gwIcon = CreateIcon(goldCard, "BonusLoot-Chest", 28, true, nil, true)
+            gwIcon:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, -10)
+            gwIcon:Show()
+
+            local gwTitle = FontManager:CreateFontString(goldCard, "subtitle", "OVERLAY")
+            gwTitle:SetPoint("LEFT", gwIcon, "RIGHT", 10, 0)
+            gwTitle:SetJustifyH("LEFT")
+
+            gw = { title = gwTitle, total = {}, rows = {}, wb = {}, toggle = {} }
+            heavyBundle.goldCard = goldCard
+            heavyBundle.goldWidgets = gw
+        end
+        goldCard:SetParent(parent)
+        goldCard:SetHeight(goldCardHeight)
+        goldCard:ClearAllPoints()
         goldCard:SetPoint("TOPLEFT", SIDE, -yOffset)
         goldCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
-        if ApplyPanelCardChrome then ApplyPanelCardChrome(goldCard) end
-        
-        local gwIcon = CreateIcon(goldCard, "BonusLoot-Chest", 28, true, nil, true)
-        gwIcon:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, -10)
-        gwIcon:Show()
-        
-        local gwTitle = FontManager:CreateFontString(goldCard, "subtitle", "OVERLAY")
-        gwTitle:SetPoint("LEFT", gwIcon, "RIGHT", 10, 0)
-        gwTitle:SetText((ns.L and ns.L["WARBAND_WEALTH"]) or "WARBAND WEALTH")
-        ns.UI_SetTextColorRole(gwTitle, "Bright")
-        gwTitle:SetJustifyH("LEFT")
-        
+
+        gw.title:SetText((ns.L and ns.L["WARBAND_WEALTH"]) or "WARBAND WEALTH")
+        ns.UI_SetTextColorRole(gw.title, "Bright")
+
         local gwTotalAnchorY = -24
-        PaintStatisticsMoneyColumns(goldCard, gwTotalAnchorY, grandTotalCopper, GW_MONEY_ICON_HDR)
-        
+        PaintStatisticsMoneyColumns(goldCard, gwTotalAnchorY, grandTotalCopper, GW_MONEY_ICON_HDR, gw.total)
+
         local gwRowY = GW_HEADER_AREA
-        local maxCopper = goldChars[1] and goldChars[1].copper or 1
-        if maxCopper <= 0 then maxCopper = 1 end
-        
+        local gwRows = gw.rows
+
         for i = 1, goldVisibleCount do
             local charInfo = goldChars[i]
             local rowTop = -gwRowY
             local rowCenterY = rowTop - (GW_ROW_HEIGHT / 2)
-            
-            local rowBg = goldCard:CreateTexture(nil, "BACKGROUND", nil, 1)
-            rowBg:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 10, rowTop)
-            rowBg:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -10, rowTop)
-            rowBg:SetHeight(GW_ROW_HEIGHT)
-            local stripe = (i % 2 == 0) and (COLORS.surfaceRowEven or COLORS.bgLight)
-                or (COLORS.surfaceRowOdd or COLORS.bg)
-            stripe = stripe or { 0.768, 0.760, 0.744, 0.98 }
-            rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.98)
-            
-            PaintStatisticsClassRow(goldCard, rowCenterY, GW_ROW_HEIGHT, charInfo.classFile, charInfo.name, GW_NAME_RIGHT_INSET)
-            
-            PaintStatisticsMoneyColumns(goldCard, rowCenterY, charInfo.copper, GW_MONEY_ICON_ROW)
-            
+            local slot = gwRows[i]
+            if not slot then
+                slot = {}
+                gwRows[i] = slot
+            end
+
+            PaintStatisticsRowBg(goldCard, slot, i, rowTop, GW_ROW_HEIGHT)
+            PaintStatisticsClassRow(goldCard, rowCenterY, GW_ROW_HEIGHT, charInfo.classFile, charInfo.name, GW_NAME_RIGHT_INSET, slot)
+            PaintStatisticsMoneyColumns(goldCard, rowCenterY, charInfo.copper, GW_MONEY_ICON_ROW, slot)
+
             gwRowY = gwRowY + GW_ROW_HEIGHT + GW_ROW_SPACING
         end
-        
+        for i = goldVisibleCount + 1, #gwRows do
+            HideStatisticsRowSlot(gwRows[i])
+        end
+
         -- Warband bank row (distinct style)
+        local wb = gw.wb
         if warbandBankCopper > 0 then
             local rowTop = -gwRowY
             local rowCenterY = rowTop - (GW_ROW_HEIGHT / 2)
-            
-            local wbSep = goldCard:CreateTexture(nil, "ARTWORK")
-            wbSep:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, rowTop)
-            wbSep:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -15, rowTop)
-            wbSep:SetHeight(1)
-            wbSep:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
-            
-            local wbIcon = goldCard:CreateTexture(nil, "ARTWORK")
-            wbIcon:SetSize(16, 16)
-            wbIcon:SetPoint("LEFT", goldCard, "TOPLEFT", 18, rowCenterY)
-            wbIcon:SetAtlas("warbands-icon")
-            
-            local wbName = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
-            wbName:SetPoint("LEFT", wbIcon, "RIGHT", 6, 0)
-            wbName:SetPoint("RIGHT", goldCard, "RIGHT", GW_NAME_RIGHT_INSET, 0)
-            wbName:SetWordWrap(false)
-            wbName:SetJustifyH("LEFT")
-            wbName:SetText(SemanticInfoHex() .. ((ns.L and ns.L["WARBAND_BANK"]) or "Warband Bank") .. "|r")
-            
-            PaintStatisticsMoneyColumns(goldCard, rowCenterY, warbandBankCopper, GW_MONEY_ICON_ROW)
-            
+
+            if not wb.sep then
+                wb.sep = goldCard:CreateTexture(nil, "ARTWORK")
+                if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(wb.sep, "horizontal", 1) else wb.sep:SetHeight(1) end
+
+                wb.icon = goldCard:CreateTexture(nil, "ARTWORK")
+                wb.icon:SetSize(16, 16)
+                wb.icon:SetAtlas("warbands-icon")
+
+                wb.name = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
+                wb.name:SetPoint("LEFT", wb.icon, "RIGHT", 6, 0)
+                wb.name:SetPoint("RIGHT", goldCard, "RIGHT", GW_NAME_RIGHT_INSET, 0)
+                wb.name:SetWordWrap(false)
+                wb.name:SetJustifyH("LEFT")
+            end
+            wb.sep:ClearAllPoints()
+            wb.sep:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, rowTop)
+            wb.sep:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -15, rowTop)
+            wb.sep:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+            wb.sep:Show()
+
+            wb.icon:ClearAllPoints()
+            wb.icon:SetPoint("LEFT", goldCard, "TOPLEFT", 18, rowCenterY)
+            wb.icon:Show()
+
+            wb.name:SetText(SemanticInfoHex() .. ((ns.L and ns.L["WARBAND_BANK"]) or "Warband Bank") .. "|r")
+            wb.name:Show()
+
+            PaintStatisticsMoneyColumns(goldCard, rowCenterY, warbandBankCopper, GW_MONEY_ICON_ROW, wb)
+
             gwRowY = gwRowY + GW_ROW_HEIGHT + GW_ROW_SPACING
+        elseif wb.sep then
+            wb.sep:Hide()
+            wb.icon:Hide()
+            wb.name:Hide()
+            HideStatisticsRowSlot(wb)
         end
-        
+
         -- Expand/collapse
-        if goldHasOverflow then
-            local hiddenCount = #goldChars - GW_VISIBLE_ROWS
-            
-            local expandBtn = ns.UI.Factory:CreateButton(goldCard, 20, 20, true)
-            expandBtn:SetPoint("BOTTOMRIGHT", goldCard, "BOTTOMRIGHT", -10, GW_BOTTOM_PAD)
-            expandBtn:EnableMouse(true)
-            
-            local arrowTex = expandBtn:CreateTexture(nil, "OVERLAY")
-            arrowTex:SetAllPoints(expandBtn)
-            if isGoldExpanded then
-                arrowTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
-            else
-                arrowTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
-            end
-            
-            expandBtn:SetScript("OnClick", function()
-                ns._statisticsExpandedStates["warbandWealth"] = not isGoldExpanded
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
-            end)
-            
-            if not isGoldExpanded then
-                local moreText = FontManager:CreateFontString(goldCard, "small", "OVERLAY")
-                moreText:SetPoint("RIGHT", expandBtn, "LEFT", -4, 0)
-                moreText:SetJustifyH("RIGHT")
-                local moreLabel = hiddenCount > 1
-                    and ((ns.L and ns.L["MORE_CHARACTERS_PLURAL"]) or "more characters")
-                    or ((ns.L and ns.L["MORE_CHARACTERS"]) or "more character")
-                moreText:SetText(ThemeTextHex("Muted") .. hiddenCount .. " " .. moreLabel .. "|r")
-            end
-        end
-        
-        if goldHasOverflow then
-            goldCard:EnableMouse(true)
-            goldCard:SetScript("OnMouseDown", function(self, button)
-                if button == "LeftButton" then
-                    ns._statisticsExpandedStates["warbandWealth"] = not isGoldExpanded
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
-                end
-            end)
-        end
-        
+        PaintStatisticsExpandToggle(goldCard, gw.toggle, "warbandWealth", goldHasOverflow, isGoldExpanded,
+            #goldChars - GW_VISIBLE_ROWS, GW_BOTTOM_PAD)
+
         goldCard:Show()
-        heavyBundle.goldCard = goldCard
+        goldShown = true
         yOffset = yOffset + goldCardHeight + sectionGap
     end
     
@@ -1049,73 +1180,90 @@ function WarbandNexus:DrawStatistics(parent)
         local rowsHeight = visibleCount * (MP_ROW_HEIGHT + MP_ROW_SPACING)
         local cardHeight = MP_HEADER_AREA + rowsHeight + toggleSpace + MP_BOTTOM_PAD
         
-        -- Full-width card (not half)
-        local mpCard = CreateCard(parent, cardHeight)
+        -- Full-width card (not half). Cached per parent; chrome built once, content repainted.
+        local mpCard = heavyBundle.mpCard
+        local mp = heavyBundle.mpWidgets
+        if not mpCard or not mp then
+            mpCard = CreateCard(parent, cardHeight)
+            if ApplyPanelCardChrome then ApplyPanelCardChrome(mpCard) end
+
+            -- Header: Icon + "MOST PLAYED" at top-left
+            local mpIcon = CreateIcon(mpCard, "Interface\\Icons\\Spell_Holy_BorrowedTime", 28, false, nil, true)
+            mpIcon:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 15, -10)
+            mpIcon:Show()
+
+            local mpTitle = FontManager:CreateFontString(mpCard, "subtitle", "OVERLAY")
+            mpTitle:SetPoint("LEFT", mpIcon, "RIGHT", 10, 0)
+            mpTitle:SetJustifyH("LEFT")
+
+            -- Format toggle button (WoW <-> Steam); reads live state on click
+            local fmtBtn = ns.UI.Factory:CreateButton(mpCard, 60, 20)
+            fmtBtn:SetPoint("LEFT", mpTitle, "RIGHT", 10, 0)
+            ns.UI.Factory:ApplyHighlight(fmtBtn)
+
+            local fmtBtnLabel = FontManager:CreateFontString(fmtBtn, "body", "OVERLAY")
+            fmtBtnLabel:SetPoint("CENTER")
+
+            fmtBtn:SetScript("OnEnter", function()
+                local ar, ag, ab = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+                fmtBtnLabel:SetTextColor(ar, ag, ab, 1)
+            end)
+            fmtBtn:SetScript("OnLeave", function()
+                ns.UI_SetTextColorRole(fmtBtnLabel, "Normal")
+            end)
+            fmtBtn:SetScript("OnClick", function()
+                ToggleStatisticsExpandState("mostPlayedSteamMode")
+            end)
+
+            -- Total played time at top-right (full format for header)
+            local mpTotal = FontManager:CreateFontString(mpCard, "header", "OVERLAY")
+            mpTotal:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, -24)
+            mpTotal:SetJustifyH("RIGHT")
+
+            mp = { title = mpTitle, fmtLabel = fmtBtnLabel, total = mpTotal, rows = {}, toggle = {} }
+            heavyBundle.mpCard = mpCard
+            heavyBundle.mpWidgets = mp
+        end
+        mpCard:SetParent(parent)
+        mpCard:SetHeight(cardHeight)
+        mpCard:ClearAllPoints()
         mpCard:SetPoint("TOPLEFT", SIDE, -yOffset)
         mpCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
-        if ApplyPanelCardChrome then ApplyPanelCardChrome(mpCard) end
 
-        -- â”€â”€ Header: Icon + "MOST PLAYED" at top-left â”€â”€
-        local mpIcon = CreateIcon(mpCard, "Interface\\Icons\\Spell_Holy_BorrowedTime", 28, false, nil, true)
-        mpIcon:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 15, -10)
-        mpIcon:Show()
-        
-        local mpTitle = FontManager:CreateFontString(mpCard, "subtitle", "OVERLAY")
-        mpTitle:SetPoint("LEFT", mpIcon, "RIGHT", 10, 0)
-        mpTitle:SetText((ns.L and ns.L["MOST_PLAYED"]) or "MOST PLAYED")
-        ns.UI_SetTextColorRole(mpTitle, "Bright")
-        mpTitle:SetJustifyH("LEFT")
+        mp.title:SetText((ns.L and ns.L["MOST_PLAYED"]) or "MOST PLAYED")
+        ns.UI_SetTextColorRole(mp.title, "Bright")
+        mp.fmtLabel:SetText((ns.L and ns.L["FORMAT_BUTTON"]) or "Format")
+        ns.UI_SetTextColorRole(mp.fmtLabel, "Normal")
 
-        -- â”€â”€ Format toggle button (WoW â†” Steam) â”€â”€
-        local fmtBtn = ns.UI.Factory:CreateButton(mpCard, 60, 20)
-        fmtBtn:SetPoint("LEFT", mpTitle, "RIGHT", 10, 0)
-        ns.UI.Factory:ApplyHighlight(fmtBtn)
-
-        local fmtBtnLabel = FontManager:CreateFontString(fmtBtn, "body", "OVERLAY")
-        fmtBtnLabel:SetPoint("CENTER")
-        fmtBtnLabel:SetText((ns.L and ns.L["FORMAT_BUTTON"]) or "Format")
-        ns.UI_SetTextColorRole(fmtBtnLabel, "Normal")
-
-        fmtBtn:SetScript("OnEnter", function()
-            local ar, ag, ab = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-            fmtBtnLabel:SetTextColor(ar, ag, ab, 1)
-        end)
-        fmtBtn:SetScript("OnLeave", function()
-            ns.UI_SetTextColorRole(fmtBtnLabel, "Normal")
-        end)
-        fmtBtn:SetScript("OnClick", function()
-            ns._statisticsExpandedStates["mostPlayedSteamMode"] = not steamMode
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
-        end)
-
-        -- â”€â”€ Total played time at top-right (full format for header) â”€â”€
-        local mpTotal = FontManager:CreateFontString(mpCard, "header", "OVERLAY")
-        mpTotal:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, -24)
         local totalFormatted = steamMode and FormatPlayedSteam(totalPlayedSeconds) or ns.Utilities:FormatPlayedTime(totalPlayedSeconds)
-        mpTotal:SetText(AccentHex() .. totalFormatted .. "|r")
-        mpTotal:SetJustifyH("RIGHT")
-        
-        -- â”€â”€ Character rows â”€â”€
+        mp.total:SetText(AccentHex() .. totalFormatted .. "|r")
+
+        -- Character rows (pooled slots)
+        local mpRows = mp.rows
         local rowYStart = MP_HEADER_AREA
         for i = 1, visibleCount do
             local charInfo = playedChars[i]
             local rowTop = -rowYStart
             local rowCenterY = rowTop - (MP_ROW_HEIGHT / 2)
-            
-            -- Alternating row background (both stripes — odd rows were invisible on pale cards)
-            local rowBg = mpCard:CreateTexture(nil, "BACKGROUND", nil, 1)
-            rowBg:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 10, rowTop)
-            rowBg:SetPoint("TOPRIGHT", mpCard, "TOPRIGHT", -10, rowTop)
-            rowBg:SetHeight(MP_ROW_HEIGHT)
-            local stripe = (i % 2 == 0) and (COLORS.surfaceRowEven or COLORS.bgLight)
-                or (COLORS.surfaceRowOdd or COLORS.bg)
-            stripe = stripe or { 0.768, 0.760, 0.744, 0.98 }
-            rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.98)
-            
-            PaintStatisticsClassRow(mpCard, rowCenterY, MP_ROW_HEIGHT, charInfo.classFile, charInfo.name, -120)
-            
+            local slot = mpRows[i]
+            if not slot then
+                slot = {}
+                mpRows[i] = slot
+            end
+
+            -- Alternating row background (both stripes - odd rows were invisible on pale cards)
+            PaintStatisticsRowBg(mpCard, slot, i, rowTop, MP_ROW_HEIGHT)
+
+            PaintStatisticsClassRow(mpCard, rowCenterY, MP_ROW_HEIGHT, charInfo.classFile, charInfo.name, -120, slot)
+
             -- Played time (right-aligned, compact format for rows)
-            local timeText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
+            local timeText = slot.timeText
+            if not timeText then
+                timeText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
+                timeText:SetJustifyH("RIGHT")
+                slot.timeText = timeText
+            end
+            timeText:ClearAllPoints()
             timeText:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, rowCenterY)
             if charInfo.timePlayed > 0 then
                 timeText:SetText(FormatPlayed(charInfo.timePlayed))
@@ -1123,62 +1271,24 @@ function WarbandNexus:DrawStatistics(parent)
             else
                 timeText:SetText(ThemeTextHex("Dim") .. "-|r")
             end
-            timeText:SetJustifyH("RIGHT")
-            
+            timeText:Show()
+
             rowYStart = rowYStart + MP_ROW_HEIGHT + MP_ROW_SPACING
         end
-        
-        -- â”€â”€ Expand/Collapse (PlanCardFactory pattern: glues-characterSelect atlas) â”€â”€
-        if hasOverflow then
-            local hiddenCount = #playedChars - MP_VISIBLE_ROWS
-            
-            -- Arrow button first (anchor point for text)
-            local expandBtn = ns.UI.Factory:CreateButton(mpCard, 20, 20, true)
-            expandBtn:SetPoint("BOTTOMRIGHT", mpCard, "BOTTOMRIGHT", -10, MP_BOTTOM_PAD)
-            expandBtn:EnableMouse(true)
-            
-            local arrowTex = expandBtn:CreateTexture(nil, "OVERLAY")
-            arrowTex:SetAllPoints(expandBtn)
-            if isExpanded then
-                arrowTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
-            else
-                arrowTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
-            end
-            
-            expandBtn:SetScript("OnClick", function()
-                ns._statisticsExpandedStates["mostPlayed"] = not isExpanded
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
-            end)
-            
-            -- "X more characters" text anchored to button (vertically centered)
-            if not isExpanded then
-                local moreText = FontManager:CreateFontString(mpCard, "small", "OVERLAY")
-                moreText:SetPoint("RIGHT", expandBtn, "LEFT", -4, 0)
-                moreText:SetJustifyH("RIGHT")
-                local moreLabel = hiddenCount > 1
-                    and ((ns.L and ns.L["MORE_CHARACTERS_PLURAL"]) or "more characters")
-                    or ((ns.L and ns.L["MORE_CHARACTERS"]) or "more character")
-                moreText:SetText(ThemeTextHex("Muted") .. hiddenCount .. " " .. moreLabel .. "|r")
-            end
+        for i = visibleCount + 1, #mpRows do
+            HideStatisticsRowSlot(mpRows[i])
         end
-        
-        -- Make entire card clickable for expand/collapse
-        if hasOverflow then
-            mpCard:EnableMouse(true)
-            mpCard:SetScript("OnMouseDown", function(self, button)
-                if button == "LeftButton" then
-                    ns._statisticsExpandedStates["mostPlayed"] = not isExpanded
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
-                end
-            end)
-        end
-        
+
+        -- Expand/Collapse (PlanCardFactory pattern: glues-characterSelect atlas)
+        PaintStatisticsExpandToggle(mpCard, mp.toggle, "mostPlayed", hasOverflow, isExpanded,
+            #playedChars - MP_VISIBLE_ROWS, MP_BOTTOM_PAD)
+
         mpCard:Show()
-        heavyBundle.mpCard = mpCard
+        mpShown = true
         yOffset = yOffset + cardHeight + sectionGap
     end
 
-    local annexAnchor = heavyBundle.mpCard or heavyBundle.goldCard
+    local annexAnchor = (mpShown and heavyBundle.mpCard) or (goldShown and heavyBundle.goldCard) or nil
     if annexAnchor and ns.UI_AnnexResultsToScrollBottom then
         ns.UI_AnnexResultsToScrollBottom(annexAnchor, parent, SIDE, 8)
     end

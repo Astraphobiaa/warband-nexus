@@ -76,9 +76,13 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     if not dialog then return end
 
-    local PADDING = 14
+    -- One side pad for every popup (UI_LAYOUT.PAGE_STACK.SIDE); body starts one pad below the header.
+    local pageStack = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK) or {}
+    local PADDING = pageStack.SIDE or 12
     local contentWidth = contentFrame:GetWidth()
-    local yOffset = 12
+    local yOffset = PADDING
+    -- Two equal columns across the padded body (destination radios + category grid share them).
+    local colW = math.floor((contentWidth - PADDING * 2) / 2)
 
     -- Master Enable Checkbox
     local enabledCB = CreateThemedCheckbox(contentFrame, settings.enabled)
@@ -102,7 +106,9 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     autoCB:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((L and L["REAGENT_DEPOSIT_AUTO_OPEN_DESC"]) or "Automatically transfers matching items to bank every time you open the bank frame.", 1, 1, 1, 1, true)
+        local tr, tg, tb = 1, 1, 1
+        if ns.UI_GetTooltipBodyColor then tr, tg, tb = ns.UI_GetTooltipBodyColor() end
+        GameTooltip:SetText((L and L["REAGENT_DEPOSIT_AUTO_OPEN_DESC"]) or "Automatically transfers matching items to bank every time you open the bank frame.", tr, tg, tb, 1, true)
         GameTooltip:Show()
     end)
     autoCB:SetScript("OnLeave", GameTooltip_Hide)
@@ -120,7 +126,9 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     ignoreFoodCB:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText((L and L["REAGENT_DEPOSIT_IGNORE_FOOD_DESC"]) or "Never automatically deposit food, drinks, feasts, or hearty meals into the bank, keeping your raid and dungeon consumables safe.", 1, 1, 1, 1, true)
+        local tr, tg, tb = 1, 1, 1
+        if ns.UI_GetTooltipBodyColor then tr, tg, tb = ns.UI_GetTooltipBodyColor() end
+        GameTooltip:SetText((L and L["REAGENT_DEPOSIT_IGNORE_FOOD_DESC"]) or "Never automatically deposit food, drinks, feasts, or hearty meals into the bank, keeping your raid and dungeon consumables safe.", tr, tg, tb, 1, true)
         GameTooltip:Show()
     end)
     ignoreFoodCB:SetScript("OnLeave", GameTooltip_Hide)
@@ -142,7 +150,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     -- Separator
     local sep1 = contentFrame:CreateTexture(nil, "ARTWORK")
-    sep1:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep1, "horizontal", 1) else sep1:SetHeight(1) end
     sep1:SetPoint("TOPLEFT", PADDING, -yOffset)
     sep1:SetPoint("TOPRIGHT", -PADDING, -yOffset)
     sep1:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4)
@@ -158,10 +166,10 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     yOffset = yOffset + 24
 
     local warbandRadio = ns.UI_CreateThemedRadioButton(contentFrame, settings.destination ~= "reagent")
-    warbandRadio:SetPoint("TOPLEFT", PADDING + 4, -yOffset)
+    warbandRadio:SetPoint("TOPLEFT", PADDING, -yOffset)
 
-    local warbandBtn = CreateButton(contentFrame, 200, 20, nil, nil, true)
-    warbandBtn:SetPoint("TOPLEFT", PADDING + 4, -yOffset)
+    local warbandBtn = CreateButton(contentFrame, colW, 20, nil, nil, true)
+    warbandBtn:SetPoint("TOPLEFT", PADDING, -yOffset)
     warbandBtn.radioButton = warbandRadio
 
     local warbandLabel = FontManager:CreateFontString(warbandBtn, "body", "OVERLAY")
@@ -170,10 +178,10 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     ns.UI_SetTextColorRole(warbandLabel, "Bright")
 
     local reagentRadio = ns.UI_CreateThemedRadioButton(contentFrame, settings.destination == "reagent")
-    reagentRadio:SetPoint("TOPLEFT", PADDING + 230, -yOffset)
+    reagentRadio:SetPoint("TOPLEFT", PADDING + colW, -yOffset)
 
-    local reagentBtn = CreateButton(contentFrame, 190, 20, nil, nil, true)
-    reagentBtn:SetPoint("TOPLEFT", PADDING + 230, -yOffset)
+    local reagentBtn = CreateButton(contentFrame, colW, 20, nil, nil, true)
+    reagentBtn:SetPoint("TOPLEFT", PADDING + colW, -yOffset)
     reagentBtn.radioButton = reagentRadio
 
     local reagentLabel = FontManager:CreateFontString(reagentBtn, "body", "OVERLAY")
@@ -228,7 +236,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     -- Separator
     local sep2 = contentFrame:CreateTexture(nil, "ARTWORK")
-    sep2:SetHeight(1)
+    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(sep2, "horizontal", 1) else sep2:SetHeight(1) end
     sep2:SetPoint("TOPLEFT", PADDING, -yOffset)
     sep2:SetPoint("TOPRIGHT", -PADDING, -yOffset)
     sep2:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4)
@@ -241,14 +249,16 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     catTitle:SetText((L and L["REAGENT_DEPOSIT_CATEGORIES"]) or "Deposit Categories")
     ns.UI_SetTextColorRole(catTitle, "Bright")
 
-    local selectAllBtn = CreateButton(contentFrame, 75, 18, nil, nil, true)
-    selectAllBtn:SetPoint("TOPRIGHT", -PADDING - 75, -yOffset + 2)
+    -- Bordered control chrome (CreateButton default) so both read as buttons, not loose text.
+    local clearAllW, selectAllW, toolBtnH, toolBtnGap = 70, 80, 20, 6
+    local selectAllBtn = CreateButton(contentFrame, selectAllW, toolBtnH)
+    selectAllBtn:SetPoint("TOPRIGHT", -(PADDING + clearAllW + toolBtnGap), -yOffset + 2)
     local selectAllLabel = FontManager:CreateFontString(selectAllBtn, "small", "OVERLAY")
     selectAllLabel:SetPoint("CENTER", 0, 0)
     selectAllLabel:SetText((L and L["REAGENT_DEPOSIT_SELECT_ALL"]) or "Select All")
     ns.UI_SetTextColorRole(selectAllLabel, "Accent")
 
-    local clearAllBtn = CreateButton(contentFrame, 65, 18, nil, nil, true)
+    local clearAllBtn = CreateButton(contentFrame, clearAllW, toolBtnH)
     clearAllBtn:SetPoint("TOPRIGHT", -PADDING, -yOffset + 2)
     local clearAllLabel = FontManager:CreateFontString(clearAllBtn, "small", "OVERLAY")
     clearAllLabel:SetPoint("CENTER", 0, 0)
@@ -259,7 +269,6 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     -- Category Checkbox Grid (2 columns x 6 rows)
     local categoryCheckboxes = {}
-    local colW = 210
     local rowH = 26
 
     for i = 1, #CATEGORY_KEYS do
@@ -311,7 +320,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
 
     -- Bottom Action: Deposit Now Button
     local depositNowBtn = CreateButton(contentFrame, contentWidth - (PADDING * 2), 34)
-    depositNowBtn:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 16)
+    depositNowBtn:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, pageStack.BOTTOM_PAD or 12)
 
     local btnText = FontManager:CreateFontString(depositNowBtn, "subtitle", "OVERLAY")
     btnText:SetPoint("CENTER", 0, 0)
@@ -329,7 +338,9 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
             depositNowBtn:SetAlpha(0.45)
             depositNowBtn:SetScript("OnEnter", function(b)
                 GameTooltip:SetOwner(b, "ANCHOR_TOP")
-                GameTooltip:SetText((L and L["REAGENT_DEPOSIT_BANK_CLOSED_TIP"]) or "Open your bank or Warband bank to deposit items now.", 1, 0.82, 0.2, 1, true)
+                local tr, tg, tb = 1, 0.82, 0.2
+                if ns.UI_GetTooltipDescColor then tr, tg, tb = ns.UI_GetTooltipDescColor() end
+                GameTooltip:SetText((L and L["REAGENT_DEPOSIT_BANK_CLOSED_TIP"]) or "Open your bank or Warband bank to deposit items now.", tr, tg, tb, 1, true)
                 GameTooltip:Show()
             end)
             depositNowBtn:SetScript("OnLeave", GameTooltip_Hide)
