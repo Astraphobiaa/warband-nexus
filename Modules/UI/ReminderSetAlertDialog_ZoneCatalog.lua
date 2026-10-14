@@ -456,7 +456,7 @@ function Z.Install(ctx)
                         row.labelFs:SetJustifyH("LEFT")
                         local hk = entry.headerKey or ""
                         local ht = (Lz and hk ~= "" and Lz[hk]) or hk
-                        row.labelFs:SetText("|cffcccccc" .. ht .. "|r")
+                        row.labelFs:SetText(PickerBrightHex() .. ht .. "|r")
                         row:SetHeight(hdrRowH)
                     elseif entry.id then
                         row._isCatalogHeader = false

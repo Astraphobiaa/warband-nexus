@@ -76,7 +76,7 @@ function M.PinCollectionsDetailDescriptionLine(fs, textOverlay, anchorFrame, anc
 end
 local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
 local TEXT_GAP = AFTER_ELEMENT
-local SEARCH_ROW_HEIGHT = math.floor(32 * 1.05 + 0.5)
+local SEARCH_ROW_HEIGHT = ns.UI_LAYOUT.PAGE_STACK.SEARCH_HEIGHT  -- page stack search row (was 34)
 -- Title card height matches Characters reference (`TITLE_CARD_DEFAULT_HEIGHT` = 64).
 local COLLECTIONS_TITLE_CARD_HEIGHT = (ns.UI_SPACING and ns.UI_SPACING.TITLE_CARD_DEFAULT_HEIGHT) or 64
 local RECENT_SECTION_ORDER = { "achievement", "mount", "pet", "toy" }
@@ -528,7 +528,7 @@ end
 local ROW_HEIGHT = math.floor(32 * 1.05 * 1.25 + 0.5)
 local ROW_GAP = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (ns.UI_LAYOUT and ns.UI_LAYOUT.dataRowGap) or 4
 local ROW_STRIDE = ROW_HEIGHT + ROW_GAP
--- Mount/Pet/Toy category headers: must match CreateCollapsibleHeader + CollectionVirtual_FillRowScrollIndex (collapsible sections + virtual rows).
+-- Mount/Pet/Toy category headers: must match CreateCollapsibleHeader + the VirtualListModule section stacking (collapsible sections + virtual rows).
 local COLLAPSE_HEADER_HEIGHT_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
 -- List | scrollbar | detail split — single ratio for Mounts, Pets, Toys, Achievements (WN-UI-layout symmetry).
 local COLLECTION_LIST_DETAIL_SPLIT = 0.50
@@ -1161,8 +1161,6 @@ function M.ScheduleCollectionsSubTabRedraw(fromSub, toSub, perfWallStart)
         end
     end)
 end
-
-local _populateMountListBusy = false
 
 --- Coalesce virtual-list visible-range refreshes after layout (scroll metrics). Two passes (0 + 50ms)
 --- were enough for header/width sync; a third pass at 120ms duplicated heavy work (mount/pet/toy lists).

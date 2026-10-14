@@ -1348,7 +1348,6 @@ function ThemeAPI.ApplySearchBoxChrome(frame, opts)
     end
     if ns.UI_ApplyAccentControlChrome then
         ns.UI_ApplyAccentControlChrome(frame, {
-            edgeSize = 2,
             showRail = false,
             bg = { 0, 0, 0, 0 },
         })

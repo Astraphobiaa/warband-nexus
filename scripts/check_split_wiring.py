@@ -227,6 +227,38 @@ def main() -> int:
             "B.",
         )
     )
+    errors.extend(
+        check_bind(
+            "Modules/UI/CharactersUI.lua",
+            "ns.CharactersUI._bind",
+            "Modules/UI/CharactersUI_GoldCards.lua",
+            "B.",
+        )
+    )
+    errors.extend(
+        check_bind(
+            "Modules/UI/CharactersUI.lua",
+            "ns.CharactersUI._bind",
+            "Modules/UI/CharactersUI_Row.lua",
+            "B.",
+        )
+    )
+    errors.extend(
+        check_bind(
+            "Modules/UI/CharactersUI.lua",
+            "ns.CharactersUI._bind",
+            "Modules/UI/CharactersUI_ColumnHeader.lua",
+            "B.",
+        )
+    )
+    errors.extend(
+        check_bind(
+            "Modules/UI/CharactersUI.lua",
+            "ns.CharactersUI._bind",
+            "Modules/UI/CharactersUI_Dialogs.lua",
+            "B.",
+        )
+    )
     errors.extend(check_gear_slot_deps())
     errors.extend(check_trycounter_fns())
     errors.extend(check_setname())

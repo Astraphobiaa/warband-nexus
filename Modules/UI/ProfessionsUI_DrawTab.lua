@@ -21,6 +21,69 @@ setfenv(1, setmetatable({
     end,
 }))
 
+local profHeaderDefByCol
+
+--- TableKit applyIcon: legacy PROF_HEADER_ICON_BY_COL resolution (file paths -> atlas list -> fallback).
+local function ProfHeaderApplyIcon(tex, col)
+    local iconDef = col.iconDef
+    if not iconDef then return false end
+    ApplyProfessionHeaderIconTexture(tex, iconDef)
+    return tex:IsShown() and ProfessionHeaderIconIsDrawn(tex)
+end
+
+--- Sort cycle stays asc -> desc -> off (persisted to professionColumnSort); redraw re-applies strip:SetSort.
+local function ProfHeaderOnSortClick(key)
+    ToggleColumnSort(key)
+end
+
+local PROF_HEADER_STRIP_OPTS = {
+    mode = "compact",
+    height = COLUMN_HEADER_HEIGHT,
+    iconSize = PROF_COL_ICON_SIZE,
+    bottomRule = true,
+    onSortClick = ProfHeaderOnSortClick,
+    applyIcon = ProfHeaderApplyIcon,
+}
+
+--- Fill header fields on the shared layout cols, then paint the strip with the same widths/offsets rows use.
+local function PaintProfessionHeaderStrip(strip)
+    if not profHeaderDefByCol then
+        profHeaderDefByCol = {}
+        for hdi = 1, #HEADER_DEFS do
+            profHeaderDefByCol[HEADER_DEFS[hdi].col] = HEADER_DEFS[hdi]
+        end
+    end
+    local layout = ResolveProfessionColumnLayout()
+    local cols = layout.cols
+    for ci = 1, #cols do
+        local col = cols[ci]
+        local key = col.key
+        local hdef = profHeaderDefByCol[key]
+        local text = ""
+        -- Open: per-row button only, no header label.
+        if hdef and key ~= "open" then
+            text = StripProfHeaderDisplayText((hdef.label and ns.L and ns.L[hdef.label]) or hdef.text or "")
+            if key == "profName" and text == "" then
+                text = StripProfHeaderDisplayText((ns.L and ns.L["GROUP_PROFESSION"]) or "Profession")
+            end
+        end
+        col.label = text
+        col.tooltip = (text ~= "") and text or nil
+        col.align = (hdef and hdef.align) or "CENTER"
+        col.sortable = (hdef and hdef.sortable and text ~= "") and true or false
+        col.iconDef = (hdef and PROF_HEADER_ICON_BY_COL[key]) or nil
+    end
+    local sortState = GetColumnSortState()
+    if sortState and sortState.col then
+        strip:SetSort(sortState.col, sortState.dir == "asc")
+    else
+        strip:SetSort(nil)
+    end
+    strip:SetColumns(cols, layout.widths, layout.offsets, #cols)
+    -- Data-grid-only dividers (after Profession, none before info), not the kit's every-gap dividers.
+    ApplyProfessionColumnDividers(strip, COLUMN_HEADER_HEIGHT)
+end
+
 local function FinishProfessionsTabChrome(parent)
     RelayoutProfessionRowWidths(parent)
     RefreshVisibleProfessionRowGradients(parent)
@@ -63,7 +126,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
     local headerYOffset = (chrome and chrome.yOffset) or 0
     local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or SIDE_MARGIN
-    local scrollTopY = (ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0
+    -- FLUSH grid (PvE parity): column header row starts at the top of the scroll body, no BODY_TOP gap.
+    local scrollTopY = ns.UI_LAYOUT.PAGE_STACK.FLUSH
   -- Single stack width for title card, column headers, sections, and row chrome (Characters-tab parity).
     local stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
         or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
@@ -76,8 +140,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
     if not ns.Utilities:IsModuleEnabled("professions") then
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["PROFESSIONS_DISABLED_TITLE"]) or "Professions")
-        return scrollTopY + cardHeight
+        -- No column header in the disabled state: standard body top, not the FLUSH grid top.
+        local bodyTop = ns.UI_LAYOUT.PAGE_STACK.BODY_TOP
+        local cardHeight = CreateDisabledCard(parent, bodyTop, (ns.L and ns.L["PROFESSIONS_DISABLED_TITLE"]) or "Professions")
+        return bodyTop + cardHeight
     end
 
     local characters = self:GetAllCharacters()
@@ -207,13 +273,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     titleCard:Show()
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight(), 0)
-        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    -- FLUSH exception: title -> column-header grid gap is PAGE_STACK.FLUSH.
+    if chrome and ns.UI_PageStack_Place then
+        headerYOffset = ns.UI_PageStack_Place(chrome, titleCard, nil, "FLUSH")
     else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        headerYOffset = headerYOffset + (titleCard:GetHeight() or 64) + ns.UI_LAYOUT.PAGE_STACK.FLUSH
     end
+    if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
 
     local mainFrameRef = WarbandNexus.UI.mainFrame
     local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
@@ -232,83 +298,18 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     parent._wnProfColHeaderStripH = COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
 
-    local FactHdr = ns.UI and ns.UI.Factory
+    -- One TableKit header strip (compact: icon over label, 1px accent rule); x/w from the shared resolved layout.
     local colHeaderBar = parent._wnProfColHeaderRow
     if not colHeaderBar then
-        colHeaderBar = FactHdr and FactHdr:CreateContainer(parent, profStackW, COLUMN_HEADER_HEIGHT, false)
-        if not colHeaderBar then
-            colHeaderBar = CreateFrame("Frame", nil, parent)
-            colHeaderBar:SetSize(profStackW, COLUMN_HEADER_HEIGHT)
-        end
+        colHeaderBar = ns.UI_TableKit.CreateHeaderStrip(parent, PROF_HEADER_STRIP_OPTS)
         parent._wnProfColHeaderRow = colHeaderBar
     end
     ReattachProfessionColumnHeaderBar(colHeaderBar, parent)
-    colHeaderBar:Show()
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
     colHeaderBar:ClearAllPoints()
     colHeaderBar:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -scrollTopY)
-    if colHeaderBar.SetWidth then
-        colHeaderBar:SetWidth(math.max(1, profStackW))
-    end
-
-    local accentR = COLORS.accent[1] or 0.40
-    local accentG = COLORS.accent[2] or 0.20
-    local accentB = COLORS.accent[3] or 0.58
-
-    if colHeaderBar._wnProfHdrBg then
-        colHeaderBar._wnProfHdrBg:Hide()
-    end
-
-    if not colHeaderBar._wnProfHdrRule then
-        colHeaderBar._wnProfHdrRule = colHeaderBar:CreateTexture(nil, "ARTWORK")
-        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(colHeaderBar._wnProfHdrRule, "horizontal", 1) else colHeaderBar._wnProfHdrRule:SetHeight(1) end
-        colHeaderBar._wnProfHdrRule:SetPoint("BOTTOMLEFT", colHeaderBar, "BOTTOMLEFT", 0, 0)
-        colHeaderBar._wnProfHdrRule:SetPoint("BOTTOMRIGHT", colHeaderBar, "BOTTOMRIGHT", 0, 0)
-    end
-    local ruleA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.35 or 0.55
-    colHeaderBar._wnProfHdrRule:SetColorTexture(accentR * 0.28, accentG * 0.28, accentB * 0.28, ruleA)
-    colHeaderBar._wnProfHdrRule:Show()
-
-    if colHeaderBar._wnProfColHeaderLine then
-        colHeaderBar._wnProfColHeaderLine:Hide()
-    end
-
-    for _, fs in pairs(profColHeaderLabels) do
-        if fs and fs.Hide then fs:Hide() end
-    end
-    for colKey, hit in pairs(profColHeaderHits) do
-        if hit and hit.Hide then hit:Hide() end
-    end
-
-    local sortState = GetColumnSortState()
-    for hdi = 1, #HEADER_DEFS do
-        local hdef = HEADER_DEFS[hdi]
-        local col = hdef.col
-        if IsColumnVisible(col) then
-            local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
-            local displayText = StripProfHeaderDisplayText(
-                (hdef.label and ns.L and ns.L[hdef.label]) or hdef.text or ""
-            )
-            if col == "profName" and displayText == "" then
-                displayText = StripProfHeaderDisplayText((ns.L and ns.L["GROUP_PROFESSION"]) or "Profession")
-            end
-            if col == "open" then
-                -- Per-row Open button only; no header label (avoids "Open" text beside Character sort arrow).
-            elseif PROF_HEADER_ICON_BY_COL[col] then
-                PaintProfessionCompactColumnHeader(
-                    colHeaderBar, col, w, PROF_HEADER_ICON_BY_COL[col], hdef, sortState, displayText,
-                    accentR, accentG, accentB, FactHdr
-                )
-            elseif hdef.sortable then
-                PaintProfessionTextSortableColumnHeader(
-                    colHeaderBar, col, w, hdef, sortState, displayText, accentR, accentG, accentB, FactHdr
-                )
-            else
-                PaintProfessionTextStaticColumnHeader(colHeaderBar, col, w, hdef, displayText, FactHdr)
-            end
-        end
-    end
-    ApplyProfessionColumnDividers(colHeaderBar, COLUMN_HEADER_HEIGHT)
+    colHeaderBar:SetWidth(math.max(1, profStackW))
+    PaintProfessionHeaderStrip(colHeaderBar)
     colHeaderBar:Show()
 
     local yOffset = scrollTopY + COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
@@ -319,7 +320,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     HideEmptyStateCard(parent, "professions")
     if totalProfChars == 0 then
         if ns.UI_ShowTabEmptyStateCard then
-            return ns.UI_ShowTabEmptyStateCard(parent, "professions", yOffset, { fillParent = true }) + 20
+            -- parent is the scroll child: page-stack side inset, no extra trailing pad (extent includes it).
+            return ns.UI_ShowTabEmptyStateCard(parent, "professions", yOffset, { fillParent = false, sideInset = ns.UI_LAYOUT.PAGE_STACK.SIDE })
         end
         return yOffset + 100
     end
@@ -380,7 +382,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     -- Grouped sections with collapsible headers (Characters-tab stack: header chain respects collapsed body height)
-    local SECTION_HEADER_GAP = 6
+    local SECTION_HEADER_GAP = ns.UI_LAYOUT.PAGE_STACK.SECTION_GAP
     local previousSectionContent = nil
     local previousSectionHeader = nil
     local previousSectionExpanded = false

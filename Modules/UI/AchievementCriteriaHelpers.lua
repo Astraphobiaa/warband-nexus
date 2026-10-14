@@ -695,8 +695,8 @@ local function BuildAchievementCriteriaListItems(achievementID)
         local row = summary.criteria[i]
         if row.hasName and row.name then
             local progress = FormatCriterionRowSuffix(row, summary)
-            local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-                or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+            local icon = row.completed and ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+                or ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
             local item = {
                 text = icon .. " " .. row.name .. progress,
                 completed = row.completed,

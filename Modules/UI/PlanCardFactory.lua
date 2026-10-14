@@ -2270,7 +2270,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
             checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
             local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
             checkmark:SetAllPoints()
-            checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+            ns.UI_SetIcon(checkmark, "status_ok")
         else
             local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
             checkArrow:SetSize(24, 24)

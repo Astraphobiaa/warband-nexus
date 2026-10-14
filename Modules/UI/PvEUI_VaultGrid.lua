@@ -18,8 +18,8 @@ local FormatNumber = ns.UI_FormatNumber or function(n)
     return tostring(num)
 end
 
-local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+local VAULT_SLOT_CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+local VAULT_SLOT_CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
 local VAULT_SLOT_UPARROW = "|A:loottoast-arrow-green:12:12|a"
 local issecretvalue = issecretvalue
 

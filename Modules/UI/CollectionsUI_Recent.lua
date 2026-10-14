@@ -491,7 +491,7 @@ function M.DrawRecentContent(contentFrame)
             panel,
             "TOPLEFT",
             gridCol * (cardW + gap),
-            -(inset + gridRow * (cardH + gap))
+            -(gridRow * (cardH + gap))  -- page stack already provides the gap under the search bar
         )
         if ApplyVisuals and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
             local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg

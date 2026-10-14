@@ -14,6 +14,8 @@ local L = ns.L
 local COLORS = ns.UI_COLORS
 local FontManager = ns.FontManager
 local PUI = ns.ProfessionsUI
+local TK = ns.UI_TableKit
+assert(TK, "SharedWidgets_TableKit.lua must load before PvPUI_Overview.lua")
 local issecretvalue = issecretvalue
 
 --- Key accessor for overview rows; passed to CharacterService:PartitionFavoritesFirst.
@@ -92,48 +94,6 @@ local function ResolveColumnIconDef(key)
     return statIcons[key]
 end
 
-local OVERVIEW_COL_HDR_ICON_TOP = 2
-local OVERVIEW_COL_HDR_LABEL_GAP = 1
-
-local function AcquireOverviewColHeaderLabel(clip, pool, hitKey, hitFrame, compactLabel, colWidth)
-    if not clip or not hitFrame or not compactLabel or compactLabel == "" then return nil end
-    pool.headerLabels = pool.headerLabels or {}
-    local fs = pool.headerLabels[hitKey]
-    if not fs then
-        fs = FontManager:CreateFontString(clip, "small", "OVERLAY")
-        pool.headerLabels[hitKey] = fs
-    else
-        fs:SetParent(clip)
-        fs:Show()
-    end
-    local multiline = (not issecretvalue or not issecretvalue(compactLabel)) and compactLabel:find("\n", 1, true) ~= nil
-    fs:ClearAllPoints()
-    fs:SetPoint("TOP", hitFrame, "BOTTOM", 0, -OVERVIEW_COL_HDR_LABEL_GAP)
-    fs:SetWidth(math.max(24, colWidth - 4))
-    fs:SetJustifyH("CENTER")
-    fs:SetWordWrap(multiline)
-    if multiline and fs.SetJustifyV then
-        fs:SetJustifyV("TOP")
-    elseif fs.SetJustifyV then
-        fs:SetJustifyV("TOP")
-    end
-    if ns.UI_SetTextColorRole then
-        ns.UI_SetTextColorRole(fs, "Muted")
-        fs:SetText(compactLabel)
-    else
-        local hex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
-        fs:SetText(hex .. compactLabel .. "|r")
-    end
-    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-        fs:SetShadowOffset(0, 0)
-        fs:SetShadowColor(0, 0, 0, 0)
-    else
-        fs:SetShadowOffset(1, -1)
-        fs:SetShadowColor(0, 0, 0, 0.9)
-    end
-    return fs
-end
-
 local function ApplyHeaderIcon(iconTex, iconDef, iconSize)
     if not iconTex or not iconDef then return end
     iconSize = iconSize or (iconDef and iconDef.headerIconSize) or OVERVIEW_HDR_ICON
@@ -152,29 +112,11 @@ local function ApplyHeaderIcon(iconTex, iconDef, iconSize)
     end
 end
 
-local function HideOverviewHeaderLabels(pool)
-    if not pool then return end
-    if pool.headerLabels then
-        for key, lbl in pairs(pool.headerLabels) do
-            if type(key) == "string" and key:sub(1, #OVERVIEW_COL_PREFIX) == OVERVIEW_COL_PREFIX and lbl and lbl.Hide then
-                lbl:Hide()
-            end
-        end
-    end
-    if pool.columnClips then
-        for key, clip in pairs(pool.columnClips) do
-            if type(key) == "string" and key:sub(1, #OVERVIEW_COL_PREFIX) == OVERVIEW_COL_PREFIX and clip and clip.Hide then
-                clip:Hide()
-            end
-        end
-    end
-    if pool.textClips then
-        for key, clip in pairs(pool.textClips) do
-            if type(key) == "string" and key:sub(1, #OVERVIEW_COL_PREFIX) == OVERVIEW_COL_PREFIX and clip and clip.Hide then
-                clip:Hide()
-            end
-        end
-    end
+--- TableKit applyIcon hook: roster iconDef resolver (currency / atlas / file chain) before the kit's own resolver.
+local function ApplyOverviewHeaderIcon(iconTex, col, iconSize)
+    if not col or not col.iconDef then return false end
+    ApplyHeaderIcon(iconTex, col.iconDef, iconSize)
+    return HeaderIconIsDrawn(iconTex)
 end
 
 local function MeasureHeaderLabelWidth(hdrFs, compactLabel)
@@ -249,17 +191,19 @@ local function MeasureStatColumns(measureFs, hdrFs, rosterRows)
     honorSamples[#honorSamples + 1] = "-"
     conquestSamples[#conquestSamples + 1] = "-"
 
+    -- TableKit column definitions (SharedWidgets_TableKit.lua): compact header, icon slot over label.
     local columns = {}
+    local honorIcon = ResolveColumnIconDef("honor")
     columns[#columns + 1] = {
-        key = "honor", kind = "icon", width = MeasureIconColumn(hdrFs, measureFs, honorLabel, OVERVIEW_CURRENCY_MIN, honorSamples),
-        align = "CENTER", iconDef = ResolveColumnIconDef("honor"),
-        compactLabel = honorLabel, tooltipTitle = honorLabel,
+        key = "honor", iconSlot = true, iconDef = honorIcon, iconSize = honorIcon and honorIcon.headerIconSize,
+        width = MeasureIconColumn(hdrFs, measureFs, honorLabel, OVERVIEW_CURRENCY_MIN, honorSamples),
+        align = "CENTER", label = honorLabel, tooltip = honorLabel,
     }
+    local conquestIcon = ResolveColumnIconDef("conquest")
     columns[#columns + 1] = {
-        key = "conquest", kind = "icon",
+        key = "conquest", iconSlot = true, iconDef = conquestIcon, iconSize = conquestIcon and conquestIcon.headerIconSize,
         width = MeasureIconColumn(hdrFs, measureFs, conquestLabel, OVERVIEW_CURRENCY_MIN, conquestSamples),
-        align = "CENTER", iconDef = ResolveColumnIconDef("conquest"),
-        compactLabel = conquestLabel, tooltipTitle = conquestLabel,
+        align = "CENTER", label = conquestLabel, tooltip = conquestLabel,
     }
     local statIcons = M.ROSTER_STAT_HEADER_ICONS or {}
     local bracketLabels = M.BRACKET_LABELS or {}
@@ -269,51 +213,22 @@ local function MeasureStatColumns(measureFs, hdrFs, rosterRows)
         local headerLabel = (M.RosterBracketHeaderLabel and M.RosterBracketHeaderLabel(bkey)) or (bracketHeaders[bi] or bkey)
         local iconSize = iconDef and iconDef.headerIconSize or OVERVIEW_HDR_ICON
         columns[#columns + 1] = {
-            key = bkey, kind = "icon",
+            key = bkey, iconSlot = true, iconDef = iconDef, iconSize = iconDef and iconDef.headerIconSize,
             width = MeasureIconColumn(hdrFs, measureFs, headerLabel, OVERVIEW_RATING_MIN, bracketSamples, iconSize),
-            align = "CENTER", iconDef = iconDef,
-            compactLabel = headerLabel,
-            tooltipTitle = bracketLabels[bkey] or bkey,
+            align = "CENTER", label = headerLabel,
+            tooltip = bracketLabels[bkey] or bkey,
         }
     end
     local weeklyLabel = (L and L["PVP_WEEKLY"]) or "Weekly W/P"
+    local weeklyIcon = ResolveColumnIconDef("weekly")
     columns[#columns + 1] = {
-        key = "weekly", kind = "icon",
+        key = "weekly", iconSlot = true, iconDef = weeklyIcon, iconSize = weeklyIcon and weeklyIcon.headerIconSize,
         width = math.max(
             MeasureIconColumn(hdrFs, measureFs, "W/P", OVERVIEW_WEEKLY_MIN, weeklySamples),
             math.ceil(MeasureFsWidth(hdrFs, weeklyLabel) + OVERVIEW_COL_PAD * 2)),
-        align = "CENTER", iconDef = ResolveColumnIconDef("weekly"),
-        compactLabel = "W/P", tooltipTitle = weeklyLabel,
+        align = "CENTER", label = "W/P", tooltip = weeklyLabel,
     }
     return columns
-end
-
-local function StatColumnOffset(columns, colIndex, colGap, inlineStart)
-    inlineStart = inlineStart or 0
-    colGap = colGap or OVERVIEW_COL_GAP
-    local x = inlineStart
-    for i = 1, colIndex - 1 do
-        x = x + columns[i].width + colGap
-    end
-    return x
-end
-
-local function TotalStatColumnsWidth(columns, colGap)
-    colGap = colGap or OVERVIEW_COL_GAP
-    local total = 0
-    for i = 1, #columns do
-        total = total + columns[i].width
-        if i < #columns then total = total + colGap end
-    end
-    return total
-end
-
-local function ColumnOffset(columns, colIndex, colGap, inlineStart)
-    return StatColumnOffset(columns, colIndex, colGap, inlineStart)
-end
-
-local function TotalColumnsWidth(columns, colGap, inlineStart)
-    return (inlineStart or 0) + TotalStatColumnsWidth(columns, colGap) + OVERVIEW_COL_RIGHT_MARGIN
 end
 
 local function PvpGroupIdFromSecKey(secKey)
@@ -612,164 +527,11 @@ local function MeasureOverviewBlockH(parent, overviewStartYOffset, tailFrame, fa
     return math.max(1, startWorldY - bot)
 end
 
-local function BuildDividerXs(columns, colGap, inlineStart)
-    if ns.BuildPvEInlineColumnDividerXs then
-        return ns.BuildPvEInlineColumnDividerXs(inlineStart, columns, function() return colGap end)
-    end
-    inlineStart = inlineStart or 0
-    local xs = {}
-    for c = 1, #columns - 1 do
-        xs[#xs + 1] = StatColumnOffset(columns, c, colGap, inlineStart) + columns[c].width + colGap * 0.5
-    end
-    return xs
-end
-
 local function HideOverviewProfHeaders()
     if not PUI or not PUI.profColHeaderLabels then return end
     for key, fs in pairs(PUI.profColHeaderLabels) do
         if type(key) == "string" and key:sub(1, #OVERVIEW_COL_PREFIX) == OVERVIEW_COL_PREFIX and fs and fs.Hide then
             fs:Hide()
-        end
-    end
-end
-
-local function PaintTextColumnHeader(bar, pool, columns, col, colIndex, colGap, inlineStart)
-    local clipKey = OVERVIEW_COL_PREFIX .. col.key .. "_clip"
-    pool.textClips = pool.textClips or {}
-    local clip = pool.textClips[clipKey]
-    local FactHdr = ns.UI and ns.UI.Factory
-    if not clip then
-        clip = FactHdr and FactHdr:CreateContainer(bar, col.width, OVERVIEW_COL_HDR_H, false)
-        if not clip then
-            clip = CreateFrame("Frame", nil, bar)
-            clip:SetSize(col.width, OVERVIEW_COL_HDR_H)
-        end
-        if clip.SetClipsChildren then clip:SetClipsChildren(true) end
-        local lbl = FontManager:CreateFontString(clip, "small", "OVERLAY")
-        lbl:SetJustifyH(col.align == "CENTER" and "CENTER" or (col.align == "RIGHT" and "RIGHT" or "LEFT"))
-        if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
-        clip._wnHeaderLabel = lbl
-        pool.textClips[clipKey] = clip
-    end
-    clip:SetParent(bar)
-    clip:SetSize(col.width, OVERVIEW_COL_HDR_H)
-    clip:Show()
-    clip:ClearAllPoints()
-    local x = ColumnOffset(columns, colIndex, colGap, inlineStart)
-    local colRight = x + col.width
-    if col.align == "RIGHT" then
-        clip:SetPoint("TOPRIGHT", bar, "TOPLEFT", colRight, 0)
-    elseif col.align == "CENTER" then
-        clip:SetPoint("CENTER", bar, "LEFT", x + col.width * 0.5, 0)
-    else
-        clip:SetPoint("TOPLEFT", bar, "TOPLEFT", x, 0)
-    end
-    local lbl = clip._wnHeaderLabel
-    if ns.UI_SetTextColorRole then
-        ns.UI_SetTextColorRole(lbl, "Muted")
-    end
-    lbl:SetText(col.label or "")
-    lbl:ClearAllPoints()
-    lbl:SetPoint("TOPLEFT", clip, "TOPLEFT", 4, 0)
-    lbl:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", -4, 0)
-    if PUI and PUI.BindProfColumnHeaderTooltip then
-        PUI.BindProfColumnHeaderTooltip(clip, col.label)
-    end
-end
-
-local function PaintIconColumnHeader(bar, pool, columns, col, colIndex, colGap, inlineStart)
-    local hitKey = OVERVIEW_COL_PREFIX .. col.key
-    local clipKey = hitKey .. "_clip"
-    local x = ColumnOffset(columns, colIndex, colGap, inlineStart)
-    local FactHdr = ns.UI and ns.UI.Factory
-
-    pool.columnClips = pool.columnClips or {}
-    local clip = pool.columnClips[clipKey]
-    if not clip then
-        clip = FactHdr and FactHdr:CreateContainer(bar, col.width, OVERVIEW_COL_HDR_H, false)
-        if not clip then
-            clip = CreateFrame("Frame", nil, bar)
-            clip:SetSize(col.width, OVERVIEW_COL_HDR_H)
-        end
-        pool.columnClips[clipKey] = clip
-    end
-    clip:SetParent(bar)
-    clip:SetSize(col.width, OVERVIEW_COL_HDR_H)
-    clip:ClearAllPoints()
-    clip:SetPoint("TOPLEFT", bar, "TOPLEFT", x, 0)
-    clip:Show()
-    if clip.EnableMouse then clip:EnableMouse(true) end
-
-    pool.hits = pool.hits or {}
-    local hit = pool.hits[hitKey]
-    local iconSize = (col.iconDef and col.iconDef.headerIconSize) or OVERVIEW_HDR_ICON
-    local hitW, hitH = iconSize + 4, iconSize + 4
-    if not hit then
-        hit = FactHdr and FactHdr:CreateContainer(clip, hitW, hitH, false)
-        if not hit then
-            hit = CreateFrame("Frame", nil, clip)
-            hit:SetSize(hitW, hitH)
-        end
-        local iconTex = hit:CreateTexture(nil, "ARTWORK")
-        iconTex:SetSize(iconSize, iconSize)
-        iconTex:SetPoint("CENTER", hit, "CENTER", 0, 0)
-        hit._wnHeaderIconTex = iconTex
-        pool.hits[hitKey] = hit
-    end
-    hit:SetParent(clip)
-    hit:SetSize(hitW, hitH)
-    hit:ClearAllPoints()
-    hit:SetPoint("TOP", clip, "TOP", 0, -OVERVIEW_COL_HDR_ICON_TOP)
-    hit:Show()
-    if hit.EnableMouse then hit:EnableMouse(true) end
-    if hit._wnHeaderIconTex and hit._wnHeaderIconTex.SetSize then
-        hit._wnHeaderIconTex:SetSize(iconSize, iconSize)
-    end
-
-    if pool.textClips and pool.textClips[hitKey .. "_text"] then
-        pool.textClips[hitKey .. "_text"]:Hide()
-    end
-    if PUI and PUI.profColHeaderLabels and PUI.profColHeaderLabels[hitKey] then
-        PUI.profColHeaderLabels[hitKey]:Hide()
-    end
-
-    local iconDrawn = false
-    if col.iconDef and hit._wnHeaderIconTex then
-        ApplyHeaderIcon(hit._wnHeaderIconTex, col.iconDef, iconSize)
-        iconDrawn = HeaderIconIsDrawn(hit._wnHeaderIconTex)
-        if iconDrawn then
-            hit._wnHeaderIconTex:Show()
-        else
-            hit._wnHeaderIconTex:Hide()
-        end
-    elseif hit._wnHeaderIconTex then
-        hit._wnHeaderIconTex:Hide()
-    end
-
-    if col.compactLabel and col.compactLabel ~= "" then
-        AcquireOverviewColHeaderLabel(clip, pool, hitKey, hit, col.compactLabel, col.width)
-    elseif pool.headerLabels and pool.headerLabels[hitKey] then
-        pool.headerLabels[hitKey]:Hide()
-    end
-
-    local tooltipTitle = col.tooltipTitle or col.compactLabel
-    if PUI and PUI.BindProfColumnHeaderTooltip and tooltipTitle and tooltipTitle ~= "" then
-        PUI.BindProfColumnHeaderTooltip(clip, tooltipTitle)
-    end
-end
-
-local function PaintColumnHeaderBar(bar, pool, columns, colGap, inlineStart)
-    HideOverviewProfHeaders()
-    HideOverviewHeaderLabels(pool)
-    pool.columns = columns
-    pool.colGap = colGap
-    pool.inlineStart = inlineStart
-    for ci = 1, #columns do
-        local col = columns[ci]
-        if col.kind == "text" then
-            PaintTextColumnHeader(bar, pool, columns, col, ci, colGap, inlineStart)
-        else
-            PaintIconColumnHeader(bar, pool, columns, col, ci, colGap, inlineStart)
         end
     end
 end
@@ -782,13 +544,15 @@ local function EnsureColumnHeaderBar(bundle, parent, stackW, yTop, sideInset)
         bundle.overviewPool = pool
     end
     local bar = pool.colHeaderBar
-    local FactHdr = ns.UI and ns.UI.Factory
     if not bar then
-        bar = FactHdr and FactHdr:CreateContainer(parent, stackW, OVERVIEW_COL_HDR_H, false)
-        if not bar then
-            bar = CreateFrame("Frame", nil, parent)
-            bar:SetSize(stackW, OVERVIEW_COL_HDR_H)
-        end
+        bar = TK.CreateHeaderStrip(parent, {
+            mode = "compact",
+            height = OVERVIEW_COL_HDR_H,
+            iconSize = OVERVIEW_HDR_ICON,
+            dividers = true,
+            bottomRule = true,
+            applyIcon = ApplyOverviewHeaderIcon,
+        })
         bar._wnKeepOnTabSwitch = true
         pool.colHeaderBar = bar
     end
@@ -798,17 +562,6 @@ local function EnsureColumnHeaderBar(bundle, parent, stackW, yTop, sideInset)
     bar:ClearAllPoints()
     bar:SetPoint("TOPLEFT", parent, "TOPLEFT", sideInset, -yTop)
     if bar.SetClipsChildren then bar:SetClipsChildren(false) end
-    if bar._wnPvpHdrBg then bar._wnPvpHdrBg:Hide() end
-    local ac = COLORS.accent or { 0.5, 0.4, 0.7 }
-    if not bar._wnPvpHdrRule then
-        bar._wnPvpHdrRule = bar:CreateTexture(nil, "ARTWORK")
-        if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(bar._wnPvpHdrRule, "horizontal", 1) else bar._wnPvpHdrRule:SetHeight(1) end
-        bar._wnPvpHdrRule:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
-        bar._wnPvpHdrRule:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-    end
-    local ruleA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.35 or 0.55
-    bar._wnPvpHdrRule:SetColorTexture(ac[1] * 0.28, ac[2] * 0.28, ac[3] * 0.28, ruleA)
-    bar._wnPvpHdrRule:Show()
     bar:Show()
     return bar, pool
 end
@@ -851,8 +604,7 @@ local function EnsureOverviewCell(bundle, rowIdx, colIdx, row, col)
     fs:SetWordWrap(false)
     fs:SetMaxLines(1)
     fs:ClearAllPoints()
-    local statStart = bundle.overviewGridInlineStartX or bundle.overviewInlineStart or 0
-    local x = ColumnOffset(bundle.overviewColumns, colIdx, bundle.overviewColGap, statStart)
+    local x = bundle.overviewOffsets[colIdx] or 0
     local colRight = x + col.width
     if col.align == "RIGHT" then
         fs:SetPoint("RIGHT", row, "LEFT", colRight, 0)
@@ -902,7 +654,6 @@ local function HideOverviewUI(bundle)
     if bundle.overviewPool and bundle.overviewPool.colHeaderBar then
         bundle.overviewPool.colHeaderBar:Hide()
     end
-    HideOverviewHeaderLabels(bundle.overviewPool)
     if bundle.pvpSectionShells then
         for _, sh in pairs(bundle.pvpSectionShells) do
             if sh and sh.header and sh.header.Hide then sh.header:Hide() end
@@ -997,7 +748,7 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
     end
 
     local overviewStartY = ctx.yOffset or 0
-    local SIDE = ctx.SIDE or 16
+    local SIDE = ctx.SIDE or (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 12
     local width = ctx.width or (parent:GetWidth() or 600)
     local yOffset = ctx.yOffset or 0
     local muted = ctx.muted or M.MutedHex()
@@ -1026,8 +777,16 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
         or (BuildIdentityLayout(nameColW).inlineStart or 320)
     local columns = MeasureStatColumns(measureFs, hdrMeasureFs, rosterRows)
     local colGap = OVERVIEW_COL_GAP
-    local inlineTotal = TotalStatColumnsWidth(columns, colGap) + OVERVIEW_COL_RIGHT_MARGIN
     local gridInlineStartX = identityMin
+    -- TableKit scratch (reused every paint): offsets are absolute x from the row/strip left edge.
+    local colWidths = bundle.overviewWidths or {}
+    local colOffsets = bundle.overviewOffsets or {}
+    local dividerXs = bundle.overviewDividerXs or {}
+    bundle.overviewWidths = colWidths
+    bundle.overviewOffsets = colOffsets
+    bundle.overviewDividerXs = dividerXs
+    local inlineTotal = TK.ResolveWidths(columns, nil, colWidths, colOffsets, gridInlineStartX, colGap)
+        + OVERVIEW_COL_RIGHT_MARGIN
     local minScrollW = SIDE * 2 + gridInlineStartX + inlineTotal
     local viewportW = stackW + SIDE * 2
     local gridW = math.max(minScrollW, viewportW)
@@ -1037,7 +796,7 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
     bundle.overviewColGap = colGap
     bundle.overviewGridInlineStartX = gridInlineStartX
     bundle.overviewNameColW = nameColW
-    local dividerXs = BuildDividerXs(columns, colGap, gridInlineStartX)
+    TK.BuildDividerXs(colWidths, colOffsets, #columns, dividerXs)
 
     local mf = WN and WN.UI and WN.UI.mainFrame
     if mf then
@@ -1055,12 +814,10 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
         end
     end
 
-    local bar, pool = EnsureColumnHeaderBar(bundle, parent, pvpStackW, yOffset, SIDE)
+    local bar = EnsureColumnHeaderBar(bundle, parent, pvpStackW, yOffset, SIDE)
     parent._pvpColHeaderBar = bar
-    PaintColumnHeaderBar(bar, pool, columns, colGap, gridInlineStartX)
-    if ns.UI_SyncGridColumnDividers and #dividerXs > 0 then
-        ns.UI_SyncGridColumnDividers(bar, dividerXs, OVERVIEW_COL_HDR_H)
-    end
+    HideOverviewProfHeaders()
+    bar:SetColumns(columns, colWidths, colOffsets, #columns)
     yOffset = yOffset + OVERVIEW_COL_HDR_H + OVERVIEW_COL_HDR_PAD
     parent._pvpColHeaderBottomY = yOffset
 
@@ -1272,5 +1029,6 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
         local sectionHdrH = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
         blockH = blockH + sectionCount * (sectionHdrH + OVERVIEW_SECTION_GAP)
     end
-    return blockH + OVERVIEW_SECTION_GAP
+    -- Inside the roster grid sections stay 4 apart (PvE parity); the block itself ends on a PAGE_STACK section gap.
+    return blockH + (M.SECTION_GAP or OVERVIEW_SECTION_GAP)
 end

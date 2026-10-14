@@ -1197,7 +1197,7 @@ function WarbandNexus:ShowModalNotification(config)
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
             edgeFile = "Interface\\BUTTONS\\WHITE8X8",
             tile = false,
-            edgeSize = 1,
+            edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(backdropFrameCompact)) or 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         backdropFrameCompact:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
@@ -1497,7 +1497,7 @@ function WarbandNexus:ShowModalNotification(config)
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
         tile = false,
-        edgeSize = 1,
+        edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(backdropFrame)) or 1,
         insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
     backdropFrame:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())

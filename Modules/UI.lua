@@ -2728,7 +2728,7 @@ do
         bar:SetBackdrop({
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
             edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeSize = 1,
+            edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(bar)) or 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         local loadBarBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.06, 0.06, 0.09, 1 }

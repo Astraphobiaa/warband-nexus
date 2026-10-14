@@ -16,6 +16,9 @@ local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local Factory = ns.UI.Factory
+local TK = ns.UI_TableKit
+assert(TK, "SharedWidgets_TableKit.lua must load before CharacterBankMoneyLogPopup.lua")
+local TABLE = ns.UI_LAYOUT.TABLE
 
 local issecretvalue = issecretvalue
 
@@ -59,42 +62,44 @@ local function SemanticOrangeRGB()
     return 1, 0.65, 0.25, 1
 end
 
-local function SemanticRedRGB()
-    if ns.UI_GetSemanticRedColor then
-        return ns.UI_GetSemanticRedColor()
-    end
-    return 1, 0.15, 0.15, 1
-end
-
-local ROW_INDENT = 10
 local SCROLLBAR_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
 local SCROLLBAR_LANE = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
 local SCROLL_GAP = 2
 local PADDING = 12
 
--- Contributions: Character + Deposit(G/S/C) + Withdraw(G/S/C) + Net(G/S/C) for alignment
-local SUM_COL_CHAR = 240
-local SUM_COL_G = 100   -- Gold (fits "2.000.000" + icon)
-local SUM_COL_S = 50   -- Silver
-local SUM_COL_C = 50   -- Copper
-local SUM_COL_DEPOSIT = SUM_COL_G + SUM_COL_S + SUM_COL_C
-local SUM_COL_WITHDRAW = SUM_COL_G + SUM_COL_S + SUM_COL_C
-local SUM_COL_NET = SUM_COL_G + SUM_COL_S + SUM_COL_C
-local SUM_COL_GAP = 20  -- Space between major columns for readability
-local SUM_TOTAL_W = SUM_COL_CHAR + SUM_COL_GAP + SUM_COL_DEPOSIT + SUM_COL_GAP + SUM_COL_WITHDRAW + SUM_COL_GAP + SUM_COL_NET
--- Row indent + column budget (must match header/row lx walk or content bleeds under scrollbar)
-local TABLE_CONTENT_W = ROW_INDENT + SUM_TOTAL_W
+-- TableKit column model (SharedWidgets_TableKit.lua): one header strip + pooled rows per tab.
+-- Labels are filled at open time (ApplyMoneyLogColumnLabels); widths resolve once below.
+local MONEY_COL_W = 200  -- one money cell: "2.000.000" gold + silver + copper with 12px coins
+local CHAR_COL_W = 240
 
--- Transaction log (All/Deposit/Withdraw): same width as Contributions, same gaps, Amount as G/S/C
-local CONTENT_W = TABLE_CONTENT_W
-local LOG_COL_TIME = 90
-local LOG_COL_CHAR = SUM_COL_CHAR
-local LOG_COL_TYPE = 90
-local LOG_COL_TOFROM = 200
-local LOG_COL_AMOUNT = SUM_COL_DEPOSIT  -- G/S/C sub-columns
-local LOG_COL_GAP = SUM_COL_GAP
+-- Transaction log (All / Deposit / Withdraw): To/From is the flex description column.
+local LOG_COLS = {
+    { key = "time",   labelKey = "MONEY_LOGS_COLUMN_TIME",      fallback = "Time",      width = 90,          align = "CENTER" },
+    { key = "char",   labelKey = "MONEY_LOGS_COLUMN_CHARACTER", fallback = "Character", width = CHAR_COL_W,  align = "LEFT" },
+    { key = "type",   labelKey = "MONEY_LOGS_COLUMN_TYPE",      fallback = "Type",      width = 90,          align = "CENTER" },
+    { key = "tofrom", labelKey = "MONEY_LOGS_COLUMN_TOFROM",    fallback = "To / From", width = 200,         align = "LEFT", flex = 1 },
+    { key = "amount", labelKey = "MONEY_LOGS_COLUMN_AMOUNT",    fallback = "Amount",    width = MONEY_COL_W, align = "RIGHT", cell = "money" },
+}
 
-local WINDOW_W = math.max(800, TABLE_CONTENT_W + (PADDING * 2) + SCROLLBAR_LANE)
+-- Contributions: Character (flex) | Deposit | Withdraw | Net. Net = kit signedMoney cell (sign + green / red ink).
+local SUM_COLS = {
+    { key = "char",     labelKey = "MONEY_LOGS_COLUMN_CHARACTER", fallback = "Character", width = CHAR_COL_W,  align = "LEFT", flex = 1 },
+    { key = "deposit",  labelKey = "MONEY_LOGS_DEPOSIT",          fallback = "Deposit",   width = MONEY_COL_W, align = "RIGHT", cell = "money" },
+    { key = "withdraw", labelKey = "MONEY_LOGS_WITHDRAW",         fallback = "Withdraw",  width = MONEY_COL_W, align = "RIGHT", cell = "money" },
+    { key = "net",      labelKey = "MONEY_LOGS_COLUMN_NET",       fallback = "Net",       width = MONEY_COL_W, align = "RIGHT", cell = "signedMoney" },
+}
+
+-- Resolved once: both tabs share one content width (widest natural span), flex columns absorb the rest.
+local LOG_WIDTHS, LOG_OFFSETS = {}, {}
+local SUM_WIDTHS, SUM_OFFSETS = {}, {}
+local TABLE_CONTENT_W = math.max(
+    TK.ResolveWidths(LOG_COLS, nil, LOG_WIDTHS, LOG_OFFSETS, 0),
+    TK.ResolveWidths(SUM_COLS, nil, SUM_WIDTHS, SUM_OFFSETS, 0))
+TK.ResolveWidths(LOG_COLS, TABLE_CONTENT_W, LOG_WIDTHS, LOG_OFFSETS, 0)
+TK.ResolveWidths(SUM_COLS, TABLE_CONTENT_W, SUM_WIDTHS, SUM_OFFSETS, 0)
+
+-- Natural table + side padding + scrollbar lane + viewport gap: the narrowest window that never clips a column.
+local WINDOW_W = math.max(800, TABLE_CONTENT_W + (PADDING * 2) + SCROLLBAR_LANE + SCROLL_GAP)
 local WINDOW_H = 520
 local TAB_BAR_H = 30
 local TAB_BTN_H = 26
@@ -102,80 +107,6 @@ local TAB_BTN_H = 26
 local function FormatTime(timestamp)
     if not timestamp or timestamp <= 0 then return "-" end
     return date("%d.%m %H:%M", timestamp)
-end
-
-local ICON_SZ = 12
-
--- Coin icon markup: use atlas (renders in FontStrings); fallback to |T texture path
-local COIN_ATLAS_GOLD   = "coin-gold"
-local COIN_ATLAS_SILVER = "coin-silver"
-local COIN_ATLAS_COPPER = "coin-copper"
-local COIN_TEXTURE_FMT  = "|TInterface\\MoneyFrame\\UI-%sIcon:" .. ICON_SZ .. ":" .. ICON_SZ .. ":0:0|t"
-local function GetCoinMarkup(coinType)
-    if CreateAtlasMarkup then
-        local atlas = coinType == "gold" and COIN_ATLAS_GOLD or (coinType == "silver" and COIN_ATLAS_SILVER or COIN_ATLAS_COPPER)
-        local ok, markup = pcall(CreateAtlasMarkup, atlas, ICON_SZ, ICON_SZ)
-        if ok and markup and markup ~= "" then return markup end
-    end
-    local name = (coinType == "gold" and "Gold") or (coinType == "silver" and "Silver") or "Copper"
-    return string.format(COIN_TEXTURE_FMT, name)
-end
-
-local function FormatAmount(copper)
-    if ns.UI_FormatMoney then
-        return ns.UI_FormatMoney(copper or 0, 14)
-    end
-    if WarbandNexus.API_FormatMoney then
-        return WarbandNexus:API_FormatMoney(copper or 0)
-    end
-    return tostring(copper or 0)
-end
-
---- Return gold, silver, copper as separate formatted strings (with icon) for column alignment
-local function FormatMoneyParts(copper)
-    copper = tonumber(copper) or 0
-    if copper < 0 then copper = 0 end
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local c = math.floor(copper % 100)
-    local function sep(n)
-        local s = tostring(n)
-        local k
-        repeat s, k = string.gsub(s, "^(%d+)(%d%d%d)", "%1.%2") until k == 0
-        return s
-    end
-    local gIcon, sIcon, cIcon = GetCoinMarkup("gold"), GetCoinMarkup("silver"), GetCoinMarkup("copper")
-    local gStr = (gold > 0) and ("|cffffd700" .. sep(gold) .. "|r" .. gIcon) or ""
-    local sStr = (silver > 0 or gold > 0) and ("|cffc7c7cf" .. string.format("%02d", silver) .. "|r" .. sIcon) or ""
-    local cStr = ("|cffeda55f" .. string.format("%02d", c) .. "|r" .. cIcon)
-    return gStr, sStr, cStr
-end
-
---- Same as FormatMoneyParts but for net (signed) values. If plainForNet then no embedded
---- gold/silver/copper colors — row will use SetTextColor green/red for the whole amount.
-local function FormatMoneyPartsSigned(copper, plainForNet)
-    copper = math.abs(tonumber(copper) or 0)
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local c = math.floor(copper % 100)
-    local function sep(n)
-        local s = tostring(n)
-        local k
-        repeat s, k = string.gsub(s, "^(%d+)(%d%d%d)", "%1.%2") until k == 0
-        return s
-    end
-    local gIcon, sIcon, cIcon = GetCoinMarkup("gold"), GetCoinMarkup("silver"), GetCoinMarkup("copper")
-    local gStr, sStr, cStr
-    if plainForNet then
-        gStr = (gold > 0) and (sep(gold) .. gIcon) or ""
-        sStr = (silver > 0 or gold > 0) and (string.format("%02d", silver) .. sIcon) or ""
-        cStr = string.format("%02d", c) .. cIcon
-    else
-        gStr = (gold > 0) and ("|cffffd700" .. sep(gold) .. "|r" .. gIcon) or ""
-        sStr = (silver > 0 or gold > 0) and ("|cffc7c7cf" .. string.format("%02d", silver) .. "|r" .. sIcon) or ""
-        cStr = ("|cffeda55f" .. string.format("%02d", c) .. "|r" .. cIcon)
-    end
-    return gStr, sStr, cStr
 end
 
 local function GetToFromText(entryType)
@@ -257,6 +188,80 @@ local function GetClassColorForEntry(entry, charKey)
     return 0.85, 0.85, 0.9, 1
 end
 
+-- ---------------------------------------------------------------------------
+-- TableKit row paint: one valueFn per tab (no per-row closures).
+-- valueFn returns value, role[, r, g, b, a]: the kit inks text cells (class / semantic colors).
+-- ---------------------------------------------------------------------------
+
+local moneyLogCharKey      -- class-color fallback key (set per open)
+local CONTRIB_ENTRY = {}   -- scratch entry for contributions label / class color
+
+-- Header labels: accent ink, body font (pre-kit look). Accent re-read on theme refresh.
+local function HeaderLabelInk()
+    if ns.UI_GetAccentTextRGBA then
+        return ns.UI_GetAccentTextRGBA()
+    end
+    local ac = COLORS and COLORS.accent
+    if ac then return ac[1], ac[2], ac[3], 1 end
+    return nil
+end
+
+local function ApplyMoneyLogColumnLabels(cols)
+    local L = ns.L
+    for i = 1, #cols do
+        local col = cols[i]
+        col.label = (L and L[col.labelKey]) or col.fallback
+    end
+end
+
+local function LogCellValue(col, entry)
+    local key = col.key
+    if key == "time" then
+        return FormatTime(entry.timestamp), nil, SemanticGoldRGB()
+    elseif key == "char" then
+        return ResolveMoneyLogCharacterLabel(entry), nil, GetClassColorForEntry(entry, moneyLogCharKey)
+    elseif key == "type" then
+        if entry.type == "deposit" then
+            return (ns.L and ns.L["MONEY_LOGS_DEPOSIT"]) or "Deposit", nil, SemanticGreenRGB()
+        end
+        return (ns.L and ns.L["MONEY_LOGS_WITHDRAW"]) or "Withdraw", nil, SemanticOrangeRGB()
+    elseif key == "tofrom" then
+        return GetToFromText(entry.type), "Normal"
+    elseif key == "amount" then
+        return entry.amount or 0
+    end
+    return nil
+end
+
+local function ContribEntry(s)
+    CONTRIB_ENTRY.character = s.charKey
+    CONTRIB_ENTRY.classFile = s.classFile
+    return CONTRIB_ENTRY
+end
+
+local function ContribCellValue(col, s)
+    local key = col.key
+    if key == "char" then
+        local entry = ContribEntry(s)
+        return ResolveMoneyLogCharacterLabel(entry), nil, GetClassColorForEntry(entry, moneyLogCharKey)
+    elseif key == "deposit" then
+        return s.deposit or 0
+    elseif key == "withdraw" then
+        return s.withdraw or 0
+    elseif key == "net" then
+        return s.net or 0
+    end
+    return nil
+end
+
+-- Header strips: one shared opts table (kit copies the fields at create time).
+local HEADER_STRIP_OPTS = {
+    mode = "text",
+    height = TABLE.HEADER_H.text,
+    labelFont = "body",
+    labelColorFn = HeaderLabelInk,
+}
+
 function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local dialog, contentFrame = CreateExternalWindow({
         name = "CharacterBankMoneyLogPopup",
@@ -284,9 +289,15 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil))
         or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
         or nil
-    local headerHeight = 28
-    local rowHeight = 26
+    local headerHeight = TABLE.HEADER_H.text
+    local rowHeight = TABLE.ROW_H.compact
     local rowSpacing = 2
+    moneyLogCharKey = charKey
+    ApplyMoneyLogColumnLabels(LOG_COLS)
+    ApplyMoneyLogColumnLabels(SUM_COLS)
+    -- Pools live per open: the scroll children are rebuilt with the dialog content.
+    local logRowPool = TK.CreateRowPool(rowHeight)
+    local contribRowPool = TK.CreateRowPool(rowHeight)
 
     dialog._moneyLogTab = dialog._moneyLogTab or "all"
 
@@ -334,7 +345,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         tabBar:SetSize(TAB_BAR_W, TAB_BAR_H)
     end
     tabBar:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PADDING, -8)
-    tabBar:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -(PADDING + SCROLLBAR_LANE), -8)
+    tabBar:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -(PADDING + SCROLLBAR_LANE + SCROLL_GAP), -8)
 
     local tabButtons = {}
     local function setTabVisuals(btn, selected)
@@ -384,6 +395,20 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         if lbl.SetNonSpaceWrap then lbl:SetNonSpaceWrap(false) end
         tabButtons[idx] = btn
     end
+    -- Equal-width tabs across the live bar width (same right edge as the table header).
+    tabBar:HookScript("OnSizeChanged", function(_, w)
+        w = tonumber(w) or 0
+        if w <= 0 then return end
+        local bw = math.max(72, math.floor((w - (TAB_GAP * (TAB_COUNT - 1))) / TAB_COUNT))
+        for idx = 1, TAB_COUNT do
+            local tb = tabButtons[idx]
+            if idx == TAB_COUNT then
+                tb:SetWidth(math.max(72, w - ((bw + TAB_GAP) * (TAB_COUNT - 1))))
+            else
+                tb:SetWidth(bw)
+            end
+        end
+    end)
 
     local function AcquireStretchPanel(parent)
         if Factory and Factory.CreateContainer then
@@ -449,8 +474,9 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             return nil, nil
         end
 
+        -- Right edge = header right edge (bottomFrame already ends at the scrollbar lane + gap).
         scroll:SetPoint("TOPLEFT", headerRow, "BOTTOMLEFT", 0, -SCROLL_HEADER_GAP)
-        scroll:SetPoint("BOTTOMRIGHT", bottomFrame, "TOPRIGHT", -(SCROLLBAR_LANE + SCROLL_GAP), 0)
+        scroll:SetPoint("BOTTOMRIGHT", bottomFrame, "TOPRIGHT", 0, 0)
         if scroll.SetClipsChildren then
             scroll:SetClipsChildren(true)
         end
@@ -504,61 +530,30 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         return scroll, scrollChild
     end
 
+    -- Live table width = scroll viewport width (resolved in ApplyTableWidth; 0 forces the first resolve).
+    local tableW = 0
+
     local logPanel = AcquireStretchPanel(contentFrame)
     logPanel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PADDING, -(8 + TAB_BAR_H + 8))
     logPanel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -PADDING, 10)
 
     local logHeaderRow = ns.UI.Factory:CreateContainer(logPanel, 1, headerHeight, false)
     logHeaderRow:SetPoint("TOPLEFT", logPanel, "TOPLEFT", 0, 0)
-    logHeaderRow:SetPoint("TOPRIGHT", logPanel, "TOPRIGHT", -SCROLLBAR_LANE, 0)
+    logHeaderRow:SetPoint("TOPRIGHT", logPanel, "TOPRIGHT", -(SCROLLBAR_LANE + SCROLL_GAP), 0)
     logHeaderRow:SetHeight(headerHeight)
     if ApplyVisuals then
         ApplyVisuals(logHeaderRow, HeaderRowBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
     end
 
-    local logX = ROW_INDENT
-    local timeHeader = FontManager:CreateFontString(logHeaderRow, "body", "OVERLAY")
-    timeHeader:SetPoint("LEFT", logX, 0)
-    timeHeader:SetWidth(LOG_COL_TIME)
-    timeHeader:SetJustifyH("CENTER")
-    timeHeader:SetText((ns.L and ns.L["MONEY_LOGS_COLUMN_TIME"]) or "Time")
-    timeHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-    logX = logX + LOG_COL_TIME + LOG_COL_GAP
-
-    local charHeader = FontManager:CreateFontString(logHeaderRow, "body", "OVERLAY")
-    charHeader:SetPoint("LEFT", logX, 0)
-    charHeader:SetWidth(LOG_COL_CHAR)
-    charHeader:SetJustifyH("LEFT")
-    charHeader:SetText((ns.L and ns.L["MONEY_LOGS_COLUMN_CHARACTER"]) or "Character")
-    charHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-    logX = logX + LOG_COL_CHAR + LOG_COL_GAP
-
-    local typeHeader = FontManager:CreateFontString(logHeaderRow, "body", "OVERLAY")
-    typeHeader:SetPoint("LEFT", logX, 0)
-    typeHeader:SetWidth(LOG_COL_TYPE)
-    typeHeader:SetJustifyH("CENTER")
-    typeHeader:SetText((ns.L and ns.L["MONEY_LOGS_COLUMN_TYPE"]) or "Type")
-    typeHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-    logX = logX + LOG_COL_TYPE + LOG_COL_GAP
-
-    local toFromHeader = FontManager:CreateFontString(logHeaderRow, "body", "OVERLAY")
-    toFromHeader:SetPoint("LEFT", logX, 0)
-    toFromHeader:SetWidth(LOG_COL_TOFROM)
-    toFromHeader:SetJustifyH("CENTER")
-    toFromHeader:SetText((ns.L and ns.L["MONEY_LOGS_COLUMN_TOFROM"]) or "To / From")
-    toFromHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-    logX = logX + LOG_COL_TOFROM + LOG_COL_GAP
-
-    local amountHeader = FontManager:CreateFontString(logHeaderRow, "body", "OVERLAY")
-    amountHeader:SetPoint("LEFT", logX, 0)
-    amountHeader:SetWidth(LOG_COL_AMOUNT)
-    amountHeader:SetJustifyH("CENTER")
-    amountHeader:SetText((ns.L and ns.L["MONEY_LOGS_COLUMN_AMOUNT"]) or "Amount")
-    amountHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    -- Filled header chrome stays on logHeaderRow; the kit strip draws the column labels on top.
+    local logHeaderStrip = TK.CreateHeaderStrip(logHeaderRow, HEADER_STRIP_OPTS)
+    logHeaderStrip:SetPoint("TOPLEFT", logHeaderRow, "TOPLEFT", 0, 0)
+    logHeaderStrip:SetSize(TABLE_CONTENT_W, headerHeight)
+    logHeaderStrip:SetColumns(LOG_COLS, LOG_WIDTHS, LOG_OFFSETS)
 
     local logFooter = ns.UI.Factory:CreateContainer(logPanel, 1, LOG_FOOTER_H)
     logFooter:SetPoint("BOTTOMLEFT", logPanel, "BOTTOMLEFT", 0, 0)
-    logFooter:SetPoint("BOTTOMRIGHT", logPanel, "BOTTOMRIGHT", -SCROLLBAR_LANE, 0)
+    logFooter:SetPoint("BOTTOMRIGHT", logPanel, "BOTTOMRIGHT", -(SCROLLBAR_LANE + SCROLL_GAP), 0)
 
     local logScroll, logScrollChild = SetupFactoryScroll(logPanel, logHeaderRow, logFooter, TABLE_CONTENT_W)
 
@@ -575,21 +570,11 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     resetLabel:SetText((ns.L and ns.L["MONEY_LOGS_RESET"]) or "Reset")
     ns.UI_SetTextColorRole(resetLabel, "Bright")
 
-    local function clearScrollHost(scroll, scrollChild)
+    local function clearScrollHost(scroll, scrollChild, rowPool)
         if not scrollChild then return end
-        if ns.UI_ReleaseAllPooledChildren then
-            ns.UI_ReleaseAllPooledChildren(scrollChild)
-        end
-        local kids = { scrollChild:GetChildren() }
-        local bin = ns.UI_RecycleBin
-        for i = 1, #kids do
-            local kid = kids[i]
-            kid:Hide()
-            if bin then
-                kid:SetParent(bin)
-            else
-                kid:SetParent(nil)
-            end
+        TK.ReleaseRowsFrom(rowPool, 1)
+        if scrollChild._wnEmptyText then
+            scrollChild._wnEmptyText:Hide()
         end
         scrollChild:SetHeight(1)
         if scroll then
@@ -602,80 +587,39 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         end
     end
 
+    local function showEmptyText(scrollChild)
+        local emptyText = scrollChild._wnEmptyText
+        if not emptyText then
+            emptyText = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+            emptyText:SetPoint("TOPLEFT", TABLE.CELL_PAD_X, -10)
+            scrollChild._wnEmptyText = emptyText
+        end
+        emptyText:SetText((ns.L and ns.L["MONEY_LOGS_EMPTY"]) or "No money transactions recorded yet.")
+        ns.UI_SetTextColorRole(emptyText, "Muted")
+        emptyText:Show()
+        scrollChild:SetHeight(rowHeight + 8)
+    end
+
     local function populateLogScroll(filter)
         if not logScroll or not logScrollChild then return end
-        clearScrollHost(logScroll, logScrollChild)
+        clearScrollHost(logScroll, logScrollChild, logRowPool)
 
         local entries = getFilteredEntries(filter)
         if #entries == 0 then
-            local emptyText = FontManager:CreateFontString(logScrollChild, "body", "OVERLAY")
-            emptyText:SetPoint("TOPLEFT", ROW_INDENT, -10)
-            emptyText:SetText((ns.L and ns.L["MONEY_LOGS_EMPTY"]) or "No money transactions recorded yet.")
-            ns.UI_SetTextColorRole(emptyText, "Muted")
-            logScrollChild:SetHeight(rowHeight + 8)
+            showEmptyText(logScrollChild)
             RefreshMoneyLogScrollChrome(logScroll)
             return
         end
 
+        local nCols = #LOG_COLS
         local rowY = 0
+        local rowIndex = 0
         for i = #entries, 1, -1 do
             local entry = entries[i]
-            local row = ns.UI.Factory:CreateContainer(logScrollChild, TABLE_CONTENT_W, rowHeight)
-            row:SetPoint("TOPLEFT", 0, -rowY)
-            ns.UI.Factory:ApplyRowBackground(row, (#entries - i + 1))
-
-            local lx = ROW_INDENT
-            local timeText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            timeText:SetPoint("LEFT", lx, 0)
-            timeText:SetText(FormatTime(entry.timestamp))
-            local tR, tG, tB, tA = SemanticGoldRGB()
-            timeText:SetTextColor(tR, tG, tB, tA)
-            lx = lx + LOG_COL_TIME + LOG_COL_GAP
-
-            local charText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            charText:SetPoint("LEFT", lx, 0)
-            charText:SetWidth(LOG_COL_CHAR - 4)
-            charText:SetJustifyH("LEFT")
-            charText:SetWordWrap(false)
-            charText:SetText(ResolveMoneyLogCharacterLabel(entry))
-            charText:SetTextColor(GetClassColorForEntry(entry, charKey))
-            lx = lx + LOG_COL_CHAR + LOG_COL_GAP
-
-            local typeText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            typeText:SetPoint("LEFT", lx, 0)
-            if entry.type == "deposit" then
-                typeText:SetText((ns.L and ns.L["MONEY_LOGS_DEPOSIT"]) or "Deposit")
-                local gR, gG, gB, gA = SemanticGreenRGB()
-                typeText:SetTextColor(gR, gG, gB, gA)
-            else
-                typeText:SetText((ns.L and ns.L["MONEY_LOGS_WITHDRAW"]) or "Withdraw")
-                local oR, oG, oB, oA = SemanticOrangeRGB()
-                typeText:SetTextColor(oR, oG, oB, oA)
-            end
-            lx = lx + LOG_COL_TYPE + LOG_COL_GAP
-
-            local toFromText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            toFromText:SetPoint("LEFT", lx, 0)
-            toFromText:SetWidth(LOG_COL_TOFROM - 4)
-            toFromText:SetWordWrap(false)
-            toFromText:SetText(GetToFromText(entry.type))
-            ns.UI_SetTextColorRole(toFromText, "Normal")
-            lx = lx + LOG_COL_TOFROM + LOG_COL_GAP
-
-            -- Amount as G/S/C (same alignment as Contributions)
-            local aG, aS, aC = FormatMoneyParts(entry.amount or 0)
-            local amountParts = { aG, aS, aC }
-            local amountWidths = { SUM_COL_G, SUM_COL_S, SUM_COL_C }
-            for j = 1, 3 do
-                local t = FontManager:CreateFontString(row, "body", "OVERLAY")
-                t:SetPoint("RIGHT", row, "LEFT", lx + amountWidths[j], 0)
-                t:SetWidth(amountWidths[j])
-                t:SetJustifyH("RIGHT")
-                t:SetText(amountParts[j] or "")
-                ns.UI_SetTextColorRole(t, "Bright")
-                lx = lx + amountWidths[j]
-            end
-
+            rowIndex = rowIndex + 1
+            local row = TK.AcquireRow(logRowPool, logScrollChild, rowIndex, tableW, rowHeight)
+            row:SetPoint("TOPLEFT", logScrollChild, "TOPLEFT", 0, -rowY)
+            TK.PaintRowCells(row, LOG_COLS, LOG_WIDTHS, LOG_OFFSETS, nCols, entry, LogCellValue)
             rowY = rowY + rowHeight + rowSpacing
         end
         logScrollChild:SetHeight(math.max(rowY + 8, 1))
@@ -689,135 +633,37 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local contribHeaderRow = ns.UI.Factory:CreateContainer(contribPanel, 1, headerHeight, false)
     contribHeaderRow:SetPoint("TOPLEFT", contribPanel, "TOPLEFT", 0, 0)
-    contribHeaderRow:SetPoint("TOPRIGHT", contribPanel, "TOPRIGHT", -SCROLLBAR_LANE, 0)
+    contribHeaderRow:SetPoint("TOPRIGHT", contribPanel, "TOPRIGHT", -(SCROLLBAR_LANE + SCROLL_GAP), 0)
     contribHeaderRow:SetHeight(headerHeight)
     if ApplyVisuals then
         ApplyVisuals(contribHeaderRow, HeaderRowBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
     end
 
-    -- Headers: Character (left) | Deposit | Withdraw | Net (centered over their columns)
-    local sumCharHdr = FontManager:CreateFontString(contribHeaderRow, "body", "OVERLAY")
-    sumCharHdr:SetPoint("LEFT", ROW_INDENT, 0)
-    sumCharHdr:SetWidth(SUM_COL_CHAR - ROW_INDENT)
-    sumCharHdr:SetJustifyH("LEFT")
-    sumCharHdr:SetText((ns.L and ns.L["MONEY_LOGS_COLUMN_CHARACTER"]) or "Character")
-    sumCharHdr:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-
-    local depLeft = ROW_INDENT + SUM_COL_CHAR + SUM_COL_GAP
-    local sumDepHdr = FontManager:CreateFontString(contribHeaderRow, "body", "OVERLAY")
-    sumDepHdr:SetPoint("LEFT", contribHeaderRow, "LEFT", depLeft, 0)
-    sumDepHdr:SetWidth(SUM_COL_DEPOSIT)
-    sumDepHdr:SetJustifyH("CENTER")
-    sumDepHdr:SetText((ns.L and ns.L["MONEY_LOGS_DEPOSIT"]) or "Deposit")
-    sumDepHdr:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-
-    local withLeft = depLeft + SUM_COL_DEPOSIT + SUM_COL_GAP
-    local sumWithHdr = FontManager:CreateFontString(contribHeaderRow, "body", "OVERLAY")
-    sumWithHdr:SetPoint("LEFT", contribHeaderRow, "LEFT", withLeft, 0)
-    sumWithHdr:SetWidth(SUM_COL_WITHDRAW)
-    sumWithHdr:SetJustifyH("CENTER")
-    sumWithHdr:SetText((ns.L and ns.L["MONEY_LOGS_WITHDRAW"]) or "Withdraw")
-    sumWithHdr:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-
-    local netLeft = withLeft + SUM_COL_WITHDRAW + SUM_COL_GAP
-    local sumNetHdr = FontManager:CreateFontString(contribHeaderRow, "body", "OVERLAY")
-    sumNetHdr:SetPoint("LEFT", contribHeaderRow, "LEFT", netLeft, 0)
-    sumNetHdr:SetWidth(SUM_COL_NET)
-    sumNetHdr:SetJustifyH("CENTER")
-    sumNetHdr:SetText((ns.L and ns.L["MONEY_LOGS_COLUMN_NET"]) or "Net")
-    sumNetHdr:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    local contribHeaderStrip = TK.CreateHeaderStrip(contribHeaderRow, HEADER_STRIP_OPTS)
+    contribHeaderStrip:SetPoint("TOPLEFT", contribHeaderRow, "TOPLEFT", 0, 0)
+    contribHeaderStrip:SetSize(TABLE_CONTENT_W, headerHeight)
+    contribHeaderStrip:SetColumns(SUM_COLS, SUM_WIDTHS, SUM_OFFSETS)
 
     local contribScroll, contribScrollChild = SetupContribScroll(contribPanel, contribHeaderRow, TABLE_CONTENT_W)
 
     local function populateContribScroll()
         if not contribScroll or not contribScrollChild then return end
-        clearScrollHost(contribScroll, contribScrollChild)
+        clearScrollHost(contribScroll, contribScrollChild, contribRowPool)
 
         local summaryData = getSummary()
         if #summaryData == 0 then
-            local emptyText = FontManager:CreateFontString(contribScrollChild, "body", "OVERLAY")
-            emptyText:SetPoint("TOPLEFT", ROW_INDENT, -10)
-            emptyText:SetText((ns.L and ns.L["MONEY_LOGS_EMPTY"]) or "No money transactions recorded yet.")
-            ns.UI_SetTextColorRole(emptyText, "Muted")
-            contribScrollChild:SetHeight(rowHeight + 8)
+            showEmptyText(contribScrollChild)
             RefreshMoneyLogScrollChrome(contribScroll)
             return
         end
 
+        local nCols = #SUM_COLS
         local rowY = 0
         for i = 1, #summaryData do
             local s = summaryData[i]
-            local row = ns.UI.Factory:CreateContainer(contribScrollChild, TABLE_CONTENT_W, rowHeight)
-            row:SetPoint("TOPLEFT", 0, -rowY)
-            ns.UI.Factory:ApplyRowBackground(row, i)
-
-            -- Character: left-aligned
-            local ct = FontManager:CreateFontString(row, "body", "OVERLAY")
-            ct:SetPoint("LEFT", ROW_INDENT, 0)
-            ct:SetWidth(SUM_COL_CHAR - ROW_INDENT)
-            ct:SetJustifyH("LEFT")
-            ct:SetWordWrap(false)
-            ct:SetText(ResolveMoneyLogCharacterLabel({ character = s.charKey, classFile = s.classFile }))
-            ct:SetTextColor(GetClassColorForEntry({ classFile = s.classFile }, charKey))
-
-            -- Deposit G/S/C
-            local dG, dS, dC = FormatMoneyParts(s.deposit)
-            local dr, dg, db, da = SemanticGreenRGB()
-            local depColor = { dr, dg, db, da }
-            local x = ROW_INDENT + SUM_COL_CHAR + SUM_COL_GAP
-            local depParts = { dG, dS, dC }
-            local depWidths = { SUM_COL_G, SUM_COL_S, SUM_COL_C }
-            for j = 1, 3 do
-                local t = FontManager:CreateFontString(row, "body", "OVERLAY")
-                t:SetPoint("RIGHT", row, "LEFT", x + depWidths[j], 0)
-                t:SetWidth(depWidths[j])
-                t:SetJustifyH("RIGHT")
-                t:SetText(depParts[j] or "")
-                t:SetTextColor(depColor[1], depColor[2], depColor[3], depColor[4])
-                x = x + depWidths[j]
-            end
-            x = x + SUM_COL_GAP
-
-            -- Withdraw G/S/C
-            local wG, wS, wC = FormatMoneyParts(s.withdraw)
-            local wr, wg, wb, wa = SemanticOrangeRGB()
-            local withColor = { wr, wg, wb, wa }
-            local withParts = { wG, wS, wC }
-            local withWidths = { SUM_COL_G, SUM_COL_S, SUM_COL_C }
-            for j = 1, 3 do
-                local t = FontManager:CreateFontString(row, "body", "OVERLAY")
-                t:SetPoint("RIGHT", row, "LEFT", x + withWidths[j], 0)
-                t:SetWidth(withWidths[j])
-                t:SetJustifyH("RIGHT")
-                t:SetText(withParts[j] or "")
-                t:SetTextColor(withColor[1], withColor[2], withColor[3], withColor[4])
-                x = x + withWidths[j]
-            end
-            x = x + SUM_COL_GAP
-
-            -- Net G/S/C: green if positive, red if negative (plain text so SetTextColor applies)
-            local netVal = s.net or 0
-            -- Full green / full red, no in-between shades
-            local nr, ng, nb, na
-            if netVal >= 0 then
-                nr, ng, nb, na = SemanticGreenRGB()
-            else
-                nr, ng, nb, na = SemanticRedRGB()
-            end
-            local netColor = { nr, ng, nb, na }
-            local nG, nS, nC = FormatMoneyPartsSigned(netVal, true)
-            local netParts = { nG, nS, nC }
-            local netWidths = { SUM_COL_G, SUM_COL_S, SUM_COL_C }
-            for j = 1, 3 do
-                local t = FontManager:CreateFontString(row, "body", "OVERLAY")
-                t:SetPoint("RIGHT", row, "LEFT", x + netWidths[j], 0)
-                t:SetWidth(netWidths[j])
-                t:SetJustifyH("RIGHT")
-                t:SetText(netParts[j] or "")
-                t:SetTextColor(netColor[1], netColor[2], netColor[3], netColor[4])
-                x = x + netWidths[j]
-            end
-
+            local row = TK.AcquireRow(contribRowPool, contribScrollChild, i, tableW, rowHeight)
+            row:SetPoint("TOPLEFT", contribScrollChild, "TOPLEFT", 0, -rowY)
+            TK.PaintRowCells(row, SUM_COLS, SUM_WIDTHS, SUM_OFFSETS, nCols, s, ContribCellValue)
             rowY = rowY + rowHeight + rowSpacing
         end
         contribScrollChild:SetHeight(math.max(rowY + 8, 1))
@@ -832,7 +678,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         end
         local isContrib = (tabKey == "contributions")
         if isContrib then
-            clearScrollHost(logScroll, logScrollChild)
+            clearScrollHost(logScroll, logScrollChild, logRowPool)
             logPanel:Hide()
             contribPanel:Show()
             if contribPanel.SetFrameLevel and logPanel.GetFrameLevel then
@@ -842,7 +688,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             SyncMoneyLogScrollBar(contribScroll)
             RefreshMoneyLogScrollChrome(contribScroll)
         else
-            clearScrollHost(contribScroll, contribScrollChild)
+            clearScrollHost(contribScroll, contribScrollChild, contribRowPool)
             contribPanel:Hide()
             logPanel:Show()
             if logPanel.SetFrameLevel and contribPanel.GetFrameLevel then
@@ -853,6 +699,35 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             RefreshMoneyLogScrollChrome(logScroll)
         end
     end
+
+    -- Columns span the full viewport: flex columns (To/From, Character) absorb the extra width,
+    -- so header, rows and the right-aligned money column always reach the scrollbar lane.
+    local function ApplyTableWidth(w)
+        w = math.floor((tonumber(w) or 0) + 0.5)
+        if w < TABLE_CONTENT_W then w = TABLE_CONTENT_W end
+        if w == tableW then return end
+        -- Recycled content from a previous open keeps its hook; only the live panel resolves.
+        if logPanel:GetParent() ~= contentFrame then return end
+        tableW = w
+        TK.ResolveWidths(LOG_COLS, tableW, LOG_WIDTHS, LOG_OFFSETS, 0)
+        TK.ResolveWidths(SUM_COLS, tableW, SUM_WIDTHS, SUM_OFFSETS, 0)
+        logHeaderStrip:SetSize(tableW, headerHeight)
+        logHeaderStrip:SetColumns(LOG_COLS, LOG_WIDTHS, LOG_OFFSETS)
+        contribHeaderStrip:SetSize(tableW, headerHeight)
+        contribHeaderStrip:SetColumns(SUM_COLS, SUM_WIDTHS, SUM_OFFSETS)
+        if logScrollChild then logScrollChild:SetWidth(tableW) end
+        if contribScrollChild then contribScrollChild:SetWidth(tableW) end
+        if dialog:IsShown() then
+            switchTab(dialog._moneyLogTab or "all")
+        end
+    end
+    if logScroll then
+        logScroll:HookScript("OnSizeChanged", function(_, w) ApplyTableWidth(w) end)
+    end
+    if contribScroll then
+        contribScroll:HookScript("OnSizeChanged", function(_, w) ApplyTableWidth(w) end)
+    end
+    ApplyTableWidth(logScroll and logScroll:GetWidth() or TABLE_CONTENT_W)
 
     for idx = 1, #TAB_DEFS do
         local def = TAB_DEFS[idx]
@@ -881,6 +756,9 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     end
 
     dialog:SetScript("OnShow", refreshCurrentTab)
+    -- Theme refresh hooks (ns.CharacterBankMoneyLogPopup.RefreshTheme): header ink + row ink repaint.
+    dialog._wnMoneyLogHeaderStrips = { logHeaderStrip, contribHeaderStrip }
+    dialog._wnMoneyLogRefresh = refreshCurrentTab
 
     WarbandNexus.UnregisterMessage(dialog, E.CHARACTER_BANK_MONEY_LOG_UPDATED)
     WarbandNexus.RegisterMessage(dialog, E.CHARACTER_BANK_MONEY_LOG_UPDATED, function()
@@ -901,9 +779,15 @@ end
 ns.CharacterBankMoneyLogPopup = ns.CharacterBankMoneyLogPopup or {}
 function ns.CharacterBankMoneyLogPopup.RefreshTheme()
     local d = _G.WarbandNexus_CharacterBankMoneyLogPopup
-    if d and d:IsShown() and ns.UI_ApplyStandardCardElevatedChrome then
+    if not (d and d:IsShown()) then return end
+    if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(d)
     end
+    local strips = d._wnMoneyLogHeaderStrips
+    if strips then
+        for i = 1, #strips do strips[i]:RefreshTheme() end
+    end
+    if d._wnMoneyLogRefresh then d._wnMoneyLogRefresh() end
 end
 
 -- (Popup opens through WarbandNexus:ShowCharacterBankMoneyLogPopup — see ItemsUI.)

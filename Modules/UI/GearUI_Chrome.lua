@@ -50,7 +50,7 @@ local function ApplyModernGearBorderedSurface(frame, surfaceTier, accent, bgAlph
         tile = true,
         tileSize = 8,
         edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
+        edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or 1,
         insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
     frame:SetBackdropColor(bg[1], bg[2], bg[3], alpha)
@@ -272,7 +272,7 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
                 tile = true,
                 tileSize = 8,
-                edgeSize = 1,
+                edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(pill)) or 1,
             })
             local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
                 or COLORS.bgCard or COLORS.bgLight or COLORS.bg

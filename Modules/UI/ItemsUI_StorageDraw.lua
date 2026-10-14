@@ -20,6 +20,7 @@ local SIDE_MARGIN = B.SIDE_MARGIN
 local BASE_INDENT = B.BASE_INDENT
 local SECTION_SPACING = B.SECTION_SPACING
 local ITEMS_BANK_SUBTAB_BTN_HEIGHT = B.ITEMS_BANK_SUBTAB_BTN_HEIGHT
+local ITEMS_STATS_BAR_HEIGHT = B.ITEMS_STATS_BAR_HEIGHT
 local STORAGE_ROW_HEIGHT = B.STORAGE_ROW_HEIGHT
 local STORAGE_ROW_STRIDE = B.STORAGE_ROW_STRIDE
 local STORAGE_LEAF_ROW_CHUNK = B.STORAGE_LEAF_ROW_CHUNK
@@ -2270,30 +2271,16 @@ function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
 end
 
 --- Reposition cached Items fixedHeader chrome (Collections _fixedHeaderCache parity â€” WN-PERF tab revisit).
+--- Same UI_PageStack_Place calls and heights as the DrawItemList create path (no drift on repaint).
 local function RepositionItemsFixedHeader(mf, hdrCache, headerParent, chrome, headerYOffset, contentSide, addon)
+    chrome = chrome or { headerParent = headerParent, yOffset = headerYOffset, side = contentSide }
     local titleCard = hdrCache.titleCard
-    titleCard:SetParent(headerParent)
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
-    else
-        titleCard:ClearAllPoints()
-        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    end
+    headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
     titleCard:Show()
-
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
-    else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
-    end
 
     local subTab = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "inventory"
     local subTabBar = hdrCache.subTabBar
-    subTabBar:SetParent(headerParent)
-    subTabBar:ClearAllPoints()
-    subTabBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-    subTabBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    headerYOffset = ns.UI_PageStack_Place(chrome, subTabBar, ITEMS_BANK_SUBTAB_BTN_HEIGHT)
     subTabBar:Show()
     subTabBar:SetActiveTab(subTab)
     if subTabBar.RefreshGuildLock then
@@ -2301,37 +2288,21 @@ local function RepositionItemsFixedHeader(mf, hdrCache, headerParent, chrome, he
     end
     ApplyItemsSubTabGoldDisplay(hdrCache.goldDisplay, subTab)
 
-    headerYOffset = headerYOffset + ITEMS_BANK_SUBTAB_BTN_HEIGHT + GetLayout().afterElement
-
     local searchBox = hdrCache.searchBox
-    searchBox:SetParent(headerParent)
-    searchBox:ClearAllPoints()
-    searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-    searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    headerYOffset = ns.UI_PageStack_Place(chrome, searchBox, (GetLayout().PAGE_STACK or {}).SEARCH_HEIGHT or 32)
     searchBox:Show()
     if ns.UI_ApplySearchBoxChrome then
         ns.UI_ApplySearchBoxChrome(searchBox.searchFrame or searchBox, { editBoxHost = true })
     end
-    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
-    if searchBox.SetHeight then
-        searchBox:SetHeight(searchH)
-    end
-
-    headerYOffset = headerYOffset + searchH + GetLayout().afterElement
 
     local statsBar = hdrCache.statsBar
-    statsBar:SetParent(headerParent)
-    statsBar:ClearAllPoints()
-    statsBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-    statsBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    statsBar:SetHeight(24)
+    headerYOffset = ns.UI_PageStack_Place(chrome, statsBar, ITEMS_STATS_BAR_HEIGHT)
     statsBar:Show()
     if ns.UI_ApplySearchBoxChrome then
         ns.UI_ApplySearchBoxChrome(statsBar)
     end
     ApplyItemsSubTabStatsText(addon, hdrCache.statsText, subTab)
 
-    headerYOffset = headerYOffset + 24 + GetLayout().afterElement
     return headerYOffset
 end
 
@@ -2351,15 +2322,15 @@ local function AcquireItemsResultsContainer(parent, scrollTopY, contentSide)
         return parked
     end
     local rc = parent.resultsContainer
+    -- Page stack: symmetric +/-SIDE at the same Y (CreateResultsContainer anchors TOPRIGHT at y=0).
     if rc and rc._wnKeepOnTabSwitch then
         rc:SetParent(parent)
-        rc:ClearAllPoints()
-        rc:SetPoint("TOPLEFT", margin, -scrollTopY)
-        rc:SetPoint("TOPRIGHT", -margin, 0)
+        ns.UI_PageStack_AnchorBody(parent, rc, scrollTopY)
         rc:Show()
         return rc
     end
     rc = CreateResultsContainer(parent, scrollTopY, margin)
+    ns.UI_PageStack_AnchorBody(parent, rc, scrollTopY)
     rc._wnKeepOnTabSwitch = true
     parent.resultsContainer = rc
     return rc

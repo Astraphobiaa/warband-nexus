@@ -29,7 +29,7 @@ local function SafeRealmName()
 end
 
 local LAYOUT = {
-    PAD = 14,
+    PAD = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK and ns.UI_LAYOUT.PAGE_STACK.SIDE) or 12,
     DIALOG_W = 560,
     DIALOG_H = 640,
     CHAR_HDR_H = 42,
@@ -40,6 +40,13 @@ local LAYOUT = {
     CHECKBOX_W = 20,
     COLOR_BAR_W = 3,
     INNER_GAP = 6,
+    -- "Plan already exists" notice (height derives from the stacked content).
+    EXISTS_W = 460,
+    EXISTS_ICON = 40,
+    EXISTS_BTN_W = 120,
+    BLOCK_GAP = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK and ns.UI_LAYOUT.PAGE_STACK.BLOCK_GAP) or 8,
+    STACK_SECTION_GAP = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK and ns.UI_LAYOUT.PAGE_STACK.SECTION_GAP) or 12,
+    BOTTOM_PAD = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK and ns.UI_LAYOUT.PAGE_STACK.BOTTOM_PAD) or 12,
 }
 
 local function GetScrollbarReserve()
@@ -142,8 +149,10 @@ function M.ShowDailyPlanDialog(editPlan)
     })
     if not dialog then return end
 
-    local charFrame = Factory:CreateContainer(contentFrame, scrollContentW + (PAD * 2), CHAR_HDR_H, false)
+    -- Full padded body width (scroll viewport + scrollbar lane), symmetric PAD both sides.
+    local charFrame = Factory:CreateContainer(contentFrame, scrollContentW + sbReserve, CHAR_HDR_H, false)
     charFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD)
+    charFrame:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -PAD, -PAD)
 
     local _, englishRace = UnitRace("player")
     local gender = UnitSex("player")
@@ -445,8 +454,9 @@ function M.ShowDailyPlanDialog(editPlan)
     end
 
     local PRESET_H = 34
-    local presetBar = Factory:CreateContainer(contentFrame, scrollContentW + (PAD * 2), PRESET_H, false)
+    local presetBar = Factory:CreateContainer(contentFrame, scrollContentW + sbReserve, PRESET_H, false)
     presetBar:SetPoint("TOPLEFT", charFrame, "BOTTOMLEFT", 0, -6)
+    presetBar:SetPoint("TOPRIGHT", charFrame, "BOTTOMRIGHT", 0, -6)
 
     local essentialsBtn = CreateThemedButton(presetBar, (ns.L and ns.L["WEEKLY_PRESET_ESSENTIALS"]) or "Weekly essentials", 150)
     essentialsBtn:SetPoint("LEFT", 0, 0)
@@ -487,7 +497,7 @@ function M.ShowDailyPlanDialog(editPlan)
     RebuildScrollContent()
 
     local createBtn = CreateThemedButton(contentFrame, isEdit and ((ns.L and ns.L["SAVE"]) or "Save") or ((ns.L and ns.L["CREATE_PLAN"]) or "Track Character"), 140)
-    createBtn:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", PAD + 20, PAD)
+    createBtn:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", PAD, PAD)
     createBtn:SetScript("OnClick", function()
         local keysCopy = {}
         for k, v in pairs(selectedCatalogKeys) do
@@ -507,7 +517,7 @@ function M.ShowDailyPlanDialog(editPlan)
     end)
 
     local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", 100)
-    cancelBtn:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -(PAD + 20), PAD)
+    cancelBtn:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -PAD, PAD)
     cancelBtn:SetScript("OnClick", function() dialog.Close() end)
 
     dialog:Show()
@@ -528,35 +538,52 @@ function WarbandNexus:ShowDailyPlanExistsDialog(characterName, characterRealm)
     local FontManager = ns.FontManager
     if not CreateExternalWindow then return end
 
+    local EXISTS_DLG_W = LAYOUT.EXISTS_W
     local dialog, contentFrame = CreateExternalWindow({
         name = "DailyPlanDialog",
         title = (ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Midnight Quest Tracker",
         icon = "Interface\\Icons\\INV_Misc_Note_06",
-        width = 460,
+        width = EXISTS_DLG_W,
         height = 220,
     })
     if not dialog then return end
 
-    local warningIconFrame = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 40, false, nil, true)
-    warningIconFrame:SetPoint("TOP", 0, -30)
+    local warningIconFrame = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", LAYOUT.EXISTS_ICON, false, nil, true)
+    warningIconFrame:SetPoint("TOP", 0, -LAYOUT.STACK_SECTION_GAP)
     warningIconFrame:Show()
 
     local warningText = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
-    warningText:SetPoint("TOP", warningIconFrame, "BOTTOM", 0, -10)
-    warningText:SetText("|cffff9900" .. ((ns.L and ns.L["DAILY_PLAN_EXISTS"]) or "Plan Already Exists") .. "|r")
+    warningText:SetPoint("TOP", warningIconFrame, "BOTTOM", 0, -LAYOUT.BLOCK_GAP)
+    local warnR, warnG, warnB = 1, 0.6, 0
+    if ns.UI_GetSemanticOrangeColor then warnR, warnG, warnB = ns.UI_GetSemanticOrangeColor() end
+    warningText:SetTextColor(warnR, warnG, warnB)
+    warningText:SetText((ns.L and ns.L["DAILY_PLAN_EXISTS"]) or "Plan Already Exists")
 
     local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -8)
-    infoText:SetWidth(400)
+    infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -LAYOUT.BLOCK_GAP)
+    infoText:SetWidth(EXISTS_DLG_W - LAYOUT.PAD * 2)
     infoText:SetWordWrap(true)
     infoText:SetJustifyH("CENTER")
     local charFullName = characterName .. "-" .. characterRealm
     local dailyExistsDesc = (ns.L and ns.L["DAILY_PLAN_EXISTS_DESC"]) or "%s already has an active weekly quest plan. You can find it in the 'Weekly Progress' category."
-    infoText:SetText("|cffaaaaaa" .. string.format(dailyExistsDesc, charFullName) .. "|r")
+    ns.UI_SetTextColorRole(infoText, "Muted")
+    infoText:SetText(string.format(dailyExistsDesc, charFullName))
 
-    local okBtn = CreateThemedButton(contentFrame, OKAY or "OK", 120)
-    okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -16)
+    local okBtn = CreateThemedButton(contentFrame, OKAY or "OK", LAYOUT.EXISTS_BTN_W)
+    okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -LAYOUT.STACK_SECTION_GAP)
     okBtn:SetScript("OnClick", function() dialog.Close() end)
+
+    -- Fit the window to the stacked content (header + shell insets = dialog minus content frame).
+    local contentH = LAYOUT.STACK_SECTION_GAP + LAYOUT.EXISTS_ICON
+        + LAYOUT.BLOCK_GAP + (warningText:GetStringHeight() or 0)
+        + LAYOUT.BLOCK_GAP + (infoText:GetStringHeight() or 0)
+        + LAYOUT.STACK_SECTION_GAP + (okBtn:GetHeight() or 0)
+        + LAYOUT.BOTTOM_PAD
+    local contentFrameH = contentFrame:GetHeight() or 0
+    local chromeH = (dialog:GetHeight() or 0) - contentFrameH
+    if contentFrameH > 0 and chromeH > 0 then
+        dialog:SetHeight(math.ceil(chromeH + contentH))
+    end
 
     dialog:Show()
 end

@@ -87,6 +87,8 @@ function M.BuildOptionsFrame()
 
     local f = M.VBContainer(UIParent, 1, 1, false, "WarbandNexusVaultButtonOptions")
     AddEscCloseFrame("WarbandNexusVaultButtonOptions")
+    -- Follow profile.uiScale like the Easy Access menu (VaultButton.lua) and WindowFactory shells.
+    if ns.UI_RegisterScaledFrame then ns.UI_RegisterScaledFrame(f) end
     f:SetSize(286, 372)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(210)
@@ -133,7 +135,7 @@ function M.BuildOptionsFrame()
         local closeIcon = close:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
-        closeIcon:SetAtlas("uitools-icon-close")
+        ns.UI_SetIcon(closeIcon, "close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         close:SetScript("OnClick", function() f:Hide() end)
         close:SetScript("OnEnter", function()

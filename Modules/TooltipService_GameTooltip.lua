@@ -321,7 +321,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
 
         -- Prepend green checkmark for collected items (inline texture for reliable rendering)
         if collected then
-            displayLink = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14:0:0|t " .. displayLink
+            displayLink = ns.UI_GetIconMarkup("status_ok", 14, 14, 0, 0) .. " " .. displayLink
         end
 
         -- Append yellow (Planned) for items in the player's Plans list
@@ -401,8 +401,8 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 end
 
                 local yieldIcon = yieldCollected
-                    and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-                    or  "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                    and ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+                    or  ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
                 local yieldColor = yieldCollected and "ff00ff00" or "ff999999"
                 local typeLabel = yield.type == "mount" and "Mount"
                     or yield.type == "pet" and "Pet"

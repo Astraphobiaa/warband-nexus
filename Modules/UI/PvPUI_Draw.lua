@@ -11,7 +11,8 @@ assert(M, "PvPUI.lua must load before PvPUI_Draw.lua")
 function M.DrawTab(parent)
     local mf = M.WarbandNexus.UI and M.WarbandNexus.UI.mainFrame
     local metrics = M.ns.UI_GetMainTabLayoutMetrics and M.ns.UI_GetMainTabLayoutMetrics(mf)
-    local SIDE = (metrics and metrics.sideMargin) or 16
+    local pageStack = (M.ns.UI_LAYOUT and M.ns.UI_LAYOUT.PAGE_STACK) or {}
+    local SIDE = pageStack.SIDE or (metrics and metrics.sideMargin) or 12
     local width = (metrics and metrics.contentWidth)
         or (M.ns.UI_ResolveMainTabContentWidth and M.ns.UI_ResolveMainTabContentWidth(mf, parent))
         or (parent:GetWidth() or 600)
@@ -107,7 +108,11 @@ function M.DrawTab(parent)
         bundle.pvpFilterBtn:Hide()
     end
 
-    if M.ns.UI_AdvanceTabChromeYOffset then
+    if chrome and M.ns.UI_PageStack_Place then
+        chrome.yOffset = headerYOffset
+        headerYOffset = M.ns.UI_PageStack_Place(chrome, titleCard)
+        if M.ns.UI_CommitTabFixedHeader then M.ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    elseif M.ns.UI_AdvanceTabChromeYOffset then
         headerYOffset = M.ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
         if M.ns.UI_CommitTabFixedHeader then M.ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
     elseif fixedHeader then

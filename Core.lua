@@ -1773,7 +1773,6 @@ local EPHEMERAL_WINDOWS = {
     "WarbandNexus_WeeklyPlanDialog",
     "WarbandNexus_DailyPlanDialog",
     "WarbandNexus_CustomPlanDialog",
-    "WarbandNexusInfoDialog",
     "WarbandNexusUpdateBackdrop",
     "WarbandNexus_ReminderDialog",
 }

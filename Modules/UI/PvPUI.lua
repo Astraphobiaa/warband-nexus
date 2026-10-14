@@ -28,8 +28,9 @@ M.L = L
 local CARD_PAD = 14
 local ROW_H = 24
 local HEADER_BLOCK_H = 30 -- card title row height inside a card
-local SECTION_GAP = 10
-local CARD_GAP = 10
+-- PAGE_STACK tokens (SharedWidgets_Layout loads earlier in the TOC): sections 12 apart, cards 10 apart.
+local SECTION_GAP = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK and ns.UI_LAYOUT.PAGE_STACK.SECTION_GAP) or 12
+local CARD_GAP = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK and ns.UI_LAYOUT.PAGE_STACK.CARD_GAP) or 10
 local BAR_H = 16
 local TITLE_ICON_SIZE = 20
 local TITLE_ICON_GAP = 6

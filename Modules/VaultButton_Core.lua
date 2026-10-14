@@ -109,10 +109,10 @@ M.TRACK_ICONS = {
     manaflux   = "Interface\\Icons\\INV_Enchant_DustArcane",
     gildedStash = "Interface\\Icons\\Inv_cape_special_treasure_c_01",
 }
-M.KEYSTONE_ICON_ATLAS = "ChromieTime-32x32"
+-- Keystone icon: registry key "keystone" (fileID 525134, same as TRACK_ICONS.keystone); no verified atlas.
 
-M.CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-M.CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+M.CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+M.CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
 M.UPARROW = "|A:loottoast-arrow-green:12:12|a"
 
 -- Easy Access tooltip / menu copy (shared across VaultButton_* chunks via M)
@@ -138,7 +138,7 @@ function M.SyncEasyAccessThemeInk()
     M.EA_SECTION_COLOR[1], M.EA_SECTION_COLOR[2], M.EA_SECTION_COLOR[3] = br, bg, bb
     M.EA_FOOTER_COLOR[1], M.EA_FOOTER_COLOR[2], M.EA_FOOTER_COLOR[3] = mr, mg, mb
 end
-M.EA_STATUS_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
+M.EA_STATUS_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"  -- file fallback; atlas via UI_ICONS.status_ok
 M.EA_CAT_TIP = {
     raids = { key = "EA_TOOLTIP_CAT_RAID", fallback = "Raid", icon = M.TRACK_ICONS.raids },
     mythicPlus = { key = "EA_TOOLTIP_CAT_DUNGEON", fallback = "Dungeon", icon = M.TRACK_ICONS.mythicPlus },
@@ -652,7 +652,7 @@ M.LAUNCHER_ACTION_DEFS = {
         kind = "settings",
         labelKey = "VAULT_BUTTON_MENU_SETTINGS", labelFallback = "Settings",
         settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS_DESC",
-        iconAtlas = "mechagon-projects",
+        iconAtlas = ns.UI_GetIconAtlas("settings") or "mechagon-projects",
         icon = "Interface\\Icons\\Trade_Engineering",
         menuLeftClick = false,
     },

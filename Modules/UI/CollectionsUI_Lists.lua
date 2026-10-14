@@ -4,6 +4,8 @@
 
     WN_PERF: Mounts/Pets/Toys browse collapsible headers paint in COLLECTIONS_HEADER_CHUNK
     frames (C_Timer.After); drawGen + sub-tab gen cancel superseded pumps (WN-PERF-warband-nexus).
+    Row windowing for every list here (Mounts/Pets/Toys and, via AchievementBrowseVirtualList,
+    Achievements) is VirtualListModule.
 ]]
 
 local _, ns = ...
@@ -331,54 +333,25 @@ function M.AnnotateFlatRowsByNearestHeader(flatList)
     end
 end
 
--- Mount/Pet/Toy virtual list: scroll-layout index + visible-range binary search
--- Scroll pixel Y for each row matches ChainSectionFrameBelow stacking: per section,
+-- Mount/Pet/Toy sectioned lists run on VirtualListModule (groupShellByKey mode): section wraps are
+-- built inline by the chunked header pump, rows are culled + pooled by VirtualListModule and parented
+-- under their section body at item.localY. The windowed list is the full flat list minus collapsed
+-- sections' rows, with yOffset rewritten to the ChainSectionFrameBelow stacking: per section,
 -- wrap height = COLLAPSE_HEADER_HEIGHT_COLL + (expanded and bodyContentHeight or 0.1).
--- Data rows use fixed ROW_HEIGHT within an expanded section; headers are not virtualized.
--- Binary search runs on parallel arrays built when the flat list is populated or section collapse changes.
-local wipe = table.wipe
 
---- Scrollable height for mount/pet/toy lists: collapsed section bodies contribute 0.1px, not full row stack.
-function M.CollectionVirtual_ComputeScrollContentHeight(flatList, sectionContentH, collapsedHeaders, sectionSpacing, collapseHdrH, rowStride)
-    collapseHdrH = collapseHdrH or COLLAPSE_HEADER_HEIGHT_COLL
-    rowStride = rowStride or ROW_STRIDE
-    sectionSpacing = sectionSpacing or SECTION_SPACING
+--- Refill `out` IN PLACE (VirtualListModule keeps windowing that table). Returns scroll content height.
+function M.CollectionVirtual_FillSectionWindowList(flatList, sectionContentH, collapsedHeaders, out)
+    wipe(out)
     if not flatList then return 1 end
     local y = 0
     local firstSec = true
+    local bodyTop = 0
+    local expanded = false
     for i = 1, #flatList do
         local it = flatList[i]
         if it.type == "header" then
             if not firstSec then
-                y = y + sectionSpacing
-            end
-            firstSec = false
-            local key = it.key
-            local secH = (sectionContentH and sectionContentH[key]) or 0
-            if secH <= 0 and it.itemCount then
-                secH = (it.itemCount * rowStride)
-            end
-            local expanded = collapsedHeaders and (collapsedHeaders[key] == false)
-            local bodyH = expanded and math.max(0.1, secH) or 0.1
-            y = y + collapseHdrH + bodyH
-        end
-    end
-    return math.max(y + PADDING, 1)
-end
-
-function M.CollectionVirtual_FillRowScrollIndex(flatList, sectionContentH, collapsedHeaders, sectionSpacing, outFlatIdx, outTops, outHeights)
-    wipe(outFlatIdx)
-    wipe(outTops)
-    wipe(outHeights)
-    if not flatList then return 1 end
-    local y = 0
-    local firstSec = true
-    local bodyTopByKey = {}
-    for i = 1, #flatList do
-        local it = flatList[i]
-        if it.type == "header" then
-            if not firstSec then
-                y = y + sectionSpacing
+                y = y + SECTION_SPACING
             end
             firstSec = false
             local key = it.key
@@ -386,46 +359,18 @@ function M.CollectionVirtual_FillRowScrollIndex(flatList, sectionContentH, colla
             if secH <= 0 and it.itemCount then
                 secH = (it.itemCount * ROW_STRIDE)
             end
-            local expanded = collapsedHeaders and (collapsedHeaders[key] == false)
+            expanded = collapsedHeaders and (collapsedHeaders[key] == false) or false
             local bodyH = expanded and math.max(0.1, secH) or 0.1
-            bodyTopByKey[key] = y + COLLAPSE_HEADER_HEIGHT_COLL
-            y = y + COLLAPSE_HEADER_HEIGHT_COLL + bodyH
-        elseif it.type == "row" and it._collSectionKey then
-            local key = it._collSectionKey
-            local expanded = collapsedHeaders and (collapsedHeaders[key] == false)
-            if expanded then
-                local bt = bodyTopByKey[key]
-                if bt then
-                    outFlatIdx[#outFlatIdx + 1] = i
-                    outTops[#outTops + 1] = bt + (it._collRelY or 0)
-                    outHeights[#outHeights + 1] = it.height or ROW_HEIGHT
-                end
-            end
+            it.yOffset = y
+            out[#out + 1] = it
+            bodyTop = y + COLLAPSE_HEADER_HEIGHT_COLL
+            y = bodyTop + bodyH
+        elseif expanded and it.type == "row" and it._collSectionKey then
+            it.yOffset = bodyTop + (it._collRelY or 0)
+            out[#out + 1] = it
         end
     end
     return math.max(y + PADDING, 1)
-end
-
---- Flat list without collapsible headers.
-function M.CollectionVirtual_FillSimpleFlatRowScrollIndex(flatList, outFlatIdx, outTops, outHeights)
-    wipe(outFlatIdx)
-    wipe(outTops)
-    wipe(outHeights)
-    if not flatList then return 1 end
-    local contentH = 0
-    for i = 1, #flatList do
-        local it = flatList[i]
-        if it and it.type == "row" then
-            local top = it.yOffset or 0
-            local h = it.height or ROW_STRIDE
-            outFlatIdx[#outFlatIdx + 1] = i
-            outTops[#outTops + 1] = top
-            outHeights[#outHeights + 1] = h
-            local bottom = top + h
-            if bottom > contentH then contentH = bottom end
-        end
-    end
-    return math.max(contentH + PADDING, 1)
 end
 
 local function CollectionVirtual_SyncListScrollChildHeight(scrollChild, scrollFrame, contentH, barContainer)
@@ -451,125 +396,6 @@ local function CollectionVirtual_SyncListScrollChildHeight(scrollChild, scrollFr
             Factory:UpdateScrollBarVisibility(scrollFrame)
         end
     end
-end
-
-function M.CollectionVirtual_FindFirstVisibleRow(rowTops, rowHeights, n, scrollTop)
-    local lo, hi = 1, n
-    while lo <= hi do
-        local mid = math.floor((lo + hi) * 0.5)
-        local rb = rowTops[mid] + rowHeights[mid]
-        if rb <= scrollTop then
-            lo = mid + 1
-        else
-            hi = mid - 1
-        end
-    end
-    return lo
-end
-
-function M.CollectionVirtual_FindLastVisibleRow(rowTops, rowHeights, n, bottom)
-    local lo, hi = 1, n
-    while lo <= hi do
-        local mid = math.floor((lo + hi) * 0.5)
-        if rowTops[mid] < bottom then
-            lo = mid + 1
-        else
-            hi = mid - 1
-        end
-    end
-    return hi
-end
-
-function M.CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
-    local n = rowTops and #rowTops or 0
-    if n == 0 then return 1, 0 end
-    local firstK = M.CollectionVirtual_FindFirstVisibleRow(rowTops, rowHeights, n, scrollTop)
-    local lastK = M.CollectionVirtual_FindLastVisibleRow(rowTops, rowHeights, n, bottom)
-    if firstK > lastK then return 1, 0 end
-    return firstK, lastK
-end
-
-function M.CollectionVirtual_RefreshMountRowScrollIndex()
-    local state = M.state
-    local contentH = M.CollectionVirtual_FillRowScrollIndex(
-        state._mountFlatList,
-        state._mountSectionContentH,
-        state._mountListCollapsedHeaders or {},
-        SECTION_SPACING,
-        state._mountRowScrollFlatIdx or {},
-        state._mountRowScrollTops or {},
-        state._mountRowScrollHeights or {}
-    )
-    state._mountFlatListTotalHeight = contentH
-    CollectionVirtual_SyncListScrollChildHeight(
-        state.mountListScrollChild, state.mountListScrollFrame, contentH, state.mountListScrollBarContainer)
-end
-
-function M.CollectionVirtual_RefreshPetRowScrollIndex()
-    local state = M.state
-    local contentH = M.CollectionVirtual_FillRowScrollIndex(
-        state._petFlatList,
-        state._petSectionContentH,
-        state._petListCollapsedHeaders or {},
-        SECTION_SPACING,
-        state._petRowScrollFlatIdx or {},
-        state._petRowScrollTops or {},
-        state._petRowScrollHeights or {}
-    )
-    state._petFlatListTotalHeight = contentH
-    CollectionVirtual_SyncListScrollChildHeight(
-        state.petListScrollChild, state.petListScrollFrame, contentH, state.petListScrollBarContainer)
-end
-
-function M.CollectionVirtual_RefreshToyRowScrollIndex()
-    local state = M.state
-    local contentH = M.CollectionVirtual_FillRowScrollIndex(
-        state._toyFlatList,
-        state._toySectionContentH,
-        state._toyListCollapsedHeaders or {},
-        SECTION_SPACING,
-        state._toyRowScrollFlatIdx or {},
-        state._toyRowScrollTops or {},
-        state._toyRowScrollHeights or {}
-    )
-    state._toyFlatListTotalHeight = contentH
-    CollectionVirtual_SyncListScrollChildHeight(
-        state.toyListScrollChild, state.toyListScrollFrame, contentH, state.toyListScrollBarContainer)
-end
-
--- Forward declarations: scroll handlers schedule next-frame refresh via C_Timer.After(0).
--- forward ref: M.UpdateMountListVisibleRange assigned below
--- forward ref: M.UpdatePetListVisibleRange assigned below
--- forward ref: M.UpdateToyListVisibleRange assigned below
-local mountListScrollVisibleCoalesce = false
-local petListScrollVisibleCoalesce = false
-local toyListScrollVisibleCoalesce = false
-
-function M.RequestMountListVisibleRangeAfterScroll()
-    if mountListScrollVisibleCoalesce then return end
-    mountListScrollVisibleCoalesce = true
-    C_Timer.After(0, function()
-        mountListScrollVisibleCoalesce = false
-        M.UpdateMountListVisibleRange()
-    end)
-end
-
-function M.RequestPetListVisibleRangeAfterScroll()
-    if petListScrollVisibleCoalesce then return end
-    petListScrollVisibleCoalesce = true
-    C_Timer.After(0, function()
-        petListScrollVisibleCoalesce = false
-        M.UpdatePetListVisibleRange()
-    end)
-end
-
-function M.RequestToyListVisibleRangeAfterScroll()
-    if toyListScrollVisibleCoalesce then return end
-    toyListScrollVisibleCoalesce = true
-    C_Timer.After(0, function()
-        toyListScrollVisibleCoalesce = false
-        M.UpdateToyListVisibleRange()
-    end)
 end
 
 -- Shared row pool for all three collection lists (Mounts, Pets, Achievements). Row structure from SharedWidgets.
@@ -838,7 +664,7 @@ function M.CollectionRowTrackSlotTooltip(achCollected, onTrack)
     return tip
 end
 
--- Acquire a collection list row (SharedWidgets layout: status icon + icon + label). Used by Mounts, Pets, Achievements.
+-- Collection list row (SharedWidgets layout: status icon + icon + label). Used by Mounts, Pets, Toys, Achievements.
 function M.CollectionRowPaintHeight(item)
     if item and item.rowPaintHeight and item.rowPaintHeight > 0 then
         return item.rowPaintHeight
@@ -846,26 +672,10 @@ function M.CollectionRowPaintHeight(item)
     return ROW_HEIGHT
 end
 
---- onSelect / refreshFn / planSlotState.onTodoClick / onTrackClick are called with the row frame;
---- selectCb (optional) is stored as row._wnCollSelectCb. Section rows (item._collRelY) are placed at
---- their section-relative Y; the painted item is kept on row._wnCollItem for the stable handlers.
-function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState, rightAlignedText, leftAlignedText, selectCb)
-    if not rowParent then return nil end
-    local rowH = M.CollectionRowPaintHeight(item)
-    local f = table.remove(CollectionRowPool)
-    if not f then
-        f = Factory:CreateCollectionListRow(rowParent, rowH)
-        f:ClearAllPoints()
-    end
-    f:SetParent(rowParent)
-    local rightPad = 4
-    local yOffset = item._collRelY or item.yOffset or 0
-    f:SetPoint("TOPLEFT", rowParent, "TOPLEFT", leftIndent or 0, -yOffset)
-    f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", -rightPad, -yOffset)
-    f:SetHeight(rowH)
-    if f.SetClipsChildren then
-        f:SetClipsChildren(true)
-    end
+--- Paint row content only (no pooling / anchoring). onSelect / refreshFn / planSlotState.onTodoClick /
+--- onTrackClick are called with the row frame; selectCb (optional) is stored as row._wnCollSelectCb.
+--- The painted item is kept on row._wnCollItem for the stable CollRowCb handlers.
+function M.PaintCollectionRow(f, item, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState, rightAlignedText, leftAlignedText, selectCb)
     f._wnCollItem = item
     f._wnCollSelectCb = selectCb
     f._wnCollSelect = onSelect
@@ -897,18 +707,42 @@ function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText
     end
     Factory:ApplyCollectionListRowContent(f, item.rowIndex, iconPath, labelText, isCollected, (selectedID == itemID), onClick, rightAlignedText, nil, planSlotState, leftAlignedText)
     M.ApplyCollectionsRowIconChrome(f)
+end
+
+--- Pool + anchor + paint in one call (achievement browse `acquireRow` contract).
+function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState, rightAlignedText, leftAlignedText, selectCb)
+    if not rowParent then return nil end
+    local rowH = M.CollectionRowPaintHeight(item)
+    local f = table.remove(CollectionRowPool)
+    if not f then
+        f = Factory:CreateCollectionListRow(rowParent, rowH)
+        f:ClearAllPoints()
+    end
+    f:SetParent(rowParent)
+    local rightPad = 4
+    local yOffset = item._collRelY or item.yOffset or 0
+    f:SetPoint("TOPLEFT", rowParent, "TOPLEFT", leftIndent or 0, -yOffset)
+    f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", -rightPad, -yOffset)
+    f:SetHeight(rowH)
+    if f.SetClipsChildren then
+        f:SetClipsChildren(true)
+    end
+    M.PaintCollectionRow(f, item, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState, rightAlignedText, leftAlignedText, selectCb)
     f:Show()
     return f
 end
 
-function M.AcquireMountRow(scrollChild, listWidth, item, selectedMountID, onSelectMount, redraw, cf)
+--- VirtualListModule createRowFn for sectioned lists (pool miss only; rowPool = CollectionRowPool).
+function M.CreateCollectionRowFrame(parent, item)
+    return Factory:CreateCollectionListRow(parent, M.CollectionRowPaintHeight(item))
+end
+
+--- VirtualListModule populateRowFn: Mounts.
+function M.PaintMountRow(f, item)
+    local state = M.state
     local mount = item.mount
     local nameColor = mount.isCollected and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local labelText = nameColor .. (mount.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("mount", mount.id)
-    local rowParent = scrollChild
-    if item._collSectionKey and M.state._mountSectionBodies and M.state._mountSectionBodies[item._collSectionKey] then
-        rowParent = M.state._mountSectionBodies[item._collSectionKey]
-    end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsMountPlanned and WN:IsMountPlanned(mount.id) or false
     local planSlotState = CollRowCb.planSlotScratch
@@ -918,18 +752,17 @@ function M.AcquireMountRow(scrollChild, listWidth, item, selectedMountID, onSele
     planSlotState.showTrackSlot = false
     planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not mount.isCollected)
     planSlotState.onTodoClick = (onTodo or not mount.isCollected) and CollRowCb.MountTodo or nil
-    return M.AcquireCollectionRow(rowParent, item, 0, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected, selectedMountID, mount.id,
-        CollRowCb.MountSelect, CollRowCb.MountRefresh, planSlotState, nil, nil, onSelectMount)
+    M.PaintCollectionRow(f, item, mount.icon or DEFAULT_ICON_MOUNT, labelText, mount.isCollected,
+        state._mountListSelectedID or state.selectedMountID, mount.id,
+        CollRowCb.MountSelect, CollRowCb.MountRefresh, planSlotState, nil, nil, state._mountListOnSelectMount)
 end
 
-function M.AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPet, redraw, cf)
+--- VirtualListModule populateRowFn: Pets.
+function M.PaintPetRow(f, item)
+    local state = M.state
     local pet = item.pet
     local nameColor = pet.isCollected and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local labelText = nameColor .. (pet.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("pet", pet.id)
-    local rowParent = scrollChild
-    if item._collSectionKey and M.state._petSectionBodies and M.state._petSectionBodies[item._collSectionKey] then
-        rowParent = M.state._petSectionBodies[item._collSectionKey]
-    end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsPetPlanned and WN:IsPetPlanned(pet.id) or false
     local planSlotState = CollRowCb.planSlotScratch
@@ -939,8 +772,9 @@ function M.AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPe
     planSlotState.showTrackSlot = false
     planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not pet.isCollected)
     planSlotState.onTodoClick = (onTodo or not pet.isCollected) and CollRowCb.PetTodo or nil
-    return M.AcquireCollectionRow(rowParent, item, 0, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected, selectedPetID, pet.id,
-        CollRowCb.PetSelect, CollRowCb.PetRefresh, planSlotState, nil, nil, onSelectPet)
+    M.PaintCollectionRow(f, item, pet.icon or DEFAULT_ICON_PET, labelText, pet.isCollected,
+        state._petListSelectedID or state.selectedPetID, pet.id,
+        CollRowCb.PetSelect, CollRowCb.PetRefresh, planSlotState, nil, nil, state._petListOnSelectPet)
 end
 
 function M.CollectionsUsesToyListPipeline()
@@ -948,19 +782,14 @@ function M.CollectionsUsesToyListPipeline()
     return sub == "toys"
 end
 
-function M.AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectToy, redraw, cf)
+--- VirtualListModule populateRowFn: Toys.
+function M.PaintToyRow(f, item)
+    local state = M.state
     local toy = item.toy
     local nameColor = (toy.isCollected or toy.collected) and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local trySuffix = (SD and SD.FormatMountPetToyListTrySuffix and toy.id)
         and SD.FormatMountPetToyListTrySuffix("toy", toy.id) or ""
     local labelText = nameColor .. (toy.name or "") .. "|r" .. trySuffix
-    local rowParent = scrollChild
-    if item._collSectionKey then
-        local sectionBodies = M.state._toySectionBodies
-        if sectionBodies and sectionBodies[item._collSectionKey] then
-            rowParent = sectionBodies[item._collSectionKey]
-        end
-    end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsItemPlanned and WN:IsItemPlanned("toy", toy.id) or false
     local toyCollected = CollToyIsCollected(toy)
@@ -971,8 +800,9 @@ function M.AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectTo
     planSlotState.showTrackSlot = false
     planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not toyCollected)
     planSlotState.onTodoClick = (onTodo or not toyCollected) and CollRowCb.ToyTodo or nil
-    return M.AcquireCollectionRow(rowParent, item, 0, toy.icon or DEFAULT_ICON_TOY, labelText, toyCollected, selectedToyID, toy.id,
-        CollRowCb.ToySelect, CollRowCb.ToyRefresh, planSlotState, nil, nil, onSelectToy)
+    M.PaintCollectionRow(f, item, toy.icon or DEFAULT_ICON_TOY, labelText, toyCollected,
+        state._toyListSelectedID or state.selectedToyID, toy.id,
+        CollRowCb.ToySelect, CollRowCb.ToyRefresh, planSlotState, nil, nil, state._toyListOnSelectToy)
 end
 
 function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchievementID, onSelectAchievement, redraw, cf)
@@ -987,10 +817,6 @@ function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchieveme
         earnedDateRich, earnedEarnerRich = M.FormatAchievementEarnedRowMetaSplit(ach.id)
     end
     local indent = item.indent or 0
-    local rowParent = scrollChild
-    if item._collSectionKey and M.state._achSectionBodies and M.state._achSectionBodies[item._collSectionKey] then
-        rowParent = M.state._achSectionBodies[item._collSectionKey]
-    end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsAchievementPlanned and WN:IsAchievementPlanned(ach.id) or false
     local onTrack = WN and WN.IsAchievementTracked and WN:IsAchievementTracked(ach.id) or false
@@ -1003,111 +829,130 @@ function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchieveme
     planSlotState.trackTooltip = M.CollectionRowTrackSlotTooltip(achCollected, onTrack)
     planSlotState.onTodoClick = (onTodo or not achCollected) and CollRowCb.AchTodo or nil
     planSlotState.onTrackClick = (not achCollected) and CollRowCb.AchTrack or nil
-    return M.AcquireCollectionRow(rowParent, item, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id,
+    return M.AcquireCollectionRow(scrollChild, item, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id,
         CollRowCb.AchSelect, CollRowCb.AchRefresh, planSlotState, earnedEarnerRich, earnedDateRich, onSelectAchievement)
 end
 
--- Update visible row frames only (virtual scroll). Headers are created in PopulateMountList.
-M.UpdateMountListVisibleRange = function()
-    local state = M.state
-    local flatList = state._mountFlatList
-    local scrollFrame = state.mountListScrollFrame
-    local scrollChild = state.mountListScrollChild
-    if not flatList or not scrollFrame or not scrollChild then return end
-    local scrollTop = scrollFrame:GetVerticalScroll()
-    local visibleHeight = scrollFrame:GetHeight()
-    local bottom = scrollTop + visibleHeight
-    local visible = state._mountVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
+-- Sectioned Mount/Pet/Toy lists: one implementation, three configs. State keys keep their historical
+-- names (`_mountFlatList`, `_mountListRefreshVisible`, ...) because CollectionsUI_Draw reads them.
+local function SectionedListConfig(subTab, prefix, busyLabel, genKey, traceName, onSelectKey, iconFn, buildFn, paintFn)
+    local cfg = {
+        subTab = subTab,
+        busyLabel = busyLabel,
+        genKey = genKey,
+        traceStart = traceName .. "_start",
+        traceDone = traceName .. "_done",
+        iconFn = iconFn,
+        buildFn = buildFn,
+        paintFn = paintFn,
+        kFlat = prefix .. "FlatList",
+        kWindow = prefix .. "WindowFlatList",
+        kTotalH = prefix .. "FlatListTotalHeight",
+        kSecH = prefix .. "SectionContentH",
+        kBodies = prefix .. "SectionBodies",
+        kWidth = prefix .. "ListWidth",
+        kSelected = prefix .. "ListSelectedID",
+        kOnSelect = onSelectKey,
+        kCollapsed = prefix .. "ListCollapsedHeaders",
+        kRedraw = prefix .. "ListRedrawFn",
+        kContentFrame = prefix .. "ListContentFrame",
+        kRefresh = prefix .. "ListRefreshVisible",
+        kScrollFrame = subTab:sub(1, -2) .. "ListScrollFrame",
+        kScrollChild = subTab:sub(1, -2) .. "ListScrollChild",
+        kBar = subTab:sub(1, -2) .. "ListScrollBarContainer",
+        busy = false,
+        scrollCoalesce = false,
+        lastContainer = nil,
+    }
+    --- Re-window the current list (scroll, selection change, sub-tab fast path).
+    cfg.refresh = function()
+        local sc = M.state[cfg.kScrollChild]
+        local VLM = ns.VirtualListModule
+        if sc and VLM then
+            VLM.RepaintVisible(sc)
         end
     end
-    state._mountVisibleRowFrames = {}
-    local redraw = state._mountListRedrawFn
-    local cf = state._mountListContentFrame
-    local selectedMountID = state._mountListSelectedID or state.selectedMountID
-    local onSelectMount = state._mountListOnSelectMount
-    local listWidth = state._mountListWidth or scrollChild:GetWidth()
-    local tinsert = table.insert
-
-    local rowFlatIdx = state._mountRowScrollFlatIdx
-    local rowTops = state._mountRowScrollTops
-    local rowHeights = state._mountRowScrollHeights
-    if rowFlatIdx and rowTops and rowHeights then
-        local firstK, lastK = M.CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
-        for k = firstK, lastK do
-            local i = rowFlatIdx[k]
-            local it = flatList[i]
-            if it and it.type == "row" then
-                local body = state._mountSectionBodies and state._mountSectionBodies[it._collSectionKey]
-                if body and body:IsShown() then
-                    local frame = M.AcquireMountRow(scrollChild, listWidth, it, selectedMountID, onSelectMount, redraw, cf)
-                    tinsert(state._mountVisibleRowFrames, { frame = frame, flatIndex = i })
-                end
-            end
-        end
-        return
+    --- Collapse model changed: refill the windowed list in place, resync scroll height, re-window.
+    cfg.rebuildWindow = function()
+        local state = M.state
+        local window = state[cfg.kWindow]
+        if not window then return end
+        local contentH = M.CollectionVirtual_FillSectionWindowList(
+            state[cfg.kFlat], state[cfg.kSecH], state[cfg.kCollapsed] or {}, window)
+        state[cfg.kTotalH] = contentH
+        CollectionVirtual_SyncListScrollChildHeight(
+            state[cfg.kScrollChild], state[cfg.kScrollFrame], contentH, state[cfg.kBar])
     end
-
-    local n = #flatList
-    for i = 1, n do
-        local it = flatList[i]
-        if it.type == "row" then
-            local rowTop = it.yOffset or 0
-            local rowHeight = it.height or ROW_HEIGHT
-            local rowBottom = rowTop + rowHeight
-            if it._collSectionKey and M.state._mountSectionBodies then
-                local body = M.state._mountSectionBodies[it._collSectionKey]
-                if not body or not body:IsShown() then
-                    rowTop, rowBottom = nil, nil
-                else
-                    local scTop = scrollChild:GetTop()
-                    local bodyTop = body:GetTop()
-                    if scTop and bodyTop then
-                        local relY = it._collRelY or 0
-                        rowTop = (scTop - bodyTop) + relY
-                        rowBottom = rowTop + rowHeight
-                    end
-                end
-            end
-            if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
-                local frame = M.AcquireMountRow(scrollChild, listWidth, it, selectedMountID, onSelectMount, redraw, cf)
-                tinsert(state._mountVisibleRowFrames, { frame = frame, flatIndex = i })
-            end
-        end
+    cfg.rebuildAndRefresh = function()
+        cfg.rebuildWindow()
+        cfg.refresh()
     end
+    -- Scroll deltas coalesce to one re-window on the next frame.
+    cfg.onScroll = function()
+        if cfg.scrollCoalesce then return end
+        cfg.scrollCoalesce = true
+        C_Timer.After(0, function()
+            cfg.scrollCoalesce = false
+            cfg.refresh()
+        end)
+    end
+    return cfg
 end
 
--- Populate scrollChild: build flat list, create headers only, set height; visible rows updated by UpdateMountListVisibleRange (virtual scroll).
--- contentFrameForRefresh, redrawFn: redrawFn(contentFrame) is called on next frame for refresh; pass same DrawMountsContent from caller so closure sees it.
-function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedMountID, onSelectMount, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+local SECTIONED_MOUNTS = SectionedListConfig("mounts", "_mount", "Mounts", "_mountsDrawGen", "PopulateMountList",
+    "_mountListOnSelectMount",
+    function(key) return SD.GetMountCategoryIcon(key) end,
+    function(grouped, collapsed) return M.BuildFlatMountList(grouped, collapsed) end,
+    M.PaintMountRow)
+local SECTIONED_PETS = SectionedListConfig("pets", "_pet", "Pets", "_petDrawGen", "PopulatePetList",
+    "_petListOnSelectPet",
+    function(key) return SD.GetPetCategoryIcon(key) end,
+    function(grouped, collapsed) return M.BuildFlatPetList(grouped, collapsed) end,
+    M.PaintPetRow)
+local SECTIONED_TOYS = SectionedListConfig("toys", "_toy", "Toys", "_toysDrawGen", "PopulateToyList",
+    "_toyListOnSelectToy",
+    function(key) return SD.GetToyCategoryIcon(key) end,
+    function(grouped, collapsed) return M.BuildFlatToyList(grouped, collapsed, SD.TOY_SOURCE_CATEGORIES) end,
+    M.PaintToyRow)
+
+local _sectionedChildScratch = {}
+local _sectionedRegionScratch = {}
+local function PackVariadicInto(dest, ...)
+    wipe(dest)
+    local n = select("#", ...)
+    for i = 1, n do
+        dest[i] = select(i, ...)
+    end
+    return n
+end
+
+-- Populate scrollChild: build flat list, build section wraps (chunked: COLLECTIONS_HEADER_CHUNK per
+-- frame, drawGen + sub-tab abort), then hand the windowed list to VirtualListModule.
+-- redrawFn(contentFrame) is the caller's draw (DrawMountsContent etc.), stored for row callbacks.
+local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, collapsedHeaders, selectedID, onSelect, contentFrameForRefresh, redrawFn, drawGen, onListReady)
     if not scrollChild or not Factory then return end
-    if _populateMountListBusy then
+    local state = M.state
+    if cfg.busy then
         -- An older pump is mid-chunk. Dropping this populate would leave the caller's
         -- draw busy flag held; if superseded release it, otherwise retry next tick
         -- (the old pump finishes or aborts on gen mismatch within a tick).
-        if drawGen and M.state._mountsDrawGen and M.state._mountsDrawGen ~= drawGen then
-            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+        if drawGen and state[cfg.genKey] and state[cfg.genKey] ~= drawGen then
+            M.ReleaseCollectionsDrawBusy(cfg.busyLabel, drawGen)
         elseif C_Timer and C_Timer.After then
             C_Timer.After(0, function()
-                M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedMountID, onSelectMount, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+                PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, collapsedHeaders, selectedID, onSelect, contentFrameForRefresh, redrawFn, drawGen, onListReady)
             end)
         else
-            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+            M.ReleaseCollectionsDrawBusy(cfg.busyLabel, drawGen)
         end
         return
     end
-    _populateMountListBusy = true
+    cfg.busy = true
     collapsedHeaders = collapsedHeaders or {}
-    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("mounts"))
+    local VLM = ns.VirtualListModule
+    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab(cfg.subTab))
     local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
-    M.CollectionsSubTabTrace("PopulateMountList_start", { deferChrome = deferListChrome, headersChunk = headerChunkSize })
+    M.CollectionsSubTabTrace(cfg.traceStart, { deferChrome = deferListChrome, headersChunk = headerChunkSize })
     local cf = contentFrameForRefresh
     local redraw = redrawFn or function() end
 
@@ -1115,53 +960,59 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
         or (listWidth or 260)
     scrollChild:SetWidth(listWidth)
 
-    -- Release any visible row frames back to pool before clearing
-    local visible = M.state._mountVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
+    -- Return the previous paint's rows to CollectionRowPool BEFORE their section wraps are recycled
+    -- (rows parent under section bodies; once a wrap is reparented they are no longer under the list).
+    if VLM then
+        VLM.ReleaseVisibleRows(cfg.lastContainer or scrollChild)
+        if cfg.lastContainer and cfg.lastContainer ~= scrollChild then
+            VLM.ReleaseVisibleRows(scrollChild)
         end
-        M.state._mountVisibleRowFrames = {}
+    end
+    cfg.lastContainer = scrollChild
+    -- Until finishPopulate refills it, a stray scroll/sync repaint must not paint rows into the old
+    -- (about to be recycled) section bodies.
+    if state[cfg.kWindow] then
+        wipe(state[cfg.kWindow])
     end
 
-    -- Clear existing children (headers from previous run); unparent to avoid accumulating on re-populate.
+    -- Clear existing children (section wraps from previous run); unparent to avoid accumulating on re-populate.
     -- KNOWN COST: section wraps/headers are rebuilt per populate (search keystroke after
     -- debounce, filter toggle). Reusing them needs an update mode on the
     -- CreateCollapsibleHeader factory (label/count text, expanded state, re-chaining)
     -- plus closure-lifetime review — a planned refactor, not a drop-in change here.
-    local children = { scrollChild:GetChildren() }
-    for i = 1, #children do
-        local c = children[i]
+    local nch = PackVariadicInto(_sectionedChildScratch, scrollChild:GetChildren())
+    for i = 1, nch do
+        local c = _sectionedChildScratch[i]
         c:Hide()
         c:ClearAllPoints()
         local bin = ns.UI_RecycleBin
         if bin then c:SetParent(bin) else c:SetParent(nil) end
     end
-    local regions = { scrollChild:GetRegions() }
-    for i = 1, #regions do
-        regions[i]:Hide()
+    wipe(_sectionedChildScratch)
+    local nrg = PackVariadicInto(_sectionedRegionScratch, scrollChild:GetRegions())
+    for i = 1, nrg do
+        _sectionedRegionScratch[i]:Hide()
     end
+    wipe(_sectionedRegionScratch)
 
-    local flatList = M.BuildFlatMountList(groupedData, collapsedHeaders)
+    local flatList = cfg.buildFn(groupedData, collapsedHeaders)
 
-    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListEmpty(scrollChild, "mounts") then
-        M.state._mountFlatList = flatList
-        M.state._mountVisibleRowFrames = {}
+    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListEmpty(scrollChild, cfg.subTab) then
+        state[cfg.kFlat] = flatList
+        if state[cfg.kWindow] then
+            wipe(state[cfg.kWindow])
+        end
         M.CollectionsEndListChromeDefer()
-        _populateMountListBusy = false
+        cfg.busy = false
         if onListReady then onListReady() end
         return
     end
 
     M.HideCollectionsListEmptyCards(scrollChild)
 
-    M.state._mountSectionBodies = {}
-    local mountSectionContentH = {}
+    local sectionBodies = {}
+    state[cfg.kBodies] = sectionBodies
+    local sectionContentH = {}
     for fi = 1, #flatList do
         local fit = flatList[fi]
         if fit.type == "header" then
@@ -1172,52 +1023,62 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
                 if r.type == "header" then break end
                 if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
             end
-            mountSectionContentH[sk] = sh
+            sectionContentH[sk] = sh
         end
     end
     M.AnnotateFlatRowsByNearestHeader(flatList)
 
-    local function finishMountListPopulate()
-        M.state._mountFlatList = flatList
-        M.state._mountSectionContentH = mountSectionContentH
-        M.state._mountRowScrollFlatIdx = M.state._mountRowScrollFlatIdx or {}
-        M.state._mountRowScrollTops = M.state._mountRowScrollTops or {}
-        M.state._mountRowScrollHeights = M.state._mountRowScrollHeights or {}
-        M.state._mountListWidth = listWidth
-        M.state._mountListSelectedID = selectedMountID
-        M.state._mountListOnSelectMount = onSelectMount
-        M.state._mountListCollapsedHeaders = collapsedHeaders
-        M.state._mountListRedrawFn = redraw
-        M.state._mountListContentFrame = cf
-        M.state._mountListRefreshVisible = M.UpdateMountListVisibleRange
-        M.CollectionVirtual_RefreshMountRowScrollIndex()
-        local scrollFrame = M.state.mountListScrollFrame
-        if scrollFrame then
-            scrollFrame:SetScript("OnVerticalScroll", function()
-                M.RequestMountListVisibleRangeAfterScroll()
-            end)
+    local function finishPopulate()
+        state[cfg.kFlat] = flatList
+        state[cfg.kSecH] = sectionContentH
+        state[cfg.kWidth] = listWidth
+        state[cfg.kSelected] = selectedID
+        state[cfg.kOnSelect] = onSelect
+        state[cfg.kCollapsed] = collapsedHeaders
+        state[cfg.kRedraw] = redraw
+        state[cfg.kContentFrame] = cf
+        state[cfg.kRefresh] = cfg.refresh
+        local window = state[cfg.kWindow]
+        if not window then
+            window = {}
+            state[cfg.kWindow] = window
         end
-        M.UpdateMountListVisibleRange()
-        M.ScheduleCollectionsVisibleSync("mounts", M.UpdateMountListVisibleRange)
+        cfg.rebuildWindow()
+        local scrollFrame = state[cfg.kScrollFrame]
+        if scrollFrame and VLM then
+            -- Rows: pooled in CollectionRowPool, painted by cfg.paintFn, parented under their section
+            -- body (groupShellByKey) at item.localY. Headers are the inline wraps built above.
+            VLM.SetupVirtualList({ scroll = scrollFrame }, scrollChild, 0, window, {
+                createRowFn = M.CreateCollectionRowFrame,
+                populateRowFn = cfg.paintFn,
+                rowPool = CollectionRowPool,
+                groupShellByKey = sectionBodies,
+                noStaggeredRepaint = true,
+            })
+            scrollFrame:SetScript("OnVerticalScroll", cfg.onScroll)
+        end
+        -- Re-show deferred list chrome first: VirtualListModule skips paints on hidden containers.
         M.CollectionsEndListChromeDefer()
-        M.CollectionsSubTabTrace("PopulateMountList_done", { flatRows = flatList and #flatList or 0 })
+        cfg.refresh()
+        M.ScheduleCollectionsVisibleSync(cfg.subTab, cfg.refresh)
+        M.CollectionsSubTabTrace(cfg.traceDone, { flatRows = flatList and #flatList or 0 })
         if type(onListReady) == "function" then
             onListReady()
         end
-        _populateMountListBusy = false
+        cfg.busy = false
     end
 
-    local function abortMountListPopulate()
+    local function abortPopulate()
         M.CollectionsEndListChromeDefer()
-        _populateMountListBusy = false
+        cfg.busy = false
         if drawGen then
-            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+            M.ReleaseCollectionsDrawBusy(cfg.busyLabel, drawGen)
         end
     end
 
     local collHdrChainTail = nil
     local flatIdx = 1
-    local function hasRemainingMountHeaders()
+    local function hasRemainingHeaders()
         for hi = flatIdx, #flatList do
             if flatList[hi].type == "header" then
                 return true
@@ -1226,13 +1087,13 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
         return false
     end
 
-    local function pumpMountHeaders()
-        if drawGen and M.state._mountsDrawGen and M.state._mountsDrawGen ~= drawGen then
-            abortMountListPopulate()
+    local function pumpHeaders()
+        if drawGen and state[cfg.genKey] and state[cfg.genKey] ~= drawGen then
+            abortPopulate()
             return
         end
-        if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "mounts" then
-            abortMountListPopulate()
+        if drawGen and state._collectionsSubTabGen and state.currentSubTab ~= cfg.subTab then
+            abortPopulate()
             return
         end
 
@@ -1257,16 +1118,15 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
             ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or 0)
 
             local sectionBody
-            local secH = mountSectionContentH[key] or 0
+            local secH = sectionContentH[key] or 0
             if secH <= 0 then
                 secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 if isExpanded then
-                    M.CollectionVirtual_RefreshMountRowScrollIndex()
-                    M.UpdateMountListVisibleRange()
+                    cfg.rebuildAndRefresh()
                 end
-            end, SD.GetMountCategoryIcon(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
+            end, cfg.iconFn(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
@@ -1277,16 +1137,12 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
                         collapsedHeaders[key] = false
                     end
                 end,
-                updateVisibleFn = function()
-                    M.CollectionVirtual_RefreshMountRowScrollIndex()
-                    M.UpdateMountListVisibleRange()
-                end,
+                updateVisibleFn = cfg.rebuildAndRefresh,
                 onComplete = function(exp)
                     if not exp then
                         collapsedHeaders[key] = true
                     end
-                    M.CollectionVirtual_RefreshMountRowScrollIndex()
-                    M.UpdateMountListVisibleRange()
+                    cfg.rebuildAndRefresh()
                 end,
             }))
             if ns.UI_AnchorSectionHeaderInWrap then
@@ -1311,664 +1167,44 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
                 sectionBody:SetHeight(0.1)
             end
             sectionWrap:SetHeight(COLLAPSE_HEADER_HEIGHT_COLL + sectionBody:GetHeight())
-            M.state._mountSectionBodies[key] = sectionBody
+            sectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
             built = built + 1
         end
 
-        if hasRemainingMountHeaders() then
+        if hasRemainingHeaders() then
             if C_Timer and C_Timer.After then
-                C_Timer.After(0, pumpMountHeaders)
+                C_Timer.After(0, pumpHeaders)
             else
-                pumpMountHeaders()
+                pumpHeaders()
             end
             return
         end
-        finishMountListPopulate()
+        finishPopulate()
     end
 
-    pumpMountHeaders()
+    pumpHeaders()
 end
 
-local _populatePetListBusy = false
-
-M.UpdatePetListVisibleRange = function()
-    local state = M.state
-    local flatList = state._petFlatList
-    local scrollFrame = state.petListScrollFrame
-    local scrollChild = state.petListScrollChild
-    if not flatList or not scrollFrame or not scrollChild then return end
-    local scrollTop = scrollFrame:GetVerticalScroll()
-    local visibleHeight = scrollFrame:GetHeight()
-    local bottom = scrollTop + visibleHeight
-    local visible = state._petVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-    end
-    state._petVisibleRowFrames = {}
-    local redraw = state._petListRedrawFn
-    local cf = state._petListContentFrame
-    local selectedPetID = state._petListSelectedID or state.selectedPetID
-    local onSelectPet = state._petListOnSelectPet
-    local listWidth = state._petListWidth or scrollChild:GetWidth()
-    local tinsert = table.insert
-
-    local rowFlatIdx = state._petRowScrollFlatIdx
-    local rowTops = state._petRowScrollTops
-    local rowHeights = state._petRowScrollHeights
-    if rowFlatIdx and rowTops and rowHeights then
-        local firstK, lastK = M.CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
-        for k = firstK, lastK do
-            local i = rowFlatIdx[k]
-            local it = flatList[i]
-            if it and it.type == "row" then
-                local body = state._petSectionBodies and state._petSectionBodies[it._collSectionKey]
-                if body and body:IsShown() then
-                    local frame = M.AcquirePetRow(scrollChild, listWidth, it, selectedPetID, onSelectPet, redraw, cf)
-                    tinsert(state._petVisibleRowFrames, { frame = frame, flatIndex = i })
-                end
-            end
-        end
-        return
-    end
-
-    local n = #flatList
-    for i = 1, n do
-        local it = flatList[i]
-        if it.type == "row" then
-            local rowTop = it.yOffset or 0
-            local rowHeight = it.height or ROW_HEIGHT
-            local rowBottom = rowTop + rowHeight
-            if it._collSectionKey and M.state._petSectionBodies then
-                local body = M.state._petSectionBodies[it._collSectionKey]
-                if not body or not body:IsShown() then
-                    rowTop, rowBottom = nil, nil
-                else
-                    local scTop = scrollChild:GetTop()
-                    local bodyTop = body:GetTop()
-                    if scTop and bodyTop then
-                        local relY = it._collRelY or 0
-                        rowTop = (scTop - bodyTop) + relY
-                        rowBottom = rowTop + rowHeight
-                    end
-                end
-            end
-            if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
-                local frame = M.AcquirePetRow(scrollChild, listWidth, it, selectedPetID, onSelectPet, redraw, cf)
-                tinsert(state._petVisibleRowFrames, { frame = frame, flatIndex = i })
-            end
-        end
-    end
+function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedMountID, onSelectMount, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+    PopulateSectionedList(SECTIONED_MOUNTS, scrollChild, listWidth, groupedData, collapsedHeaders, selectedMountID, onSelectMount, contentFrameForRefresh, redrawFn, drawGen, onListReady)
 end
 
 function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedPetID, onSelectPet, contentFrameForRefresh, redrawFn, drawGen, onListReady)
-    if not scrollChild or not Factory then return end
-    if _populatePetListBusy then
-        -- See PopulateMountList: never drop a populate while the caller holds its busy flag.
-        if drawGen and M.state._petDrawGen and M.state._petDrawGen ~= drawGen then
-            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
-        elseif C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedPetID, onSelectPet, contentFrameForRefresh, redrawFn, drawGen, onListReady)
-            end)
-        else
-            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
-        end
-        return
-    end
-    _populatePetListBusy = true
-    collapsedHeaders = collapsedHeaders or {}
-    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("pets"))
-    local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
-    M.CollectionsSubTabTrace("PopulatePetList_start", { deferChrome = deferListChrome, headersChunk = headerChunkSize })
-    local cf = contentFrameForRefresh
-    local redraw = redrawFn or function() end
-
-    listWidth = ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(scrollChild, listWidth or 260, 0)
-        or (listWidth or 260)
-    scrollChild:SetWidth(listWidth)
-
-    local visible = M.state._petVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-        M.state._petVisibleRowFrames = {}
-    end
-
-    local children = { scrollChild:GetChildren() }
-    for i = 1, #children do
-        local c = children[i]
-        c:Hide()
-        c:ClearAllPoints()
-        local bin = ns.UI_RecycleBin
-        if bin then c:SetParent(bin) else c:SetParent(nil) end
-    end
-    local regions = { scrollChild:GetRegions() }
-    for i = 1, #regions do
-        regions[i]:Hide()
-    end
-
-    local flatList = M.BuildFlatPetList(groupedData, collapsedHeaders)
-
-    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListEmpty(scrollChild, "pets") then
-        M.state._petFlatList = flatList
-        M.state._petVisibleRowFrames = {}
-        M.CollectionsEndListChromeDefer()
-        _populatePetListBusy = false
-        if onListReady then onListReady() end
-        return
-    end
-
-    M.HideCollectionsListEmptyCards(scrollChild)
-
-    M.state._petSectionBodies = {}
-    local petSectionContentH = {}
-    for fi = 1, #flatList do
-        local fit = flatList[fi]
-        if fit.type == "header" then
-            local sk = fit.key
-            local sh = 0
-            for fj = fi + 1, #flatList do
-                local r = flatList[fj]
-                if r.type == "header" then break end
-                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
-            end
-            petSectionContentH[sk] = sh
-        end
-    end
-    M.AnnotateFlatRowsByNearestHeader(flatList)
-
-    local function finishPetListPopulate()
-        M.state._petFlatList = flatList
-        M.state._petSectionContentH = petSectionContentH
-        M.state._petRowScrollFlatIdx = M.state._petRowScrollFlatIdx or {}
-        M.state._petRowScrollTops = M.state._petRowScrollTops or {}
-        M.state._petRowScrollHeights = M.state._petRowScrollHeights or {}
-        M.state._petListWidth = listWidth
-        M.state._petListSelectedID = selectedPetID
-        M.state._petListOnSelectPet = onSelectPet
-        M.state._petListCollapsedHeaders = collapsedHeaders
-        M.state._petListRedrawFn = redraw
-        M.state._petListContentFrame = cf
-        M.state._petListRefreshVisible = M.UpdatePetListVisibleRange
-        M.CollectionVirtual_RefreshPetRowScrollIndex()
-        local scrollFrame = M.state.petListScrollFrame
-        if scrollFrame then
-            scrollFrame:SetScript("OnVerticalScroll", function()
-                M.RequestPetListVisibleRangeAfterScroll()
-            end)
-        end
-        M.UpdatePetListVisibleRange()
-        M.ScheduleCollectionsVisibleSync("pets", M.UpdatePetListVisibleRange)
-        M.CollectionsEndListChromeDefer()
-        M.CollectionsSubTabTrace("PopulatePetList_done", { flatRows = flatList and #flatList or 0 })
-        if type(onListReady) == "function" then
-            onListReady()
-        end
-        _populatePetListBusy = false
-    end
-
-    local function abortPetListPopulate()
-        M.CollectionsEndListChromeDefer()
-        _populatePetListBusy = false
-        if drawGen then
-            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
-        end
-    end
-
-    local collHdrChainTail = nil
-    local flatIdx = 1
-    local function hasRemainingPetHeaders()
-        for hi = flatIdx, #flatList do
-            if flatList[hi].type == "header" then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function pumpPetHeaders()
-        if drawGen and M.state._petDrawGen and M.state._petDrawGen ~= drawGen then
-            abortPetListPopulate()
-            return
-        end
-        if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "pets" then
-            abortPetListPopulate()
-            return
-        end
-
-        local built = 0
-        while flatIdx <= #flatList and built < headerChunkSize do
-            while flatIdx <= #flatList and flatList[flatIdx].type ~= "header" do
-                flatIdx = flatIdx + 1
-            end
-            if flatIdx > #flatList then
-                break
-            end
-            local it = flatList[flatIdx]
-            flatIdx = flatIdx + 1
-            local key = it.key
-            local gap = collHdrChainTail and SECTION_SPACING or nil
-
-            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1, false)
-            sectionWrap:ClearAllPoints()
-            if sectionWrap.SetClipsChildren then
-                sectionWrap:SetClipsChildren(true)
-            end
-            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or 0)
-
-            local sectionBody
-            local secH = petSectionContentH[key] or 0
-            if secH <= 0 then
-                secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
-            end
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if isExpanded then
-                    M.CollectionVirtual_RefreshPetRowScrollIndex()
-                    M.UpdatePetListVisibleRange()
-                end
-            end, SD.GetPetCategoryIcon(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
-                wrapFrame = sectionWrap,
-                bodyGetter = function() return sectionBody end,
-                headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
-                hideOnCollapse = true,
-                applyToggleBeforeCollapseAnimate = true,
-                persistFn = function(exp)
-                    if exp then
-                        collapsedHeaders[key] = false
-                    end
-                end,
-                updateVisibleFn = function()
-                    M.CollectionVirtual_RefreshPetRowScrollIndex()
-                    M.UpdatePetListVisibleRange()
-                end,
-                onComplete = function(exp)
-                    if not exp then
-                        collapsedHeaders[key] = true
-                    end
-                    M.CollectionVirtual_RefreshPetRowScrollIndex()
-                    M.UpdatePetListVisibleRange()
-                end,
-            }))
-            if ns.UI_AnchorSectionHeaderInWrap then
-                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)
-            else
-                header:ClearAllPoints()
-                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-                header:SetWidth(listWidth)
-            end
-            header:SetHeight(it.height)
-
-            sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
-            sectionBody:ClearAllPoints()
-            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnSectionFullH = secH
-            if not it.isCollapsed then
-                sectionBody:Show()
-                sectionBody:SetHeight(math.max(0.1, secH))
-            else
-                sectionBody:Hide()
-                sectionBody:SetHeight(0.1)
-            end
-            sectionWrap:SetHeight(COLLAPSE_HEADER_HEIGHT_COLL + sectionBody:GetHeight())
-            M.state._petSectionBodies[key] = sectionBody
-
-            collHdrChainTail = sectionWrap
-            built = built + 1
-        end
-
-        if hasRemainingPetHeaders() then
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, pumpPetHeaders)
-            else
-                pumpPetHeaders()
-            end
-            return
-        end
-        finishPetListPopulate()
-    end
-
-    pumpPetHeaders()
-end
-
-local _populateToyListBusy = false
-
-M.UpdateToyListVisibleRange = function()
-    local state = M.state
-    local flatList = state._toyFlatList
-    local scrollFrame = state.toyListScrollFrame
-    local scrollChild = state.toyListScrollChild
-    if not flatList or not scrollFrame or not scrollChild then return end
-    local scrollTop = scrollFrame:GetVerticalScroll()
-    local visibleHeight = scrollFrame:GetHeight()
-    local bottom = scrollTop + visibleHeight
-    local visible = state._toyVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-    end
-    state._toyVisibleRowFrames = {}
-    local redraw = state._toyListRedrawFn
-    local cf = state._toyListContentFrame
-    local selectedToyID = state._toyListSelectedID or state.selectedToyID
-    local onSelectToy = state._toyListOnSelectToy
-    local listWidth = state._toyListWidth or scrollChild:GetWidth()
-    local tinsert = table.insert
-
-    local rowFlatIdx = state._toyRowScrollFlatIdx
-    local rowTops = state._toyRowScrollTops
-    local rowHeights = state._toyRowScrollHeights
-    if rowFlatIdx and rowTops and rowHeights then
-        local firstK, lastK = M.CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
-        for k = firstK, lastK do
-            local i = rowFlatIdx[k]
-            local it = flatList[i]
-            if it and it.type == "row" then
-                local body = state._toySectionBodies and state._toySectionBodies[it._collSectionKey]
-                if body and body:IsShown() then
-                    local frame = M.AcquireToyRow(scrollChild, listWidth, it, selectedToyID, onSelectToy, nil, cf)
-                    tinsert(state._toyVisibleRowFrames, { frame = frame, flatIndex = i })
-                end
-            end
-        end
-        return
-    end
-
-    local n = #flatList
-    for i = 1, n do
-        local it = flatList[i]
-        if it.type == "row" then
-            local rowTop = it.yOffset or 0
-            local rowHeight = it.height or ROW_HEIGHT
-            local rowBottom = rowTop + rowHeight
-            if it._collSectionKey and M.state._toySectionBodies then
-                local body = M.state._toySectionBodies[it._collSectionKey]
-                if not body or not body:IsShown() then
-                    rowTop, rowBottom = nil, nil
-                else
-                    local scTop = scrollChild:GetTop()
-                    local bodyTop = body:GetTop()
-                    if scTop and bodyTop then
-                        local relY = it._collRelY or 0
-                        rowTop = (scTop - bodyTop) + relY
-                        rowBottom = rowTop + rowHeight
-                    end
-                end
-            end
-            if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
-                local frame = M.AcquireToyRow(scrollChild, listWidth, it, selectedToyID, onSelectToy, nil, cf)
-                tinsert(state._toyVisibleRowFrames, { frame = frame, flatIndex = i })
-            end
-        end
-    end
+    PopulateSectionedList(SECTIONED_PETS, scrollChild, listWidth, groupedData, collapsedHeaders, selectedPetID, onSelectPet, contentFrameForRefresh, redrawFn, drawGen, onListReady)
 end
 
 function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
-    if not scrollChild or not Factory then return end
-    if _populateToyListBusy then
-        -- See PopulateMountList: never drop a populate while the caller holds its busy flag.
-        if drawGen and M.state._toysDrawGen and M.state._toysDrawGen ~= drawGen then
-            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
-        elseif C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
-            end)
-        else
-            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
-        end
-        return
-    end
-    _populateToyListBusy = true
-    collapsedHeaders = collapsedHeaders or {}
-    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("toys"))
-    local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
-    M.CollectionsSubTabTrace("PopulateToyList_start", { deferChrome = deferListChrome, headersChunk = headerChunkSize })
-    local cf = contentFrameForRefresh
-    local redraw = redrawFn or function() end
-
-    listWidth = ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(scrollChild, listWidth or 260, 0)
-        or (listWidth or 260)
-    scrollChild:SetWidth(listWidth)
-
-    local visible = M.state._toyVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-        M.state._toyVisibleRowFrames = {}
-    end
-
-    local children = { scrollChild:GetChildren() }
-    for i = 1, #children do
-        local c = children[i]
-        c:Hide()
-        c:ClearAllPoints()
-        local bin = ns.UI_RecycleBin
-        if bin then c:SetParent(bin) else c:SetParent(nil) end
-    end
-    local regions = { scrollChild:GetRegions() }
-    for i = 1, #regions do
-        regions[i]:Hide()
-    end
-
-    local flatList = M.BuildFlatToyList(groupedData, collapsedHeaders, SD.TOY_SOURCE_CATEGORIES)
-
-    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListEmpty(scrollChild, "toys") then
-        M.state._toyFlatList = flatList
-        M.state._toyVisibleRowFrames = {}
-        M.CollectionsEndListChromeDefer()
-        _populateToyListBusy = false
-        if onListReady then onListReady() end
-        return
-    end
-
-    M.HideCollectionsListEmptyCards(scrollChild)
-
-    M.state._toySectionBodies = {}
-    local toySectionContentH = {}
-    for fi = 1, #flatList do
-        local fit = flatList[fi]
-        if fit.type == "header" then
-            local sk = fit.key
-            local sh = 0
-            for fj = fi + 1, #flatList do
-                local r = flatList[fj]
-                if r.type == "header" then break end
-                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
-            end
-            toySectionContentH[sk] = sh
-        end
-    end
-    M.AnnotateFlatRowsByNearestHeader(flatList)
-
-    local function finishToyListPopulate()
-        M.state._toyFlatList = flatList
-        M.state._toySectionContentH = toySectionContentH
-        M.state._toyRowScrollFlatIdx = M.state._toyRowScrollFlatIdx or {}
-        M.state._toyRowScrollTops = M.state._toyRowScrollTops or {}
-        M.state._toyRowScrollHeights = M.state._toyRowScrollHeights or {}
-        M.state._toyListWidth = listWidth
-        M.state._toyListSelectedID = selectedToyID
-        M.state._toyListOnSelectToy = onSelectToy
-        M.state._toyListCollapsedHeaders = collapsedHeaders
-        M.state._toyListRedrawFn = redraw
-        M.state._toyListContentFrame = cf
-        M.state._toyListRefreshVisible = M.UpdateToyListVisibleRange
-        M.CollectionVirtual_RefreshToyRowScrollIndex()
-        local scrollFrame = M.state.toyListScrollFrame
-        if scrollFrame then
-            scrollFrame:SetScript("OnVerticalScroll", function()
-                M.RequestToyListVisibleRangeAfterScroll()
-            end)
-        end
-        M.UpdateToyListVisibleRange()
-        M.ScheduleCollectionsVisibleSync("toys", M.UpdateToyListVisibleRange)
-        M.CollectionsEndListChromeDefer()
-        M.CollectionsSubTabTrace("PopulateToyList_done", { flatRows = flatList and #flatList or 0 })
-        if type(onListReady) == "function" then
-            onListReady()
-        end
-        _populateToyListBusy = false
-    end
-
-    local function abortToyListPopulate()
-        M.CollectionsEndListChromeDefer()
-        _populateToyListBusy = false
-        if drawGen then
-            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
-        end
-    end
-
-    local collHdrChainTail = nil
-    local flatIdx = 1
-    local function hasRemainingToyHeaders()
-        for hi = flatIdx, #flatList do
-            if flatList[hi].type == "header" then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function pumpToyHeaders()
-        if drawGen and M.state._toysDrawGen and M.state._toysDrawGen ~= drawGen then
-            abortToyListPopulate()
-            return
-        end
-        if drawGen and M.state._collectionsSubTabGen and not M.CollectionsUsesToyListPipeline() then
-            abortToyListPopulate()
-            return
-        end
-
-        local built = 0
-        while flatIdx <= #flatList and built < headerChunkSize do
-            while flatIdx <= #flatList and flatList[flatIdx].type ~= "header" do
-                flatIdx = flatIdx + 1
-            end
-            if flatIdx > #flatList then
-                break
-            end
-            local it = flatList[flatIdx]
-            flatIdx = flatIdx + 1
-            local key = it.key
-            local gap = collHdrChainTail and SECTION_SPACING or nil
-
-            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1, false)
-            sectionWrap:ClearAllPoints()
-            if sectionWrap.SetClipsChildren then
-                sectionWrap:SetClipsChildren(true)
-            end
-            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or 0)
-
-            local sectionBody
-            local secH = toySectionContentH[key] or 0
-            if secH <= 0 then
-                secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
-            end
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if isExpanded then
-                    M.CollectionVirtual_RefreshToyRowScrollIndex()
-                    M.UpdateToyListVisibleRange()
-                end
-            end, SD.GetToyCategoryIcon(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
-                wrapFrame = sectionWrap,
-                bodyGetter = function() return sectionBody end,
-                headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
-                hideOnCollapse = true,
-                applyToggleBeforeCollapseAnimate = true,
-                persistFn = function(exp)
-                    if exp then
-                        collapsedHeaders[key] = false
-                    end
-                end,
-                updateVisibleFn = function()
-                    M.CollectionVirtual_RefreshToyRowScrollIndex()
-                    M.UpdateToyListVisibleRange()
-                end,
-                onComplete = function(exp)
-                    if not exp then
-                        collapsedHeaders[key] = true
-                    end
-                    M.CollectionVirtual_RefreshToyRowScrollIndex()
-                    M.UpdateToyListVisibleRange()
-                end,
-            }))
-            if ns.UI_AnchorSectionHeaderInWrap then
-                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)
-            else
-                header:ClearAllPoints()
-                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-                header:SetWidth(listWidth)
-            end
-            header:SetHeight(it.height)
-
-            sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
-            sectionBody:ClearAllPoints()
-            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnSectionFullH = secH
-            if not it.isCollapsed then
-                sectionBody:Show()
-                sectionBody:SetHeight(math.max(0.1, secH))
-            else
-                sectionBody:Hide()
-                sectionBody:SetHeight(0.1)
-            end
-            sectionWrap:SetHeight(COLLAPSE_HEADER_HEIGHT_COLL + sectionBody:GetHeight())
-            M.state._toySectionBodies[key] = sectionBody
-
-            collHdrChainTail = sectionWrap
-            built = built + 1
-        end
-
-        if hasRemainingToyHeaders() then
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, pumpToyHeaders)
-            else
-                pumpToyHeaders()
-            end
-            return
-        end
-        finishToyListPopulate()
-    end
-
-    pumpToyHeaders()
+    PopulateSectionedList(SECTIONED_TOYS, scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
 end
 
-function M.UpdateAchievementListVisibleRange()
-    ns.UI_AchievementBrowse_UpdateVisibleRange({
-        state = M.state,
-        acquireRow = M.AcquireAchievementRow,
-        releaseRowFrame = function(f)
-            CollectionRowPool[#CollectionRowPool + 1] = f
-        end,
-    })
+local function ReleaseCollectionAchievementRow(f)
+    CollectionRowPool[#CollectionRowPool + 1] = f
+end
+
+local function ScheduleCollectionAchievementVisibleSync(fn)
+    M.ScheduleCollectionsVisibleSync("achievements", fn)
 end
 
 function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCategories, collapsedHeaders, selectedAchievementID, onSelectAchievement, contentFrameForRefresh, redrawFn, drawGen, onListReady)
@@ -1986,12 +1222,8 @@ function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCat
         contentFrameForRefresh = contentFrameForRefresh,
         redrawFn = redrawFn,
         acquireRow = M.AcquireAchievementRow,
-        releaseRowFrame = function(f)
-            CollectionRowPool[#CollectionRowPool + 1] = f
-        end,
-        scheduleVisibleSync = function(fn)
-            M.ScheduleCollectionsVisibleSync("achievements", fn)
-        end,
+        releaseRowFrame = ReleaseCollectionAchievementRow,
+        scheduleVisibleSync = ScheduleCollectionAchievementVisibleSync,
         rowHeightScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.155,
         searchActive = searchActive,
         searchText = searchSnap,

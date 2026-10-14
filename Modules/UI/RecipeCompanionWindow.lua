@@ -181,7 +181,7 @@ local WARBAND_ICON_W = 16
 local WARBAND_ICON_H = 16
 
 -- Green checkmark texture for fulfilled reagents
-local CHECK_ICON = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t"
+local CHECK_ICON = ns.UI_GetIconMarkup("status_ok", 14, 14, 0, 0)
 
 -- ── Row index counter (reset per render pass) ──
 local rowCounter = 0
@@ -500,7 +500,10 @@ local function RenderContent(scrollChild)
                     if ci == bestIdx then
                         local highlightBg = crafterRow:CreateTexture(nil, "ARTWORK", nil, -8)
                         highlightBg:SetAllPoints()
-                        highlightBg:SetColorTexture(0.15, 0.25, 0.10, 0.35)
+                        -- Semantic green wash (light-mode aware) instead of a fixed dark green.
+                        local hr, hg, hb = 0.15, 0.25, 0.10
+                        if ns.UI_GetSemanticGreenColor then hr, hg, hb = ns.UI_GetSemanticGreenColor() end
+                        highlightBg:SetColorTexture(hr, hg, hb, 0.15)
                     end
 
                     local nameOffset = PADDING + 10

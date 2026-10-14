@@ -113,26 +113,13 @@ end
 --- Collection list row status: gold `common-icon-checkmark` when collected (canonical WN check).
 function ns.UI_ApplyCollectionRowStatusIcon(statusIcon, isCollected)
     if not statusIcon then return end
-    statusIcon:SetDesaturated(false)
     statusIcon:Show()
     if isCollected then
-        local ok = pcall(statusIcon.SetAtlas, statusIcon, "common-icon-checkmark", false)
-        if not ok then
-            statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-        end
         local g = COLORS and COLORS.gold
-        if g then
-            statusIcon:SetVertexColor(g[1], g[2], g[3], g[4] or 1)
-        else
-            statusIcon:SetVertexColor(1, 0.82, 0, 1)
-        end
+        ns.UI_SetIcon(statusIcon, "status_ok", { vertexColor = g or { 1, 0.82, 0, 1 } })
     else
-        local ok = pcall(statusIcon.SetAtlas, statusIcon, "Objective-Nub", false)
-        if not ok then
-            statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
-        end
-        local vc = ns.UI_GetMonochromeIconVertex(0.35)
-        statusIcon:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 0.35)
+        -- status_pending is mono: white (dark) / black (light) at alpha 0.35.
+        ns.UI_SetIcon(statusIcon, "status_pending", { alpha = 0.35 })
     end
 end
 
@@ -200,7 +187,7 @@ local function GetWnIconPaths()
         donate = (C and C.WN_ICON_DONATE) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Donate.tga",
         credits = (C and C.WN_ICON_CREDITS) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
         tracking = (C and C.WN_ICON_TRACKING) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
-        complete = "Interface\\RaidFrame\\ReadyCheck-Ready",
+        complete = "Interface\\RaidFrame\\ReadyCheck-Ready", -- file fallback; atlas via UI_ICONS.status_ok
     }
     return WN_ICON_PATHS
 end
@@ -213,7 +200,14 @@ function ns.UI_SetWnIconTexture(tex, iconKey, opts)
     local paths = GetWnIconPaths()
     local path = paths[iconKey]
     if not path then return false end
-    tex:SetTexture(path)
+    local usedAtlas = false
+    if iconKey == "complete" and not opts.texCoord then
+        -- Registry atlas (common-icon-checkmark); file path above stays the fallback.
+        usedAtlas = ns.UI_SetIcon(tex, "status_ok") and true or false
+    end
+    if not usedAtlas then
+        tex:SetTexture(path)
+    end
     local tc = opts.texCoord
     if tc and #tc >= 4 then
         tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
@@ -485,7 +479,7 @@ ns.UI_PLANS_CARD_METRICS = {
     browseCardHeight = PlansMetric(126),
     --- Vertical gap between To-Do List cards (Currency/Reputation row-gap parity).
     todoListCardGap = 10,
-    browseCardPadH = 12,
+    browseCardPadH = (UI_SPACING and UI_SPACING.PAGE_STACK and UI_SPACING.PAGE_STACK.SIDE) or 12,
     plansActionIconInset = 3,
     browseIconTopInset = PlansMetric(10),
     browseIconLeftInset = PlansMetric(10),
@@ -1242,9 +1236,9 @@ local function RefreshAccentStripes()
 end
 ns.UI_RefreshAccentStripes = RefreshAccentStripes
 
---- Accent-bordered control shell (search, stats strip): BackdropTemplate edge + left rail.
+--- Accent-bordered control shell (search, stats strip): standard border quartet + left rail.
 ---@param frame Frame
----@param opts table|nil `{ edgeSize, borderAlpha, showRail, railWidth, bg }`
+---@param opts table|nil `{ borderAlpha, showRail, railWidth, bg }`
 function ns.UI_ApplyAccentControlChrome(frame, opts)
     if not frame then return end
     if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then
@@ -1268,30 +1262,23 @@ function ns.UI_ApplyAccentControlChrome(frame, opts)
     else
         ar, ag, ab, aa = ThemeAPI.GetSubTabActiveBackdropRGBA(ac)
     end
-    local edge = opts.edgeSize or 2
     local borderA = opts.borderAlpha or 0.72
 
-    if not frame.SetBackdrop then
-        Mixin(frame, BackdropTemplateMixin)
+    -- Same border as every card/button: ApplyVisuals quartet at UI_GetBorderThickness
+    -- (whole physical pixels), not a backdrop edge with its own fixed edgeSize.
+    frame._wnMainShellBackdrop = nil
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(frame, { ar, ag, ab, aa or 0.98 }, { ac[1], ac[2], ac[3], borderA })
     end
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = edge,
-        insets = { left = edge, right = edge, top = edge, bottom = edge },
-    })
-    frame:SetBackdropColor(ar, ag, ab, aa or 0.98)
-    frame:SetBackdropBorderColor(ac[1], ac[2], ac[3], borderA)
-    frame._wnMainShellBackdrop = true
+    -- A flat-chrome pass may have hidden the quartet on this reused frame.
+    if frame.BorderTop then
+        frame.BorderTop:Show(); frame.BorderBottom:Show()
+        frame.BorderLeft:Show(); frame.BorderRight:Show()
+    end
     frame._borderType = "accent"
     frame._borderAlpha = borderA
     frame._bgType = "searchChrome"
-
-    if not frame._borderRegistered then
-        frame._borderRegistered = true
-        BORDER_REGISTRY[#BORDER_REGISTRY + 1] = frame
-    end
+    local edge = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or 1
 
     if opts.showRail == false then
         if frame._wnAccentLeftRail then frame._wnAccentLeftRail:Hide() end
@@ -2210,6 +2197,54 @@ function ns.UI_CommitTabFixedHeader(mainFrame, yOffset)
         end
     end
     return yOffset or 0
+end
+
+--- PAGE STACK helpers (see UI_LAYOUT.PAGE_STACK). Create paths and Reposition* paths must both
+--- place chrome through these so a cached repaint can never drift from the first paint.
+
+---Place a fixedHeader block (title card, sub-tab bar, search box, stats line) at the current
+---chrome Y with symmetric +/-side anchors, then advance by height + gap.
+---@param chrome table from UI_BeginTabChromeLayout
+---@param frame Frame
+---@param height number|nil block height (nil = frame:GetHeight())
+---@param gapKey string|nil PAGE_STACK key for the gap after the block (default "BLOCK_GAP")
+---@return number newYOffset
+function ns.UI_PageStack_Place(chrome, frame, height, gapKey)
+    if not chrome or not frame or not chrome.headerParent then
+        return chrome and chrome.yOffset or 0
+    end
+    local ps = (UI_SPACING and UI_SPACING.PAGE_STACK) or {}
+    local y = chrome.yOffset or 0
+    local side = chrome.side or ps.SIDE or 12
+    if frame:GetParent() ~= chrome.headerParent then
+        frame:SetParent(chrome.headerParent)
+    end
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", chrome.headerParent, "TOPLEFT", side, -y)
+    frame:SetPoint("TOPRIGHT", chrome.headerParent, "TOPRIGHT", -side, -y)
+    if height then frame:SetHeight(height) end
+    local h = height or frame:GetHeight() or 0
+    local gap = ps[gapKey or "BLOCK_GAP"]
+    if gap == nil then gap = ps.BLOCK_GAP or 8 end
+    chrome.yOffset = y + h + gap
+    return chrome.yOffset
+end
+
+---Anchor a top-level body block (results container, content frame, empty-state host) inside the
+---scroll child with symmetric +/-side anchors at the same Y. Returns the body width.
+---@param parent Frame scroll child (or another full-width body host)
+---@param frame Frame
+---@param y number top offset (positive, downward); default PAGE_STACK.BODY_TOP
+---@return number bodyWidth
+function ns.UI_PageStack_AnchorBody(parent, frame, y)
+    if not parent or not frame then return 0 end
+    local ps = (UI_SPACING and UI_SPACING.PAGE_STACK) or {}
+    local side = ps.SIDE or 12
+    y = y or ps.BODY_TOP or 8
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", side, -y)
+    frame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -side, -y)
+    return math.max(1, (parent:GetWidth() or 0) - side * 2)
 end
 
 --- Debug tint overlays for scroll viewport / bar column (toggle: `/wn debug on`).
@@ -3147,7 +3182,7 @@ local TAB_HEADER_ICONS = {
     collections = "dragon-rostrum",
     professions = "Vehicle-HammerGold",
     gear = "VignetteEventElite",
-    settings = "mechagon-projects",
+    settings = ns.UI_GetIconAtlas("settings") or "mechagon-projects",
     about = "Campaign-QuestLog-Legendaryicon",
     qol = "Soulbinds_Tree_Conduit_Icon_Utility",
 }
@@ -4371,8 +4406,6 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
             end)
         end
 
-        ApplyVisuals(f, { 0.04, 0.04, 0.06, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9 })
-
         local tryShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
         local tryInset = tryShell.FRAME_CONTENT_INSET or 2
         local tryHdrH = tryShell.TRY_COUNT_POPUP_HEADER_HEIGHT or 32
@@ -4385,6 +4418,23 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local headerTitle = FontManager:CreateFontString(header, UIFontRole("tryPopupHeader"), "OVERLAY")
         headerTitle:SetPoint("CENTER")
         headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
+
+        -- Close button: same IconRegistry "close" glyph + red tint as WindowFactory dialogs.
+        local tryCloseSz = math.max(16, tryHdrH - 8)
+        local tryCloseBtn = CreateFrame("Button", nil, header, "BackdropTemplate")
+        tryCloseBtn:SetSize(tryCloseSz, tryCloseSz)
+        tryCloseBtn:SetPoint("RIGHT", header, "RIGHT", -4, 0)
+        local tryCloseIcon = tryCloseBtn:CreateTexture(nil, "ARTWORK")
+        tryCloseIcon:SetSize(tryCloseSz - 10, tryCloseSz - 10)
+        tryCloseIcon:SetPoint("CENTER")
+        if not (ns.UI_SetIcon and ns.UI_SetIcon(tryCloseIcon, "close")) then
+            tryCloseIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+        end
+        tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3)
+        tryCloseBtn:SetScript("OnEnter", function() tryCloseIcon:SetVertexColor(1, 0.2, 0.2) end)
+        tryCloseBtn:SetScript("OnLeave", function() tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3) end)
+        tryCloseBtn:SetScript("OnClick", function() f:Hide() end)
+        f.closeBtn = tryCloseBtn
         ns.UI_SetTextColorRole(headerTitle, "Bright")
         f.headerTitle = headerTitle
 
@@ -4397,7 +4447,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local editBoxBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
         editBoxBg:SetSize(120, 28)
         editBoxBg:SetPoint("TOP", nameLabel, "BOTTOM", 0, -10)
-        ApplyVisuals(editBoxBg, { 0.02, 0.02, 0.03, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
+        f.editBoxBg = editBoxBg
 
         local editBox = CreateFrame("EditBox", nil, editBoxBg)
         editBox:SetPoint("TOPLEFT", 8, -4)
@@ -4419,33 +4469,43 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local saveBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
         saveBtn:SetSize(btnWidth, btnHeight)
         saveBtn:SetPoint("TOPRIGHT", editBoxBg, "BOTTOM", -4, -10)
-        ApplyVisuals(saveBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         local saveBtnText = FontManager:CreateFontString(saveBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         saveBtnText:SetPoint("CENTER")
         saveBtnText:SetText((ns.L and ns.L["SAVE"]) or "Save")
         ns.UI_SetTextColorRole(saveBtnText, "Bright")
         saveBtn:SetScript("OnEnter", function(self)
-            ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeHoverBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
         end)
         saveBtn:SetScript("OnLeave", function(self)
-            ApplyVisuals(self, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end)
         f.saveBtn = saveBtn
 
         local cancelBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
         cancelBtn:SetSize(btnWidth, btnHeight)
         cancelBtn:SetPoint("TOPLEFT", editBoxBg, "BOTTOM", 4, -10)
-        ApplyVisuals(cancelBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
         local cancelBtnText = FontManager:CreateFontString(cancelBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         cancelBtnText:SetPoint("CENTER")
         cancelBtnText:SetText(_G.CANCEL or "Cancel")
         ns.UI_SetTextColorRole(cancelBtnText, "Normal")
         cancelBtn:SetScript("OnEnter", function(self)
-            ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeHoverBackdrop(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
         end)
         cancelBtn:SetScript("OnLeave", function(self)
-            ApplyVisuals(self, { 0.08, 0.08, 0.10, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+            ApplyVisuals(self, ThemeAPI.GetControlChromeBackdrop(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
         end)
+        f.cancelBtn = cancelBtn
+
+        --- Theme fills (re-run on every show: the frame is reused across light/dark toggles).
+        function f._wnApplyTryChrome()
+            local C = ns.UI_COLORS or COLORS
+            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or C.bg
+            ApplyVisuals(f, shell, { C.accent[1], C.accent[2], C.accent[3], 0.9 })
+            ApplyVisuals(header, { C.accentDark[1], C.accentDark[2], C.accentDark[3], 1 }, { C.accent[1], C.accent[2], C.accent[3], 0.6 })
+            ApplyVisuals(editBoxBg, ThemeAPI.GetControlChromeBackdrop(), { C.accent[1], C.accent[2], C.accent[3], 0.6 })
+            ApplyVisuals(saveBtn, ThemeAPI.GetControlChromeBackdrop(), { C.accent[1], C.accent[2], C.accent[3], 0.8 })
+            ApplyVisuals(cancelBtn, ThemeAPI.GetControlChromeBackdrop(), { C.border[1], C.border[2], C.border[3], 0.6 })
+        end
         cancelBtn:SetScript("OnClick", function() f:Hide() end)
 
         editBox:SetScript("OnEnterPressed", function()
@@ -4473,6 +4533,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
     end
 
     local popup = tryCountPopupFrame
+    if popup._wnApplyTryChrome then popup._wnApplyTryChrome() end
     popup.nameLabel:SetText(displayName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
 
     local currentCount = 0
@@ -4752,7 +4813,7 @@ local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecond
     -- Clock icon (16x16) - positioned to the LEFT of text
     local icon = container:CreateTexture(nil, "ARTWORK")
     icon:SetSize(16, 16)
-    icon:SetAtlas("characterupdate_clock-icon", true)
+    ns.UI_SetIcon(icon, "clock")
     icon:SetPoint("RIGHT", text, "LEFT", -4, 0)  -- 4px spacing from text
     
     -- Update function (uses shared Utilities:FormatTimeCompact)
@@ -4845,7 +4906,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
         GameTooltip:AddLine(" ")
         
         if dataSource:find("Cache") then
-            GameTooltip:AddLine("|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
+            GameTooltip:AddLine(ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) .. " " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
         elseif dataSource:find("LEGACY") then
             GameTooltip:AddLine("|cffffaa00⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
             GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_NEEDS_MIGRATION"]) or "Needs migration to cache service", 0.7, 0.7, 0.7)
@@ -5057,7 +5118,7 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     errorCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Warning icon
-    local warningIconFrame = ns.UI_CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
+    local warningIconFrame = ns.UI_CreateIcon(errorCard, ns.UI_GetIconAtlas("warning") or "services-icon-warning", 24, true, nil, true)
     warningIconFrame:SetPoint("LEFT", 20, 0)
     warningIconFrame:Show()
     

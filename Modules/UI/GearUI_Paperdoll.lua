@@ -2708,7 +2708,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
                 pill:SetBackdrop({
                     bgFile = "Interface\\Buttons\\WHITE8X8",
                     edgeFile = "Interface\\Buttons\\WHITE8X8",
-                    edgeSize = 1,
+                    edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(pill)) or 1,
                     insets = { left = 0, right = 0, top = 0, bottom = 0 },
                 })
                 local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
@@ -2830,7 +2830,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     if not modelBorder then
         modelBorder = PaperdollLayoutHost(card, 1, 1)
         if modelBorder.SetBackdrop then
-            modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+            modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(modelBorder)) or 1 })
         end
         modelBorder.isPersistentRowElement = true
         ns._gearModelBorder = modelBorder

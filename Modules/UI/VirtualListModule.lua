@@ -390,7 +390,17 @@ end
         chainAnimatedSections = false,          -- optional: chained frames are section wraps (header + tweened body); fixed SECTION_SPACING gap; rows parent under body shells
         skipChainRepositionOnRefresh = false,   -- optional: skip RepositionChainedHeaders on Refresh (animated sections — heights drive layout)
         incrementalRowReuse = false,            -- optional: reuse visible row frames by flatList rowReuseSig
+        virtualHeaders = false,                 -- optional: headers are culled + pooled like rows (no createHeaderFn pass).
+        acquireHeaderFn(parent, item, index) -> frame,  -- virtualHeaders: acquire + position a header (fn owns geometry)
+        releaseHeaderFn(frame),                 -- virtualHeaders: return a header frame to its pool
+        groupShellByKey = {},                   -- optional: caller-built section body shells; rows with item.groupKey
+                                                --   parent under shell at item.localY (Collections inline section wraps)
+        onVisibleChanged(visibleList),          -- optional: after every paint; entries are { frame, index, isHeader }
+        noStaggeredRepaint = false,             -- optional: skip the 0/0.1/0.25s settle repaints (caller schedules its own)
     }
+
+    Flat-list contract: the caller may refill the SAME table it passed (wipe + append) and call
+    `container._virtualUpdater()` to re-window without a full Setup (yOffsets must stay ascending).
 ]]
 local function SetupVirtualList(mainFrame, container, containerTopOffset, flatList, opts)
     if not mainFrame or not mainFrame.scroll or not container or not flatList then return 0 end
@@ -414,7 +424,15 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
     container._vlm_incrementalRowReuse = opts.incrementalRowReuse == true
     container._vlm_chainAnimatedSections = chainAnimatedSections
     container._vlm_skipChainRepositionOnRefresh = (opts.skipChainRepositionOnRefresh == true) or chainAnimatedSections
-    container._vlm_groupShellByKey = chainAnimatedSections and {} or nil
+    if type(opts.groupShellByKey) == "table" then
+        container._vlm_groupShellByKey = opts.groupShellByKey
+    else
+        container._vlm_groupShellByKey = chainAnimatedSections and {} or nil
+    end
+    local virtualHeaders = opts.virtualHeaders == true and type(opts.acquireHeaderFn) == "function"
+    local acquireHeaderFn = virtualHeaders and opts.acquireHeaderFn or nil
+    local releaseHeaderFn = virtualHeaders and opts.releaseHeaderFn or nil
+    local onVisibleChanged = (type(opts.onVisibleChanged) == "function") and opts.onVisibleChanged or nil
     local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
     local layoutCollapseH = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or DEFAULT_ROW_HEIGHT
     local secGap = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_SPACING) or 8
@@ -435,8 +453,20 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
     totalHeight = math.max(totalHeight, 1)
 
     -- Release previous visible frames tracked by _virtualVisibleFrames
-    local function ReleaseOneVirtualRow(f)
+    local function ReleaseOneVirtualRow(f, isHeader)
         if not f then return end
+        if isHeader then
+            if f:IsShown() and VirtualRowIsUnderContainer(f, container) then
+                f._vlm_isVirtualHeader = nil
+                if releaseHeaderFn then
+                    releaseHeaderFn(f)
+                else
+                    f:Hide()
+                    f:ClearAllPoints()
+                end
+            end
+            return
+        end
         if f:IsShown() and VirtualRowIsUnderContainer(f, container) then
             f._isVirtualRow = nil
             f._vlm_rowSig = nil
@@ -456,12 +486,15 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
         if not visible then return end
         for i = 1, #visible do
             local entry = visible[i]
-            ReleaseOneVirtualRow(entry and entry.frame)
+            if entry then
+                ReleaseOneVirtualRow(entry.frame, entry.isHeader)
+            end
         end
         wipe(visible)
     end
 
     ReleaseVisible()
+    container._vlm_releaseVisible = ReleaseVisible
     local visBufA = container._vlm_visBufA
     local visBufB = container._vlm_visBufB
     if not visBufA then
@@ -487,6 +520,13 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             child._isVirtualRow = nil
             if releaseRowFn then
                 pcall(releaseRowFn, child)
+            else
+                child:Hide()
+            end
+        elseif child._vlm_isVirtualHeader then
+            child._vlm_isVirtualHeader = nil
+            if releaseHeaderFn then
+                pcall(releaseHeaderFn, child)
             else
                 child:Hide()
             end
@@ -671,10 +711,16 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
         if not fl or #fl == 0 then
             if incrementalReuse and oldVis then
                 for j = 1, #oldVis do
-                    ReleaseOneVirtualRow(oldVis[j] and oldVis[j].frame)
+                    local oe = oldVis[j]
+                    if oe then
+                        ReleaseOneVirtualRow(oe.frame, oe.isHeader)
+                    end
                 end
             end
             container._virtualVisibleFrames = newVis
+            if onVisibleChanged then
+                onVisibleChanged(newVis)
+            end
             return
         end
 
@@ -701,7 +747,9 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                 if not it then break end
 
                 local y = it.yOffset or 0
-                if it.type == "row" then
+                local isRow = it.type == "row"
+                local isVirtualHeader = (not isRow) and virtualHeaders and it.type == "header"
+                if isRow or isVirtualHeader then
                     local h = it.height or DEFAULT_ROW_HEIGHT
                     local rowVisible
                     if useScrollSpaceCull then
@@ -717,7 +765,26 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                             break
                         end
                     end
-                    if rowVisible then
+                    if rowVisible and isVirtualHeader then
+                        -- Header geometry is owned by acquireHeaderFn (pooled collapsible headers).
+                        local ok, hf = pcall(acquireHeaderFn, container, it, i)
+                        if ok and hf then
+                            hf._vlm_isVirtualHeader = true
+                            hf:Show()
+                            local entry
+                            local entryPool = container._vlm_visEntryPool
+                            if entryPool and #entryPool > 0 then
+                                entry = entryPool[#entryPool]
+                                entryPool[#entryPool] = nil
+                            else
+                                entry = {}
+                            end
+                            entry.frame = hf
+                            entry.index = i
+                            entry.isHeader = true
+                            newVis[#newVis + 1] = entry
+                        end
+                    elseif rowVisible then
                         local sig = it.rowReuseSig
                         local frameReused = false
                         local frame = nil
@@ -789,6 +856,7 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                             end
                             entry.frame = frame
                             entry.index = i
+                            entry.isHeader = nil
                             newVis[#newVis + 1] = entry
                         end
                     end
@@ -802,13 +870,16 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             for j = 1, #oldVis do
                 local f = oldVis[j] and oldVis[j].frame
                 if f and f._vlm_stale then
-                    ReleaseOneVirtualRow(f)
+                    ReleaseOneVirtualRow(f, oldVis[j].isHeader)
                     f._vlm_stale = nil
                 end
             end
         end
 
         container._virtualVisibleFrames = newVis
+        if onVisibleChanged then
+            onVisibleChanged(newVis)
+        end
     end
 
     RegisterVirtualUpdater(mainFrame, container, UpdateVisible)
@@ -819,6 +890,10 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
         if scrollChild then
             RefreshContainerTopOffsetCache(container, scrollChild, containerTopOffset)
         end
+    end
+
+    if opts.noStaggeredRepaint == true then
+        return totalHeight
     end
 
     -- Staggered layout passes (0 / 0.1 / 0.25s) in one chain to avoid three independent timer registrations.
@@ -880,6 +955,24 @@ local function RefreshVirtualListFlatList(mainFrame, container, flatList)
     return totalHeight
 end
 
+--- Release every row/header the last paint of `container` shows back to its pools (no repaint).
+--- For callers that recycle section wraps before the next SetupVirtualList (rows parented under shells
+--- would otherwise fail the under-container check once their wrap is reparented).
+local function ReleaseVisibleRows(container)
+    local fn = container and container._vlm_releaseVisible
+    if fn then
+        fn()
+    end
+end
+
+--- Re-window `container` against its current flat list (same table may have been refilled in place).
+local function RepaintVisible(container)
+    local fn = container and container._virtualUpdater
+    if fn then
+        fn()
+    end
+end
+
 local function ClearVirtualScroll(mainFrame)
     if mainFrame then
         mainFrame._virtualScrollUpdaters = nil
@@ -928,4 +1021,6 @@ ns.VirtualListModule = {
     ResolveScrollTopOffset = ResolveScrollTopOffset,
     RefreshContainerTopOffsetCache = RefreshContainerTopOffsetCache,
     RelayoutVisibleRowsOnly = ns.UI_VirtualListRelayoutVisibleRowsOnly,
+    ReleaseVisibleRows = ReleaseVisibleRows,
+    RepaintVisible = RepaintVisible,
 }

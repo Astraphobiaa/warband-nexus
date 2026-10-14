@@ -426,8 +426,8 @@ end
 
 local _seasonAmountBindings = setmetatable({}, { __mode = "k" })
 local _pveBountyBindings = setmetatable({}, { __mode = "k" })
-local PVE_BOUNTY_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-local PVE_BOUNTY_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+local PVE_BOUNTY_CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+local PVE_BOUNTY_CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
 
 local function ApplyPvEBountyBindingText(fs, entry)
     if not fs or not fs.SetText or not entry then return end

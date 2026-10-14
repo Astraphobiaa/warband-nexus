@@ -8,7 +8,8 @@ ns.ReminderSetAlertDialog = ns.ReminderSetAlertDialog or {}
 --[[ WN_FACTORY: Loads after SharedWidgets / WindowFactory in `WarbandNexus.toc`.
      `Factory` is resolved inside `Show` on first build (runtime).
 
-     Remaining intentional raw `CreateFrame`: none — modal shell + hosts via `H.Container` / Factory scroll/edit.
+     Remaining intentional raw `CreateFrame`: none — modal shell via `ns.UI_CreateExternalWindow` (persistent),
+     hosts via `H.Container` / Factory scroll/edit.
 ]]
 
 local reminderDialog = nil
@@ -46,8 +47,9 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local Factory = ns.UI.Factory -- valid at first dialog build only (SharedWidgets already loaded).
         local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
         local UI_SP = ns.UI_SPACING or {}
-        local sideInset = UI_SP.SIDE_MARGIN or 14
-        local afterEl = UI_SP.AFTER_ELEMENT or 8
+        -- One side pad for every popup (UI_LAYOUT.PAGE_STACK.SIDE); body starts one pad below the header.
+        local pageStack = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK) or {}
+        local sideInset = pageStack.SIDE or UI_SP.SIDE_MARGIN or 12
         local scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
         local rowGap = 22
         local zoneSubInset = sideInset + (UI_SP.SUBROW_EXTRA_INDENT or 12)
@@ -87,102 +89,26 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local controlChrome = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
             or COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
 
-        local f = H.Container(UIParent, dialogW, dialogH, false, "WarbandNexus_ReminderDialog")
-        f:SetSize(dialogW, dialogH)
-        local reminderPosKey = "WarbandNexus_ReminderDialog"
-        local function SaveReminderPosition()
-            if ns.WindowManager and ns.WindowManager.SavePosition then
-                ns.WindowManager:SavePosition(f, reminderPosKey)
-            end
-        end
-        if not (ns.WindowManager and ns.WindowManager.RestorePosition
-                and ns.WindowManager:RestorePosition(f, reminderPosKey)) then
-            f:SetPoint("CENTER")
-        end
-        f:EnableMouse(true)
-        f:SetMovable(true)
+        -- Standard external shell (header, icon, close, ESC, drag, UI scale, border, click-outside).
+        -- persistent: built once and re-shown; f.Close() only hides. Global name stays
+        -- "WarbandNexus_ReminderDialog" (Core.lua EPHEMERAL_WINDOWS combat hide).
+        local CreateExternalWindow = ns.UI_CreateExternalWindow
+        if not CreateExternalWindow then return end
+        local f, shellContent = CreateExternalWindow({
+            name = "ReminderDialog",
+            title = (L and L["SET_ALERT_TITLE"]) or "Set Alert",
+            icon = GetReminderToastIconTexture(),
+            iconIsAtlas = true,
+            width = dialogW,
+            height = dialogH,
+            persistent = true,
+        })
+        if not f or not shellContent then return end
+        f._shellContent = shellContent
 
-        if ns.WindowManager then
-            ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.POPUP)
-            ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP)
-            ns.WindowManager:InstallESCHandler(f)
-        else
-            f:SetFrameStrata("FULLSCREEN_DIALOG")
-            f:SetFrameLevel(200)
-            f:RegisterForDrag("LeftButton")
-            f:SetScript("OnDragStart", f.StartMoving)
-            f:SetScript("OnDragStop", function(self)
-                self:StopMovingOrSizing()
-                SaveReminderPosition()
-            end)
-        end
-
-        if ApplyVisuals then
-            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop())
-                or COLORS.bg or { 0.04, 0.04, 0.06, 0.98 }
-            local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.75 or 0.9
-            ApplyVisuals(f, shell, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], ba })
-        end
-
-        if ns.UI_RegisterScaledFrame then
-            ns.UI_RegisterScaledFrame(f)
-        elseif ns.UI_ApplyAddonUIScale then
-            ns.UI_ApplyAddonUIScale(f)
-        end
-
-        local rdShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
-        local rdInset = rdShell.FRAME_CONTENT_INSET or 2
-        local rdHdrH = rdShell.HEADER_BAR_HEIGHT or 40
-        local header = H.Container(f, 1, rdHdrH, false)
-        header:SetHeight(rdHdrH)
-        header:SetPoint("TOPLEFT", rdInset, -rdInset)
-        header:SetPoint("TOPRIGHT", -rdInset, -rdInset)
-        header:SetFrameLevel(f:GetFrameLevel() + 6)
-        f._reminderHeaderShell = header
-        if ApplyVisuals then
-            ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.55})
-        end
-
-        local closeBtn = Factory:CreateButton(header, 28, 28, false)
-        closeBtn:SetSize(28, 28)
-        closeBtn:SetPoint("RIGHT", header, "RIGHT", -afterEl, 0)
-        if ApplyVisuals then
-            local closeBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or controlChrome
-            ApplyVisuals(closeBtn, closeBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
-        end
-        local closeIcon = closeBtn:CreateTexture(nil, "OVERLAY")
-        closeIcon:SetSize(16, 16)
-        closeIcon:SetPoint("CENTER")
-        local closeAtlasOk = pcall(function()
-            closeIcon:SetAtlas("uitools-icon-close", false)
-        end)
-        if not closeAtlasOk then
-            closeIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
-        end
-        local closeR, closeG, closeB = 0.92, 0.35, 0.35
-        if ns.UI_GetSemanticRedColor then closeR, closeG, closeB = ns.UI_GetSemanticRedColor() end
-        closeIcon:SetVertexColor(closeR, closeG, closeB)
-        closeBtn:SetScript("OnClick", function()
-            f:Hide()
-        end)
-
-        local headerTitle = FontManager:CreateFontString(header, "title", "OVERLAY")
-        headerTitle:SetPoint("LEFT", header, "LEFT", afterEl, 0)
-        headerTitle:SetPoint("RIGHT", closeBtn, "LEFT", -afterEl, 0)
-        headerTitle:SetJustifyH("LEFT")
-        headerTitle:SetMaxLines(1)
-        headerTitle:SetText((L and L["SET_ALERT_TITLE"]) or "Set Alert")
-        ns.UI_SetTextColorRole(headerTitle, "Bright")
-        f.headerTitle = headerTitle
-
-        header:EnableMouse(true)
-        if ns.WindowManager and ns.WindowManager.InstallDragHandler then
-            ns.WindowManager:InstallDragHandler(header, f, SaveReminderPosition)
-        end
-
-        local planRow = H.Container(f, 1, 1, false)
-        planRow:SetPoint("TOPLEFT", header, "BOTTOMLEFT", sideInset, -10)
-        planRow:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -sideInset, -10)
+        local planRow = H.Container(shellContent, 1, 1, false)
+        planRow:SetPoint("TOPLEFT", shellContent, "TOPLEFT", sideInset, -sideInset)
+        planRow:SetPoint("TOPRIGHT", shellContent, "TOPRIGHT", -sideInset, -sideInset)
         planRow:SetHeight(34)
         f.planRow = planRow
 
@@ -221,9 +147,9 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         planPointsFs:Hide()
         f.planPointsFs = planPointsFs
 
-        local bodyHost = H.Container(f, 1, 1, false)
+        local bodyHost = H.Container(shellContent, 1, 1, false)
         bodyHost:SetPoint("TOPLEFT", planRow, "BOTTOMLEFT", 0, -8)
-        bodyHost:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -sideInset, footerH)
+        bodyHost:SetPoint("BOTTOMRIGHT", shellContent, "BOTTOMRIGHT", -sideInset, footerH)
         f.reminderBodyHost = bodyHost
         bodyHost:SetScript("OnSizeChanged", function()
             if f.LayoutDialogHeights then
@@ -588,8 +514,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local daysEditBg = H.Container(daysCol, 40, 24, false)
         daysEditBg:SetPoint("LEFT", f.daysBeforeCheck, "RIGHT", 6, 0)
-        if ApplyVisuals then
-            ApplyVisuals(daysEditBg, controlChrome, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
+        if ns.UI_ApplyInputChrome then
+            ns.UI_ApplyInputChrome(daysEditBg)
         end
         daysEditBg:EnableMouse(true)
 
@@ -825,9 +751,9 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local btnW, btnH = 128, 32
         local btnGap = 10
 
-        local saveBtn = H.Button(f, btnW, btnH, false)
+        local saveBtn = H.Button(shellContent, btnW, btnH, false)
         saveBtn:SetSize(btnW, btnH)
-        saveBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -btnGap * 0.5, 12)
+        saveBtn:SetPoint("BOTTOMRIGHT", shellContent, "BOTTOM", -btnGap * 0.5, 12)
         local saveTxt = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
         saveTxt:SetPoint("CENTER")
         saveTxt:SetText((L and L["SAVE"]) or "Save")
@@ -839,9 +765,9 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
         f.saveBtn = saveBtn
 
-        local removeBtn = H.Button(f, btnW, btnH, false)
+        local removeBtn = H.Button(shellContent, btnW, btnH, false)
         removeBtn:SetSize(btnW, btnH)
-        removeBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", btnGap * 0.5, 12)
+        removeBtn:SetPoint("BOTTOMLEFT", shellContent, "BOTTOM", btnGap * 0.5, 12)
         local removeTxt = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")
         removeTxt:SetPoint("CENTER")
         removeTxt:SetText((L and L["REMOVE_ALERT"]) or "Remove Alert")
@@ -913,15 +839,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         function f:ApplyThemeChrome()
             local c = ns.UI_COLORS or COLORS
-            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or c.bg
-            local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.75 or 0.9
-            if ApplyVisuals and shell and c.accent then
-                ApplyVisuals(self, shell, { c.accent[1], c.accent[2], c.accent[3], ba })
-            end
-            if self._reminderHeaderShell and ApplyVisuals and c.accentDark then
-                ApplyVisuals(self._reminderHeaderShell,
-                    { c.accentDark[1], c.accentDark[2], c.accentDark[3], 1 },
-                    { c.accent[1], c.accent[2], c.accent[3], 0.55 })
+            if ns.UI_RefreshExternalWindowChrome then
+                ns.UI_RefreshExternalWindowChrome(self)
             end
             local cards = self._themeCards
             if cards and ApplyVisuals then
@@ -1256,12 +1175,12 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             prof.plansReminderFocusPlanID = nil
         end
 
-        f:Hide()
+        f.Close()
     end)
 
     f.removeBtn:SetScript("OnClick", function()
         addon:RemovePlanReminder(f._currentPlanID)
-        f:Hide()
+        f.Close()
     end)
 
     if f._layoutReminderGrids then

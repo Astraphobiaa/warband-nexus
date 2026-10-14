@@ -39,6 +39,16 @@ local function ThemeTextHex(role)
     return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
 end
 
+--- `|cffrrggbb` from a theme RGB getter (light-mode aware); `fallback` when the getter is missing.
+---@param getter function|nil returns r, g, b
+---@param fallback string
+local function SemanticHex(getter, fallback)
+    if not getter then return fallback end
+    local r, g, b = getter()
+    if not r then return fallback end
+    return string.format("|cff%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+end
+
 local function SemanticGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
@@ -218,13 +228,13 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
 
     local trackedTitle = ns.FontManager:CreateFontString(trackedFrame, "header", "OVERLAY")
     trackedTitle:SetPoint("TOP", 0, -12)
-    trackedTitle:SetText("|cff00ff00" .. ((ns.L and ns.L["TRACKED_LABEL"]) or "Tracked") .. "|r")
+    trackedTitle:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, "|cff00ff00") .. ((ns.L and ns.L["TRACKED_LABEL"]) or "Tracked") .. "|r")
 
     local trackedDesc = ns.FontManager:CreateFontString(trackedFrame, "body", "OVERLAY")
     trackedDesc:SetPoint("TOP", trackedTitle, "BOTTOM", 0, -5)
     trackedDesc:SetWidth(185)
     trackedDesc:SetJustifyH("CENTER")
-    trackedDesc:SetText("|cff88ff88" .. ((ns.L and ns.L["TRACKED_DETAILED_LINE1"]) or "Full detailed data") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["TRACKED_DETAILED_LINE2"]) or "All features enabled") .. "|r")
+    trackedDesc:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, "|cff88ff88") .. ((ns.L and ns.L["TRACKED_DETAILED_LINE1"]) or "Full detailed data") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["TRACKED_DETAILED_LINE2"]) or "All features enabled") .. "|r")
 
     local untrackedFrame = ShellButton(dialog, 200, 75, false)
     untrackedFrame:SetPoint("TOP", charNameText, "BOTTOM", 110, optionsY)
@@ -248,13 +258,13 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
 
     local untrackedTitle = ns.FontManager:CreateFontString(untrackedFrame, "header", "OVERLAY")
     untrackedTitle:SetPoint("TOP", 0, -12)
-    untrackedTitle:SetText("|cffff4444" .. ((ns.L and ns.L["UNTRACKED_LABEL"]) or "Untracked") .. "|r")
+    untrackedTitle:SetText(SemanticHex(ns.UI_GetSemanticRedColor, "|cffff4444") .. ((ns.L and ns.L["UNTRACKED_LABEL"]) or "Untracked") .. "|r")
 
     local untrackedDesc = ns.FontManager:CreateFontString(untrackedFrame, "body", "OVERLAY")
     untrackedDesc:SetPoint("TOP", untrackedTitle, "BOTTOM", 0, -5)
     untrackedDesc:SetWidth(185)
     untrackedDesc:SetJustifyH("CENTER")
-    untrackedDesc:SetText("|cffff8888" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
+    untrackedDesc:SetText(SemanticHex(ns.UI_GetSemanticRedColor, "|cffff8888") .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
 
     if not InCombatLockdown() then
         dialog:EnableKeyboard(true)
@@ -314,6 +324,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.4, 0.2, 0.58 }
 
     local dialog, contentFrame, header
+    local isExternal = false
     if CreateExternalWindow then
         dialog, contentFrame, header = CreateExternalWindow({
             name = "TrackingChangeDialog",
@@ -323,6 +334,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
             height = 160,
             preventDuplicates = true,
         })
+        isExternal = (dialog ~= nil and contentFrame ~= nil)
     end
 
     if not dialog or not contentFrame then
@@ -341,16 +353,19 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
         contentFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -10, 10)
     end
 
-    dialog:SetMovable(true)
-    dialog:EnableMouse(true)
-    dialog:RegisterForDrag("LeftButton")
-    dialog:SetScript("OnDragStart", dialog.StartMoving)
-    dialog:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        if ns.WindowManager and ns.WindowManager.SavePosition and self.GetName and self:GetName() then
-            ns.WindowManager:SavePosition(self, self:GetName())
-        end
-    end)
+    -- WindowFactory shell already owns header drag + ESC; only the bare fallback needs its own.
+    if not isExternal then
+        dialog:SetMovable(true)
+        dialog:EnableMouse(true)
+        dialog:RegisterForDrag("LeftButton")
+        dialog:SetScript("OnDragStart", dialog.StartMoving)
+        dialog:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            if ns.WindowManager and ns.WindowManager.SavePosition and self.GetName and self:GetName() then
+                ns.WindowManager:SavePosition(self, self:GetName())
+            end
+        end)
+    end
 
     local questionText = ns.FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     questionText:SetPoint("TOP", contentFrame, "TOP", 0, -8)
@@ -368,6 +383,16 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
         ))
     end
 
+    -- External shell: Close() releases overlay, scale registration and WindowManager entry.
+    local function CloseChangeDialog()
+        if isExternal and dialog.Close then
+            dialog.Close()
+            return
+        end
+        dialog:Hide()
+        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
+    end
+
     local btnW, btnH, btnMarginBottom, gap = 100, 28, 8, 16
 
     local yesCard = ShellButton(dialog, btnW, btnH, false)
@@ -380,12 +405,11 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
         if ns.CharacterService then
             ns.CharacterService:ConfirmCharacterTracking(addon, charKey, enableTracking)
         end
-        dialog:Hide()
-        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
+        CloseChangeDialog()
     end)
     local yesText = ns.FontManager:CreateFontString(yesCard, "body", "OVERLAY")
     yesText:SetPoint("CENTER")
-    yesText:SetText("|cff90ff90" .. ((ns.L and ns.L["CONFIRM"]) or "Confirm") .. "|r")
+    yesText:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, "|cff90ff90") .. ((ns.L and ns.L["CONFIRM"]) or "Confirm") .. "|r")
 
     local noCard = ShellButton(dialog, btnW, btnH, false)
     noCard:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", (gap / 2), btnMarginBottom)
@@ -393,38 +417,49 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     noCard:SetScript("OnEnter", function(self) ApplyChoiceCardChrome(self, false, true) end)
     noCard:SetScript("OnLeave", function(self) ApplyChoiceCardChrome(self, false, false) end)
     noCard:SetScript("OnClick", function()
-        dialog:Hide()
-        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
+        CloseChangeDialog()
     end)
     local noText = ns.FontManager:CreateFontString(noCard, "body", "OVERLAY")
     noText:SetPoint("CENTER")
-    noText:SetText("|cffff8080" .. (CANCEL or "Cancel") .. "|r")
+    noText:SetText(SemanticHex(ns.UI_GetSemanticRedColor, "|cffff8080") .. (CANCEL or "Cancel") .. "|r")
 
-    if not InCombatLockdown() then
-        dialog:EnableKeyboard(true)
-        dialog:SetPropagateKeyboardInput(true)
-    end
-    dialog:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-            self:Hide()
-        else
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+    if not isExternal then
+        if not InCombatLockdown() then
+            dialog:EnableKeyboard(true)
+            dialog:SetPropagateKeyboardInput(true)
         end
-    end)
+        dialog:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+                self:Hide()
+            else
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            end
+        end)
+    end
 
-    dialog:SetScript("OnHide", function(self)
-        self:SetScript("OnHide", nil)
+    -- HookScript on the WindowFactory shell: its own OnHide hides the click-outside overlay.
+    -- SetScript here replaced it and left an invisible full-screen mouse blocker behind
+    -- (same trap documented at the DeleteCharacterDialog in CharactersUI_Row.lua).
+    local function OnChangeDialogHide(self)
+        if not isExternal then self:SetScript("OnHide", nil) end
         if ns.UI_UnregisterScaledFrame then
             ns.UI_UnregisterScaledFrame(self)
         end
         if ns.UI_RecycleBin then self:SetParent(ns.UI_RecycleBin) else self:SetParent(nil) end
         _G["WarbandNexusTrackingChangeDialog"] = nil
         addon.trackingChangeDialog = nil
-    end)
+    end
+    if isExternal then
+        dialog:HookScript("OnHide", OnChangeDialogHide)
+    else
+        dialog:SetScript("OnHide", OnChangeDialogHide)
+    end
 
     dialog._wnRefreshTheme = function()
-        if ns.UI_ApplyMainWindowShellFill and dialog._wnExternalShell then
+        if isExternal then
+            -- WindowFactory shell repaints through the border/main-shell registries.
+        elseif ns.UI_ApplyMainWindowShellFill and dialog._wnExternalShell then
             ns.UI_ApplyMainWindowShellFill(dialog)
         elseif ns.UI_ApplyVisuals then
             local ac = ns.UI_COLORS and ns.UI_COLORS.accent or accent

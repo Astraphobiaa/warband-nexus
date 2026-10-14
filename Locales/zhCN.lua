@@ -301,6 +301,8 @@ L["CUSTOM_HEADER_COL_CHARACTER"] = "角色"
 L["CUSTOM_HEADER_COL_LEVEL"] = "等级"
 L["CUSTOM_HEADER_COL_REALM"] = "服务器"
 L["CUSTOM_HEADER_COL_SECTION"] = "分组"
+L["CHARS_COL_GUILD"] = "公会"
+L["CHARS_COL_LAST_SEEN"] = "上次在线"
 L["CUSTOM_HEADER_SECTION_NONE"] = NONE or "无"
 L["CUSTOM_HEADER_LOCK_TOOLTIP_TITLE"] = "锁定分组"
 L["CUSTOM_HEADER_LOCK_TOOLTIP_DESC"] = "锁定此分组，防止其中的角色被意外移动至其他分组。"
@@ -1232,23 +1234,43 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V3518"] = [=[v3.5.18 (2026-10-12)
+L["CHANGELOG_V360"] = [=[v3.6.0 (2026-10-14)
 
-Centralized daily and weekly reset system, profession slot preservation and self-healing, and native in-game clock formatting.
+Full support for patch 12.1.5, a sharper and more consistent interface, a reworked Bank tab and a broad performance pass.
 
 Added:
-- Added centralized daily and weekly reset management that automatically refreshes lockouts, plans, and quests on reset.
+- Added animated entrance effects to notifications (glow, icon flash and shine) that scale with how important the alert is.
+- Added a close button to the Try Count window.
 
 Updated:
-- Updated reset countdowns and clock times to natively respect your in-game 12-hour or 24-hour time preferences.
+- Updated the addon for patch 12.1.5.
+- Borders, dividers and lines now stay crisp and the same thickness at any UI scale, and no longer flicker while you resize or scroll a window.
+- Every border in the addon now has the same weight: cards, buttons, dropdowns, search bars, input fields and sliders.
+- Headers, tabs, search bars and content now use the same spacing and alignment on every tab, so pages no longer shift when you switch between them.
+- Tables across the addon share one look: matching row heights, column spacing, sort arrows and status icons.
+- Turning a module off now fully stops its background work, unless another enabled module needs that data.
+- Bank tab reorganized: Bags and Bank show your current character, Warband shows your other characters' items (Personal) and your Warband Bank (Warband), and Guild Bank lists each character's guild with its stored items.
+- All pop-up windows now share the same title bar, close button, Escape-to-close, dragging and UI scale, including Money Logs, Gold Target, Reagent Deposit, Mail Details, Reminders, plan windows and character dialogs.
+- The Custom Plan and Weekly Vault windows have a cleaner, more compact layout with evenly spaced fields.
+- Windows that hold a table now size it to fit, so no column is cut off (Money Logs, Reagent Deposit).
+- Removed the "Recent Obtains" title and tightened the spacing on the Collections Recent view.
+- Removed the icon from the Filter button.
+- Faster tab switching and scrolling, with less memory churn in Storage, tooltips, lists and the Weekly Vault button.
 
 Fixed:
-- Fixed secondary profession slots occasionally being wiped from character data upon logout or partial background scans.
-- Fixed switching between professions inside the Trade Skill window failing to track the newly selected profession.
-- Fixed missing profession slots on alt characters by automatically reconstructing them from saved progression data.
-- Fixed stale Mythic+ keystones and weekly lockouts failing to clear immediately when the weekly reset boundary passes.
-- Fixed an infinite UI redraw loop occurring when opening the Professions tab.
-- Fixed profession rows and column dividers failing to render completely on characters without scanned recipe data.
+- Fixed errors caused by item and coin functions that patch 12.1.5 removed (including Collections scanning errors).
+- Fixed the "Weekly Vault Ready" reminder not appearing at login.
+- Fixed currencies, guild, specialization and item level sometimes showing blank after a temporary data hiccup; the last known value is now kept.
+- Fixed Mythic+ weekly best not showing correctly.
+- Fixed Bank rows overlapping after switching tabs, and the Personal section expanding or collapsing everything at once.
+- Fixed the Guild Bank losing items from tabs you had not opened during that visit, and characters' guilds not being listed.
+- Fixed the To-Do empty-state card being wider than the header and search bar.
+- Fixed the Money Logs table not filling the window and the Amount column being cut off.
+- Fixed the Gold Target input field having no border.
+- Fixed the Gear tab character selector looking thinner than the buttons next to it.
+- Fixed an invisible layer that blocked your next click after confirming character tracking.
+- Fixed the Mail Details window leaving an invisible layer behind when reopened.
+- Fixed search box hint text not hiding when you click into the box.
 
 CurseForge: Warband Nexus]=]
 

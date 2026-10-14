@@ -94,17 +94,9 @@ local function ResolveIconShellBackdrop()
     return { 0.12, 0.12, 0.14, 0.95 }
 end
 
+--- Surface tier color: single implementation lives in SharedWidgets.lua (`ns.UI_ResolveSurfaceTierColor`).
 local function ResolveSurfaceTierColor(tier)
-    if ns.UI_ResolveSurfaceTierColor then
-        return ns.UI_ResolveSurfaceTierColor(tier)
-    end
-    local C = COLORS or {}
-    if tier == "rowEven" then
-        return C.surfaceRowEven or (UI_SPACING and UI_SPACING.ROW_COLOR_EVEN) or { 0.112, 0.112, 0.138, 0.96 }
-    elseif tier == "rowOdd" then
-        return C.surfaceRowOdd or (UI_SPACING and UI_SPACING.ROW_COLOR_ODD) or { 0.090, 0.090, 0.112, 0.96 }
-    end
-    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
+    return ns.UI_ResolveSurfaceTierColor(tier)
 end
 
 --[[
@@ -924,7 +916,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         RegisterScrollChrome(scrollBar)
         
         -- Create pixel-perfect borders for track
-        local pixelScale = GetPixelScale(scrollBar)
+        local pixelScale = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(scrollBar)) or GetPixelScale(scrollBar)
         
         if not scrollBar.BorderLeft then
             scrollBar.BorderLeft = scrollBar:CreateTexture(nil, "BORDER")
@@ -1019,7 +1011,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollUpBtn.bg = upBg
             
             -- Pixel-perfect borders (matching scroll bar)
-            local pixelScale = GetPixelScale(scrollBar.ScrollUpBtn)
+            local pixelScale = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(scrollBar.ScrollUpBtn)) or GetPixelScale(scrollBar.ScrollUpBtn)
             
             local upBorderTop = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
             upBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
@@ -1113,7 +1105,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollDownBtn.bg = downBg
             
             -- Pixel-perfect borders (matching scroll bar)
-            local pixelScale = GetPixelScale(scrollBar.ScrollDownBtn)
+            local pixelScale = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(scrollBar.ScrollDownBtn)) or GetPixelScale(scrollBar.ScrollDownBtn)
             
             local downBorderTop = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
             downBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
@@ -1864,7 +1856,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     RegisterScrollChrome(hBar)
 
     -- Pixel borders
-    local pixelScale = GetPixelScale(hBar)
+    local pixelScale = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(hBar)) or GetPixelScale(hBar)
     hBar.BorderLeft = hBar:CreateTexture(nil, "BORDER")
     hBar.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
     hBar.BorderLeft:SetPoint("TOPLEFT", hBar, "TOPLEFT", 0, 0)
@@ -2283,25 +2275,14 @@ function ns.UI.Factory:CreateThemedSlider(parent, opts)
     slider:SetObeyStepOnDrag(true)
     slider:EnableMouse(true)
 
-    if slider.SetBackdrop then
-        slider:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            tile = false, tileSize = 1, edgeSize = 2,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
-        })
-        local trackBg = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.1, 0.1, 0.12, 1 }
-        slider:SetBackdropColor(trackBg[1], trackBg[2], trackBg[3], trackBg[4] or 1)
-        local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
-        slider:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.6)
-        slider._wnMainShellBackdrop = true
+    -- Track: standard border quartet (UI_GetBorderThickness) like every other control.
+    local trackBg = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.1, 0.1, 0.12, 1 }
+    local trackAccent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(slider, trackBg, { trackAccent[1], trackAccent[2], trackAccent[3], 0.6 })
         slider._borderType = "accent"
         slider._borderAlpha = 0.6
         slider._bgType = "controlChromeHover"
-        if not slider._borderRegistered and ns.BORDER_REGISTRY then
-            slider._borderRegistered = true
-            table.insert(ns.BORDER_REGISTRY, slider)
-        end
     end
 
     local thumb = slider:CreateTexture(nil, "OVERLAY")
@@ -2316,7 +2297,28 @@ function ns.UI.Factory:CreateThemedSlider(parent, opts)
     return slider
 end
 
---- Create an EditBox
+--- Standard text-input chrome: control fill + accent stroke on the shared border quartet
+--- (UI_GetBorderThickness). Apply to the input host (or a bare EditBox); theme refresh
+--- repaints it through BORDER_REGISTRY. Search/filter bars keep UI_ApplySearchBoxChrome.
+---@param frame Frame
+function ns.UI_ApplyInputChrome(frame)
+    if not frame or frame._wnBlizzardEditBox then return end
+    if not ns.UI_ApplyVisuals then return end
+    local C = ns.UI_COLORS or {}
+    local ac = C.accent or { 0.5, 0.4, 0.7 }
+    local bg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
+        or C.bgCard or { 0.1, 0.1, 0.12, 1 }
+    ns.UI_ApplyVisuals(frame, bg, { ac[1], ac[2], ac[3], 0.6 })
+    frame._borderType = "accent"
+    frame._borderAlpha = 0.6
+    frame._bgType = "controlChrome"
+end
+
+function ns.UI.Factory:ApplyInputChrome(frame)
+    ns.UI_ApplyInputChrome(frame)
+end
+
+--- Create an EditBox (bare: put it in a host styled with UI_ApplyInputChrome / UI_ApplySearchBoxChrome)
 ---@return EditBox editbox
 function ns.UI.Factory:CreateEditBox(parent)
     if not parent then return nil end
@@ -2352,691 +2354,6 @@ function ns.UI.Factory:CreateEditBox(parent)
     return editBox
 end
 
---- Apply alternating row background color to any frame.
---- Central helper that replaces inline ROW_COLOR_EVEN/ODD logic across all tabs.
---- Works with both newly created rows and pooled/reused rows.
-function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
-    if not row then return end
-    local tier = (rowIndex % 2 == 0) and "rowEven" or "rowOdd"
-    local bgColor = ResolveSurfaceTierColor(tier)
-    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
-        bgColor = { bgColor[1], bgColor[2], bgColor[3], (bgColor[4] or 1) * 0.22 }
-    end
-    if not row.bg then
-        row.bg = row:CreateTexture(nil, "BACKGROUND")
-        row.bg:SetAllPoints()
-    end
-    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
-    row.bgColor = bgColor
-end
-
----Apply (or clear) the online-character highlight on a character row or header.
----Uses the live theme accent color so it respects user customization.
-function ns.UI.Factory:ApplyOnlineCharacterHighlight(frame, isOnline)
-    if not frame then return end
-    local ac = COLORS and COLORS.accent or ns.UI_COLORS and ns.UI_COLORS.accent
-    if isOnline and ac then
-        if not frame.bg then
-            frame.bg = frame:CreateTexture(nil, "BACKGROUND")
-            frame.bg:SetAllPoints()
-        end
-        local light = ns.UI_IsLightMode and ns.UI_IsLightMode()
-        if light and ns.UI_GetRowSelectionTint then
-            local tint = ns.UI_GetRowSelectionTint()
-            frame.bg:SetColorTexture(tint[1], tint[2], tint[3], tint[4] or 1)
-        else
-            local r, g, b = ac[1] * 0.55, ac[2] * 0.55, ac[3] * 0.55
-            frame.bg:SetColorTexture(r * 0.4, g * 0.4, b * 0.4, 1)
-        end
-        if not frame.onlineAccent then
-            frame.onlineAccent = frame:CreateTexture(nil, "BORDER")
-            frame.onlineAccent:SetWidth(3)
-            frame.onlineAccent:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-            frame.onlineAccent:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-        end
-        frame.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], light and 0.85 or 1)
-        frame.onlineAccent:Show()
-    else
-        if frame.onlineAccent then frame.onlineAccent:Hide() end
-        if frame.bg and frame.bgColor then
-            local c = frame.bgColor
-            frame.bg:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
-        end
-    end
-end
-
---- Create a data row with alternating background color.
---- Standard pattern for creating new rows with proper positioning and alternating bg.
---- For pooled/reused rows, use Factory:ApplyRowBackground() instead.
----@return Frame row, number newYOffset
-function ns.UI.Factory:CreateDataRow(parent, yOffset, rowIndex, height)
-    if not parent then return nil, yOffset end
-
-    local h = height or UI_SPACING.ROW_HEIGHT
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(h)
-    row:SetPoint("TOPLEFT", 0, -yOffset)
-    row:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
-    row:Show()
-
-    self:ApplyRowBackground(row, rowIndex)
-
-    return row, yOffset + h
-end
-
---- Create a collapsible section header with border, arrow, title, hover.
---- Uses ApplyVisuals for consistent border rendering (same as CharactersUI/PlansUI headers).
----@return number newYOffset, Frame header
-function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleStr, rightStr, onToggle, height, leftIndent)
-    if not parent then return yOffset, nil end
-
-    local sp = UI_SPACING
-    local h = height or sp.SECTION_COLLAPSE_HEADER_HEIGHT or sp.HEADER_HEIGHT
-    local indent = leftIndent or 0
-    local isClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
-    local header
-    if isClassic then
-        header = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-        header._wnBlizzardButton = true
-        header._wnClassicCollapsibleHeader = true
-        if header.SetText then
-            header:SetText("")
-        end
-        if ns.UI_NormalizeBlizzardButtonChrome then
-            ns.UI_NormalizeBlizzardButtonChrome(header)
-        end
-    else
-        header = CreateFrame("Button", nil, parent)
-    end
-    header:SetHeight(h)
-    header:SetPoint("TOPLEFT", indent, -yOffset)
-    header:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
-    -- Draw above virtual-scroll row frames so nothing shows through behind header
-    header:SetFrameLevel((parent:GetFrameLevel() or 0) + 10)
-    header:Show()
-
-    local surf = COLORS.surfaceHeaderChrome or COLORS.surfaceElevated or COLORS.bgLight
-  -- Opaque background (1.0) so row text does not show through behind header
-    local sbr, sbg, sbb, sba = 0.45, 0.45, 0.5, 0.45
-    if ns.UI_GetSectionHeaderBorderRGBA then
-        sbr, sbg, sbb, sba = ns.UI_GetSectionHeaderBorderRGBA()
-    else
-        sbr, sbg, sbb = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-        sba = 0.45
-    end
-    if isClassic and not header._wnBlizzardButton and ns.UI_ApplyClassicListHeaderChrome then
-        ns.UI_ApplyClassicListHeaderChrome(header, { surf[1], surf[2], surf[3], 1 })
-        header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
-    elseif isClassic and not header._wnBlizzardButton and ns.UI_ApplyClassicCardPanelChrome then
-        ns.UI_ApplyClassicCardPanelChrome(header)
-        header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
-    elseif not isClassic then
-        ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, { sbr, sbg, sbb, sba })
-        header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
-        if ns.UI_ApplySectionChromeUnderlay then
-            ns.UI_ApplySectionChromeUnderlay(header)
-        end
-    end
-
-    -- Collapse/expand chevron (same control as tab section headers)
-    local collapseBtn = ns.UI_CreateCollapseExpandControl(header, not isCollapsed, { enableMouse = true })
-    local chevLeft = sp.SECTION_HEADER_FACTORY_CHEVRON_LEFT or 10
-    collapseBtn:SetPoint("LEFT", chevLeft + indent, 0)
-
-    -- Title text
-    local title = FontManager:CreateFontString(header, UIFontRole("factorySectionHeaderTitle"), "OVERLAY")
-    title:SetPoint("LEFT", collapseBtn, "RIGHT", 4, 0)
-    title:SetJustifyH("LEFT")
-    title:SetWordWrap(false)
-    title:SetMaxLines(1)
-
-    -- Right-side text (optional)
-    if rightStr then
-        local rightLabel = FontManager:CreateFontString(header, UIFontRole("factorySectionHeaderRight"), "OVERLAY")
-        rightLabel:SetPoint("RIGHT", header, "RIGHT", -sp.SIDE_MARGIN, 0)
-        rightLabel:SetJustifyH("RIGHT")
-        rightLabel:SetText(rightStr)
-        ns.UI_SetTextColorRole(rightLabel, "Bright")
-        rightLabel:SetTextColor(1, 1, 1, 1)
-        title:SetPoint("RIGHT", rightLabel, "LEFT", -6, 0)
-    end
-
-    title:SetText(titleStr)
-    ns.UI_SetTextColorRole(title, "Bright")
-
-    -- Click handlers
-    header:SetScript("OnClick", onToggle)
-    collapseBtn:SetScript("OnClick", onToggle)
-
-    -- Hover highlight (token-driven base from `surfaceElevated`; classic UIPanelButtonTemplate uses native hover)
-    header:SetScript("OnEnter", function()
-        if header._wnBlizzardButton then return end
-        if not header.SetBackdropColor then return end
-        local b = header._wnSectionHeaderBaseBg or header._wnThinBorderBg or header._wnPaneBackdropBg
-        if not b then return end
-        if isClassic then
-            header:SetBackdropColor(
-                math.min(1, b[1] * 1.08),
-                math.min(1, b[2] * 1.08),
-                math.min(1, b[3] * 1.08),
-                b[4] or 1
-            )
-            return
-        end
-        if ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetControlChromeHoverBackdrop then
-            local h = ns.UI_GetControlChromeHoverBackdrop()
-            header:SetBackdropColor(h[1], h[2], h[3], h[4] or 1)
-        else
-            header:SetBackdropColor(
-                math.min(1, b[1] * 1.12),
-                math.min(1, b[2] * 1.12),
-                math.min(1, b[3] * 1.12),
-                b[4] or 1
-            )
-        end
-    end)
-    header:SetScript("OnLeave", function()
-        if header._wnBlizzardButton then return end
-        if not header.SetBackdropColor then return end
-        local b = header._wnSectionHeaderBaseBg or header._wnThinBorderBg or header._wnPaneBackdropBg
-        if b then
-            header:SetBackdropColor(b[1], b[2], b[3], b[4] or 1)
-        end
-    end)
-
-    return yOffset + h, header
-end
-
-local COLLECTION_PLAN_SLOT_SIZE = math.floor(19 * 1.25 + 0.5)
-
-local function SetCollectionPlanSlotTooltip(btn, tip)
-    if not btn then return end
-    local hasTip = ns.CollectionsUI and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent
-        and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent(tip)
-    if not hasTip and type(tip) == "string" and tip ~= "" then
-        hasTip = true
-    end
-    if not hasTip then
-        btn:SetScript("OnEnter", nil)
-        btn:SetScript("OnLeave", nil)
-        return
-    end
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_NONE")
-        GameTooltip:ClearAllPoints()
-        GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", 4, 6)
-        GameTooltip:ClearLines()
-        local wR, wG, wB = 1, 1, 1
-        if type(tip) == "table" then
-            if tip.title and tip.title ~= "" then
-                GameTooltip:SetText(tip.title, wR, wG, wB)
-            end
-            local lines = tip.lines
-            if type(lines) == "table" then
-                for i = 1, #lines do
-                    local line = lines[i]
-                    if line and line ~= "" then
-                        GameTooltip:AddLine(line, wR, wG, wB, true)
-                    end
-                end
-            end
-        else
-            GameTooltip:SetText(tip, wR, wG, wB)
-        end
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-end
-
-local function CreateCollectionPlanSlotButton(row)
-    local b = CreateFrame("Button", nil, row)
-    b:SetSize(COLLECTION_PLAN_SLOT_SIZE, COLLECTION_PLAN_SLOT_SIZE)
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    b:Hide()
-    b:SetFrameLevel((row:GetFrameLevel() or 0) + 12)
-    local tex = b:CreateTexture(nil, "ARTWORK")
-    tex:SetAllPoints()
-    b._wnIcon = tex
-    b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    return b
-end
-
-local function EnsureCollectionRowPlanSlotButtons(row)
-    if not row then return end
-    if row.todoSlotBtn and row.trackSlotBtn then return end
-    if row.rowTodoIcon then
-        row.rowTodoIcon:Hide()
-    end
-    if row.rowTrackIcon then
-        row.rowTrackIcon:Hide()
-    end
-    row.todoSlotBtn = row.todoSlotBtn or CreateCollectionPlanSlotButton(row)
-    row.trackSlotBtn = row.trackSlotBtn or CreateCollectionPlanSlotButton(row)
-end
-
---- Collection list row: status icon (check/cross) + item icon + label. Same layout for Mounts, Pets, Achievements.
---- Caller sets position (virtual scroll). Use ApplyCollectionListRowContent to set content and selection.
----@return Frame row
-function ns.UI.Factory:CreateCollectionListRow(parent, height)
-    if not parent then return nil end
-    local h = height or UI_SPACING.ROW_HEIGHT
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(h)
-    row:EnableMouse(true)
-
-    local pad = UI_SPACING.SIDE_MARGIN or 10
-    local gap = 4
-    local collIconScale = 1.25
-    local statusSize = math.floor(16 * collIconScale + 0.5)
-    local iconSize = math.floor((UI_SPACING.ROW_ICON_SIZE or 20) * collIconScale + 0.5)
-
-    local statusIcon = row:CreateTexture(nil, "ARTWORK")
-    statusIcon:SetSize(statusSize, statusSize)
-    statusIcon:SetPoint("LEFT", pad, 0)
-    row.statusIcon = statusIcon
-
-    row.todoSlotBtn = CreateCollectionPlanSlotButton(row)
-    row.trackSlotBtn = CreateCollectionPlanSlotButton(row)
-
-    local iconBorder = self:CreateContainer(row, iconSize, iconSize, true)
-    if iconBorder then
-        if ns.UI_ApplyListRowIconChrome then
-            ns.UI_ApplyListRowIconChrome(iconBorder)
-        else
-            local shellBg = ResolveIconShellBackdrop()
-            local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
-            if ApplyVisuals then
-                ApplyVisuals(iconBorder, shellBg, { bc[1], bc[2], bc[3], 0.72 })
-            end
-        end
-        iconBorder:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
-        row._iconBorder = iconBorder
-    end
-    local iconHost = row._iconBorder or row
-    local icon = iconHost:CreateTexture(nil, "ARTWORK")
-    if iconBorder and iconBorder._wnListRowBareIcon then
-        icon:SetAllPoints(iconHost)
-    else
-        icon:SetPoint("TOPLEFT", iconHost, "TOPLEFT", 1, -1)
-        icon:SetPoint("BOTTOMRIGHT", iconHost, "BOTTOMRIGHT", -1, 1)
-    end
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    row.icon = icon
-
-    local label = FontManager:CreateFontString(row, UIFontRole("factoryDataRowLabel"), "OVERLAY")
-    label:SetPoint("LEFT", iconHost, "RIGHT", gap, 0)
-    label:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
-    label:SetJustifyH("LEFT")
-    label:SetWordWrap(false)
-    row.label = label
-
-    local rightLabel = FontManager:CreateFontString(row, UIFontRole("factoryDataRowRight"), "OVERLAY")
-    rightLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
-    rightLabel:SetJustifyH("RIGHT")
-    rightLabel:SetWordWrap(false)
-    rightLabel:Hide()
-    row.rightLabel = rightLabel
-
-    local leftMetaLabel = FontManager:CreateFontString(row, UIFontRole("factoryDataRowRight"), "OVERLAY")
-    leftMetaLabel:SetJustifyH("RIGHT")
-    leftMetaLabel:SetWordWrap(false)
-    leftMetaLabel:Hide()
-    row.leftMetaLabel = leftMetaLabel
-
-    return row
-end
-
-local function ApplyCollectionRowStatusIcon(statusIcon, isCollected)
-    if ns.UI_ApplyCollectionRowStatusIcon then
-        ns.UI_ApplyCollectionRowStatusIcon(statusIcon, isCollected == true)
-        return
-    end
-end
-
-local COLLECTION_ROW_META_EARNER_W = 116
-local COLLECTION_ROW_META_DATE_W = 92
-local COLLECTION_ROW_META_GAP = 12
-
-local function ApplyCollectionRowMetaLabelChrome(fs)
-    if not fs then return end
-    fs:SetTextColor(1, 1, 1, 1)
-end
-
-local function LayoutCollectionListRowMetaColumns(row, pad)
-    pad = pad or 10
-    local hasRight = row.rightLabel and row.rightLabel:IsShown()
-    local hasLeft = row.leftMetaLabel and row.leftMetaLabel:IsShown()
-    if not hasRight and not hasLeft then return nil end
-
-    if hasRight then
-        row.rightLabel:ClearAllPoints()
-        row.rightLabel:SetSize(COLLECTION_ROW_META_EARNER_W, row:GetHeight())
-        row.rightLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
-        row.rightLabel:SetJustifyH("RIGHT")
-        row.rightLabel:SetJustifyV("MIDDLE")
-        if row.rightLabel.SetMaxLines then row.rightLabel:SetMaxLines(1) end
-        ApplyCollectionRowMetaLabelChrome(row.rightLabel)
-    end
-    if hasLeft then
-        row.leftMetaLabel:ClearAllPoints()
-        row.leftMetaLabel:SetSize(COLLECTION_ROW_META_DATE_W, row:GetHeight())
-        if hasRight then
-            row.leftMetaLabel:SetPoint("RIGHT", row.rightLabel, "LEFT", -COLLECTION_ROW_META_GAP, 0)
-        else
-            row.leftMetaLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
-        end
-        row.leftMetaLabel:SetJustifyH("RIGHT")
-        row.leftMetaLabel:SetJustifyV("MIDDLE")
-        if row.leftMetaLabel.SetMaxLines then row.leftMetaLabel:SetMaxLines(1) end
-        ApplyCollectionRowMetaLabelChrome(row.leftMetaLabel)
-    end
-    return hasLeft and row.leftMetaLabel or row.rightLabel
-end
-
-local function CollectionListRowIconHost(row)
-    return row._iconBorder or row.icon
-end
-
-local function CollectionRowTextLeftX(row, pad, gap, slotGap)
-    local x = pad or 10
-    gap = gap or 4
-    slotGap = slotGap or 3
-    if row.statusIcon and row.statusIcon:IsShown() then
-        x = x + (row.statusIcon:GetWidth() or 0) + gap
-    end
-    if row.todoSlotBtn and row.todoSlotBtn:IsShown() then
-        x = x + COLLECTION_PLAN_SLOT_SIZE + slotGap
-        if row.trackSlotBtn and row.trackSlotBtn:IsShown() then
-            x = x + COLLECTION_PLAN_SLOT_SIZE + slotGap
-        end
-    end
-    local iconHost = CollectionListRowIconHost(row)
-    if iconHost and iconHost.GetWidth then
-        x = x + (iconHost:GetWidth() or 0) + gap
-    end
-    return x
-end
-
---- Vertically center label (and optional subtitle) in the row; two-line block height never exceeds item icon.
-local function LayoutCollectionListRowText(row, pad, gap, slotGap)
-    if not row or not row.label then return end
-    pad = pad or 10
-    gap = gap or 4
-    slotGap = slotGap or 3
-    local iconHost = CollectionListRowIconHost(row)
-    if not iconHost then return end
-    local rowH = row:GetHeight() or (UI_SPACING.ROW_HEIGHT or 32)
-    local iconH = iconHost:GetHeight() or 25
-    local textX = CollectionRowTextLeftX(row, pad, gap, slotGap)
-    local subText = row.subtitle and row.subtitle:GetText()
-    local hasSub = row.subtitle and row.subtitle:IsShown()
-        and subText and not (issecretvalue and issecretvalue(subText))
-        and subText ~= ""
-    row.label:ClearAllPoints()
-    local metaAnchor = LayoutCollectionListRowMetaColumns(row, pad)
-    if metaAnchor and not hasSub then
-        row.label:SetPoint("LEFT", row, "LEFT", textX, 0)
-        row.label:SetPoint("RIGHT", metaAnchor, "LEFT", -6, 0)
-        row.label:SetJustifyH("LEFT")
-        row.label:SetJustifyV("MIDDLE")
-        return
-    end
-    if hasSub and row.subtitle then
-        row.subtitle:ClearAllPoints()
-        local lineGap = 2
-        local lh = row.label:GetStringHeight() or 12
-        local sh = row.subtitle:GetStringHeight() or 10
-        local blockH = lh + lineGap + sh
-        if blockH > iconH then
-            lineGap = 1
-            blockH = lh + lineGap + sh
-        end
-        if blockH > iconH then
-            blockH = iconH
-            lineGap = math.max(0, blockH - lh - sh)
-        end
-        local blockTop = (rowH - blockH) * 0.5
-        row.label:SetJustifyH("LEFT")
-        row.label:SetJustifyV("TOP")
-        row.subtitle:SetJustifyH("LEFT")
-        row.subtitle:SetJustifyV("TOP")
-        row.label:SetPoint("TOPLEFT", row, "TOPLEFT", textX, -blockTop)
-        row.subtitle:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -lineGap)
-        if metaAnchor then
-            row.subtitle:SetPoint("RIGHT", metaAnchor, "LEFT", -6, 0)
-        elseif row.rightLabel and row.rightLabel:IsShown() then
-            row.subtitle:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
-        elseif row.leftMetaLabel and row.leftMetaLabel:IsShown() then
-            row.subtitle:SetPoint("RIGHT", row.leftMetaLabel, "LEFT", -6, 0)
-        else
-            row.subtitle:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
-        end
-    else
-        local lh = row.label:GetStringHeight() or 12
-        local blockTop = (rowH - lh) * 0.5
-        row.label:SetJustifyH("LEFT")
-        row.label:SetJustifyV("TOP")
-        row.label:SetPoint("TOPLEFT", row, "TOPLEFT", textX, -blockTop)
-    end
-    if metaAnchor then
-        row.label:SetPoint("RIGHT", metaAnchor, "LEFT", -6, 0)
-    elseif row.rightLabel and row.rightLabel:IsShown() then
-        row.rightLabel:ClearAllPoints()
-        row.rightLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
-        row.rightLabel:SetJustifyV("MIDDLE")
-        row.label:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
-    else
-        row.label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
-    end
-end
-
---- To-Do / Track column beside collected check (Collections + To-Do browse). `planSlotState` nil = hidden (e.g. Recent cards).
---- planSlotState: `onTodo`, `onTrack`, optional `achievementRow`, `achievementCollected`, optional `showTrackSlot`, optional `onTodoClick` / `onTrackClick` (toggle supported by caller), optional `todoTooltip` / `trackTooltip` (hover; non-interactive slots still show tooltip when text set and mouse enabled).
-local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotGap)
-    EnsureCollectionRowPlanSlotButtons(row)
-    local todoBtn = row.todoSlotBtn
-    local trackBtn = row.trackSlotBtn
-    local iconHost = row and CollectionListRowIconHost(row)
-    local statusIcon = row and row.statusIcon
-    if not todoBtn or not trackBtn or not iconHost or not statusIcon then return end
-    gap = gap or 4
-    slotGap = slotGap or 3
-    if not planSlotState then
-        todoBtn:Hide()
-        trackBtn:Hide()
-        todoBtn:SetScript("OnClick", nil)
-        trackBtn:SetScript("OnClick", nil)
-        SetCollectionPlanSlotTooltip(todoBtn, nil)
-        SetCollectionPlanSlotTooltip(trackBtn, nil)
-        todoBtn:EnableMouse(false)
-        trackBtn:EnableMouse(false)
-        todoBtn:ClearAllPoints()
-        trackBtn:ClearAllPoints()
-        iconHost:ClearAllPoints()
-        iconHost:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
-        return
-    end
-    local onTodo = planSlotState.onTodo == true
-    local onTrack = planSlotState.onTrack == true
-    local achRow = planSlotState.achievementRow == true
-    local achCollected = planSlotState.achievementCollected == true
-    local showTrackSlot
-    if planSlotState.showTrackSlot == false then
-        showTrackSlot = false
-    elseif planSlotState.showTrackSlot == true then
-        showTrackSlot = true
-    else
-        showTrackSlot = achRow
-    end
-
-    local todoTex = todoBtn._wnIcon
-    local trackTex = trackBtn._wnIcon
-    if not todoTex or not trackTex then return end
-
-    todoBtn:ClearAllPoints()
-    trackBtn:ClearAllPoints()
-    todoBtn:SetSize(COLLECTION_PLAN_SLOT_SIZE, COLLECTION_PLAN_SLOT_SIZE)
-    trackBtn:SetSize(COLLECTION_PLAN_SLOT_SIZE, COLLECTION_PLAN_SLOT_SIZE)
-    todoBtn:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
-    todoBtn:Show()
-
-    local todoDisabled = achCollected == true
-    if ns.UI_ApplyWnActionIcon then
-        ns.UI_ApplyWnActionIcon(todoTex, "todo", onTodo, todoDisabled)
-    else
-        ns.UI_SetWnIconTexture(todoTex, "todo", {
-            desaturate = todoDisabled,
-            vertexColor = ns.UI_WnIconVertexForKey("todo", onTodo, todoDisabled),
-        })
-    end
-
-    local todoClickable = (type(planSlotState.onTodoClick) == "function") and (onTodo or not achCollected)
-    local todoTip = planSlotState.todoTooltip
-    local todoHasTip = ns.CollectionsUI and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent
-        and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent(todoTip)
-    if not todoHasTip and type(todoTip) == "string" and todoTip ~= "" then
-        todoHasTip = true
-    end
-    local todoMouse = todoClickable or todoHasTip
-    todoBtn:EnableMouse(todoMouse)
-    if todoClickable then
-        todoBtn:SetScript("OnClick", function()
-            planSlotState.onTodoClick()
-        end)
-    else
-        todoBtn:SetScript("OnClick", nil)
-    end
-    SetCollectionPlanSlotTooltip(todoBtn, todoMouse and todoHasTip and todoTip or nil)
-
-    iconHost:ClearAllPoints()
-    if showTrackSlot then
-        trackBtn:SetPoint("LEFT", todoBtn, "RIGHT", slotGap, 0)
-        trackBtn:Show()
-        local trackDisabled = achCollected == true
-        if ns.UI_ApplyWnActionIcon then
-            ns.UI_ApplyWnActionIcon(trackTex, "track", onTrack, trackDisabled)
-        else
-            ns.UI_SetWnIconTexture(trackTex, "track", {
-                desaturate = trackDisabled,
-                vertexColor = ns.UI_WnIconVertexForKey("track", onTrack, trackDisabled),
-            })
-        end
-        local trackClickable = (type(planSlotState.onTrackClick) == "function") and (not achCollected)
-        local trackTip = planSlotState.trackTooltip
-        local trackHasTip = ns.CollectionsUI and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent
-            and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent(trackTip)
-        if not trackHasTip and type(trackTip) == "string" and trackTip ~= "" then
-            trackHasTip = true
-        end
-        local trackMouse = trackClickable or trackHasTip
-        trackBtn:EnableMouse(trackMouse)
-        if trackClickable then
-            trackBtn:SetScript("OnClick", function()
-                planSlotState.onTrackClick()
-            end)
-        else
-            trackBtn:SetScript("OnClick", nil)
-        end
-        SetCollectionPlanSlotTooltip(trackBtn, trackMouse and trackHasTip and trackTip or nil)
-        iconHost:SetPoint("LEFT", trackBtn, "RIGHT", gap, 0)
-    else
-        trackBtn:Hide()
-        trackBtn:SetScript("OnClick", nil)
-        SetCollectionPlanSlotTooltip(trackBtn, nil)
-        trackBtn:EnableMouse(false)
-        iconHost:SetPoint("LEFT", todoBtn, "RIGHT", gap, 0)
-    end
-end
-
---- Apply content and selection to a collection list row (from CreateCollectionListRow). Use for virtual scroll.
-function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText, subtitleText, planSlotState, leftAlignedText)
-    if not row then return end
-    local pad = UI_SPACING.SIDE_MARGIN or 10
-    local gap = 4
-    local slotGap = 3
-    self:ApplyRowBackground(row, rowIndex or 1)
-    if row.statusIcon then
-        ApplyCollectionRowStatusIcon(row.statusIcon, isCollected == true)
-    end
-    if planSlotState and rawget(planSlotState, "achievementCollected") == nil then
-        planSlotState.achievementCollected = isCollected == true
-    end
-    ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotGap)
-    if row.icon then
-        local iconTex = (iconPath and iconPath ~= "") and iconPath or "Interface\\Icons\\Achievement_General"
-        row.icon:SetTexture(iconTex)
-        row.icon:Show()
-    end
-    local hasSub = subtitleText and subtitleText ~= ""
-    if row.label then
-        row.label:SetText(labelText or "")
-        row.label:SetJustifyH("LEFT")
-        row.label:SetJustifyV("MIDDLE")
-        row.label:SetWordWrap(false)
-    end
-    if hasSub then
-        if not row.subtitle then
-            row.subtitle = FontManager:CreateFontString(row, "small", "OVERLAY")
-            row.subtitle:SetJustifyH("LEFT")
-            row.subtitle:SetJustifyV("MIDDLE")
-            row.subtitle:SetWordWrap(false)
-            ns.UI_SetTextColorRole(row.subtitle, "Bright")
-        end
-        row.subtitle:SetText(subtitleText)
-        row.subtitle:Show()
-    elseif row.subtitle then
-        row.subtitle:SetText("")
-        row.subtitle:Hide()
-    end
-    if row.rightLabel and rightAlignedText and rightAlignedText ~= "" then
-        row.rightLabel:SetText(rightAlignedText)
-        row.rightLabel:SetJustifyV("MIDDLE")
-        row.rightLabel:Show()
-        ApplyCollectionRowMetaLabelChrome(row.rightLabel)
-    else
-        if row.rightLabel then
-            row.rightLabel:SetText("")
-            row.rightLabel:Hide()
-        end
-    end
-    if leftAlignedText and leftAlignedText ~= "" then
-        if not row.leftMetaLabel then
-            row.leftMetaLabel = FontManager:CreateFontString(row, UIFontRole("factoryDataRowRight"), "OVERLAY")
-            row.leftMetaLabel:SetJustifyH("RIGHT")
-            row.leftMetaLabel:SetWordWrap(false)
-        end
-        row.leftMetaLabel:SetText(leftAlignedText)
-        row.leftMetaLabel:SetJustifyV("MIDDLE")
-        row.leftMetaLabel:Show()
-        ApplyCollectionRowMetaLabelChrome(row.leftMetaLabel)
-    elseif row.leftMetaLabel then
-        row.leftMetaLabel:SetText("")
-        row.leftMetaLabel:Hide()
-    end
-    if row.label and CollectionListRowIconHost(row) then
-        LayoutCollectionListRowText(row, pad, gap, slotGap)
-    end
-    row:SetScript("OnMouseDown", onClick)
-    if not row.selBg then
-        row.selBg = row:CreateTexture(nil, "BORDER")
-        row.selBg:SetAllPoints()
-    end
-    if isSelected then
-        if ns.UI_GetRowSelectionTint then
-            local tint = ns.UI_GetRowSelectionTint()
-            row.selBg:SetColorTexture(tint[1], tint[2], tint[3], tint[4] or 1)
-        else
-            local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-            row.selBg:SetColorTexture(r, g, b, 0.25)
-        end
-        row.selBg:Show()
-    else
-        row.selBg:Hide()
-    end
-end
-
 -- URL COPY POPUP
 -- The client cannot open a browser, so every link in the addon ends here: one shared,
 -- themed popup holding the address preselected for Ctrl+C.
@@ -3052,64 +2369,66 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
 
     if not sharedCopyFrame then
         local f = CreateFrame("Frame", "WarbandNexus_UrlCopy", UIParent, "BackdropTemplate")
-        f:SetSize(360, 60)
+        local COPY_W, COPY_H = 360, 60
+        local pageStack = ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK
+        local pad = (pageStack and pageStack.SIDE) or 12
+        f:SetSize(COPY_W, COPY_H)
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
         f:SetFrameStrata("DIALOG")
         f:SetFrameLevel(500)
-        f:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 16, edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 },
-        })
+        -- Same shell as WindowFactory dialogs: external-shell fill + accent quartet at the
+        -- standard border thickness (was a 16px tooltip-border edge file).
+        local COLORS = ns.UI_COLORS or { accent = {0.5, 0.4, 0.7} }
         local shellBg = ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop() or { 0.06, 0.06, 0.08, 0.97 }
-        f:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.97)
-        f._wnMainShellBackdrop = true
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(f, shellBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+        end
         f._borderType = "accent"
         f._borderAlpha = 0.8
         f._bgType = "externalShell"
-        if not f._borderRegistered and ns.BORDER_REGISTRY then
-            f._borderRegistered = true
-            table.insert(ns.BORDER_REGISTRY, f)
-        end
-        local COLORS = ns.UI_COLORS or { accent = {0.5, 0.4, 0.7} }
-        f:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
         f:EnableMouse(true)
         f:SetMovable(true)
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        if ns.UI_RegisterScaledFrame then
+            ns.UI_RegisterScaledFrame(f)
+        end
 
         local title = FontManager and FontManager:CreateFontString(f, "small", "OVERLAY") or f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         if title and not title._wnInkHooked and ns.UI_HookFontStringInk then
             ns.UI_HookFontStringInk(title)
         end
-        title:SetPoint("TOPLEFT", 10, -8)
+        title:SetPoint("TOPLEFT", pad, -8)
         -- Text is set per call: the popup is shared across link sources.
         f._title = title
 
+        -- Close: IconRegistry "close" glyph with the WindowFactory red tint (was a text "x").
         local closeBtn = self:CreateButton(f, 20, 20, true) or CreateFrame("Button", nil, f)
         closeBtn:SetSize(20, 20)
         local closeInset = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL and ns.UI_LAYOUT.MAIN_SHELL.FRAME_CONTENT_INSET) or 2
         closeBtn:SetPoint("TOPRIGHT", -closeInset, -closeInset)
-        local closeLbl = FontManager and FontManager:CreateFontString(closeBtn, "body", "OVERLAY") or closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        if closeLbl and not closeLbl._wnInkHooked and ns.UI_HookFontStringInk then
-            ns.UI_HookFontStringInk(closeLbl)
+        local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+        closeIcon:SetSize(14, 14)
+        closeIcon:SetPoint("CENTER")
+        if not (ns.UI_SetIcon and ns.UI_SetIcon(closeIcon, "close")) then
+            closeIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
         end
-        closeLbl:SetPoint("CENTER")
-        closeLbl:SetText("x")
-        ns.UI_SetTextColorRole(closeLbl, "Bright")
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        closeBtn:SetScript("OnEnter", function() closeIcon:SetVertexColor(1, 0.2, 0.2) end)
+        closeBtn:SetScript("OnLeave", function() closeIcon:SetVertexColor(0.9, 0.3, 0.3) end)
         closeBtn:SetScript("OnClick", function() f:Hide() end)
 
         local editBox = self:CreateEditBox(f) or CreateFrame("EditBox", nil, f)
-        editBox:SetSize(336, 22)
-        editBox:SetPoint("BOTTOMLEFT", 12, 8)
+        editBox:SetSize(COPY_W - pad * 2, 22)
+        editBox:SetPoint("BOTTOMLEFT", pad, 8)
         editBox:SetAutoFocus(false)
         editBox:SetMaxLetters(512)
         if FontManager then
             FontManager:RegisterManagedEditBox(editBox)
             FontManager:ApplyFontToEditBox(editBox)
         end
+        ns.UI_ApplyInputChrome(editBox)
         editBox:SetScript("OnEscapePressed", function() f:Hide() end)
         editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
         editBox:SetScript("OnChar", function(self) self:SetText(f._url or ""); self:HighlightText() end)

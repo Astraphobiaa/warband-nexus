@@ -328,11 +328,7 @@ local function PaintStatisticsExpandToggle(card, toggle, stateKey, hasOverflow, 
         toggle.btn = expandBtn
         toggle.arrowTex = arrowTex
     end
-    if isExpanded then
-        toggle.arrowTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
-    else
-        toggle.arrowTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
-    end
+    ns.UI_SetIcon(toggle.arrowTex, isExpanded and "chevron_up" or "chevron_down")
     expandBtn:Show()
     card:EnableMouse(true)
 
@@ -458,8 +454,10 @@ end
 local function RepositionStatisticsFixedHeader(hdrCache, headerParent, chrome, headerYOffset, SIDE)
     local titleCard = hdrCache.titleCard
     titleCard:SetParent(headerParent)
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    if chrome and ns.UI_PageStack_Place then
+        titleCard:Show()
+        chrome.yOffset = headerYOffset
+        return ns.UI_PageStack_Place(chrome, titleCard)
     else
         titleCard:ClearAllPoints()
         titleCard:SetPoint("TOPLEFT", SIDE, -headerYOffset)
@@ -663,7 +661,8 @@ function WarbandNexus:DrawStatistics(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
     local SIDE = metrics and metrics.sideMargin or SIDE_MARGIN
-    local CARD_GAP_M = metrics and metrics.cardGap or (GetLayout().CARD_GAP or 10)
+    local pageStack = GetLayout().PAGE_STACK or {}
+    local CARD_GAP_M = pageStack.CARD_GAP or (metrics and metrics.cardGap) or 10
     local width = (metrics and metrics.contentWidth)
         or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
         or (parent:GetWidth() or 600)
@@ -677,14 +676,7 @@ function WarbandNexus:DrawStatistics(parent)
     -- Hide previous empty state
     HideEmptyStateCard(parent, "statistics")
 
-    -- Check for data availability
     local allCharacters = self:GetAllCharacters() or {}
-    if #allCharacters == 0 then
-        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-        local _, height = CreateEmptyStateCard(parent, "statistics", headerYOffset)
-        return headerYOffset + (height or 120)
-    end
 
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -716,7 +708,10 @@ function WarbandNexus:DrawStatistics(parent)
     end
 
     titleCard:Show()
-    if ns.UI_AdvanceTabChromeYOffset then
+    if chrome and ns.UI_PageStack_Place then
+        headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    elseif ns.UI_AdvanceTabChromeYOffset then
         headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
     else
@@ -730,7 +725,14 @@ function WarbandNexus:DrawStatistics(parent)
     end
 
     local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
-    local sectionGap = (metrics and metrics.sectionGap) or CARD_GAP_M or 10
+    local sectionGap = pageStack.SECTION_GAP or (metrics and metrics.sectionGap) or 12
+
+    -- No characters: title card stays in the fixedHeader; empty card is the first body block (BODY_TOP, +/-SIDE).
+    if #allCharacters == 0 then
+        if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
+        local _, height = CreateEmptyStateCard(parent, "statistics", yOffset, { sideInset = SIDE })
+        return yOffset + (height or 120)
+    end
     local ApplyPanelCardChrome = ns.UI_ApplyStandardCardElevatedChrome
 
     -- Tab pool revisit: allow deferred heavy body on every PopulateContent pass (not only first visit).
@@ -763,7 +765,7 @@ function WarbandNexus:DrawStatistics(parent)
     local COLL_COLS = 3
     local availableW = width - leftMargin - rightMargin
     local cardW = (availableW - cardSpacing * (COLL_COLS - 1)) / COLL_COLS
-    local collRowStep = STAT_CARD_H + sectionGap
+    local collRowStep = STAT_CARD_H + cardSpacing  -- grid rows are cards: CARD_GAP, same as columns
     local collectionRowY = yOffset
     local collLayoutSig = "3x2:h7:" .. math.floor(cardW + 0.5)
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout

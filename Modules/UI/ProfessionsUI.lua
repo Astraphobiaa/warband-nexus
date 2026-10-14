@@ -22,8 +22,8 @@
     All data uses "body" font (12px); frozen column headers use subtitle for readability.
     Consistent 8px spacing between all data columns; subtle vertical rules in each gap (header + rows).
 
-    WN_FACTORY: Columns dropdown shell + picker rows use Factory CreateContainer/CreateButton
-    (PvEUI_ColumnPicker parity). Pooled profession rows via FramePoolFactory.
+    WN_FACTORY: Columns dropdown is the shared TK.ColumnPicker (SharedWidgets_TableKit.lua, same shell
+    as PvE); this file only supplies the row adapter. Pooled profession rows via FramePoolFactory.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -231,7 +231,6 @@ local DATA_FONT = "body"             -- 12px - used for ALL data text
 -- Column header row in scrollChild (PvE parity): 48px icons/labels + 2px before first section.
 local COLUMN_HEADER_HEIGHT = 48
 local COLUMN_HEADER_PAD = 2
-local PROF_COLUMN_HEADER_FONT = "subtitle"
 local PROF_COL_ICON_SIZE = 22
 
 -- Two profession bands per row: centers at +/- ROW_HEIGHT/4 from row midline (symmetric halves).
@@ -312,6 +311,7 @@ function PUI.EnsureProfessionColumnOrder(profile)
 end
 
 function PUI.SyncProfessionColumnOrder(profile)
+    PUI.InvalidateProfessionColumnLayout()
     if not ColumnOrder then
         columnOrder = STATIC_COLUMN_ORDER
         return columnOrder
@@ -448,6 +448,7 @@ function PUI.IsColumnVisible(key)
 end
 
 function PUI.RequestProfessionColumnsRefresh()
+    PUI.InvalidateProfessionColumnLayout()
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
         tab = "professions",
         skipCooldown = true,
@@ -455,223 +456,89 @@ function PUI.RequestProfessionColumnsRefresh()
     })
 end
 
-local PROF_COLUMN_PICKER_STRATA = "FULLSCREEN_DIALOG"
-local PROF_COLUMN_PICKER_MENU_LEVEL = 120
-local PROF_COLUMN_PICKER_CATCHER_LEVEL = 119
+-- Columns dropdown: shared TK.ColumnPicker shell (SharedWidgets_TableKit.lua) + Professions row adapter.
+-- Storage: profile.professionColumnOrder (order), profile.professionVisibleColumns (visibility).
+local profColumnPicker
 
-local function ProfColumnPickerFactory()
-    local Factory = ns.UI and ns.UI.Factory
-    assert(Factory and Factory.CreateContainer and Factory.CreateButton,
-        "ProfessionsUI column picker requires UI.Factory")
-    return Factory
+local function ProfColumnPickerProfile()
+    return WarbandNexus.db and WarbandNexus.db.profile
 end
 
-local function Prof_GetOrCreateColumnPickerMenu()
-    local Factory = ProfColumnPickerFactory()
-    local menu = WarbandNexus._wnProfColumnPickerMenu
-    if menu then return menu end
-    menu = Factory:CreateContainer(UIParent, 228, 80, false)
-    assert(menu, "ProfColumnPicker menu CreateContainer failed")
-    if PUI.ApplyProfChrome then
-        PUI.ApplyProfChrome(menu, PUI.MenuShellBackdrop(), PUI.MenuShellBorder())
-    end
-    menu:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
-    menu:SetFrameLevel(PROF_COLUMN_PICKER_MENU_LEVEL)
-    menu:SetClampedToScreen(true)
-    menu:EnableMouse(true)
-    menu:EnableMouseWheel(true)
-    menu:SetScript("OnMouseWheel", function() end)
-    menu:SetScript("OnHide", function()
-        local catcher = WarbandNexus._wnProfColumnPickerCatcher
-        if catcher then catcher:Hide() end
-    end)
-    WarbandNexus._wnProfColumnPickerMenu = menu
-    if Factory.EnsureDropdownEscClose then
-        Factory:EnsureDropdownEscClose(menu)
-    end
-    return menu
+function PUI.GetProfColumnPicker()
+    if profColumnPicker then return profColumnPicker end
+    local TK = ns.UI_TableKit
+    assert(TK and TK.ColumnPicker, "ProfessionsUI column picker requires SharedWidgets_TableKit.lua")
+    profColumnPicker = TK.ColumnPicker.Create({
+        owner = WarbandNexus,
+        menuRef = "_wnProfColumnPickerMenu",
+        anchorRef = "_wnProfColumnPickerAnchorBtn",
+        catcherRef = "_wnProfColumnPickerCatcher",
+        getRows = function()
+            local profile = ProfColumnPickerProfile()
+            local vis = profile and PUI.EnsureProfessionVisibleColumns(profile)
+            if not vis then return nil end
+            local pickerCols = PUI.GetToggleableColumnsInPickerOrder(profile)
+            local rows = {}
+            for tci = 1, #pickerCols do
+                local colKey = pickerCols[tci].key
+                rows[tci] = {
+                    key = colKey,
+                    label = pickerCols[tci].label or "",
+                    checked = PUI.IsColumnVisible(colKey),
+                    onToggle = function(checked) vis[colKey] = checked end,
+                }
+            end
+            return rows
+        end,
+        getOrder = function()
+            return PUI.EnsureProfessionColumnOrder(ProfColumnPickerProfile())
+        end,
+        getDefaultOrder = function()
+            return PROF_TOGGLEABLE_DEFAULT_ORDER, PROF_TOGGLEABLE_KEY_SET
+        end,
+        showAll = function()
+            local vis = PUI.EnsureProfessionVisibleColumns(ProfColumnPickerProfile())
+            if not vis then return end
+            for ri = 1, #TOGGLEABLE_COLUMNS do
+                vis[TOGGLEABLE_COLUMNS[ri].key] = true
+            end
+        end,
+        onChange = function()
+            PUI.RequestProfessionColumnsRefresh()
+        end,
+        isContextActive = function(picker)
+            local anchor = picker:GetAnchor()
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if not anchor or not mf or mf.currentTab ~= "professions" then return false end
+            return anchor.GetTop ~= nil and anchor:GetTop() ~= nil
+        end,
+    })
+    return profColumnPicker
 end
 
+-- Legacy entry points (ProfessionsUI_DrawTab re-opens the picker after a tab redraw through these).
 function PUI.ProfColumnPickerHide()
-    local menu = WarbandNexus._wnProfColumnPickerMenu
-    if menu then menu:Hide() end
-    local catcher = WarbandNexus._wnProfColumnPickerCatcher
-    if catcher then catcher:Hide() end
+    PUI.GetProfColumnPicker():Close()
 end
 
 function PUI.ProfColumnPickerPositionMenu(menu, anchorBtn)
     if not menu or not anchorBtn then return end
-    menu:ClearAllPoints()
-    menu:SetPoint("TOPLEFT", anchorBtn, "BOTTOMLEFT", 0, -4)
+    PUI.GetProfColumnPicker():Position(anchorBtn)
 end
 
 function PUI.ProfColumnPickerShowCatcher(menu)
-    local Factory = ProfColumnPickerFactory()
-    local catcher = WarbandNexus._wnProfColumnPickerCatcher
-    if not catcher then
-        catcher = Factory:CreateButton(UIParent, 1, 1, true)
-        assert(catcher, "ProfColumnPicker catcher CreateButton failed")
-        catcher:SetAllPoints(UIParent)
-        catcher:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
-        catcher:SetAlpha(0)
-        catcher:EnableMouse(true)
-        catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        if catcher.SetPropagateMouseClicks then catcher:SetPropagateMouseClicks(false) end
-        catcher:SetScript("OnClick", function()
-            if not menu:IsShown() then
-                catcher:Hide()
-                return
-            end
-            local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
-            if menu:IsMouseOver() or (anchor and anchor.IsMouseOver and anchor:IsMouseOver()) then
-                return
-            end
-            menu:Hide()
-        end)
-        WarbandNexus._wnProfColumnPickerCatcher = catcher
-    end
-    catcher:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
-    catcher:SetFrameLevel(PROF_COLUMN_PICKER_CATCHER_LEVEL)
-    catcher:Show()
-    menu:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
-    menu:SetFrameLevel(PROF_COLUMN_PICKER_MENU_LEVEL)
-    menu:Raise()
+    if not menu then return end
+    PUI.GetProfColumnPicker():ShowCatcher()
 end
 
 function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
     if not menu or not anchorBtn then return end
-    local profile = WarbandNexus.db and WarbandNexus.db.profile
-    if not profile then return end
-    local vis = PUI.EnsureProfessionVisibleColumns(profile)
-    if not vis then return end
-
-    local ROW_H = (PUI.GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (PUI.GetLayout().ROW_HEIGHT) or 26
-    local PAD = 6
-    local Factory = ProfColumnPickerFactory()
-    local pickerCols, colOrder = PUI.GetToggleableColumnsInPickerOrder(profile)
-    local contentH = #pickerCols * ROW_H + PAD * 2 + ROW_H + ROW_H
-    menu:SetSize(228, contentH)
-
-    local bin = ns.UI_RecycleBin
-    local kids = { menu:GetChildren() }
-    for i = 1, #kids do
-        kids[i]:Hide()
-        if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end
-    end
-
-    local function RepopulatePickerAfterOrderChange()
-        PUI.RequestProfessionColumnsRefresh()
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                local picker = WarbandNexus._wnProfColumnPickerMenu
-                local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
-                local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-                if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
-                    PUI.ProfColumnPickerHide()
-                    return
-                end
-                if not anchor.GetTop or not anchor:GetTop() then
-                    PUI.ProfColumnPickerHide()
-                    return
-                end
-                PUI.ProfColumnPickerPopulateMenu(picker, anchor)
-                PUI.ProfColumnPickerPositionMenu(picker, anchor)
-                picker:Show()
-                PUI.ProfColumnPickerShowCatcher(picker)
-            end)
-        end
-    end
-
-    local yOff = -PAD
-    for tci = 1, #pickerCols do
-        local tc = pickerCols[tci]
-        local isVisible = PUI.IsColumnVisible(tc.key)
-        local checkRow = Factory:CreateButton(menu, 216, ROW_H, true)
-        assert(checkRow, "ProfColumnPicker toggle row CreateButton failed")
-        checkRow:SetPoint("TOPLEFT", PAD, yOff)
-
-        local checkTex = checkRow:CreateTexture(nil, "ARTWORK")
-        checkTex:SetSize(14, 14)
-        checkTex:SetPoint("LEFT", 4, 0)
-        if isVisible then
-            checkTex:SetAtlas("common-icon-checkmark")
-            local gr, gg, gb = PUI.ProgressRgb("complete")
-            checkTex:SetVertexColor(gr, gg, gb, 1)
-        else
-            checkTex:SetAtlas("common-icon-redx")
-            local mr, mg, mb, ma = PUI.MutedIconVertex()
-            checkTex:SetVertexColor(mr, mg, mb, ma)
-        end
-
-        local lbl = FontManager:CreateFontString(checkRow, "small", "OVERLAY")
-        lbl:SetPoint("LEFT", checkTex, "RIGHT", 6, 0)
-        lbl:SetText(tc.label or "")
-        lbl:SetJustifyH("LEFT")
-        ns.UI_SetTextColorRole(lbl, isVisible and "Bright" or "Dim")
-
-        local capturedKey = tc.key
-        checkRow:SetScript("OnClick", function()
-            vis[capturedKey] = not PUI.IsColumnVisible(capturedKey)
-            RepopulatePickerAfterOrderChange()
-        end)
-        checkRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
-        checkRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
-        checkRow:Show()
-
-        if ColumnOrder and ColumnOrder.AttachPickerDragReorder then
-            ColumnOrder.AttachPickerDragReorder(checkRow, colOrder, capturedKey, RepopulatePickerAfterOrderChange, { label = tc.label })
-        end
-
-        yOff = yOff - ROW_H
-    end
-
-    local resetOrderRow = Factory:CreateButton(menu, 216, ROW_H, true)
-    assert(resetOrderRow, "ProfColumnPicker reset order row CreateButton failed")
-    resetOrderRow:SetPoint("TOPLEFT", PAD, yOff)
-    local resetOrderLbl = FontManager:CreateFontString(resetOrderRow, "small", "OVERLAY")
-    resetOrderLbl:SetPoint("CENTER", 0, 0)
-    resetOrderLbl:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["RESET_COLUMN_ORDER"]) or "Reset Order") .. "|r")
-    resetOrderLbl:SetJustifyH("CENTER")
-    resetOrderRow:SetScript("OnClick", function()
-        if ColumnOrder then
-            ColumnOrder.ResetToDefault(colOrder, PROF_TOGGLEABLE_DEFAULT_ORDER, PROF_TOGGLEABLE_KEY_SET)
-        end
-        RepopulatePickerAfterOrderChange()
-    end)
-    resetOrderRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
-    resetOrderRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
-    resetOrderRow:Show()
-    yOff = yOff - ROW_H
-
-    local resetRow = Factory:CreateButton(menu, 216, ROW_H, true)
-    assert(resetRow, "ProfColumnPicker show-all row CreateButton failed")
-    resetRow:SetPoint("TOPLEFT", PAD, yOff)
-    local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
-    resetLbl:SetPoint("CENTER", 0, 0)
-    resetLbl:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["SHOW_ALL"]) or "Show All") .. "|r")
-    resetLbl:SetJustifyH("CENTER")
-    resetRow:SetScript("OnClick", function()
-        for ri = 1, #TOGGLEABLE_COLUMNS do
-            vis[TOGGLEABLE_COLUMNS[ri].key] = true
-        end
-        RepopulatePickerAfterOrderChange()
-    end)
-    resetRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
-    resetRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
-    resetRow:Show()
+    PUI.GetProfColumnPicker():Populate()
 end
 
 function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
     if not anchorBtn then return end
-    WarbandNexus._wnProfColumnPickerAnchorBtn = anchorBtn
-    local menu = Prof_GetOrCreateColumnPickerMenu()
-    if WarbandNexus.db and WarbandNexus.db.profile then
-        PUI.EnsureProfessionVisibleColumns(WarbandNexus.db.profile)
-    end
-    PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
-    PUI.ProfColumnPickerPositionMenu(menu, anchorBtn)
-    menu:Show()
-    PUI.ProfColumnPickerShowCatcher(menu)
+    PUI.GetProfColumnPicker():Open(anchorBtn)
 end
 
 function WarbandNexus:HideProfessionColumnPicker()
@@ -755,7 +622,64 @@ function PUI.GetColumnScaleFactor()
     return fontScale
 end
 
+--- Resolved grid layout (TableKit): one width/offset set shared by the header strip and every data row.
+--- cols[i] are reused per-key tables (header fields are filled by the DrawTab header paint).
+PUI._colLayout = { cols = {}, widths = {}, offsets = {}, xByKey = {}, wByKey = {}, colByKey = {}, dirty = true }
+
+--- Call when column order / visibility / scale inputs (cachedRowWidth, font) change.
+function PUI.InvalidateProfessionColumnLayout()
+    PUI._colLayout.dirty = true
+end
+
+function PUI.ResolveProfessionColumnLayout()
+    local lay = PUI._colLayout
+    if not lay.dirty then return lay end
+    local TK = ns.UI_TableKit
+    local cols, widths, offsets = lay.cols, lay.widths, lay.offsets
+    local xByKey, wByKey = lay.xByKey, lay.wByKey
+    wipe(xByKey)
+    wipe(wByKey)
+    local scale = PUI.GetColumnScaleFactor()
+    local n = 0
+    for ki = 1, #columnOrder do
+        local k = columnOrder[ki]
+        if PUI.IsColumnVisible(k) then
+            n = n + 1
+            local col = lay.colByKey[k]
+            if not col then
+                col = { key = k }
+                lay.colByKey[k] = col
+            end
+            local w = (COLUMNS[k] and COLUMNS[k].width) or 60
+            if SCALABLE_COLUMNS[k] then w = w * scale end
+            col.width = w
+            cols[n] = col
+        end
+    end
+    for i = #cols, n + 1, -1 do cols[i] = nil end
+    TK.ResolveWidths(cols, nil, widths, offsets, LEFT_PAD, COL_SPACING)
+    -- Hidden keys keep the legacy ColOffset meaning: x where the next visible column starts.
+    local vi, endX = 0, LEFT_PAD
+    for ki = 1, #columnOrder do
+        local k = columnOrder[ki]
+        local nextCol = cols[vi + 1]
+        if nextCol and nextCol.key == k then
+            vi = vi + 1
+            xByKey[k] = offsets[vi]
+            wByKey[k] = widths[vi]
+            endX = offsets[vi] + widths[vi] + COL_SPACING
+        else
+            xByKey[k] = nextCol and offsets[vi + 1] or endX
+            wByKey[k] = 0
+        end
+    end
+    lay.dirty = false
+    return lay
+end
+
 function PUI.ColWidth(key)
+    local w = PUI.ResolveProfessionColumnLayout().wByKey[key]
+    if w then return w end
     if not PUI.IsColumnVisible(key) then return 0 end
     local base = COLUMNS[key] and COLUMNS[key].width or 60
     if SCALABLE_COLUMNS[key] then
@@ -765,6 +689,8 @@ function PUI.ColWidth(key)
 end
 
 function PUI.ColOffset(key)
+    local x = PUI.ResolveProfessionColumnLayout().xByKey[key]
+    if x then return x end
     local offset = LEFT_PAD
     local scaleFactor = PUI.GetColumnScaleFactor()
     for ki = 1, #columnOrder do
@@ -868,33 +794,7 @@ function PUI.StripProfHeaderDisplayText(text)
         :gsub("%s+$", "")
 end
 
-function PUI.ApplyProfColumnHeaderLabel(lbl, displayText, highlighted)
-    if not lbl then return end
-    if lbl.SetWordWrap then lbl:SetWordWrap(false) end
-    if lbl.SetMaxLines then lbl:SetMaxLines(1) end
-    if ns.UI_SetTextColorRole then
-        ns.UI_SetTextColorRole(lbl, highlighted and "Bright" or "Muted")
-    else
-        local c = highlighted and COLORS.textBright or COLORS.textMuted
-        lbl:SetTextColor(c[1], c[2], c[3], c[4] or 1)
-    end
-    lbl:SetText(displayText or "")
-end
-
 local ToggleColumnSort
-
-function PUI.BindProfColumnHeaderTooltip(frame, tooltipTitle)
-    if not frame or not tooltipTitle or tooltipTitle == "" then return end
-    frame:EnableMouse(true)
-    frame:SetScript("OnEnter", function(self)
-        if ShowTooltip then
-            ShowTooltip(self, { type = "custom", title = tooltipTitle, lines = {} })
-        end
-    end)
-    frame:SetScript("OnLeave", function()
-        if HideTooltip then HideTooltip() end
-    end)
-end
 
 function PUI.ProfessionHeaderIconIsDrawn(iconTex)
     if not iconTex then return false end
@@ -995,39 +895,6 @@ function PUI.ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     end
 end
 
-function PUI.BuildProfCompactHeaderLabel(col, displayText)
-    local mutedMarkup = PUI.TextRoleMarkup("Muted")
-    if type(displayText) ~= "string" or displayText == "" then return "", mutedMarkup end
-    local shortByCol = {
-        profName = (ns.L and ns.L["GROUP_PROFESSION"]) or "Profession",
-        equipment = (ns.L and ns.L["EQUIPMENT"]) or "Equip",
-        skill = (ns.L and ns.L["SKILL"]) or "Skill",
-        conc = (ns.L and ns.L["CONCENTRATION"]) or "Conc",
-        recharge = (ns.L and ns.L["RECHARGE"]) or "Regen",
-        knowledge = (ns.L and ns.L["KNOWLEDGE"]) or "Know",
-        recipes = (ns.L and ns.L["RECIPES"]) or "Recipes",
-        firstCraft = (ns.L and ns.L["FIRST_CRAFT"]) or "1st",
-        uniques = (ns.L and ns.L["UNIQUES"]) or "Unique",
-        treatise = (ns.L and ns.L["TREATISE"]) or "Treat",
-        weeklyQuest = (ns.L and ns.L["WEEKLY_QUEST_CAT"]) or "Weekly",
-        treasure = (ns.L and ns.L["SOURCE_TYPE_TREASURE"]) or "Treas",
-        gathering = (ns.L and ns.L["GATHERING"]) or "Gather",
-        catchUp = (ns.L and ns.L["CATCH_UP"]) or "Catch",
-        moxie = (ns.L and ns.L["MOXIE"]) or "Moxie",
-        cooldowns = (ns.L and ns.L["COOLDOWNS"]) or "CD",
-    }
-    if col and shortByCol[col] then
-        return shortByCol[col], mutedMarkup
-    end
-    if #displayText > 10 then
-        return displayText:sub(1, 9) .. ".", mutedMarkup
-    end
-    return displayText, mutedMarkup
-end
-
-local profColHeaderLabels = {}
-local profColHeaderHits = {}
-
 --- PopulateContent parks scrollChild children in recycleBin; reattach when Professions redraws.
 function PUI.ReattachProfessionColumnHeaderBar(colHeaderBar, parent)
     if not colHeaderBar or not parent then return end
@@ -1052,258 +919,8 @@ function ns.UI_HideProfessionColumnHeaderStrip(scrollChild)
         bar:Hide()
         bar:ClearAllPoints()
     end
-    for _, fs in pairs(profColHeaderLabels) do
-        if fs and fs.Hide then fs:Hide() end
-    end
-    for _, hit in pairs(profColHeaderHits) do
-        if hit and hit.Hide then hit:Hide() end
-    end
 end
 
-function PUI.ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compactLabel, compactHex, colWidth)
-    if not colHeaderBar or not hitFrame or not compactLabel or compactLabel == "" then return nil end
-    local fs = profColHeaderLabels[colKey]
-    if not fs then
-        fs = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
-        profColHeaderLabels[colKey] = fs
-    else
-        fs:SetParent(colHeaderBar)
-        fs:Show()
-    end
-    fs:SetPoint("TOP", hitFrame, "BOTTOM", 0, 0)
-    fs:SetWidth(math.max(24, colWidth - 4))
-    fs:SetJustifyH("CENTER")
-    fs:SetWordWrap(false)
-    fs:SetText((compactHex or PUI.TextRoleMarkup("Muted")) .. compactLabel .. "|r")
-    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-        fs:SetShadowOffset(0, 0)
-        fs:SetShadowColor(0, 0, 0, 0)
-    else
-        fs:SetShadowOffset(1, -1)
-        fs:SetShadowColor(0, 0, 0, 0.9)
-    end
-    return fs
-end
-
---- Icon + compact label (PvE column header parity); full locale title on hover.
-function PUI.PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef, hdef, sortState, tooltipTitle, accentR, accentG, accentB, FactHdr)
-    if not colHeaderBar or not iconDef or w <= 0 then return end
-    local hitW, hitH = PROF_COL_ICON_SIZE + 4, PROF_COL_ICON_SIZE + 4
-    local sortable = hdef and hdef.sortable
-    local hitBtn = profColHeaderHits[col]
-    if not hitBtn then
-        if sortable then
-            hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, hitW, hitH, true)
-            if not hitBtn then
-                hitBtn = CreateFrame("Button", nil, colHeaderBar)
-                hitBtn:SetSize(hitW, hitH)
-            end
-            hitBtn:EnableMouse(true)
-        else
-            hitBtn = FactHdr and FactHdr:CreateContainer(colHeaderBar, hitW, hitH, false)
-            if not hitBtn then
-                hitBtn = CreateFrame("Frame", nil, colHeaderBar)
-                hitBtn:SetSize(hitW, hitH)
-            end
-            hitBtn:EnableMouse(true)
-        end
-        local iconTex = hitBtn:CreateTexture(nil, "ARTWORK")
-        iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
-        iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
-        hitBtn._wnHeaderIconTex = iconTex
-        profColHeaderHits[col] = hitBtn
-    else
-        hitBtn:SetParent(colHeaderBar)
-        hitBtn:SetSize(hitW, hitH)
-        hitBtn:Show()
-        if sortable and hitBtn.EnableMouse then hitBtn:EnableMouse(true) end
-    end
-    if FactHdr and FactHdr.ApplyIconOnlyButtonChrome and hitBtn.GetObjectType and hitBtn:GetObjectType() == "Button" then
-        FactHdr:ApplyIconOnlyButtonChrome(hitBtn)
-    end
-    hitBtn:ClearAllPoints()
-    hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", PUI.ColOffset(col) + (w - hitW) * 0.5, 6)
-    hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 2)
-
-    local iconTex = hitBtn._wnHeaderIconTex
-    if not iconTex or not iconTex.SetTexture then
-        iconTex = hitBtn:CreateTexture(nil, "ARTWORK")
-        iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
-        iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
-        hitBtn._wnHeaderIconTex = iconTex
-    end
-    PUI.ApplyProfessionHeaderIconTexture(iconTex, iconDef)
-    PUI.BindProfColumnHeaderTooltip(hitBtn, tooltipTitle)
-
-    local compactLabel, compactHex = PUI.BuildProfCompactHeaderLabel(col, tooltipTitle)
-    if compactLabel ~= "" then
-        PUI.ProfAcquireColHeaderLabel(colHeaderBar, col, hitBtn, compactLabel, compactHex, w)
-    end
-
-    if not hdef or not hdef.sortable then
-        return
-    end
-
-    local isSorted = sortState and sortState.col == col
-    local arrow = hitBtn._wnSortArrow
-    if not arrow then
-        arrow = hitBtn:CreateTexture(nil, "OVERLAY")
-        arrow:SetSize(11, 11)
-        arrow:SetPoint("TOPRIGHT", hitBtn, "TOPRIGHT", -1, -2)
-        hitBtn._wnSortArrow = arrow
-    end
-    if isSorted then
-        if sortState.dir == "asc" then
-            arrow:SetAtlas("hud-MainMenuBar-arrowup")
-        else
-            arrow:SetAtlas("hud-MainMenuBar-arrowdown")
-        end
-        arrow:SetVertexColor(accentR, accentG, accentB, 1)
-        arrow:Show()
-    else
-        arrow:Hide()
-    end
-
-    local capturedCol = col
-    local prevOnEnter = hitBtn:GetScript("OnEnter")
-    local prevOnLeave = hitBtn:GetScript("OnLeave")
-    hitBtn:SetScript("OnClick", function()
-        if ToggleColumnSort then
-            ToggleColumnSort(capturedCol)
-        end
-    end)
-    hitBtn:SetScript("OnEnter", function(self)
-        if prevOnEnter then prevOnEnter(self) end
-        if not isSorted then
-            arrow:SetAtlas("hud-MainMenuBar-arrowup")
-            arrow:SetVertexColor(1, 1, 1, 0.4)
-            arrow:Show()
-        end
-    end)
-    hitBtn:SetScript("OnLeave", function(self)
-        if prevOnLeave then prevOnLeave(self) end
-        if not isSorted then
-            arrow:Hide()
-        end
-    end)
-end
-
-local PROF_TEXT_SORT_ARROW_SIZE = 11
-
---- Pooled text sort header (Character column); avoids per-draw Button/FontString allocation.
-function PUI.PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hdef, sortState, displayText, accentR, accentG, accentB, FactHdr)
-    if not colHeaderBar or not hdef or w <= 0 then return end
-    local isSorted = sortState and sortState.col == col
-    local hitBtn = profColHeaderHits[col]
-    if not hitBtn then
-        hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, w, COLUMN_HEADER_HEIGHT, true)
-        if not hitBtn then
-            hitBtn = CreateFrame("Button", nil, colHeaderBar)
-            hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
-        end
-        profColHeaderHits[col] = hitBtn
-        local arrow = hitBtn:CreateTexture(nil, "OVERLAY")
-        arrow:SetSize(PROF_TEXT_SORT_ARROW_SIZE, PROF_TEXT_SORT_ARROW_SIZE)
-        arrow:SetPoint("RIGHT", hitBtn, "RIGHT", -1, 0)
-        hitBtn._wnSortArrow = arrow
-        local lbl = FontManager:CreateFontString(hitBtn, PROF_COLUMN_HEADER_FONT, "OVERLAY")
-        lbl:SetJustifyH(hdef.align or "CENTER")
-        if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
-        hitBtn._wnHeaderLabel = lbl
-    else
-        hitBtn:SetParent(colHeaderBar)
-        hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
-        hitBtn:Show()
-    end
-    if (hdef.align or "CENTER") == "CENTER" then
-        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", PUI.ColCenterX(col), 0)
-    else
-        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", PUI.ColOffset(col), 0)
-    end
-    hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 1)
-
-    local arrow = hitBtn._wnSortArrow
-    if isSorted then
-        if sortState.dir == "asc" then
-            arrow:SetAtlas("hud-MainMenuBar-arrowup")
-        else
-            arrow:SetAtlas("hud-MainMenuBar-arrowdown")
-        end
-        arrow:SetVertexColor(accentR, accentG, accentB, 1)
-        arrow:Show()
-    else
-        arrow:Hide()
-    end
-
-    local lbl = hitBtn._wnHeaderLabel
-    PUI.ApplyProfColumnHeaderLabel(lbl, displayText, false)
-    local function SetHeaderLabelArrowInset(showArrow)
-        lbl:ClearAllPoints()
-        lbl:SetPoint("LEFT", hitBtn, "LEFT", 2, 0)
-        local rightPad = showArrow and -(PROF_TEXT_SORT_ARROW_SIZE + 4) or -2
-        lbl:SetPoint("RIGHT", hitBtn, "RIGHT", rightPad, 0)
-    end
-    SetHeaderLabelArrowInset(isSorted)
-
-    local capturedCol = col
-    hitBtn:SetScript("OnClick", function()
-        ToggleColumnSort(capturedCol)
-    end)
-    hitBtn:SetScript("OnEnter", function()
-        PUI.ApplyProfColumnHeaderLabel(lbl, displayText, true)
-        SetHeaderLabelArrowInset(true)
-        if ShowTooltip and displayText ~= "" then
-            ShowTooltip(hitBtn, { type = "custom", title = displayText, lines = {} })
-        end
-        if not isSorted then
-            arrow:SetAtlas("hud-MainMenuBar-arrowup")
-            arrow:SetVertexColor(1, 1, 1, 0.4)
-            arrow:Show()
-        end
-    end)
-    hitBtn:SetScript("OnLeave", function()
-        PUI.ApplyProfColumnHeaderLabel(lbl, displayText, false)
-        SetHeaderLabelArrowInset(isSorted)
-        if HideTooltip then HideTooltip() end
-        if not isSorted then
-            arrow:Hide()
-        end
-    end)
-end
-
---- Pooled static text header (non-icon, non-sortable columns).
-function PUI.PaintProfessionTextStaticColumnHeader(colHeaderBar, col, w, hdef, displayText, FactHdr)
-    if not colHeaderBar or not hdef or w <= 0 then return end
-    local clipKey = col .. "_clip"
-    local clip = profColHeaderHits[clipKey]
-    if not clip then
-        clip = FactHdr and FactHdr:CreateContainer(colHeaderBar, w, COLUMN_HEADER_HEIGHT, false)
-        if not clip then
-            clip = CreateFrame("Frame", nil, colHeaderBar)
-            clip:SetSize(w, COLUMN_HEADER_HEIGHT)
-        end
-        clip:SetClipsChildren(true)
-        profColHeaderHits[clipKey] = clip
-        local lbl = FontManager:CreateFontString(clip, PROF_COLUMN_HEADER_FONT, "OVERLAY")
-        lbl:SetJustifyH(hdef.align or "CENTER")
-        if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
-        clip._wnHeaderLabel = lbl
-    else
-        clip:SetParent(colHeaderBar)
-        clip:SetSize(w, COLUMN_HEADER_HEIGHT)
-        clip:Show()
-    end
-    if (hdef.align or "CENTER") == "CENTER" then
-        clip:SetPoint("CENTER", colHeaderBar, "LEFT", PUI.ColCenterX(col), 0)
-    else
-        clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", PUI.ColOffset(col), 0)
-    end
-    local lbl = clip._wnHeaderLabel
-    PUI.ApplyProfColumnHeaderLabel(lbl, displayText, false)
-    lbl:SetPoint("TOPLEFT", clip, "TOPLEFT", 1, 0)
-    lbl:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", -1, 0)
-    PUI.BindProfColumnHeaderTooltip(clip, displayText)
-end
 
 -- Column header definitions â€” alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
@@ -1325,7 +942,7 @@ local PROF_HEADER_ICON_BY_COL = {
     -- Recharge / expiration: auctionhouse-icon-clock (Templates sort header)
     recharge    = { iconAtlases = { "auctionhouse-icon-clock", "Capacitance-General-WorkOrderArrow", "Capacitance-General-32x32" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_TimeStop" },
     -- Specialization knowledge sample ring (Specializations.xml); unspent badge alt
-    knowledge   = { iconAtlases = { "QuestDaily", "icons_64x64_important", "spec-sampleabilityring" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
+    knowledge   = { iconAtlases = { "QuestDaily", "spec-sampleabilityring" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
     -- Active recipe row overlay (RecipeList.xml)
     recipes     = { iconAtlases = { "Professions_Recipe_Active", "professions_recipes_abilitytab", "Professions_Recipe_Hover" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
     -- First-craft affordance (RecipeSchematicForm.xml)
@@ -2447,6 +2064,7 @@ function PUI.ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
     local paintW
     if bodyW and bodyW > 0 then
         cachedRowWidth = bodyW
+        PUI.InvalidateProfessionColumnLayout()
         scrollChild._wnProfBodyWidth = bodyW
         paintW = PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyW)
         local side = scrollChild._wnProfContentSide or SIDE_MARGIN
@@ -2455,6 +2073,7 @@ function PUI.ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
         local vp = ns.UI_GetMainTabViewportWidth(mf)
         if vp and vp > 0 then
             cachedRowWidth = vp
+            PUI.InvalidateProfessionColumnLayout()
             paintW = PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, vp)
             local side = scrollChild._wnProfContentSide or SIDE_MARGIN
             scrollChild._wnProfStackWidth = PUI.ProfessionStackBodyWidth(paintW, side)
@@ -2710,7 +2329,7 @@ function PUI.SetEquipCell(cell, eqData, slotKey)
             cell.warnTex = cell:CreateTexture(nil, "OVERLAY")
             cell.warnTex:SetSize(12, 12)
             cell.warnTex:SetPoint("TOPRIGHT", cell.icon, "TOPRIGHT", 3, 3)
-            cell.warnTex:SetAtlas("services-icon-warning")
+            ns.UI_SetIcon(cell.warnTex, "warning")
         end
         cell.warnTex:Hide()
         cell:SetScript("OnEnter", function(self)
@@ -3034,7 +2653,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         warnFrame:EnableMouse(true)
         local tex = warnFrame:CreateTexture(nil, "OVERLAY")
         tex:SetAllPoints()
-        tex:SetAtlas("icons_64x64_important")
+        ns.UI_SetIcon(tex, "attention")
         warnFrame.texture = tex
         row[p.."KnowWarn"] = warnFrame
     end
@@ -3413,7 +3032,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 local badge = row[p.."Icon"]:CreateTexture(nil, "OVERLAY")
                 badge:SetSize(10, 10)
                 badge:SetPoint("TOPRIGHT", row[p.."Icon"], "TOPRIGHT", 2, 0)
-                badge:SetAtlas("icons_64x64_important")
+                ns.UI_SetIcon(badge, "attention")
                 row[p.."Icon"].knowledgeBadge = badge
             end
             row[p.."Icon"].knowledgeBadge:Show()
@@ -3590,10 +3209,9 @@ do
     c.ChromeBorder = PUI.ChromeBorder
     c.TextRoleMarkup = PUI.TextRoleMarkup
     c.TextRoleHex = PUI.TextRoleMarkup
-    c.ApplyProfColumnHeaderLabel = PUI.ApplyProfColumnHeaderLabel
+    c.ApplyProfessionHeaderIconTexture = PUI.ApplyProfessionHeaderIconTexture
     c.ApplyProfessionColumnDividers = PUI.ApplyProfessionColumnDividers
     c.ApplyVisuals = ApplyVisuals
-    c.BindProfColumnHeaderTooltip = PUI.BindProfColumnHeaderTooltip
     c.BuildCollapsibleSectionOpts = BuildCollapsibleSectionOpts
     c.COLORS = COLORS
     c.COLUMNS = COLUMNS
@@ -3623,13 +3241,9 @@ do
     c.HideEmptyStateCard = HideEmptyStateCard
     c.HideTooltip = HideTooltip
     c.IsColumnVisible = PUI.IsColumnVisible
-    c.PROF_COLUMN_HEADER_FONT = PROF_COLUMN_HEADER_FONT
+    c.PROF_COL_ICON_SIZE = PROF_COL_ICON_SIZE
     c.PROF_HEADER_ICON_BY_COL = PROF_HEADER_ICON_BY_COL
-    c.PaintProfessionCompactColumnHeader = PUI.PaintProfessionCompactColumnHeader
-    c.PaintProfessionTextSortableColumnHeader = PUI.PaintProfessionTextSortableColumnHeader
-    c.PaintProfessionTextStaticColumnHeader = PUI.PaintProfessionTextStaticColumnHeader
-    c.profColHeaderHits = profColHeaderHits
-    c.profColHeaderLabels = profColHeaderLabels
+    c.ProfessionHeaderIconIsDrawn = PUI.ProfessionHeaderIconIsDrawn
     c.ProfColumnPickerHide = PUI.ProfColumnPickerHide
     c.ProfColumnPickerPopulateMenu = PUI.ProfColumnPickerPopulateMenu
     c.ProfColumnPickerPositionMenu = PUI.ProfColumnPickerPositionMenu
@@ -3644,6 +3258,7 @@ do
     c.ReleaseAllPooledChildren = ReleaseAllPooledChildren
     c.ReleaseProfessionRow = ReleaseProfessionRow
     c.ResolveProfessionColumnHeaderInnerWidth = PUI.ResolveProfessionColumnHeaderInnerWidth
+    c.ResolveProfessionColumnLayout = PUI.ResolveProfessionColumnLayout
     c.SIDE_MARGIN = SIDE_MARGIN
     c.ShowTooltip = ShowTooltip
     c.StripProfHeaderDisplayText = PUI.StripProfHeaderDisplayText
@@ -3863,6 +3478,7 @@ if ns.UI_RegisterTabViewportResize then
             local paintW
             if bodyW and bodyW > 0 then
                 cachedRowWidth = bodyW
+                PUI.InvalidateProfessionColumnLayout()
                 scrollChild._wnProfBodyWidth = bodyW
                 paintW = PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyW)
                 local side = scrollChild._wnProfContentSide or SIDE_MARGIN

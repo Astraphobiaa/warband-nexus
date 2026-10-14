@@ -348,7 +348,7 @@ function ns.UIShell.CreateMainWindow(self)
             local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
             closeIcon:SetSize(16, 16)
             closeIcon:SetPoint("CENTER")
-            closeIcon:SetAtlas("uitools-icon-close")
+            ns.UI_SetIcon(closeIcon, "close")
             closeIcon:SetVertexColor(0.9, 0.3, 0.3)
 
             closeBtn:SetScript("OnEnter", function(self)

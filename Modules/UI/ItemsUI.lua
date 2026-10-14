@@ -60,7 +60,9 @@ local function GetLayout() return ns.UI_LAYOUT or {} end
 local BASE_INDENT, SUBROW_EXTRA_INDENT = GetLayout().BASE_INDENT or 15, GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN, TOP_MARGIN, ROW_HEIGHT = GetLayout().SIDE_MARGIN or 10, GetLayout().TOP_MARGIN or 8, GetLayout().ROW_HEIGHT or 26
 --- Storage tree leaf rows only (FramePoolFactory AcquireStorageRow); body-font glyphs need > ROW_HEIGHT so descenders clear the next row background.
-local STORAGE_ROW_HEIGHT = GetLayout().STORAGE_ROW_HEIGHT or GetLayout().storageRowHeight or ROW_HEIGHT
+--- Metric source: UI_LAYOUT.TABLE.ROW_H.standard (SharedWidgets_TableKit list rows); legacy keys as fallback.
+local STORAGE_ROW_HEIGHT = (GetLayout().TABLE and GetLayout().TABLE.ROW_H.standard)
+    or GetLayout().STORAGE_ROW_HEIGHT or GetLayout().storageRowHeight or ROW_HEIGHT
 --- WN-PERF (`WN-PERF-warband-nexus`): Personal/Warband aggregate leaf tables exceed sync cap -> `C_Timer.After(0)` chunks + paint generation cancel.
 local STORAGE_LEAF_ROW_CHUNK, STORAGE_LEAF_ROW_SYNC_MAX = 40, 40
 --- Items > Warband embed: lower sync cap + staged type headers (personal -> warband sub-tab spike).
@@ -80,10 +82,11 @@ local STORAGE_ROW_STRIDE = STORAGE_ROW_HEIGHT + STORAGE_ROW_GAP
 local ROW_SPACING, HEADER_SPACING, SECTION_SPACING = GetLayout().ROW_SPACING or 26, GetLayout().HEADER_SPACING or 44, GetLayout().SECTION_SPACING or 8
 -- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
 
-local ItemsResultsTopGap = ns.UI_ItemsResultsTopGap
-    or function(baseYOffset)
-        return (baseYOffset or 0) + SECTION_SPACING
-    end
+--- Page stack: resultsContainer already sits at PAGE_STACK.BODY_TOP inside the scroll child, so the
+--- top-level list / empty card adds no extra top gap (chrome -> content = BLOCK_GAP + BODY_TOP).
+local function ItemsResultsTopGap(baseYOffset)
+    return baseYOffset or 0
+end
 
 local ITEMS_RESULTS_EMPTY_OPTS = { fillParent = true }
 
@@ -183,14 +186,16 @@ local tinsert = table.insert
 local tremove = table.remove
 
 -- Bank sub-tabs: same sizing and behavior as CollectionsUI CreateSubTabBar (icon + hover + _active).
-local ITEMS_BANK_SUBTAB_BTN_HEIGHT = 40
-local ITEMS_BANK_SUBTAB_BTN_SPACING = 8
-local ITEMS_BANK_SUBTAB_ICON_SIZE = 28
-local ITEMS_BANK_SUBTAB_ICON_LEFT = 10
-local ITEMS_BANK_SUBTAB_ICON_TEXT_GAP = 8
-local ITEMS_BANK_SUBTAB_TEXT_RIGHT = 10
-local ITEMS_BANK_SUBTAB_DEFAULT_WIDTH = 150
-local ITEMS_BANK_SUBTAB_GOLD_RESERVE = 136
+-- Sizes come from UI_LAYOUT.SUB_TAB / PAGE_STACK.SUB_TAB_HEIGHT; only the gold reserve is Items-specific.
+local ITEMS_BANK_SUBTAB_BTN_HEIGHT = (GetLayout().PAGE_STACK or {}).SUB_TAB_HEIGHT or (GetLayout().SUB_TAB or {}).BTN_HEIGHT or 40
+local ITEMS_BANK_SUBTAB_BTN_SPACING = (GetLayout().SUB_TAB or {}).BTN_SPACING or 8
+local ITEMS_BANK_SUBTAB_ICON_SIZE = (GetLayout().SUB_TAB or {}).ICON_SIZE or 28
+local ITEMS_BANK_SUBTAB_ICON_LEFT = (GetLayout().SUB_TAB or {}).ICON_LEFT or 10
+local ITEMS_BANK_SUBTAB_ICON_TEXT_GAP = (GetLayout().SUB_TAB or {}).ICON_TEXT_GAP or 8
+local ITEMS_BANK_SUBTAB_TEXT_RIGHT = (GetLayout().SUB_TAB or {}).TEXT_RIGHT or 10
+local ITEMS_BANK_SUBTAB_DEFAULT_WIDTH = (GetLayout().SUB_TAB or {}).DEFAULT_WIDTH or 150
+local ITEMS_BANK_SUBTAB_GOLD_RESERVE = 136 -- width kept free on the right of the bar for the gold readout
+local ITEMS_STATS_BAR_HEIGHT = 24 -- stats line chrome block (create + RepositionItemsFixedHeader share it)
 
 local function ItemsBankSubTabIconApply(tex, tabInfo)
     if not tex or not tabInfo then return end
@@ -1273,6 +1278,8 @@ function WarbandNexus:DrawItemList(parent)
     local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
     local headerYOffset = (chrome and chrome.yOffset) or 0
     local contentSide = (chrome and chrome.side) or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN
+    -- Page stack: every chrome block goes through UI_PageStack_Place (create + reposition share it).
+    chrome = chrome or { headerParent = headerParent, yOffset = headerYOffset, side = contentSide }
     local width = ResolveItemsTabScrollContentWidth(parent)
     
     -- Hide empty state container (will be shown again if needed)
@@ -1324,12 +1331,7 @@ function WarbandNexus:DrawItemList(parent)
         subtitleText = (ns.L and ns.L["ITEMS_SUBTITLE"]) or "Browse your Warband Bank and Personal Items (Bank + Inventory)",
         textRightInset = itemsToolbarReserve,
     }))
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
-    else
-        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    end
+    headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
     
     local goldMgrBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
         preset = "action",
@@ -1383,12 +1385,6 @@ function WarbandNexus:DrawItemList(parent)
     end
 
     titleCard:Show()
-    
-    if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
-    else
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
-    end
 
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("items") then
@@ -1419,6 +1415,7 @@ function WarbandNexus:DrawItemList(parent)
     
     local accentColor = COLORS.accent
     local itemsBankSubTabBar = CreateItemsBankSubTabBar(headerParent, headerYOffset, currentItemsSubTab, accentColor, contentSide)
+    headerYOffset = ns.UI_PageStack_Place(chrome, itemsBankSubTabBar, ITEMS_BANK_SUBTAB_BTN_HEIGHT)
 
     local goldDisplay = FontManager:CreateFontString(itemsBankSubTabBar, "body", "OVERLAY")
     goldDisplay:SetPoint("RIGHT", itemsBankSubTabBar, "RIGHT", -10, 0)
@@ -1474,8 +1471,6 @@ function WarbandNexus:DrawItemList(parent)
         goldDisplay:SetText("")
     end
 
-    headerYOffset = headerYOffset + ITEMS_BANK_SUBTAB_BTN_HEIGHT + GetLayout().afterElement
-    
     local CreateSearchBox = ns.UI_CreateSearchBox
     local itemsSearchText = SearchStateManager:GetQuery("items")
     
@@ -1499,15 +1494,10 @@ function WarbandNexus:DrawItemList(parent)
         end
     end, nil, itemsSearchText, "items")
     
-    searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-    searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    headerYOffset = ns.UI_PageStack_Place(chrome, searchBox, (GetLayout().PAGE_STACK or {}).SEARCH_HEIGHT or 32)
     
-    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
-    headerYOffset = headerYOffset + searchH + GetLayout().afterElement
-    
-    local statsBar, statsText = CreateStatsBar(headerParent, 24)
-    statsBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-    statsBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    local statsBar, statsText = CreateStatsBar(headerParent, ITEMS_STATS_BAR_HEIGHT)
+    headerYOffset = ns.UI_PageStack_Place(chrome, statsBar, ITEMS_STATS_BAR_HEIGHT)
     statsText:ClearAllPoints()
     statsText:SetPoint("LEFT", contentSide, 0)
     local itemCount, usedSlots, totalSlots, lastScan, colorHex =
@@ -1530,8 +1520,6 @@ function WarbandNexus:DrawItemList(parent)
             statsText = statsText,
         }
     end
-
-    headerYOffset = headerYOffset + 24 + GetLayout().afterElement
 
     -- Set fixedHeader height so scroll area starts below all header elements
     if ns.UI_CommitTabFixedHeader then
@@ -1556,7 +1544,7 @@ function WarbandNexus:DrawItemList(parent)
     end
     resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
 
-    return 8 + (contentHeight or 0)
+    return scrollTopY + (contentHeight or 0)
 end
 
 --- Flat-list paint cache: tab pool revisits skip regroup/sort when sub-tab, search, items, and expand state are unchanged.
@@ -2143,18 +2131,9 @@ function ApplyItemRowInteriorLayout(row)
     if row.bg and row.bg.SetAllPoints then
         row.bg:SetAllPoints()
     end
-    if row.locationText and row.nameText then
-        local layout = GetLayout()
-        local li = layout.LIST_ROW_LOCATION_RIGHT_INSET or 28
-        local lw = layout.LIST_ROW_LOCATION_MAX_WIDTH or 120
-        row.locationText:ClearAllPoints()
-        row.locationText:SetPoint("RIGHT", row, "RIGHT", -li, 0)
-        row.locationText:SetWidth(lw)
-        row.locationText:SetJustifyH("RIGHT")
-        row.nameText:ClearAllPoints()
-        row.nameText:SetPoint("LEFT", row, "LEFT", 98, 0)
-        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
-        row.nameText:SetJustifyH("LEFT")
+    -- Column model lives with the pooled chassis (FramePoolFactory ITEM_ROW_COLS).
+    if ns.UI_LayoutItemListRow then
+        ns.UI_LayoutItemListRow(row)
     end
 end
 
@@ -2274,6 +2253,7 @@ ns.ItemsUI._bind = {
     BASE_INDENT = BASE_INDENT,
     SECTION_SPACING = SECTION_SPACING,
     ITEMS_BANK_SUBTAB_BTN_HEIGHT = ITEMS_BANK_SUBTAB_BTN_HEIGHT,
+    ITEMS_STATS_BAR_HEIGHT = ITEMS_STATS_BAR_HEIGHT,
     STORAGE_ROW_HEIGHT = STORAGE_ROW_HEIGHT,
     STORAGE_ROW_STRIDE = STORAGE_ROW_STRIDE,
     STORAGE_LEAF_ROW_CHUNK = STORAGE_LEAF_ROW_CHUNK,

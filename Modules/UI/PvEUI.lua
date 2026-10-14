@@ -75,6 +75,8 @@ local TOP_MARGIN = GetLayout().topMargin or 8
 -- PvE inline grid: min width for horizontal scroll; column headers live in scrollChild (not columnHeaderClip).
 -- Left prefix through iLvl matches Characters row chrome; inline grid starts at PvE_ComputeInlineColumnsStartPx.
 local PVE_CHAR_HEADER_H_MARGIN = 20                -- char row inset 10 + 10
+-- Named exception to PAGE_STACK: PvE is a FLUSH grid (column headers sit directly under the title, gap
+-- PAGE_STACK.FLUSH). This hairline pad separates the header row from the first character row only.
 local PVE_COLUMN_HEADER_PAD = 2
 local PVE_COL_SPACING = 4                        -- uniform baseline spacing for symmetric header rhythm
 local PVE_KEY_TO_VAULT_GAP = 6                   -- currency block ↔ vault block
@@ -124,8 +126,8 @@ local function GetPvEManafluxName()
 end
 
 -- Great Vault slot glyphs — match Modules/VaultButton.lua SlotSymbols (12×12).
-local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
-local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+local VAULT_SLOT_CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
+local VAULT_SLOT_CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
 local VAULT_SLOT_UPARROW = "|A:loottoast-arrow-green:12:12|a"
 
 local UI_GetAccentHexColor = ns.UI_GetAccentHexColor
@@ -285,11 +287,9 @@ local _pveDrawPool = {
     colSig = nil,
     nameWidths = {},
     measureFs = nil,
-    headerLabels = {},
     inline = {}, -- [charKey] = { [colKey] = { fs = FontString, hit = Frame? } }
     charRows = {}, -- [charKey] = { header, detail, expandIcon }
-    colHeaderRow = nil,
-    colHeaderHits = {}, -- [colKey] = hitFrame
+    colHeaderRow = nil, -- TableKit header strip (PvEUI_BodyPaint.lua PvEHeader.EnsureStrip)
     columnLayout = { sig = nil, widths = {} },
     columnDefsColSig = nil,
     columnDefs = nil,
@@ -372,12 +372,6 @@ local function PvESyncPvEPools(rosterSig, colSig, currentKeySet, visibleColKeys)
         end
     end
     if pool.colSig ~= colSig then
-        for colKey, fs in pairs(pool.headerLabels) do
-            if not visibleColKeys[colKey] then
-                fs:Hide()
-                fs:SetParent(holder)
-            end
-        end
         for _, byCol in pairs(pool.inline) do
             if byCol then
                 for colKey, cell in pairs(byCol) do
@@ -415,49 +409,6 @@ local function PvE_GetDrawPoolMeasureFS()
 end
 
 --- Park pooled column labels before rebuilding the header row (stale anchors/text caused orphan labels).
-local function PvEParkAllColHeaderLabels()
-    local pool = _pveDrawPool
-    local holder = PvE_EnsureDrawPoolHolder()
-    for _, fs in pairs(pool.headerLabels) do
-        if fs then
-            fs:Hide()
-            fs:ClearAllPoints()
-            fs:SetText("")
-            fs:SetParent(holder)
-        end
-    end
-end
-
-local function PvEAcquireColHeaderLabel(colHeaderRow, colKey, hitFrame, compactLabel, compactHex, colWidth)
-    local pool = _pveDrawPool
-    local fs = pool.headerLabels[colKey]
-    if not fs then
-        fs = FontManager:CreateFontString(colHeaderRow, "small", "OVERLAY")
-        pool.headerLabels[colKey] = fs
-        fs._pvePooledHeaderLabel = true
-    else
-        fs:SetParent(colHeaderRow)
-        fs:Show()
-    end
-    fs:SetPoint("TOP", hitFrame, "BOTTOM", 0, 0)
-    fs:SetWidth(math.max(24, colWidth - 4))
-    fs:SetJustifyH("CENTER")
-    fs:SetWordWrap(false)
-    local hex = compactHex or "ffffff"
-    if hex == "ffffff" and ns.UI_GetTextRoleHex then
-        local roleHex = ns.UI_GetTextRoleHex("Bright")
-        hex = roleHex and roleHex:match("cff(%x%x%x%x%x%x)") or hex
-    end
-    fs:SetText("|cff" .. hex .. compactLabel .. "|r")
-    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-        fs:SetShadowOffset(0, 0)
-    else
-        fs:SetShadowOffset(1, -1)
-        fs:SetShadowColor(0, 0, 0, 0.9)
-    end
-    return fs
-end
-
 local function PvE_StripMarkupForMeasure(text)
     if not text or text == "" then return "" end
     if issecretvalue and issecretvalue(text) then return "" end
@@ -596,7 +547,7 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
             end
         end
         if key == "bountiful" or key == "nightmare_task" or key == "purging_vaults" then
-            local wIcon = PvE_MeasurePlainWidth(bodyFs, "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t")
+            local wIcon = PvE_MeasurePlainWidth(bodyFs, VAULT_SLOT_CHECK)
             local wProg = PvE_MeasurePlainWidth(bodyFs, "0 / 1")
             return math.max(iconSz, wIcon, wProg)
         end
@@ -930,12 +881,16 @@ end
 local function RepositionPveFixedHeader(mf, hdrCache, headerParent, chrome, headerYOffset, contentSide, scrollChild)
     local titleCard = hdrCache.titleCard
     titleCard:SetParent(headerParent)
-    if chrome and ns.UI_AnchorTabTitleCard then
-        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    -- FLUSH: column-header grid sits directly under the title (same Place call as the create path).
+    local nextY
+    if chrome and ns.UI_PageStack_Place then
+        chrome.yOffset = headerYOffset
+        nextY = ns.UI_PageStack_Place(chrome, titleCard, nil, "FLUSH")
     else
         titleCard:ClearAllPoints()
         titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
         titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        nextY = headerYOffset + (titleCard:GetHeight() or 64) + GetLayout().PAGE_STACK.FLUSH
     end
     titleCard:Show()
     if hdrCache.sortBtn then hdrCache.sortBtn:Show() end
@@ -945,10 +900,7 @@ local function RepositionPveFixedHeader(mf, hdrCache, headerParent, chrome, head
     if ns.UI_HideTitleCardExpandCollapseControls then
         ns.UI_HideTitleCardExpandCollapseControls(scrollChild)
     end
-    if ns.UI_AdvanceTabChromeYOffset then
-        return ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight(), 0)
-    end
-    return headerYOffset + (titleCard:GetHeight() or 64)
+    return nextY
 end
 
 function ns.PvEUI.InvalidateBodyCache(parent)
@@ -1011,6 +963,8 @@ local function PvEUI_SyncPveScrollChildExtent(scrollChild, scrollFrameRef)
     end
 end
 
+-- Named exception: gap between stacked PvE character section shells inside the FLUSH grid (table rhythm,
+-- tighter than PAGE_STACK.CARD_GAP). BodyPaint reads it via L.PVE_SECTION_SHELL_GAP.
 local PVE_SECTION_SHELL_GAP = 4
 
 local function PvEUI_ResolveCharDetailPaintHeight(detail)
@@ -1417,22 +1371,6 @@ local function PvE_GetGapAfterColumnKey(leftKey, visibleKeySet)
     end
     return PVE_COL_SPACING
 end
-
---- Center X of each gap between inline PvE columns (parent-local).
-local function BuildPvEInlineColumnDividerXs(startX, columns, gapAfterIndex)
-    local xs = {}
-    if not startX or not columns or #columns < 2 then return xs end
-    local x = startX
-    for ci = 1, #columns - 1 do
-        local col = columns[ci]
-        local gap = (gapAfterIndex and gapAfterIndex(ci)) or PVE_COL_SPACING
-        xs[#xs + 1] = x + col.width + gap * 0.5
-        x = x + col.width + gap
-    end
-    return xs
-end
-
-ns.BuildPvEInlineColumnDividerXs = BuildPvEInlineColumnDividerXs
 
 -- Toolbar controls: PvEUI_ColumnPicker.lua (Columns, Hide, Current toggle)
 local function GetTrovehunterBountyColumnIcon()
@@ -2553,6 +2491,7 @@ if not ns.PvEDrawLibs then
         PvE_ComputeInlineColumnsStartPx = ns.PvE_ComputeInlineColumnsStartPx,
         PvEUI_ApplyCharacterListRowChrome = ns.PvEUI_ApplyCharacterListRowChrome,
         PVE_COLUMN_HEADER_PAD = PVE_COLUMN_HEADER_PAD,
+        PVE_SECTION_SHELL_GAP = PVE_SECTION_SHELL_GAP,
         PVE_COL_SPACING = PVE_COL_SPACING,
         PVE_KEY_TO_VAULT_GAP = PVE_KEY_TO_VAULT_GAP,
         PVE_VAULT_CLUSTER_GAP = PVE_VAULT_CLUSTER_GAP,
@@ -2586,7 +2525,6 @@ if not ns.PvEDrawLibs then
         PvE_EnsureDrawPoolHolder = PvE_EnsureDrawPoolHolder,
         PvESyncPvEPools = PvESyncPvEPools,
         PvE_GetDrawPoolMeasureFS = PvE_GetDrawPoolMeasureFS,
-        PvEAcquireColHeaderLabel = PvEAcquireColHeaderLabel,
         PvEAcquireInlineCell = function(charHeader, charKey, colKey)
             local fn = ns.PvEUI and ns.PvEUI.PvEAcquireInlineCell
             if fn then return fn(charHeader, charKey, colKey) end
@@ -2600,7 +2538,6 @@ if not ns.PvEDrawLibs then
         PvE_ApplyCachedColumnWidths = PvE_ApplyCachedColumnWidths,
         PvE_SaveColumnLayoutCache = PvE_SaveColumnLayoutCache,
         UI_SyncGridColumnDividers = ns.UI_SyncGridColumnDividers,
-        BuildPvEInlineColumnDividerXs = BuildPvEInlineColumnDividerXs,
         GetPvECachedCurrencyDisplay = GetPvECachedCurrencyDisplay,
         EnsureVaultButtonColumnsForPvE = EnsureVaultButtonColumnsForPvE,
         EnsurePvEExtraVisibleColumns = EnsurePvEExtraVisibleColumns,
@@ -2628,7 +2565,6 @@ if not ns.PvEDrawLibs then
         PveEstimateScrollBodyHeight = PveEstimateScrollBodyHeight,
         PveTeardownKeptBodyArtifacts = PveTeardownKeptBodyArtifacts,
         RepositionPveFixedHeader = RepositionPveFixedHeader,
-        PvEParkAllColHeaderLabels = PvEParkAllColHeaderLabels,
         PvE_ApplyAdaptiveColumnWidths = PvE_ApplyAdaptiveColumnWidths,
         PvE_BuildCompactHeaderLabel = PvE_BuildCompactHeaderLabel,
         PveGroupIdFromSectionSecKey = PveGroupIdFromSectionSecKey,

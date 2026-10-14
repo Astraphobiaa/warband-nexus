@@ -29,17 +29,9 @@ local function UIFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
 end
 
+--- Surface tier color: single implementation lives in SharedWidgets.lua (`ns.UI_ResolveSurfaceTierColor`).
 local function ResolveSurfaceTierColor(tier)
-    if ns.UI_ResolveSurfaceTierColor then
-        return ns.UI_ResolveSurfaceTierColor(tier)
-    end
-    local C = COLORS or {}
-    if tier == "rowEven" then
-        return C.surfaceRowEven or (UI_SPACING and UI_SPACING.ROW_COLOR_EVEN) or { 0.112, 0.112, 0.138, 0.96 }
-    elseif tier == "rowOdd" then
-        return C.surfaceRowOdd or (UI_SPACING and UI_SPACING.ROW_COLOR_ODD) or { 0.090, 0.090, 0.112, 0.96 }
-    end
-    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
+    return ns.UI_ResolveSurfaceTierColor(tier)
 end
 
 --- Characters tab row: horizontal class tint behind row content (BACKGROUND — never over icons).
@@ -471,6 +463,13 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:Show()
 
     local surf = COLORS.surfaceHeaderChrome or COLORS.surfaceElevated or COLORS.bgLight
+    local sbr, sbg, sbb, sba = 0.45, 0.45, 0.5, 0.45
+    if ns.UI_GetSectionHeaderBorderRGBA then
+        sbr, sbg, sbb, sba = ns.UI_GetSectionHeaderBorderRGBA()
+    else
+        sbr, sbg, sbb = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+        sba = 0.45
+    end
     if isClassic and not header._wnBlizzardButton and ns.UI_ApplyClassicListHeaderChrome then
         ns.UI_ApplyClassicListHeaderChrome(header, { surf[1], surf[2], surf[3], 1 })
         header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
@@ -478,7 +477,7 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
         ns.UI_ApplyClassicCardPanelChrome(header)
         header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
     elseif not isClassic then
-        ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, { sbr, sbg, sbb, sba })
         header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
 
         if ns.UI_ApplySectionChromeUnderlay then
@@ -650,18 +649,30 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
 
     local iconBorder = self:CreateContainer(row, iconSize, iconSize, true)
     if iconBorder then
-        local bg = { 0.12, 0.12, 0.14, 0.95 }
-        local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
-        if ApplyVisuals then
-            ApplyVisuals(iconBorder, bg, { bc[1], bc[2], bc[3], 0.72 })
+        if ns.UI_ApplyListRowIconChrome then
+            ns.UI_ApplyListRowIconChrome(iconBorder)
+        else
+            local shellBg = { 0.12, 0.12, 0.14, 0.95 }
+            if ns.UI_GetControlChromeBackdrop then
+                local c = ns.UI_GetControlChromeBackdrop()
+                shellBg = { c[1], c[2], c[3], (c[4] or 1) * 0.95 }
+            end
+            local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
+            if ApplyVisuals then
+                ApplyVisuals(iconBorder, shellBg, { bc[1], bc[2], bc[3], 0.72 })
+            end
         end
         iconBorder:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
         row._iconBorder = iconBorder
     end
     local iconHost = row._iconBorder or row
     local icon = iconHost:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", iconHost, "TOPLEFT", 1, -1)
-    icon:SetPoint("BOTTOMRIGHT", iconHost, "BOTTOMRIGHT", -1, 1)
+    if iconBorder and iconBorder._wnListRowBareIcon then
+        icon:SetAllPoints(iconHost)
+    else
+        icon:SetPoint("TOPLEFT", iconHost, "TOPLEFT", 1, -1)
+        icon:SetPoint("BOTTOMRIGHT", iconHost, "BOTTOMRIGHT", -1, 1)
+    end
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     row.icon = icon
 

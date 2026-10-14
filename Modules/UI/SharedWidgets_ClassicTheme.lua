@@ -88,6 +88,32 @@ ns.UI_CLASSIC_ICON_WELL_BACKDROP = {
     insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
+-- Classic 1-unit strokes use the same whole-pixel thickness as modern borders
+-- (UI_GetBorderThickness). One backdrop table per thickness: BackdropTemplate keeps a
+-- reference and re-reads edgeSize on resize, so shared tables must never be mutated.
+local classicStrokeBackdropCache = {}
+local function GetClassicStrokeBackdrop(base, frame)
+    local t = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or 1
+    local byBase = classicStrokeBackdropCache[base]
+    if not byBase then
+        byBase = {}
+        classicStrokeBackdropCache[base] = byBase
+    end
+    local bd = byBase[t]
+    if not bd then
+        bd = {
+            bgFile = base.bgFile,
+            edgeFile = base.edgeFile,
+            tile = base.tile,
+            tileSize = base.tileSize,
+            edgeSize = t,
+            insets = { left = t, right = t, top = t, bottom = t },
+        }
+        byBase[t] = bd
+    end
+    return bd
+end
+
 local function ResolveWarbandProfile()
     local WN = _G.WarbandNexus or ns.WarbandNexus
     return WN and WN.db and WN.db.profile
@@ -180,7 +206,7 @@ ns.UI_CLASSIC_THIN_BORDER_BACKDROP = {
 ---@param bgColor table|nil
 function ns.UI_ApplyClassicThinBorderChrome(frame, bgColor)
     if not frame or not EnsureBackdropMixin(frame) then return end
-    frame:SetBackdrop(ns.UI_CLASSIC_THIN_BORDER_BACKDROP)
+    frame:SetBackdrop(GetClassicStrokeBackdrop(ns.UI_CLASSIC_THIN_BORDER_BACKDROP, frame))
     local c = bgColor
         or (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bgCard)
         or (ns.UI_COLORS and (ns.UI_COLORS.bgCard or ns.UI_COLORS.bgLight))
@@ -280,7 +306,7 @@ end
 ---@param bgColor table|nil
 function ns.UI_ApplyClassicIconWellChrome(frame, bgColor)
     if not frame or not EnsureBackdropMixin(frame) then return end
-    frame:SetBackdrop(ns.UI_CLASSIC_ICON_WELL_BACKDROP)
+    frame:SetBackdrop(GetClassicStrokeBackdrop(ns.UI_CLASSIC_ICON_WELL_BACKDROP, frame))
     local c = bgColor
         or (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bgCard)
         or (ns.UI_COLORS and (ns.UI_COLORS.bgCard or ns.UI_COLORS.bgLight))
@@ -493,7 +519,7 @@ function ns.UI_ApplyHeaderCopyUrlShell(frame)
     frame:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
+        edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 },
     })
     local shellBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.08, 0.08, 0.10, 0.95 }

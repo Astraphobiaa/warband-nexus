@@ -83,7 +83,11 @@ function ZP.Install(ctx)
         f.zoneMutexNotice:SetJustifyH("LEFT")
         f.zoneMutexNotice:SetWordWrap(true)
         f.zoneMutexNotice:SetMaxLines(2)
-        f.zoneMutexNotice:SetTextColor(0.92, 0.72, 0.42)
+        do -- semantic caution (light-mode aware) instead of a fixed amber
+            local cr, cg, cb = 0.92, 0.72, 0.42
+            if ns.UI_GetSemanticOrangeColor then cr, cg, cb = ns.UI_GetSemanticOrangeColor() end
+            f.zoneMutexNotice:SetTextColor(cr, cg, cb)
+        end
         f.zoneMutexNotice:Hide()
         WireMutexHoverTip(zoneLabel, "_zoneMutexTipText")
         WireMutexHoverTip(zoneCheck, "_zoneMutexTipText")
@@ -136,9 +140,8 @@ function ZP.Install(ctx)
         local mapEditBg = H.Container(mapIdRow, 120, 26, false)
         mapEditBg:SetPoint("LEFT", mapGetIdBtn, "RIGHT", 6, 0)
         mapEditBg:SetPoint("RIGHT", mapIdRow, "RIGHT", 0, 0)
-        if ApplyVisuals then
-            local chrome = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or COLORS.bgCard
-            ApplyVisuals(mapEditBg, chrome, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
+        if ns.UI_ApplyInputChrome then
+            ns.UI_ApplyInputChrome(mapEditBg)
         end
         mapEditBg:EnableMouse(true)
 
@@ -379,7 +382,7 @@ function ZP.Install(ctx)
                 self.mapIdZonePreview:SetText(PickerLabelHex() .. prefix .. ":|r " .. PickerBrightHex() .. nm .. "|r " .. PickerMutedHex() .. "— "
                     .. tostring(n) .. "|r")
             else
-                self.mapIdZonePreview:SetText("|cff888888" .. ((Lz and Lz["REMINDER_ZONE_NAME_UNKNOWN"]) or "Unknown map ID") .. "|r")
+                self.mapIdZonePreview:SetText(PickerMutedHex() .. ((Lz and Lz["REMINDER_ZONE_NAME_UNKNOWN"]) or "Unknown map ID") .. "|r")
             end
             self.mapIdZonePreview:Show()
         end

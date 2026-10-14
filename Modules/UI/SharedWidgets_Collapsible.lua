@@ -95,17 +95,9 @@ local function ResolveClassicSectionHeaderBg()
     return { surf[1], surf[2], surf[3], surf[4] or 1 }
 end
 
+--- Surface tier color: single implementation lives in SharedWidgets.lua (`ns.UI_ResolveSurfaceTierColor`).
 local function ResolveSurfaceTierColor(tier)
-    if ns.UI_ResolveSurfaceTierColor then
-        return ns.UI_ResolveSurfaceTierColor(tier)
-    end
-    local C = COLORS or {}
-    if tier == "rowEven" then
-        return C.surfaceRowEven or (UI_SPACING and UI_SPACING.ROW_COLOR_EVEN) or { 0.112, 0.112, 0.138, 0.96 }
-    elseif tier == "rowOdd" then
-        return C.surfaceRowOdd or (UI_SPACING and UI_SPACING.ROW_COLOR_ODD) or { 0.090, 0.090, 0.112, 0.96 }
-    end
-    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
+    return ns.UI_ResolveSurfaceTierColor(tier)
 end
 
 local function BuildCollapsibleSectionOpts(config)
@@ -231,7 +223,7 @@ local function RebindReusedCollapsibleHeader(header, parent, text, isExpanded, o
         if isAtlas then
             local ok = pcall(categoryIcon.SetAtlas, categoryIcon, iconTexture, false)
             if not ok then
-                categoryIcon:SetAtlas("icons_64x64_important", false)
+                categoryIcon:SetAtlas(ns.UI_GetIconAtlas("attention") or "icons_64x64_important", false)
             end
         else
             categoryIcon:SetTexCoord(0, 1, 0, 1)
@@ -288,7 +280,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         if noCategoryIcon then
             reuseIcon = nil
         elseif not reuseIcon or reuseIcon == "" then
-            reuseIcon = isAtlas and "icons_64x64_important" or "Interface\\Icons\\INV_Misc_Coin_01"
+            reuseIcon = isAtlas and (ns.UI_GetIconAtlas("attention") or "icons_64x64_important") or "Interface\\Icons\\INV_Misc_Coin_01"
         end
         if reuseHeader._wnCollReuseSig == CollapsibleHeaderReuseSig(useClassicPanel, suppressSectionChrome, reuseIcon ~= nil) then
             local reuseW
@@ -410,7 +402,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     if noCategoryIcon then
         iconTexture = nil
     elseif not iconTexture or iconTexture == "" then
-        iconTexture = isAtlas and "icons_64x64_important" or "Interface\\Icons\\INV_Misc_Coin_01"
+        iconTexture = isAtlas and (ns.UI_GetIconAtlas("attention") or "icons_64x64_important") or "Interface\\Icons\\INV_Misc_Coin_01"
     end
     local categoryIcon = nil
     if iconTexture then
@@ -423,7 +415,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         if isAtlas then
             local ok = pcall(categoryIcon.SetAtlas, categoryIcon, iconTexture, false)
             if not ok then
-                categoryIcon:SetAtlas("icons_64x64_important", false)
+                categoryIcon:SetAtlas(ns.UI_GetIconAtlas("attention") or "icons_64x64_important", false)
             end
             categoryIcon:Show()
         else

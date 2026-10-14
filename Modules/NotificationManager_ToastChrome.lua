@@ -136,7 +136,8 @@ function ToastChrome.ApplyCompactIconBorder(iconSlot, iconTex, iconSize, accentR
         b = accentRGB[3]
     end
 
-    local edgeSize = 2
+    -- Same whole-pixel stroke as every WN border (UI_GetBorderThickness).
+    local edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(iconSlot)) or 1
     local border = CreateFrame("Frame", nil, iconSlot, "BackdropTemplate")
     border:SetFrameLevel((iconSlot.GetFrameLevel and iconSlot:GetFrameLevel() or 2) + 2)
     border:SetSize(iconSize + edgeSize * 2, iconSize + edgeSize * 2)

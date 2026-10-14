@@ -60,13 +60,6 @@ local function ApplyFlyoutMenuChrome(menu)
     end
 end
 
-local function MutedIconVertex()
-    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-        return 0.42, 0.42, 0.46, 1
-    end
-    return 0.58, 0.62, 0.72, 1
-end
-
 local function ResolveSortMenuCurrentKey(dbSortTable, sortOptions)
     local itemCount = sortOptions and #sortOptions or 0
     local CS = ns.CharacterService
@@ -104,29 +97,20 @@ local function ApplyTabSortPick(dbSortTable, sortTabId, optKey)
 end
 
 local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged, sortTabId)
-    -- Symmetric Filter button: fixed size, icon + text centered as a group
+    -- Symmetric Filter button: fixed size, label centered (no icon)
     local buttonHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local btnWidth = 90
     local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
 
     ApplyFilterHostButtonChrome(btn, false)
 
-    local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(14, 14)
-    icon:SetPoint("RIGHT", btn, "CENTER", -23, 0)  -- icon left of center; text centered
-    icon:SetAtlas("uitools-icon-filter")
-    local miR, miG, miB, miA = MutedIconVertex()
-    icon:SetVertexColor(miR, miG, miB, miA)
-
     local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
     text:SetPoint("CENTER", btn, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetText((ns.L and ns.L["FILTER_LABEL"]) or "Filter")
     ns.UI_SetTextColorRole(text, "Bright")
-    icon:SetPoint("RIGHT", text, "LEFT", -6, 0)
 
     btn:SetScript("OnEnter", function(self)
-        icon:SetVertexColor(1, 1, 1)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, true)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -134,8 +118,6 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(self)
-        local mr, mg, mb, ma = MutedIconVertex()
-        icon:SetVertexColor(mr, mg, mb, ma)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, false)
         GameTooltip:Hide()
@@ -332,17 +314,11 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     local btnWidth = ns.UI_GetTitleToolbarPresetWidth and ns.UI_GetTitleToolbarPresetWidth("filter") or 96
     local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
     ApplyFilterHostButtonChrome(btn, false)
-    local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(14, 14)
-    icon:SetAtlas("uitools-icon-filter")
-    local miR, miG, miB, miA = MutedIconVertex()
-    icon:SetVertexColor(miR, miG, miB, miA)
     local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
     text:SetPoint("CENTER", btn, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetText((ns.L and ns.L["FILTER_LABEL"]) or "Filter")
     ns.UI_SetTextColorRole(text, "Bright")
-    icon:SetPoint("RIGHT", text, "LEFT", -6, 0)
 
     local itemHeight = (UI_SPACING and UI_SPACING.DROPDOWN_MENU_ROW_HEIGHT) or (UI_SPACING and UI_SPACING.ROW_HEIGHT) or 26
     local sideMargin = (UI_SPACING and UI_SPACING.SIDE_MARGIN) or 10
@@ -413,7 +389,6 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     end
 
     btn:SetScript("OnEnter", function(self)
-        icon:SetVertexColor(1, 1, 1)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, true)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -421,8 +396,6 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(self)
-        local mr, mg, mb, ma = MutedIconVertex()
-        icon:SetVertexColor(mr, mg, mb, ma)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, false)
         GameTooltip:Hide()
@@ -730,11 +703,9 @@ function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onD
 
     local function GetLockAtlasMarkup(sz)
         sz = sz or 12
-        if CreateAtlasMarkup then
-            local ok, markup = pcall(CreateAtlasMarkup, "communities-icon-lock", sz, sz)
-            if ok and markup and markup ~= "" then
-                return markup
-            end
+        local markup = ns.UI_GetIconMarkup and ns.UI_GetIconMarkup("lock", sz, sz)
+        if markup and markup ~= "" then
+            return markup
         end
         return string.format("|TInterface\\Common\\LockIcon:%d:%d:0:0|t", sz, sz)
     end

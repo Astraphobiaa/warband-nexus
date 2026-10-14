@@ -101,11 +101,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     chev:SetSize(SAVED_GROUP_CHEVRON_SIZE, SAVED_GROUP_CHEVRON_SIZE)
     chev:SetPoint("RIGHT", -10, 0)
     function M.UpdateChevron()
-        if collapsed then
-            chev:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
-        else
-            chev:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
-        end
+        ns.UI_SetIcon(chev, collapsed and "chevron_down" or "chevron_up")
     end
     UpdateChevron()
     header._savedUpdateChevron = UpdateChevron

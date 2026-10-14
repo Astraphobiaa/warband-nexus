@@ -361,7 +361,7 @@ local function GetAchievementRequirementsText(achievementID)
         for i = 1, #summary.criteria do
             local row = summary.criteria[i]
             if row.hasName and row.name then
-                local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                local icon = row.completed and ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) or ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
                 local color = row.completed and (PLAN_COLORS.completed or "|cff44ff44") or PCol("incomplete")
                 local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
                 parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(row.name) .. "|r" .. progress
@@ -2293,7 +2293,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local closeTex = closeBtn:CreateTexture(nil, "ARTWORK")
     closeTex:SetSize(16, 16)
     closeTex:SetPoint("CENTER")
-    closeTex:SetAtlas("uitools-icon-close")
+    ns.UI_SetIcon(closeTex, "close")
     closeTex:SetVertexColor(closeR, closeG, closeB)
     closeBtn._wnCloseTex = closeTex
     closeBtn:SetScript("OnEnter", function()
@@ -2329,8 +2329,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local function SetCollapseChevron(isCollapsed)
         local key = isCollapsed and "chevron_down" or "chevron_up"
         if not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(collapseTex, key)) then
-            collapseTex:SetAtlas(isCollapsed and "glues-characterSelect-icon-arrowDown-small-hover"
-                or "glues-characterSelect-icon-arrowUp-small-hover")
+            ns.UI_SetIcon(collapseTex, key)
         end
         -- Tint through the shared header-utility helper, not a hand-picked text color.
         ApplyTrackerUtilityIconStyle(collapseTex, false)
@@ -2398,10 +2397,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local gearTex = gearBtn:CreateTexture(nil, "ARTWORK")
     gearTex:SetSize(16, 16)
     gearTex:SetPoint("CENTER")
-    -- Same gear glyph the Vault Tracker header uses (VaultButton_Table.lua SetNormalAtlas
-    -- "mechagon-projects"). The old Trade_Engineering spell icon, desaturated, rendered as a
-    -- muddy blob that matched neither the chevron next to it nor the other windows.
-    if not (gearTex.SetAtlas and pcall(gearTex.SetAtlas, gearTex, "mechagon-projects", false)) then
+    -- IconRegistry "settings" (questlog-icon-setting; "mechagon-projects" has no 12.1.5 FrameXML ref).
+    -- The old Trade_Engineering spell icon, desaturated, rendered as a muddy blob that matched
+    -- neither the chevron next to it nor the other windows.
+    if not ns.UI_SetIcon(gearTex, "settings") then
         gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
         gearTex:SetTexCoord(0.06, 0.94, 0.06, 0.94)
         gearTex:SetDesaturated(true)

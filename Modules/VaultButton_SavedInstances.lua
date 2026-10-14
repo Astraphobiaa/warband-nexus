@@ -216,6 +216,7 @@ function M.BuildSavedInstancesFrame()
     if S.savedFrame and (S.savedFrame._savedLayoutVersion or 0) ~= SAVED_INSTANCES_LAYOUT_VERSION then
         ReleaseSavedInstanceRows()
         S.savedFrame:Hide()
+        if ns.UI_UnregisterScaledFrame then ns.UI_UnregisterScaledFrame(S.savedFrame) end
         S.savedFrame = nil
         S.savedScrollHost = nil
         S.savedScroll = nil
@@ -230,6 +231,8 @@ function M.BuildSavedInstancesFrame()
 
     local f = M.VBContainer(UIParent, 1, 1, false, "WarbandNexusSavedInstances")
     AddEscCloseFrame("WarbandNexusSavedInstances")
+    -- Follow profile.uiScale like the Easy Access menu (VaultButton.lua) and WindowFactory shells.
+    if ns.UI_RegisterScaledFrame then ns.UI_RegisterScaledFrame(f) end
     f:SetSize(SAVED_FRAME_W, 480)
     f:SetClampedToScreen(true)
     -- Match Vault Tracker table strata so an open tracker cannot paint its scrollbar over this window.
@@ -288,7 +291,7 @@ function M.BuildSavedInstancesFrame()
         local closeIcon = close:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
-        closeIcon:SetAtlas("uitools-icon-close")
+        ns.UI_SetIcon(closeIcon, "close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         close:SetScript("OnClick", function() f:Hide() end)
         close:SetScript("OnEnter", function()

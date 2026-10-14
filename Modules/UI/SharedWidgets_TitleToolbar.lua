@@ -228,7 +228,7 @@ function ns.UI_CreateTitleToolbarHideLevelButton(parent, opts)
                 menu:SetBackdrop({
                     bgFile = "Interface\\Buttons\\WHITE8x8",
                     edgeFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeSize = 1,
+                    edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(menu)) or 1,
                     insets = { left = 0, right = 0, top = 0, bottom = 0 },
                 })
                 menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)

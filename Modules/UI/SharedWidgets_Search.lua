@@ -36,27 +36,16 @@ end
 
 local function GetLockAtlasMarkup(sz)
     sz = sz or 14
-    if CreateAtlasMarkup then
-        local ok, markup = pcall(CreateAtlasMarkup, "communities-icon-lock", sz, sz)
-        if ok and markup and markup ~= "" then
-            return markup
-        end
+    local markup = ns.UI_GetIconMarkup and ns.UI_GetIconMarkup("lock", sz, sz)
+    if markup and markup ~= "" then
+        return markup
     end
     return string.format("|TInterface\\Common\\LockIcon:%d:%d:0:0|t", sz, sz)
 end
 
+--- Surface tier color: single implementation lives in SharedWidgets.lua (`ns.UI_ResolveSurfaceTierColor`).
 local function ResolveSurfaceTierColor(tier)
-    if ns.UI_ResolveSurfaceTierColor then
-        return ns.UI_ResolveSurfaceTierColor(tier)
-    end
-    local C = COLORS or {}
-    if tier == "rowEven" then
-        return C.surfaceRowEven or (UI_SPACING and UI_SPACING.ROW_COLOR_EVEN) or { 0.112, 0.112, 0.138, 0.96 }
-    end
-    if tier == "rowOdd" then
-        return C.surfaceRowOdd or (UI_SPACING and UI_SPACING.ROW_COLOR_ODD) or { 0.090, 0.090, 0.112, 0.96 }
-    end
-    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
+    return ns.UI_ResolveSurfaceTierColor(tier)
 end
 
 local function RosterPickerChrome()
@@ -926,9 +915,10 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
                 and CharacterService:IsCustomSectionLocked(addon, groupId)
             local okA = false
             if lockBtn.SetNormalAtlas then
+                local lockAtlas = ns.UI_GetIconAtlas("lock") or "communities-icon-lock"
                 okA = pcall(function()
-                    lockBtn:SetNormalAtlas("communities-icon-lock")
-                    lockBtn:SetHighlightAtlas("communities-icon-lock")
+                    lockBtn:SetNormalAtlas(lockAtlas)
+                    lockBtn:SetHighlightAtlas(lockAtlas)
                 end)
             end
             local nt = lockBtn.GetNormalTexture and lockBtn:GetNormalTexture()
@@ -943,9 +933,11 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
                     nt:SetVertexColor(1, 0.82, 0.2, 1)
                     nt:SetAlpha(1)
                 else
-                    nt:SetDesaturated(true)
-                    nt:SetVertexColor(0.5, 0.5, 0.55, 0.6)
-                    nt:SetAlpha(0.6)
+                    -- Unlocked = inactive: monochrome (white dark / black light) at reduced alpha, no grey desaturation.
+                    local v = ns.UI_GetMonochromeIconVertex(0.55)
+                    nt:SetDesaturated(false)
+                    nt:SetVertexColor(v[1], v[2], v[3], v[4])
+                    nt:SetAlpha(1)
                 end
             end
             lockBtn:SetScript("OnEnter", function(b)
@@ -994,13 +986,19 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             end
             btn:SetSize(arrowSize, arrowSize)
             -- Same crisp Blizzard atlas the character-row reorder arrows use (the faint chevron TGAs
-            -- barely showed). Disabled ends desaturate to grey + dim instead of vanishing.
+            -- barely showed). Disabled ends use the monochrome disabled tint instead of vanishing.
             btn:SetNormalAtlas(atlas)
             btn:SetHighlightAtlas(atlas)
             local nt = btn.GetNormalTexture and btn:GetNormalTexture()
             if nt then
-                nt:SetDesaturated(not enabled)
-                nt:SetAlpha(enabled and 1 or 0.4)
+                nt:SetDesaturated(false)
+                if enabled then
+                    nt:SetVertexColor(1, 1, 1, 1)
+                else
+                    local v = ns.UI_GetMonochromeIconVertex(0.35)
+                    nt:SetVertexColor(v[1], v[2], v[3], v[4])
+                end
+                nt:SetAlpha(1)
             end
             btn:SetScript("OnEnter", function(b)
                 GameTooltip:SetOwner(b, "ANCHOR_LEFT")

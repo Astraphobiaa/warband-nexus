@@ -43,6 +43,107 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Import dependencies
 local UI_LAYOUT = ns.UI_LAYOUT
 local FontManager = ns.FontManager
+local TK = ns.UI_TableKit
+assert(TK and UI_LAYOUT and UI_LAYOUT.TABLE, "SharedWidgets_TableKit.lua must load before FramePoolFactory.lua")
+
+-- LIST ROW COLUMN MODEL (SharedWidgets_TableKit)
+-- One column model + one metric source (UI_LAYOUT.TABLE) for the pooled currency / item / storage rows.
+-- Resolved once without flex (base offsets): leading columns anchor LEFT at their x, the trailing column
+-- anchors RIGHT, and the flex name column spans between, so rows stay correct when a virtual list resizes them.
+-- Kit cell convention: text sits CELL_PAD_X inside its column; icon columns are ICON wide and CENTER-aligned.
+local TABLE = UI_LAYOUT.TABLE
+local CELL_PAD = TABLE.CELL_PAD_X
+local LIST_ROW_ICON = UI_LAYOUT.ROW_ICON_SIZE or TABLE.ICON
+--- Text-to-text distance between adjacent kit columns (pad | gap | pad).
+local LIST_ROW_TEXT_GAP = CELL_PAD + TABLE.COL_GAP + CELL_PAD
+
+local ITEM_ROW_COLS = {
+    { key = "qty",      width = 60,            align = "RIGHT" },
+    { key = "icon",     width = LIST_ROW_ICON, align = "CENTER", cell = "icon" },
+    { key = "name",     width = 0, flex = 1,   align = "LEFT" },
+    { key = "location", width = (UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH or 120) + CELL_PAD * 2, align = "RIGHT" },
+}
+local ITEM_ROW_WIDTHS, ITEM_ROW_OFFSETS = {}, {}
+TK.ResolveWidths(ITEM_ROW_COLS, nil, ITEM_ROW_WIDTHS, ITEM_ROW_OFFSETS, 0)
+
+-- Currency rows: optional badge + amount trail on the right (widths set per row by CurrencyUI).
+local CURRENCY_ROW_COLS = {
+    { key = "icon",   width = LIST_ROW_ICON, align = "CENTER", cell = "icon" },
+    { key = "name",   width = 0, flex = 1,   align = "LEFT" },
+    { key = "amount", width = 150,           align = "RIGHT" },
+}
+local CURRENCY_ROW_WIDTHS, CURRENCY_ROW_OFFSETS = {}, {}
+TK.ResolveWidths(CURRENCY_ROW_COLS, nil, CURRENCY_ROW_WIDTHS, CURRENCY_ROW_OFFSETS, CELL_PAD)
+
+--- Shared list-row geometry for callers that re-anchor pooled rows (CurrencyUI badge chain, ItemsUI relayout).
+ns.UI_LIST_ROW_COLUMNS = {
+    textGap = LIST_ROW_TEXT_GAP,
+    cellPad = CELL_PAD,
+    item = {
+        cols = ITEM_ROW_COLS, widths = ITEM_ROW_WIDTHS, offsets = ITEM_ROW_OFFSETS,
+        locationRightInset = UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET or 28,
+    },
+    currency = {
+        cols = CURRENCY_ROW_COLS, widths = CURRENCY_ROW_WIDTHS, offsets = CURRENCY_ROW_OFFSETS,
+        nameLeft = CURRENCY_ROW_OFFSETS[2] + CELL_PAD,
+        amountRightPad = CELL_PAD,
+    },
+}
+
+--- Item / storage row: qty | icon | name (flex) | location (RIGHT, inset from the scroll edge).
+local function LayoutItemListRow(row)
+    if not row then return end
+    local X, W = ITEM_ROW_OFFSETS, ITEM_ROW_WIDTHS
+    if row.qtyText then
+        row.qtyText:ClearAllPoints()
+        row.qtyText:SetPoint("LEFT", row, "LEFT", X[1] + CELL_PAD, 0)
+        row.qtyText:SetWidth(W[1] - CELL_PAD * 2)
+        row.qtyText:SetJustifyH("RIGHT")
+    end
+    if row.icon then
+        row.icon:ClearAllPoints()
+        row.icon:SetPoint("LEFT", row, "LEFT", X[2], 0)
+        row.icon:SetSize(LIST_ROW_ICON, LIST_ROW_ICON)
+    end
+    if row.locationText and row.nameText then
+        local inset = ns.UI_LIST_ROW_COLUMNS.item.locationRightInset
+        row.locationText:ClearAllPoints()
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -inset, 0)
+        row.locationText:SetWidth(W[4] - CELL_PAD * 2)
+        row.locationText:SetJustifyH("RIGHT")
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", row, "LEFT", X[3] + CELL_PAD, 0)
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -LIST_ROW_TEXT_GAP, 0)
+        row.nameText:SetJustifyH("LEFT")
+    end
+end
+ns.UI_LayoutItemListRow = LayoutItemListRow
+
+--- Currency row base geometry: icon | name (flex) | amount (RIGHT). CurrencyUI re-anchors name/badge/amount per row.
+local function LayoutCurrencyListRow(row)
+    if not row then return end
+    local X, W = CURRENCY_ROW_OFFSETS, CURRENCY_ROW_WIDTHS
+    if row.icon then
+        row.icon:ClearAllPoints()
+        row.icon:SetPoint("LEFT", row, "LEFT", X[1], 0)
+        row.icon:SetSize(LIST_ROW_ICON, LIST_ROW_ICON)
+    end
+    if row.amountText then
+        row.amountText:ClearAllPoints()
+        row.amountText:SetPoint("RIGHT", row, "RIGHT", -CELL_PAD, 0)
+        row.amountText:SetWidth(W[3] - CELL_PAD * 2)
+        row.amountText:SetJustifyH("RIGHT")
+    end
+    if row.nameText then
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", row, "LEFT", X[2] + CELL_PAD, 0)
+        if row.amountText then
+            row.nameText:SetPoint("RIGHT", row.amountText, "LEFT", -LIST_ROW_TEXT_GAP, 0)
+        end
+        row.nameText:SetJustifyH("LEFT")
+    end
+end
+ns.UI_LayoutCurrencyListRow = LayoutCurrencyListRow
 
 -- FRAME POOL STORAGE
 
@@ -353,28 +454,19 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         
         -- No background
         
-        -- Icon
+        -- Icon | name | amount (positions: CURRENCY_ROW_COLS via LayoutCurrencyListRow)
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
-        row.icon:SetSize(iconSize, iconSize)
-        row.icon:SetPoint("LEFT", 15, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
         -- Anti-flicker optimization
         row.icon:SetSnapToPixelGrid(false)
         row.icon:SetTexelSnappingBias(0)
-        
-        -- Name text
+
         row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.nameText:SetPoint("LEFT", 43, 0)
-        row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
-        
-        -- Amount text
+
         row.amountText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.amountText:SetPoint("RIGHT", -10, 0)
-        row.amountText:SetWidth(150)
-        row.amountText:SetJustifyH("RIGHT")
-        
+        LayoutCurrencyListRow(row)
+
         row.isPooled = true
         row.rowType = "currency"  -- Mark as CurrencyRow
         if row.SetClipsChildren then
@@ -389,7 +481,7 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
     
     -- Always set parent when acquiring from pool
     row:SetParent(parent)
-    row:SetSize(width, rowHeight or 26)
+    row:SetSize(width, rowHeight or TABLE.ROW_H.standard)
     if row.SetClipsChildren then
         row:SetClipsChildren(true)
     end
@@ -485,7 +577,7 @@ end
 ---Get an item row from pool or create new
 ---@return Frame row Pooled or new item row
 --- Shared builder for the item/storage list rows. The two pools differ only in:
---- background texture (item rows), rowType tag, default height (storage: 26) and
+--- background texture (item rows), rowType tag, default height (TABLE.ROW_H.standard) and
 --- the post-acquire child show-reset (Gear recommendations hide storage children).
 local function AcquireListRowFromPool(pool, parent, width, rowHeight, cfg)
     local row = tremove(pool)
@@ -507,36 +599,19 @@ local function AcquireListRowFromPool(pool, parent, width, rowHeight, cfg)
             row.bg:SetTexelSnappingBias(0)
         end
 
-        -- Quantity text (left)
+        -- qty | icon | name | location (positions: ITEM_ROW_COLS via LayoutItemListRow, run every acquire)
         row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.qtyText:SetPoint("LEFT", 15, 0)
-        row.qtyText:SetWidth(45)
-        row.qtyText:SetJustifyH("RIGHT")
 
-        -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
-        row.icon:SetSize(iconSize, iconSize)
-        row.icon:SetPoint("LEFT", 70, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
         -- Anti-flicker optimization
         row.icon:SetSnapToPixelGrid(false)
         row.icon:SetTexelSnappingBias(0)
 
-        -- Name text (pinned between icon column and location column)
         row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.nameText:SetPoint("LEFT", 98, 0)
-        row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
 
-        -- Location text (inset from scrollbar / scroll child right edge)
         row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        local locInset = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
-        local locMaxW = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
-        row.locationText:SetPoint("RIGHT", row, "RIGHT", -locInset, 0)
-        row.locationText:SetWidth(locMaxW)
-        row.locationText:SetJustifyH("RIGHT")
-        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
 
         row.isPooled = true
         row.rowType = cfg.rowType
@@ -556,19 +631,8 @@ local function AcquireListRowFromPool(pool, parent, width, rowHeight, cfg)
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
 
-    -- Refresh name/location anchors every acquire (width changes + pooled rows from older layouts)
-    if row.locationText and row.nameText then
-        local li = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
-        local lw = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
-        row.locationText:ClearAllPoints()
-        row.locationText:SetPoint("RIGHT", row, "RIGHT", -li, 0)
-        row.locationText:SetWidth(lw)
-        row.locationText:SetJustifyH("RIGHT")
-        row.nameText:ClearAllPoints()
-        row.nameText:SetPoint("LEFT", row, "LEFT", 98, 0)
-        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
-        row.nameText:SetJustifyH("LEFT")
-    end
+    -- Refresh column anchors every acquire (width changes + pooled rows from older layouts)
+    LayoutItemListRow(row)
 
     -- Other tabs (e.g. Gear recommendations) may Hide qty/icon/location for a full-width name line.
     if cfg.resetChildVisibility then
@@ -581,7 +645,7 @@ local function AcquireListRowFromPool(pool, parent, width, rowHeight, cfg)
     return row
 end
 
-local ITEM_ROW_CFG = { rowType = "item", withBackground = true }
+local ITEM_ROW_CFG = { rowType = "item", withBackground = true, defaultHeight = TABLE.ROW_H.standard }
 
 local function AcquireItemRow(parent, width, rowHeight)
     return AcquireListRowFromPool(ItemRowPool, parent, width, rowHeight, ITEM_ROW_CFG)
@@ -613,7 +677,7 @@ end
 
 -- STORAGE ROW POOLING
 
-local STORAGE_ROW_CFG = { rowType = "storage", defaultHeight = 26, resetChildVisibility = true }
+local STORAGE_ROW_CFG = { rowType = "storage", defaultHeight = TABLE.ROW_H.standard, resetChildVisibility = true }
 
 ---Get storage row from pool (same chassis as item rows; no background texture)
 ---@return Frame row Pooled or new storage row

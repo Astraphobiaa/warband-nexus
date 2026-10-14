@@ -261,6 +261,105 @@ function ns.UI_ResolveCharactersTabRowWidthForLive(mainFrame, scrollParent, metr
     return math.max(200, viewportW)
 end
 
+-- ---------------------------------------------------------------------------
+-- TableKit header columns (Characters roster column strip, display-only)
+-- ---------------------------------------------------------------------------
+-- One kit column def per CHAR_ROW_COLUMN_ORDER key. `gapAfter` = the row's `spacing`, so
+-- TK.ResolveWidths(startX = CHAR_ROW_LEFT_PAD) reproduces GetColumnOffset for the left chain.
+-- Flex columns carry `min`; their per-paint width comes from ComputeCharRowFlexColumns (shrink-only,
+-- never below `min`), never from kit `flex` growth, so header cells land exactly on the row cells.
+-- The right-rail keys (reorder .. delete) are anchored to the row's right edge, so the gap after
+-- mythicKey bridges the left chain to the rail start (same slot math as DrawCharacterRow's rail).
+
+local CHAR_ROW_LEFT_PAD = 10  -- GetColumnOffset's leading inset
+
+-- { locale key, enUS fallback } per labeled column; unlisted keys are icon/button columns (no label).
+local CHAR_ROW_HEADER_LABELS = {
+    name = { "CUSTOM_HEADER_COL_CHARACTER", "Character" },
+    guild = { "CHARS_COL_GUILD", "Guild" },
+    level = { "CUSTOM_HEADER_COL_LEVEL", "Level" },
+    itemLevel = { "ILVL_SHORT", "iLvl" },
+    gold = { "GOLD_LABEL", "Gold" },
+    professions = { "TAB_PROFESSIONS", "Professions" },
+    mythicKey = { "KEYSTONE", "Keystone" },
+    lastSeen = { "CHARS_COL_LAST_SEEN", "Last Seen" },
+}
+
+-- Header label alignment mirrors the row cell justification (name/keystone left, gold right).
+local CHAR_ROW_HEADER_ALIGN = {
+    name = "LEFT",
+    mythicKey = "LEFT",
+    gold = "RIGHT",
+}
+
+local CHAR_ROW_RAIL_KEYS = { reorder = true, lastSeen = true, headerAssign = true, tracking = true, delete = true }
+
+-- Def tables reused across paints (one per key; filled in place).
+local _charRowHeaderDefs = {}
+
+--- Rail slot width: header-assign occupies its `total` slot in the rail; the rest use `width`.
+local function CharRowRailSlotWidth(key)
+    local col = CHAR_ROW_COLUMNS[key]
+    if key == "headerAssign" then return col.total end
+    return col.width
+end
+
+--- Fill TableKit column defs + resolved widths/offsets for a roster row width.
+---@param rowW number Row paint width (section stack width)
+---@param measuredGuildW number|nil Widest guild name measured for the roster
+---@param outCols table Caller scratch: kit column defs
+---@param outWidths table Caller scratch: resolved widths
+---@param outOffsets table Caller scratch: resolved x offsets (row-relative)
+---@return number n Column count (0 when TableKit is unavailable)
+local function ResolveCharRowHeaderColumns(rowW, measuredGuildW, outCols, outWidths, outOffsets)
+    local TK = ns.UI_TableKit
+    if not TK or not TK.ResolveWidths or not rowW or rowW < 1 then return 0 end
+    local flexW = ComputeCharRowFlexColumns(rowW, measuredGuildW)
+    local L = ns.L
+    local n = #CHAR_ROW_COLUMN_ORDER
+    local leftEnd = CHAR_ROW_LEFT_PAD
+    local railContentW = 0
+    local railCount = 0
+    local bridgeDef
+    for i = 1, n do
+        local key = CHAR_ROW_COLUMN_ORDER[i]
+        local col = CHAR_ROW_COLUMNS[key]
+        local def = _charRowHeaderDefs[key]
+        if not def then
+            def = { key = key }
+            _charRowHeaderDefs[key] = def
+        end
+        local lbl = CHAR_ROW_HEADER_LABELS[key]
+        local text = lbl and ((L and L[lbl[1]]) or lbl[2]) or nil
+        def.label = text
+        def.tooltip = text
+        def.align = CHAR_ROW_HEADER_ALIGN[key] or "CENTER"
+        def.min = col.min
+        if CHAR_ROW_RAIL_KEYS[key] then
+            def.width = CharRowRailSlotWidth(key)
+            def.gapAfter = CHAR_ROW_RIGHT_GAP
+            railContentW = railContentW + def.width
+            railCount = railCount + 1
+        else
+            def.width = flexW[key] or col.width
+            def.gapAfter = col.spacing or 0
+            leftEnd = leftEnd + def.width + def.gapAfter
+            bridgeDef = def
+        end
+        outCols[i] = def
+    end
+    for i = n + 1, #outCols do outCols[i] = nil end
+    if bridgeDef and railCount > 0 then
+        -- Last left-chain column (mythicKey) -> first rail slot (reorder): rail content is
+        -- right-anchored at rowW - CHAR_ROW_RIGHT_MARGIN (DrawCharacterRow insets from the rail edge).
+        leftEnd = leftEnd - bridgeDef.gapAfter
+        local railLeft = rowW - CHAR_ROW_RIGHT_MARGIN - railContentW - (railCount - 1) * CHAR_ROW_RIGHT_GAP
+        bridgeDef.gapAfter = railLeft - leftEnd
+    end
+    TK.ResolveWidths(outCols, nil, outWidths, outOffsets, CHAR_ROW_LEFT_PAD, 0)
+    return n
+end
+
 local GRID_COL_DIVIDER_RGBA = { 0.3, 0.3, 0.35, 0.4 }
 
 local function EnsureGridColumnDivider(parent, index, x, height)
@@ -304,4 +403,5 @@ ns.UI_CHAR_ROW_RIGHT_GAP = CHAR_ROW_RIGHT_GAP
 ns.UI_ResolveCharactersTabRowWidth = ResolveCharactersTabRowWidth
 ns.UI_ComputeCharactersMinScrollWidth = ComputeCharactersMinScrollWidth
 ns.UI_ComputeCharRowFlexColumns = ComputeCharRowFlexColumns
+ns.UI_ResolveCharRowHeaderColumns = ResolveCharRowHeaderColumns
 ns.UI_SyncGridColumnDividers = SyncGridColumnDividers

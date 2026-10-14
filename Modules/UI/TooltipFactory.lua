@@ -166,7 +166,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         frame:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
+            edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or 1,
             insets = { left = 0, right = 0, top = 0, bottom = 0 }
         })
         frame:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 0.98)
@@ -1257,7 +1257,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             self:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8x8",
                 edgeFile = "Interface\\Buttons\\WHITE8x8",
-                edgeSize = 1,
+                edgeSize = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(self)) or 1,
                 insets = { left = 0, right = 0, top = 0, bottom = 0 }
             })
             self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 0.98)

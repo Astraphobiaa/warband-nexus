@@ -289,32 +289,6 @@ function Factory:CreateProgressBar(parent, width, height, bgColor, borderColor, 
     return nil
 end
 
---- List row chrome entry (delegates to pooled row factories by kind).
-function Factory:CreateListRow(parent, kind, width, height)
-    kind = kind or "character"
-    local w = width or 200
-    local h = height or 26
-    if kind == "currency" and ns.UI_AcquireCurrencyRow then
-        return ns.UI_AcquireCurrencyRow(parent, w, h)
-    end
-    if kind == "item" and ns.UI_AcquireItemRow then
-        return ns.UI_AcquireItemRow(parent, w, h)
-    end
-    if kind == "reputation" and ns.UI_AcquireReputationRow then
-        return ns.UI_AcquireReputationRow(parent, w, h)
-    end
-    if kind == "storage" and ns.UI_AcquireStorageRow then
-        return ns.UI_AcquireStorageRow(parent, w, h)
-    end
-    if kind == "profession" and ns.UI_AcquireProfessionRow then
-        return ns.UI_AcquireProfessionRow(parent, w, h)
-    end
-    if ns.UI_AcquireCharacterRow then
-        return ns.UI_AcquireCharacterRow(parent, w, h)
-    end
-    return nil
-end
-
 --- Nav tab button hook — UI.lua registers builder at load; Factory exposes stable API.
 ns.UI.NavTabBuilder = ns.UI.NavTabBuilder or {}
 
