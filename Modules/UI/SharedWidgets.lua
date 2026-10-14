@@ -1359,7 +1359,8 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     -- Create 4-texture border system (Create Once) - SANDWICH METHOD
     -- Borders are INSIDE the frame, using BORDER layer (between backdrop and content)
     if not frame.BorderTop then
-        local pixelScale = GetPixelScale(frame)  -- Pixel-perfect 1px thickness for this frame scale
+        -- 1 UI unit in whole physical pixels (crisp; same visual weight on every display)
+        local pixelScale = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(frame)) or GetPixelScale(frame)
         
         -- Top border (INSIDE frame, at the top edge)
         frame.BorderTop = frame:CreateTexture(nil, "BORDER")

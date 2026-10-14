@@ -66,6 +66,13 @@ local function PixelRound(value, frame, minPixels)
     return n * pixelScale
 end
 
+--- Card/container border thickness: 1 UI unit rounded to whole physical pixels (min 1).
+--- Keeps the visual weight of the original 1-unit border on every display (2px on a
+--- high-DPI screen at ~0.6 scale, 1px at 1080p) while every edge stays crisp.
+local function GetBorderThickness(frame)
+    return PixelRound(1, frame, 1)
+end
+
 --- Solid rule/border textures: exact physical-pixel thickness with grid snapping OFF.
 --- Matches ElvUI (Toolkit DisablePixelSnap) and EllesmereUI (PP.CreateBorder): with snapping on,
 --- a 1px strip at a fractional offset rounds to 0 and VANISHES or doubles as the window moves.
@@ -127,7 +134,7 @@ local function RefreshRegisteredBorderThickness()
     for i = 1, #ns.BORDER_REGISTRY do
         local frame = ns.BORDER_REGISTRY[i]
         if frame and frame.BorderTop and not frame._wnMainShellBackdrop and not frame._wnBorderlessSurface then
-            local pixelScale = GetPixelScale(frame)
+            local pixelScale = GetBorderThickness(frame)
             frame.BorderTop:SetHeight(pixelScale)
             frame.BorderBottom:SetHeight(pixelScale)
             frame.BorderLeft:ClearAllPoints()
@@ -156,6 +163,7 @@ ns.PixelSnap = PixelSnap
 ns.ResetPixelScale = ResetPixelScale
 ns.UI_RefreshRegisteredBorderThickness = RefreshRegisteredBorderThickness
 ns.PixelRound = PixelRound
+ns.UI_GetBorderThickness = GetBorderThickness
 ns.UI_SnapRuleTexture = SnapRuleTexture
 ns.UI_SetRuleThickness = SetRuleThickness
 
