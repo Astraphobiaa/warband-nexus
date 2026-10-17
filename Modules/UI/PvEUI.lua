@@ -92,8 +92,14 @@ local PVE_VAULT_COL_W = 54
 local PVE_VAULT_COL_ILVL_W = 68
 local PVE_VAULT_COL_PROGRESS_W = 72
 local PVE_VAULT_COL_REWARD_PROGRESS_W = 88
-local PVE_BOUNTIFUL_COL_W = 28
+local PVE_BOUNTIFUL_COL_W = 56
 local PVE_STATUS_COL_W = 64
+--- Weekly status block (Bounty / Nightmare / Soul / Vaults / Status): one shared width so the short
+--- check/dash cells are not squeezed to their header label and the block reads as an even grid.
+local PVE_WEEKLY_COL_MIN_W = 56
+local PVE_WEEKLY_COL_KEYS = {
+    bountiful = true, nightmare_task = true, tormented_soul = true, purging_vaults = true, vault_status = true,
+}
 local PVE_DUNDUN_COL_W = 36
 local PVE_VOIDCORE_COL_W = 40
 local PVE_MANAFLUX_COL_W = 40
@@ -147,6 +153,13 @@ local PVE_COMPACT_CREST_BY_ID = {
     [3343] = { text = GetLocalizedText("PVE_CREST_CHAMP", "Champion"), hex = "0070dd" },
     [3345] = { text = GetLocalizedText("PVE_CREST_HERO", "Hero"), hex = "a335ee" },
     [3347] = { text = GetLocalizedText("PVE_CREST_MYTH", "Myth"), hex = "ff8000" },
+    -- Season 2 (12.1) Mistcrests, same order as SeasonData.lua (3442..3446). Without these rows every
+    -- S2 crest column header fell back to the generic "Crest" label.
+    [3442] = { text = GetLocalizedText("PVE_CREST_ADV", "Adventurer"), hex = "9d9d9d" },
+    [3443] = { text = GetLocalizedText("PVE_CREST_VET", "Veteran"), hex = "1eff00" },
+    [3444] = { text = GetLocalizedText("PVE_CREST_CHAMP", "Champion"), hex = "0070dd" },
+    [3445] = { text = GetLocalizedText("PVE_CREST_HERO", "Hero"), hex = "a335ee" },
+    [3446] = { text = GetLocalizedText("PVE_CREST_MYTH", "Myth"), hex = "ff8000" },
 }
 
 local function PvE_BuildCompactHeaderLabel(col)
@@ -176,6 +189,8 @@ local function PvE_BuildCompactHeaderLabel(col)
         return GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"), "ffffff"
     elseif key == "nightmare_task" then
         return GetLocalizedText("PVE_HEADER_NIGHTMARE_SHORT", "Nightmare"), "ffffff"
+    elseif key == "tormented_soul" then
+        return GetLocalizedText("PVE_HEADER_TORMENTED_SHORT", "Soul"), "ffffff"
     elseif key == "purging_vaults" then
         return GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"), "ffffff"
     elseif key == "vault_status" then
@@ -546,7 +561,7 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
                 return PvE_MeasurePlainWidth(bodyFs, formatVault(list, total, typeName, claim, iconSz))
             end
         end
-        if key == "bountiful" or key == "nightmare_task" or key == "purging_vaults" then
+        if key == "bountiful" or key == "nightmare_task" or key == "tormented_soul" or key == "purging_vaults" then
             local wIcon = PvE_MeasurePlainWidth(bodyFs, VAULT_SLOT_CHECK)
             local wProg = PvE_MeasurePlainWidth(bodyFs, "0 / 1")
             return math.max(iconSz, wIcon, wProg)
@@ -592,6 +607,17 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
             end
         end
         col.width = math.max(PVE_COL_WIDTH_MIN, math.ceil(maxW) + PVE_COL_WIDTH_PAD)
+    end
+
+    -- Equalize the weekly status block to its widest member (never below the shared floor).
+    local weeklyW = PVE_WEEKLY_COL_MIN_W
+    for ci = 1, #columns do
+        local col = columns[ci]
+        if PVE_WEEKLY_COL_KEYS[col.key] and col.width > weeklyW then weeklyW = col.width end
+    end
+    for ci = 1, #columns do
+        local col = columns[ci]
+        if PVE_WEEKLY_COL_KEYS[col.key] then col.width = weeklyW end
     end
 end
 
@@ -711,6 +737,7 @@ local function EnsurePvEExtraVisibleColumns(profile)
     if ex.restored_key == nil then ex.restored_key = true end
     if ex.shard_of_dundun == nil then ex.shard_of_dundun = true end
     if ex.nightmare_task == nil then ex.nightmare_task = true end
+    if ex.tormented_soul == nil then ex.tormented_soul = true end
     if ex.purging_vaults == nil then ex.purging_vaults = true end
     return ex
 end
@@ -1255,6 +1282,7 @@ local function GetPvEDefaultColumnKeyOrder(profile)
     order[#order + 1] = "slot3"
     order[#order + 1] = "bountiful"
     order[#order + 1] = "nightmare_task"
+    order[#order + 1] = "tormented_soul"
     order[#order + 1] = "purging_vaults"
     order[#order + 1] = "vault_status"
     return order
@@ -1304,6 +1332,7 @@ local function IsPvEInlineColumnKeyVisible(key, profile, vc, ex)
     if key == "slot3" then return vc.world ~= false end
     if key == "bountiful" then return vc.bounty ~= false end
     if key == "nightmare_task" then return ex.nightmare_task ~= false end
+    if key == "tormented_soul" then return ex.tormented_soul ~= false end
     if key == "purging_vaults" then return ex.purging_vaults ~= false end
     if key == "vault_status" then return vc.status ~= false end
     return false
@@ -1352,6 +1381,7 @@ local function PveBuildStructureColSig(profile)
     if vc.world ~= false then keys[#keys + 1] = "slot3" end
     if vc.bounty ~= false then keys[#keys + 1] = "bountiful" end
     if ex.nightmare_task ~= false then keys[#keys + 1] = "nightmare_task" end
+    if ex.tormented_soul ~= false then keys[#keys + 1] = "tormented_soul" end
     if ex.purging_vaults ~= false then keys[#keys + 1] = "purging_vaults" end
     if vc.status ~= false then keys[#keys + 1] = "vault_status" end
     keys = PveOrderColumnKeysBySequence(keys, buildSeq(profile))
@@ -1449,6 +1479,7 @@ function ns.ComputePvEMinScrollWidth(self)
         slot3 = vaultTrackColW,
         bountiful = PVE_BOUNTIFUL_COL_W,
         nightmare_task = PVE_BOUNTIFUL_COL_W,
+        tormented_soul = PVE_BOUNTIFUL_COL_W,
         purging_vaults = PVE_BOUNTIFUL_COL_W,
         vault_status = PVE_STATUS_COL_W,
     }

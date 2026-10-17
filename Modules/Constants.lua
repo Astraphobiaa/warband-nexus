@@ -14,9 +14,9 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.6.0",
+    ADDON_VERSION = "3.6.1",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-10-14",
+    ADDON_RELEASE_DATE = "2026-10-17",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -289,6 +289,17 @@ local Constants = {
     -- Both reward a Trovehunter's Bounty; verified on warcraft.wiki.gg.
     PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID = 94446,
     PVE_PURGING_VAULTS_WEEKLY_QUEST_ID = 95520,
+    -- Tormented Soul (Midnight 12.1 Season 2 Prey consumable, Binds to Warband). Using the item casts
+    -- 1306916, which applies a ~24h aura consumed by the next Nightmare Prey hunt (bonus Hero-track piece).
+    -- Rule (Prey renown 9): bonus equipment once per week, per character. 97637 = hidden daily
+    -- "Looted Tormented Soul" trigger (tooltip hint only; no hidden "used" quest is known).
+    -- Verified 2026-10-15: wago.tools 12.1 DB2 (ItemXItemEffect 167092 -> ItemEffect 234932 -> Spell 1306916),
+    -- AllTheThings (spellID + HiddenQuestTriggers), warcraft.wiki.gg Prey hunt page.
+    PVE_TORMENTED_SOUL_ITEM_ID = 276548,
+    PVE_TORMENTED_SOUL_SPELL_ID = 1306916,
+    PVE_TORMENTED_SOUL_LOOT_QUEST_ID = 97637,
+    -- Upper bound for the aura lifetime when judging an offline character's snapshot (~24h; verify in-game).
+    PVE_TORMENTED_SOUL_BUFF_MAX_SECONDS = 86400,
     -- Gilded Stash weekly counter (Delver's Journey / Delves UI widget; spell id for tooltip fallback).
     PVE_GILDED_STASH_WIDGET_ID = 7591,
     PVE_GILDED_STASH_SPELL_ID = 1216211,

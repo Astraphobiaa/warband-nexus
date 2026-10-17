@@ -1817,6 +1817,16 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
             end,
         },
+        {
+            key = "showCharacterRealmName",
+            label = (ns.L and ns.L["CONFIG_SHOW_CHARACTER_REALM"]) or "Show Realm Name",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_CHARACTER_REALM_DESC"]) or "Show the realm name under each character name in the Characters tab. Turn off for a cleaner list.",
+            get = function() return WarbandNexus.db.profile.showCharacterRealmName ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.showCharacterRealmName = value
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+            end,
+        },
     }
 
     local generalContentW = GetSettingsSectionContentWidth(effectiveWidth)

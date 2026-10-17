@@ -483,6 +483,55 @@ local function GetCurrentWeeklyResetStartTime()
 end
 ns.GetCurrentWeeklyResetStartTime = GetCurrentWeeklyResetStartTime
 
+---Live read of the Tormented Soul aura on the player (pcall + secret guards).
+---C_UnitAuras.GetPlayerAuraBySpellID returns AuraData or nil; the return is secret while unit aura
+---access is restricted (warcraft.wiki.gg, verified 2026-10-15).
+---@return boolean|nil active nil when unknown (API missing / secret)
+---@return number|nil appliedAt epoch seconds derived from expirationTime - duration, when readable
+local function ReadTormentedSoulAura()
+    local C = ns.Constants
+    local spellID = C and C.PVE_TORMENTED_SOUL_SPELL_ID
+    if not spellID or not (C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID) then return nil, nil end
+    local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, spellID)
+    if not ok then return nil, nil end
+    if issecretvalue and issecretvalue(aura) then return nil, nil end
+    if aura == nil then return false, nil end
+    if type(aura) ~= "table" then return nil, nil end
+    local appliedAt
+    local exp, dur = aura.expirationTime, aura.duration
+    if exp ~= nil and dur ~= nil and GetTime
+        and not (issecretvalue and (issecretvalue(exp) or issecretvalue(dur)))
+        and type(exp) == "number" and type(dur) == "number" and exp > 0 and dur > 0 then
+        appliedAt = time() - (GetTime() - (exp - dur))
+    end
+    return true, appliedAt
+end
+
+---Derive the weekly Tormented Soul state from a per-character delve snapshot.
+---"available" = not used since the weekly reset; "pending" = used this week, aura still up;
+---"done" = used this week, aura consumed/expired. nil = never snapshotted.
+---@param delveChar table|nil
+---@param liveActive boolean|nil live aura state (logged-in character only); overrides the snapshot
+---@return string|nil
+local function ResolveTormentedSoulStatus(delveChar, liveActive)
+    if type(delveChar) ~= "table" then return nil end
+    local usedAt = tonumber(delveChar.tormentedSoulUsedAt)
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    if not usedAt or (resetStart and resetStart > 0 and usedAt < resetStart) then
+        if delveChar.lastUpdate == nil then return nil end
+        return "available"
+    end
+    if liveActive ~= nil then
+        return liveActive and "pending" or "done"
+    end
+    local C = ns.Constants
+    local maxAge = (C and C.PVE_TORMENTED_SOUL_BUFF_MAX_SECONDS) or 86400
+    if delveChar.tormentedSoulBuffActive == true and (time() - usedAt) < maxAge then
+        return "pending"
+    end
+    return "done"
+end
+
 ---Build a compact change signature for current character PvE UI payload.
 ---@return string
 local function BuildPvESignature(pveCache, charKey)
@@ -564,6 +613,7 @@ local function BuildPvESignature(pveCache, charKey)
         .. ":" .. ((delveChar and not isDelveStale and delveChar.crackedKeystoneComplete) and "1" or "0")
         .. ":" .. ((delveChar and not isDelveStale and delveChar.nightmareTaskComplete) and "1" or "0")
         .. ":" .. ((delveChar and not isDelveStale and delveChar.purgingVaultsComplete) and "1" or "0")
+        .. ":" .. tostring(ResolveTormentedSoulStatus(delveChar, nil) or "-")
         .. ":" .. tostring((not isDelveStale and delveChar and delveChar.gildedStashes) or (isDelveStale and 0) or -1)
         .. ":" .. tostring(delves and delves.companion and delves.companion.renownLevel or 0)
 
@@ -672,6 +722,13 @@ local function PruneExpiredDelvesForWeeklyReset()
                 delveChar.crackedKeystoneComplete = false
                 delveChar.nightmareTaskComplete = false
                 delveChar.purgingVaultsComplete = false
+                -- Tormented Soul: once per week per character. Keep a use stamped after this reset
+                -- (cast recorded before the next snapshot refreshed lastUpdate).
+                local usedAt = tonumber(delveChar.tormentedSoulUsedAt)
+                if not (usedAt and resetStart and resetStart > 0 and usedAt >= resetStart) then
+                    delveChar.tormentedSoulUsedAt = nil
+                    delveChar.tormentedSoulBuffActive = false
+                end
                 updated = updated + 1
             end
         end
@@ -2032,6 +2089,71 @@ function WarbandNexus:IsPvEWeeklyQuestDone(questID)
     return SafeIsQuestFlaggedCompleted(tonumber(questID))
 end
 
+---Weekly Tormented Soul state for a PvE row ("available" | "pending" | "done" | nil when never snapshotted).
+---The logged-in character reads the live aura; alts use the persisted snapshot + aura lifetime bound.
+---@param delveChar table|nil per-character delve snapshot (GetPvEData(charKey).delves.character)
+---@param isCurrentChar boolean|nil
+---@return string|nil
+function WarbandNexus:GetTormentedSoulStatus(delveChar, isCurrentChar)
+    local liveActive
+    if isCurrentChar then
+        liveActive = ReadTormentedSoulAura()
+    end
+    return ResolveTormentedSoulStatus(delveChar, liveActive)
+end
+
+---True when the hidden daily "Looted Tormented Soul" trigger is flagged for the **current** character.
+---@return boolean
+function WarbandNexus:IsTormentedSoulLootedToday()
+    return SafeIsQuestFlaggedCompleted(Constants.PVE_TORMENTED_SOUL_LOOT_QUEST_ID)
+end
+
+---Record a Tormented Soul use for the session character (UNIT_SPELLCAST_SUCCEEDED on 1306916).
+function WarbandNexus:RecordTormentedSoulUse()
+    local pveCache = self.db and self.db.global and self.db.global.pveCache
+    local delves = pveCache and pveCache.delves
+    if not delves then return end
+    local charKey = GetSessionCanonicalPvEKey()
+    if not charKey then return end
+    if not delves.characters then delves.characters = {} end
+    local delveChar = delves.characters[charKey]
+    if not delveChar then
+        delveChar = {}
+        delves.characters[charKey] = delveChar
+    end
+    delveChar.tormentedSoulUsedAt = time()
+    delveChar.tormentedSoulBuffActive = true
+    DebugPrint("|cff9370DB[PvECache]|r [PvE Event] Tormented Soul used")
+    if self.SendMessage and Constants.EVENTS and Constants.EVENTS.PVE_UPDATED then
+        self:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
+    end
+end
+
+---Register / drop the player-only cast watcher for Tormented Soul (PvE module gate).
+---UNIT_SPELLCAST_SUCCEEDED payload: unitTarget, castGUID, spellID, castBarID (warcraft.wiki.gg,
+---verified 2026-10-15). Frame:RegisterUnitEvent keeps it to "player" so raid casts never wake it.
+function WarbandNexus:SyncTormentedSoulCastWatcher()
+    local enabled = ns.Utilities and ns.Utilities:IsModuleEnabled("pve")
+    local frame = self._tormentedSoulCastFrame
+    if not enabled then
+        if frame then frame:UnregisterEvent("UNIT_SPELLCAST_SUCCEEDED") end
+        return
+    end
+    if not frame then
+        frame = CreateFrame("Frame")
+        self._tormentedSoulCastFrame = frame
+        frame:SetScript("OnEvent", function(_, _, _, _, spellID)
+            -- spellID can be secret while unit spellcasts are restricted; never compare a secret.
+            if spellID == nil or (issecretvalue and issecretvalue(spellID)) then return end
+            if spellID ~= Constants.PVE_TORMENTED_SOUL_SPELL_ID then return end
+            if not (ns.Utilities and ns.Utilities:IsModuleEnabled("pve")) then return end
+            if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+            WarbandNexus:RecordTormentedSoulUse()
+        end)
+    end
+    frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+end
+
 ---Update Delves companion data (account-wide) and per-character delve progress.
 ---Uses C_DelvesUI APIs (Midnight 12.0+) for companion info and season tracking.
 function WarbandNexus:UpdateDelvesData(charKey)
@@ -2111,6 +2233,24 @@ function WarbandNexus:UpdateDelvesData(charKey)
         delves.characters[charKey].nightmareTaskComplete = SafeIsQuestFlaggedCompleted(nightmareID)
         local purgingID = Constants.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID or 95520
         delves.characters[charKey].purgingVaultsComplete = SafeIsQuestFlaggedCompleted(purgingID)
+        -- Tormented Soul aura snapshot (alts read this; logged-in row also queries live).
+        local tsChar = delves.characters[charKey]
+        local tsActive, tsAppliedAt = ReadTormentedSoulAura()
+        if tsActive ~= nil then
+            tsChar.tormentedSoulBuffActive = tsActive
+            if tsActive then
+                local usedAt = tonumber(tsChar.tormentedSoulUsedAt)
+                local resetStart = GetCurrentWeeklyResetStartTime()
+                if not usedAt or (resetStart and resetStart > 0 and usedAt < resetStart) then
+                    -- Best effort: aura is up but the cast was not seen (addon off / used on another UI).
+                    -- Prefer the aura's own start time; an aura applied before this reset belongs to last week.
+                    local stamp = tsAppliedAt or time()
+                    if not (resetStart and resetStart > 0 and stamp < resetStart) then
+                        tsChar.tormentedSoulUsedAt = stamp
+                    end
+                end
+            end
+        end
         delves.characters[charKey].lastUpdate = time()
     end
 end
@@ -2370,8 +2510,16 @@ function WarbandNexus:GetPvEData(charKey)
                 crackedKeystoneComplete = false,
                 nightmareTaskComplete = false,
                 purgingVaultsComplete = false,
+                tormentedSoulUsedAt = nil,
+                tormentedSoulBuffActive = false,
                 lastUpdate = delveCharacter.lastUpdate,
             }
+            -- A use recorded after this reset survives (cast stamped before lastUpdate was refreshed).
+            local tsUsedAt = tonumber(rawDelveCharacter.tormentedSoulUsedAt)
+            if tsUsedAt and tsUsedAt >= resetStart then
+                delveCharacter.tormentedSoulUsedAt = tsUsedAt
+                delveCharacter.tormentedSoulBuffActive = rawDelveCharacter.tormentedSoulBuffActive == true
+            end
         end
         local returnData = {
             keystone = keystoneData,
@@ -3684,6 +3832,14 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- ITEM_PUSH intentionally not registered: fires on every bag item and caused keystone
     -- refresh + debug spam while C_MythicPlus returned nil|nil. CHAT_MSG_LOOT +
     -- CHALLENGE_MODE_MAPS_UPDATE cover keystone acquisition.
+
+    -- Tormented Soul use (player-only cast watcher; follows the PvE module toggle).
+    self:SyncTormentedSoulCastWatcher()
+    ns._pveTormentedSoulToggleSink = ns._pveTormentedSoulToggleSink or {}
+    WarbandNexus.RegisterMessage(ns._pveTormentedSoulToggleSink, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName)
+        if moduleName ~= "pve" then return end
+        WarbandNexus:SyncTormentedSoulCastWatcher()
+    end)
     
 end
 

@@ -946,10 +946,11 @@ function WarbandNexus:DrawCharacterList(parent)
             elseif charKey then
                 gid = assignments[charKey]
             end
-            if gid and groupedById[gid] then
-                tinsert(groupedById[gid], char)
-            elseif isFav then
+            -- Favorites and sections are mutually exclusive; a favorite always lands in Favorites.
+            if isFav then
                 tinsert(trackedFavorites, char)
+            elseif gid and groupedById[gid] then
+                tinsert(groupedById[gid], char)
             else
                 tinsert(trackedRegular, char)
             end
@@ -1130,6 +1131,8 @@ function WarbandNexus:DrawCharacterList(parent)
                         "mk" .. mkSig,
                         "g" .. tostring(char and char.gold or 0),
                         "il" .. tostring(char and char.itemLevel or 0),
+                        -- Realm subline toggle changes the row layout: bust reuse on flip.
+                        (self.db.profile.showCharacterRealmName == false) and "r0" or "r1",
                     }, ":")
                     flatList[i] = {
                         type = "row",
@@ -1254,6 +1257,23 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
 
+    -- Collapse/expand changes the stack height without a tab redraw: keep the scroll child in step,
+    -- otherwise sections pushed below the stale scroll range (expand) or a scroll offset past the new
+    -- end (collapse) leave the lower sections unreachable/blank until the tab is reopened.
+    local function ApplySectionToggleHeight(content, isExpanded)
+        if not content then return end
+        local wasCounted = content._wnCountedExpanded and true or false
+        if wasCounted == (isExpanded and true or false) then return end
+        content._wnCountedExpanded = isExpanded and true or false
+        local h = content._wnSectionFullH or 0
+        if h <= 0.1 then h = 0 end
+        parent._wnCharsBodyH = math.max(0, (parent._wnCharsBodyH or 0) + (isExpanded and h or -h))
+        local mfNow = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mfNow and ns.UI_SyncMainTabScrollChrome then
+            ns.UI_SyncMainTabScrollChrome(mfNow, parent, parent._wnCharsBodyH)
+        end
+    end
+
     local drawFavorites = (sectionFilter == "all") or (sectionFilter == "favorites")
     local drawRegular = (sectionFilter == "all") or (sectionFilter == "regular")
     local drawUntracked = (sectionFilter == "untracked") or (sectionFilter == "all" and #untracked > 0)
@@ -1289,6 +1309,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     favoritesContent:Hide()
                     favoritesContent:SetHeight(0.1)
                 end
+                ApplySectionToggleHeight(favoritesContent, isExpanded)
             end,
             "GM-icon-assistActive-hover",
             true,
@@ -1320,6 +1341,7 @@ function WarbandNexus:DrawCharacterList(parent)
             favoritesContent:Hide()
             favoritesContent:SetHeight(0.1)
         end
+        favoritesContent._wnCountedExpanded = favoritesExpanded and true or false
         previousSectionContent = favoritesContent
         yOffset = yOffset + SECTION_H + (favoritesExpanded and favoritesHeight or 0) + SECTION_HEADER_GAP
     end
@@ -1365,6 +1387,7 @@ function WarbandNexus:DrawCharacterList(parent)
                         grpContent:Hide()
                         grpContent:SetHeight(0.1)
                     end
+                    ApplySectionToggleHeight(grpContent, isExpanded)
                 end,
                 grpHeaderAtlas,
                 true,
@@ -1414,6 +1437,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 grpContent:Hide()
                 grpContent:SetHeight(0.1)
             end
+            grpContent._wnCountedExpanded = grpExpanded and true or false
             previousSectionContent = grpContent
             yOffset = yOffset + SECTION_H + (grpExpanded and grpHeight or 0) + SECTION_HEADER_GAP
         end
@@ -1446,6 +1470,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     charactersContent:Hide()
                     charactersContent:SetHeight(0.1)
                 end
+                ApplySectionToggleHeight(charactersContent, isExpanded)
             end,
             "GM-icon-headCount",
             true,
@@ -1477,6 +1502,7 @@ function WarbandNexus:DrawCharacterList(parent)
             charactersContent:Hide()
             charactersContent:SetHeight(0.1)
         end
+        charactersContent._wnCountedExpanded = charactersExpanded and true or false
         previousSectionContent = charactersContent
         yOffset = yOffset + SECTION_H + (charactersExpanded and charactersHeight or 0)
     end
@@ -1517,6 +1543,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     untrackedContent:Hide()
                     untrackedContent:SetHeight(0.1)
                 end
+                ApplySectionToggleHeight(untrackedContent, isExpanded)
             end,
             "DungeonStoneCheckpointDeactivated",
             true,
@@ -1548,10 +1575,12 @@ function WarbandNexus:DrawCharacterList(parent)
             untrackedContent:Hide()
             untrackedContent:SetHeight(0.1)
         end
+        untrackedContent._wnCountedExpanded = untrackedExpanded and true or false
         previousSectionContent = untrackedContent
         yOffset = yOffset + SECTION_H + (untrackedExpanded and untrackedHeight or 0)
     end
 
+    parent._wnCharsBodyH = yOffset
     if ns.UI_SyncMainTabScrollChrome then
         ns.UI_SyncMainTabScrollChrome(mf, parent, yOffset)
     end

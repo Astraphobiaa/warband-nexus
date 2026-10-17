@@ -56,6 +56,59 @@ local function ClearBothAssignKeys(assign, charKey)
     end
 end
 
+--- Remove every stored favorite alias of `charKey` (exact or resolving to the same character).
+---@return boolean removed
+local function RemoveFavoriteAliases(favorites, charKey)
+    if not favorites or not charKey or charKey == "" then return false end
+    local removed = false
+    for i = #favorites, 1, -1 do
+        local favKey = favorites[i]
+        if favKey == charKey or (favKey and favKey ~= "" and CanonCharKey(favKey) == charKey) then
+            tremove(favorites, i)
+            removed = true
+        end
+    end
+    return removed
+end
+
+--- Favorites and custom sections are mutually exclusive: drop the section assignment and the
+--- per-character section lock so the character renders in the Favorites block.
+local function ClearSectionForFavorite(profile, charKey)
+    if not profile or not charKey or charKey == "" then return end
+    if profile.characterGroupAssignments then
+        ClearBothAssignKeys(profile.characterGroupAssignments, charKey)
+    end
+    local locked = profile.characterLockedAssignments
+    if type(locked) == "table" then
+        locked[charKey] = nil
+        local storeKey = AssignKeyFromCharKey(charKey)
+        if storeKey then locked[storeKey] = nil end
+    end
+end
+
+-- Profiles already healed this session (weak keys: profile switches drop out on their own).
+local favoriteSectionHealed = setmetatable({}, { __mode = "k" })
+
+--- Legacy data (v3.x "section outranks favorite") can hold a favorite that is also assigned to a
+--- section. Favorites win: clear those assignments once per profile per session so every tab that
+--- buckets through GetCharacterCustomSectionId sees mutually exclusive data.
+local function HealFavoriteSectionOverlap(addon, profile)
+    if favoriteSectionHealed[profile] then return end
+    favoriteSectionHealed[profile] = true
+    local favorites = addon.db and addon.db.global and addon.db.global.favoriteCharacters
+    if not favorites or #favorites == 0 then return end
+    if not profile.characterGroupAssignments or not next(profile.characterGroupAssignments) then return end
+    for i = 1, #favorites do
+        local favKey = favorites[i]
+        if favKey and favKey ~= "" then
+            ClearSectionForFavorite(profile, CanonCharKey(favKey))
+            if CanonCharKey(favKey) ~= favKey then
+                ClearSectionForFavorite(profile, favKey)
+            end
+        end
+    end
+end
+
 -- CHARACTER TRACKING
 
 ---Confirm character tracking status and update database
@@ -860,20 +913,16 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
     end
 
     local favorites = addon.db.global.favoriteCharacters
+    if addon.db.profile then
+        HealFavoriteSectionOverlap(addon, addon.db.profile)
+    end
     local isFavorite = self:IsFavoriteCharacter(addon, characterKey)
 
     if isFavorite then
         -- Drop every stored alias for this character, not just an exact match: a stale "Name-Realm"
         -- entry left behind by an exact-match removal kept the row pinned to Favorites forever while
         -- the star appeared to do nothing.
-        local removed = false
-        for i = #favorites, 1, -1 do
-            local favKey = favorites[i]
-            if favKey == characterKey or (favKey and favKey ~= "" and CanonCharKey(favKey) == characterKey) then
-                tremove(favorites, i)
-                removed = true
-            end
-        end
+        local removed = RemoveFavoriteAliases(favorites, characterKey)
         if removed then
             addon:Print("|cffffff00" .. ((ns.L and ns.L["REMOVED_FROM_FAVORITES"]) or "Removed from favorites:") .. "|r " .. characterKey)
             if addon.SendMessage then
@@ -882,9 +931,12 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         end
         return false
     else
-        -- Add to favorites. The custom section assignment is deliberately kept: favoriting a
-        -- character inside a section highlights it there instead of relocating it to Favorites.
+        -- Add to favorites. Favorites and custom sections are mutually exclusive: the star moves the
+        -- character out of its section into the Favorites block (unfavorite returns it to Characters).
         table.insert(favorites, characterKey)
+        if addon.db.profile then
+            ClearSectionForFavorite(addon.db.profile, characterKey)
+        end
         addon:Print("|cffffd700" .. ((ns.L and ns.L["ADDED_TO_FAVORITES"]) or "Added to favorites:") .. "|r " .. characterKey)
         if addon.SendMessage then
             addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
@@ -894,8 +946,8 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
 end
 
 -- CUSTOM CHARACTER SECTIONS (profile: user-defined headers / buckets)
--- Any tracked character may be assigned to one custom section, favorites included.
--- The section outranks the Favorites block; see ResolveRosterBucket.
+-- A tracked character sits in Favorites OR one custom section, never both: favoriting clears the
+-- section, assigning a section clears the favorite (latest action wins); see ResolveRosterBucket.
 
 local CUSTOM_GROUP_LIST_KEY_PREFIX = "group_"
 
@@ -1249,6 +1301,11 @@ function CharacterService:SetCharacterCustomSection(addon, charKey, groupId, for
             if groups[i].id == groupId then found = true break end
         end
         if not found then return false end
+        -- Latest action wins: moving a favorite into a section takes it out of Favorites.
+        local favorites = addon.db.global and addon.db.global.favoriteCharacters
+        if favorites and RemoveFavoriteAliases(favorites, CanonCharKey(charKey)) and addon.SendMessage then
+            addon:SendMessage(E.CHARACTER_UPDATED, { charKey = storeKey, dataType = "favorite" })
+        end
         assign[storeKey] = groupId
         if charKey ~= storeKey then
             assign[charKey] = nil
@@ -1270,6 +1327,7 @@ function CharacterService:GetCharacterCustomSectionId(addon, charKey)
     if not addon or not addon.db or not addon.db.profile or not charKey then return nil end
     local profile = addon.db.profile
     self:EnsureCustomCharacterSectionsProfile(profile)
+    HealFavoriteSectionOverlap(addon, profile)
     local assign = profile.characterGroupAssignments
     if not assign then return nil end
     local storeKey = AssignKeyFromCharKey(charKey)
@@ -1329,9 +1387,9 @@ function CharacterService:SumCharacterListGold(list)
     return total
 end
 
---- Roster bucket for one tracked character. A custom section wins over Favorites: favoriting a
---- character that sits in a section highlights it there instead of relocating it, so the Favorites
---- block only holds favorites with no section assignment. Every tab must bucket through this.
+--- Roster bucket for one tracked character. Favorites and sections are mutually exclusive (the
+--- toggle / assign paths keep them so); a favorite always renders in the Favorites block, even for
+--- legacy data that still carries a section. Every tab must bucket through this.
 --- Callers must not write `local gid = cond and CharacterService:ResolveRosterBucket(...)` - that
 --- truncates the second return.
 ---@param addon table WarbandNexus
@@ -1339,9 +1397,15 @@ end
 ---@return string|nil groupId Custom section to render under; nil = Favorites block or main list
 ---@return boolean isFavorite
 function CharacterService:ResolveRosterBucket(addon, charKey)
+    if addon and addon.db and addon.db.profile then
+        HealFavoriteSectionOverlap(addon, addon.db.profile)
+    end
     local isFavorite = self:IsFavoriteCharacter(addon, charKey) and true or false
-    local groupId = self:GetCharacterCustomSectionId(addon, charKey)
-    if groupId == "" then groupId = nil end
+    local groupId = nil
+    if not isFavorite then
+        groupId = self:GetCharacterCustomSectionId(addon, charKey)
+        if groupId == "" then groupId = nil end
+    end
     return groupId, isFavorite
 end
 

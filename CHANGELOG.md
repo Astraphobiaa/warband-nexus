@@ -1,40 +1,20 @@
-## v3.6.0 (2026-10-14)
+## v3.6.1 (2026-10-17)
 
-Full support for patch 12.1.5, a sharper and more consistent interface, a reworked Bank tab and a broad performance pass.
+A Tormented Soul tracker in the PvE tab, cleaner Characters and PvE layouts, and fixes for favorites and collapsing sections.
 
 ### Added
 
-- Added animated entrance effects to notifications (glow, icon flash and shine) that scale with how important the alert is.
-- Added a close button to the Try Count window.
+- Added a Tormented Soul column to the PvE tab that shows, per character, whether this week's Tormented Soul is still available, waiting for your next Nightmare hunt, or done.
+- Added a "Show Realm Name" option to hide the realm line under character names in the Characters tab.
+- Added Filter > Display options in the PvE tab to hide the Level and Item Level columns for a narrower table.
 
 ### Updated
 
-- Updated the addon for patch 12.1.5.
-- Borders, dividers and lines now stay crisp and the same thickness at any UI scale, and no longer flicker while you resize or scroll a window.
-- Every border in the addon now has the same weight: cards, buttons, dropdowns, search bars, input fields and sliders.
-- Headers, tabs, search bars and content now use the same spacing and alignment on every tab, so pages no longer shift when you switch between them.
-- Tables across the addon share one look: matching row heights, column spacing, sort arrows and status icons.
-- Turning a module off now fully stops its background work, unless another enabled module needs that data.
-- Bank tab reorganized: Bags and Bank show your current character, Warband shows your other characters' items (Personal) and your Warband Bank (Warband), and Guild Bank lists each character's guild with its stored items.
-- All pop-up windows now share the same title bar, close button, Escape-to-close, dragging and UI scale, including Money Logs, Gold Target, Reagent Deposit, Mail Details, Reminders, plan windows and character dialogs.
-- The Custom Plan and Weekly Vault windows have a cleaner, more compact layout with evenly spaced fields.
-- Windows that hold a table now size it to fit, so no column is cut off (Money Logs, Reagent Deposit).
-- Removed the "Recent Obtains" title and tightened the spacing on the Collections Recent view.
-- Removed the icon from the Filter button.
-- Faster tab switching and scrolling, with less memory churn in Storage, tooltips, lists and the Weekly Vault button.
+- Starring a character now moves it out of its custom section into Favorites, and unstarring returns it to Characters.
+- PvE crest column headers now name each crest tier (Adventurer to Myth) instead of showing "Crest" five times.
+- The PvE weekly columns (Bounty, Nightmare, Soul, Vaults, Status) now share an even, readable width.
 
 ### Fixed
 
-- Fixed errors caused by item and coin functions that patch 12.1.5 removed (including Collections scanning errors).
-- Fixed the "Weekly Vault Ready" reminder not appearing at login.
-- Fixed currencies, guild, specialization and item level sometimes showing blank after a temporary data hiccup; the last known value is now kept.
-- Fixed Mythic+ weekly best not showing correctly.
-- Fixed Bank rows overlapping after switching tabs, and the Personal section expanding or collapsing everything at once.
-- Fixed the Guild Bank losing items from tabs you had not opened during that visit, and characters' guilds not being listed.
-- Fixed the To-Do empty-state card being wider than the header and search bar.
-- Fixed the Money Logs table not filling the window and the Amount column being cut off.
-- Fixed the Gold Target input field having no border.
-- Fixed the Gear tab character selector looking thinner than the buttons next to it.
-- Fixed an invisible layer that blocked your next click after confirming character tracking.
-- Fixed the Mail Details window leaving an invisible layer behind when reopened.
-- Fixed search box hint text not hiding when you click into the box.
+- Fixed sections below a collapsed or expanded section in the Characters tab sometimes disappearing until the window was reopened.
+- Fixed the missing icon on the A Nightmarish Task column in the PvE tab.

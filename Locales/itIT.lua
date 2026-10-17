@@ -282,6 +282,8 @@ L["CHARACTER_MENU_START_TRACKING"] = "Start tracking"
 L["CHARACTER_MENU_DELETE"] = "Delete character"
 L["CONFIG_SECTION_GOLD_TOTAL"] = "Section Gold Total"
 L["CONFIG_SECTION_GOLD_TOTAL_DESC"] = "Show the summed gold of each section on its header in the Characters tab. Uses the last amount recorded for each character, so a character you have not played since installing adds nothing."
+L["CONFIG_SHOW_CHARACTER_REALM"] = "Mostra nome del reame"
+L["CONFIG_SHOW_CHARACTER_REALM_DESC"] = "Mostra il nome del reame sotto il nome di ogni personaggio nella scheda Personaggi. Disattiva per un elenco più pulito."
 L["CUSTOM_HEADER_MENU_DELETE_GROUP"] = "Elimina una sezione"
 L["CUSTOM_HEADER_MENU_DELETE_FMT"] = "Elimina: %s"
 L["CUSTOM_HEADER_GOLD_STAR_TITLE"] = "Evidenziazione sezione dorata"
@@ -534,6 +536,13 @@ L["PVE_COL_NIGHTMARE_TASK"] = "A Nightmarish Task"
 L["PVE_COL_PURGING_VAULTS"] = "Purging the Vaults"
 L["PVE_HEADER_NIGHTMARE_SHORT"] = "Incubo"
 L["PVE_HEADER_VAULTS_SHORT"] = "Cripte"
+L["PVE_COL_TORMENTED_SOUL"] = "Tormented Soul"
+L["PVE_HEADER_TORMENTED_SHORT"] = "Anima"
+L["PVE_TORMENTED_STATUS_AVAILABLE"] = "Disponibile questa settimana"
+L["PVE_TORMENTED_STATUS_PENDING"] = "Attiva: bonus in attesa alla prossima caccia Incubo"
+L["PVE_TORMENTED_STATUS_DONE"] = "Usata questa settimana"
+L["PVE_TORMENTED_WEEKLY_NOTE"] = "Equipaggiamento bonus: una volta a settimana per personaggio."
+L["PVE_TORMENTED_LOOTED_TODAY"] = "Raccolta oggi: %s"
 L["PVE_COL_VAULT_STATUS"] = "Stato del Grande Deposito"
 L["PVE_COL_NEBULOUS_VOIDCORE"] = "Nucleo del Vuoto nebuloso"
 L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "Manaflux dell'Albaluce"
@@ -1237,43 +1246,23 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V360"] = [=[v3.6.0 (2026-10-14)
+L["CHANGELOG_V361"] = [=[v3.6.1 (2026-10-17)
 
-Full support for patch 12.1.5, a sharper and more consistent interface, a reworked Bank tab and a broad performance pass.
+A Tormented Soul tracker in the PvE tab, cleaner Characters and PvE layouts, and fixes for favorites and collapsing sections.
 
 Added:
-- Added animated entrance effects to notifications (glow, icon flash and shine) that scale with how important the alert is.
-- Added a close button to the Try Count window.
+- Added a Tormented Soul column to the PvE tab that shows, per character, whether this week's Tormented Soul is still available, waiting for your next Nightmare hunt, or done.
+- Added a "Show Realm Name" option to hide the realm line under character names in the Characters tab.
+- Added Filter > Display options in the PvE tab to hide the Level and Item Level columns for a narrower table.
 
 Updated:
-- Updated the addon for patch 12.1.5.
-- Borders, dividers and lines now stay crisp and the same thickness at any UI scale, and no longer flicker while you resize or scroll a window.
-- Every border in the addon now has the same weight: cards, buttons, dropdowns, search bars, input fields and sliders.
-- Headers, tabs, search bars and content now use the same spacing and alignment on every tab, so pages no longer shift when you switch between them.
-- Tables across the addon share one look: matching row heights, column spacing, sort arrows and status icons.
-- Turning a module off now fully stops its background work, unless another enabled module needs that data.
-- Bank tab reorganized: Bags and Bank show your current character, Warband shows your other characters' items (Personal) and your Warband Bank (Warband), and Guild Bank lists each character's guild with its stored items.
-- All pop-up windows now share the same title bar, close button, Escape-to-close, dragging and UI scale, including Money Logs, Gold Target, Reagent Deposit, Mail Details, Reminders, plan windows and character dialogs.
-- The Custom Plan and Weekly Vault windows have a cleaner, more compact layout with evenly spaced fields.
-- Windows that hold a table now size it to fit, so no column is cut off (Money Logs, Reagent Deposit).
-- Removed the "Recent Obtains" title and tightened the spacing on the Collections Recent view.
-- Removed the icon from the Filter button.
-- Faster tab switching and scrolling, with less memory churn in Storage, tooltips, lists and the Weekly Vault button.
+- Starring a character now moves it out of its custom section into Favorites, and unstarring returns it to Characters.
+- PvE crest column headers now name each crest tier (Adventurer to Myth) instead of showing "Crest" five times.
+- The PvE weekly columns (Bounty, Nightmare, Soul, Vaults, Status) now share an even, readable width.
 
 Fixed:
-- Fixed errors caused by item and coin functions that patch 12.1.5 removed (including Collections scanning errors).
-- Fixed the "Weekly Vault Ready" reminder not appearing at login.
-- Fixed currencies, guild, specialization and item level sometimes showing blank after a temporary data hiccup; the last known value is now kept.
-- Fixed Mythic+ weekly best not showing correctly.
-- Fixed Bank rows overlapping after switching tabs, and the Personal section expanding or collapsing everything at once.
-- Fixed the Guild Bank losing items from tabs you had not opened during that visit, and characters' guilds not being listed.
-- Fixed the To-Do empty-state card being wider than the header and search bar.
-- Fixed the Money Logs table not filling the window and the Amount column being cut off.
-- Fixed the Gold Target input field having no border.
-- Fixed the Gear tab character selector looking thinner than the buttons next to it.
-- Fixed an invisible layer that blocked your next click after confirming character tracking.
-- Fixed the Mail Details window leaving an invisible layer behind when reopened.
-- Fixed search box hint text not hiding when you click into the box.
+- Fixed sections below a collapsed or expanded section in the Characters tab sometimes disappearing until the window was reopened.
+- Fixed the missing icon on the A Nightmarish Task column in the PvE tab.
 
 CurseForge: Warband Nexus]=]
 
@@ -2187,6 +2176,9 @@ L["SORT_MODE_GUILD"] = "Gilda (A-Z)"
 L["FILTER_MENU_TOOLTIP"] = "Ordina, filtra per sezione e gestisci intestazioni personalizzate dei personaggi."
 L["FILTER_SUBMENU_SORT"] = "Ordina..."
 L["FILTER_SUBMENU_VIEW"] = "Mostra sezione..."
+L["FILTER_SUBMENU_DISPLAY"] = "Visualizza..."
+L["PVE_FILTER_SHOW_LEVEL"] = "Mostra livello"
+L["PVE_FILTER_SHOW_ILVL"] = "Mostra livello oggetto"
 L["SECTION_FILTER_ALL"] = "Tutte le sezioni"
 L["SECTION_FILTER_FAVORITES"] = "Solo preferiti"
 L["SECTION_FILTER_REGULAR"] = "Solo personaggi (non raggruppati)"
