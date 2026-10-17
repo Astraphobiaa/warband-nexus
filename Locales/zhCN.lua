@@ -282,6 +282,8 @@ L["CHARACTER_MENU_START_TRACKING"] = "开始追踪"
 L["CHARACTER_MENU_DELETE"] = "删除角色"
 L["CONFIG_SECTION_GOLD_TOTAL"] = "分类金币总计"
 L["CONFIG_SECTION_GOLD_TOTAL_DESC"] = "在角色标签页的每个分类标题上显示该分类的金币总和。使用每个角色最后一次记录的金额，因此安装后尚未登录过的角色不会计入。"
+L["CONFIG_SHOW_CHARACTER_REALM"] = "显示服务器名称"
+L["CONFIG_SHOW_CHARACTER_REALM_DESC"] = "在角色标签页中每个角色名称下方显示服务器名称。关闭后列表更简洁。"
 L["CUSTOM_HEADER_MENU_DELETE_GROUP"] = "删除分组"
 L["CUSTOM_HEADER_MENU_DELETE_FMT"] = "删除：%s"
 L["CUSTOM_HEADER_GOLD_STAR_TITLE"] = "金色分组高亮"
@@ -533,6 +535,13 @@ L["PVE_COL_NIGHTMARE_TASK"] = "梦魇任务"
 L["PVE_COL_PURGING_VAULTS"] = "净化地窟"
 L["PVE_HEADER_NIGHTMARE_SHORT"] = "梦魇"
 L["PVE_HEADER_VAULTS_SHORT"] = "宝库"
+L["PVE_COL_TORMENTED_SOUL"] = "Tormented Soul"
+L["PVE_HEADER_TORMENTED_SHORT"] = "灵魂"
+L["PVE_TORMENTED_STATUS_AVAILABLE"] = "本周可用"
+L["PVE_TORMENTED_STATUS_PENDING"] = "生效中 - 下一次梦魇狩猎时获得奖励"
+L["PVE_TORMENTED_STATUS_DONE"] = "本周已使用"
+L["PVE_TORMENTED_WEEKLY_NOTE"] = "额外装备：每个角色每周一次。"
+L["PVE_TORMENTED_LOOTED_TODAY"] = "今日已拾取：%s"
 L["PVE_COL_VAULT_STATUS"] = "宝库状态"
 L["PVE_COL_NEBULOUS_VOIDCORE"] = "晦暗虚空核心"
 L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "黎明之光法力熔剂"
@@ -1234,43 +1243,23 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V360"] = [=[v3.6.0 (2026-10-14)
+L["CHANGELOG_V361"] = [=[v3.6.1 (2026-10-17)
 
-Full support for patch 12.1.5, a sharper and more consistent interface, a reworked Bank tab and a broad performance pass.
+A Tormented Soul tracker in the PvE tab, cleaner Characters and PvE layouts, and fixes for favorites and collapsing sections.
 
 Added:
-- Added animated entrance effects to notifications (glow, icon flash and shine) that scale with how important the alert is.
-- Added a close button to the Try Count window.
+- Added a Tormented Soul column to the PvE tab that shows, per character, whether this week's Tormented Soul is still available, waiting for your next Nightmare hunt, or done.
+- Added a "Show Realm Name" option to hide the realm line under character names in the Characters tab.
+- Added Filter > Display options in the PvE tab to hide the Level and Item Level columns for a narrower table.
 
 Updated:
-- Updated the addon for patch 12.1.5.
-- Borders, dividers and lines now stay crisp and the same thickness at any UI scale, and no longer flicker while you resize or scroll a window.
-- Every border in the addon now has the same weight: cards, buttons, dropdowns, search bars, input fields and sliders.
-- Headers, tabs, search bars and content now use the same spacing and alignment on every tab, so pages no longer shift when you switch between them.
-- Tables across the addon share one look: matching row heights, column spacing, sort arrows and status icons.
-- Turning a module off now fully stops its background work, unless another enabled module needs that data.
-- Bank tab reorganized: Bags and Bank show your current character, Warband shows your other characters' items (Personal) and your Warband Bank (Warband), and Guild Bank lists each character's guild with its stored items.
-- All pop-up windows now share the same title bar, close button, Escape-to-close, dragging and UI scale, including Money Logs, Gold Target, Reagent Deposit, Mail Details, Reminders, plan windows and character dialogs.
-- The Custom Plan and Weekly Vault windows have a cleaner, more compact layout with evenly spaced fields.
-- Windows that hold a table now size it to fit, so no column is cut off (Money Logs, Reagent Deposit).
-- Removed the "Recent Obtains" title and tightened the spacing on the Collections Recent view.
-- Removed the icon from the Filter button.
-- Faster tab switching and scrolling, with less memory churn in Storage, tooltips, lists and the Weekly Vault button.
+- Starring a character now moves it out of its custom section into Favorites, and unstarring returns it to Characters.
+- PvE crest column headers now name each crest tier (Adventurer to Myth) instead of showing "Crest" five times.
+- The PvE weekly columns (Bounty, Nightmare, Soul, Vaults, Status) now share an even, readable width.
 
 Fixed:
-- Fixed errors caused by item and coin functions that patch 12.1.5 removed (including Collections scanning errors).
-- Fixed the "Weekly Vault Ready" reminder not appearing at login.
-- Fixed currencies, guild, specialization and item level sometimes showing blank after a temporary data hiccup; the last known value is now kept.
-- Fixed Mythic+ weekly best not showing correctly.
-- Fixed Bank rows overlapping after switching tabs, and the Personal section expanding or collapsing everything at once.
-- Fixed the Guild Bank losing items from tabs you had not opened during that visit, and characters' guilds not being listed.
-- Fixed the To-Do empty-state card being wider than the header and search bar.
-- Fixed the Money Logs table not filling the window and the Amount column being cut off.
-- Fixed the Gold Target input field having no border.
-- Fixed the Gear tab character selector looking thinner than the buttons next to it.
-- Fixed an invisible layer that blocked your next click after confirming character tracking.
-- Fixed the Mail Details window leaving an invisible layer behind when reopened.
-- Fixed search box hint text not hiding when you click into the box.
+- Fixed sections below a collapsed or expanded section in the Characters tab sometimes disappearing until the window was reopened.
+- Fixed the missing icon on the A Nightmarish Task column in the PvE tab.
 
 CurseForge: Warband Nexus]=]
 
@@ -2184,6 +2173,9 @@ L["SORT_MODE_GUILD"] = "公会 (A-Z)"
 L["FILTER_MENU_TOOLTIP"] = "排序、按分类筛选以及管理自定义角色标题。"
 L["FILTER_SUBMENU_SORT"] = "排序…"
 L["FILTER_SUBMENU_VIEW"] = "显示分类…"
+L["FILTER_SUBMENU_DISPLAY"] = "显示..."
+L["PVE_FILTER_SHOW_LEVEL"] = "显示等级"
+L["PVE_FILTER_SHOW_ILVL"] = "显示物品等级"
 L["SECTION_FILTER_ALL"] = "所有分类"
 L["SECTION_FILTER_FAVORITES"] = "仅限收藏"
 L["SECTION_FILTER_REGULAR"] = "仅限角色（未分组）"

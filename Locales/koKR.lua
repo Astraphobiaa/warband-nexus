@@ -282,6 +282,8 @@ L["CHARACTER_MENU_START_TRACKING"] = "Start tracking"
 L["CHARACTER_MENU_DELETE"] = "Delete character"
 L["CONFIG_SECTION_GOLD_TOTAL"] = "Section Gold Total"
 L["CONFIG_SECTION_GOLD_TOTAL_DESC"] = "Show the summed gold of each section on its header in the Characters tab. Uses the last amount recorded for each character, so a character you have not played since installing adds nothing."
+L["CONFIG_SHOW_CHARACTER_REALM"] = "서버 이름 표시"
+L["CONFIG_SHOW_CHARACTER_REALM_DESC"] = "캐릭터 탭에서 각 캐릭터 이름 아래에 서버 이름을 표시합니다. 끄면 목록이 더 깔끔해집니다."
 L["CUSTOM_HEADER_MENU_DELETE_GROUP"] = "구역 삭제"
 L["CUSTOM_HEADER_MENU_DELETE_FMT"] = "삭제: %s"
 L["CUSTOM_HEADER_GOLD_STAR_TITLE"] = "금색 구역 강조"
@@ -533,6 +535,13 @@ L["PVE_COL_NIGHTMARE_TASK"] = "A Nightmarish Task"
 L["PVE_COL_PURGING_VAULTS"] = "Purging the Vaults"
 L["PVE_HEADER_NIGHTMARE_SHORT"] = "악몽"
 L["PVE_HEADER_VAULTS_SHORT"] = "금고"
+L["PVE_COL_TORMENTED_SOUL"] = "Tormented Soul"
+L["PVE_HEADER_TORMENTED_SHORT"] = "영혼"
+L["PVE_TORMENTED_STATUS_AVAILABLE"] = "이번 주 사용 가능"
+L["PVE_TORMENTED_STATUS_PENDING"] = "활성 – 다음 악몽 사냥에서 보너스 대기 중"
+L["PVE_TORMENTED_STATUS_DONE"] = "이번 주 사용함"
+L["PVE_TORMENTED_WEEKLY_NOTE"] = "보너스 장비: 캐릭터당 주 1회."
+L["PVE_TORMENTED_LOOTED_TODAY"] = "오늘 획득: %s"
 L["PVE_COL_VAULT_STATUS"] = "금고 상태"
 L["PVE_COL_NEBULOUS_VOIDCORE"] = "아지랑이 공허의 핵"
 L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "여명빛 마나플럭스"
@@ -1236,43 +1245,23 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "총 플레이 시간·이 레벨 플�
 
 
 
-L["CHANGELOG_V360"] = [=[v3.6.0 (2026-10-14)
+L["CHANGELOG_V361"] = [=[v3.6.1 (2026-10-17)
 
-Full support for patch 12.1.5, a sharper and more consistent interface, a reworked Bank tab and a broad performance pass.
+A Tormented Soul tracker in the PvE tab, cleaner Characters and PvE layouts, and fixes for favorites and collapsing sections.
 
 Added:
-- Added animated entrance effects to notifications (glow, icon flash and shine) that scale with how important the alert is.
-- Added a close button to the Try Count window.
+- Added a Tormented Soul column to the PvE tab that shows, per character, whether this week's Tormented Soul is still available, waiting for your next Nightmare hunt, or done.
+- Added a "Show Realm Name" option to hide the realm line under character names in the Characters tab.
+- Added Filter > Display options in the PvE tab to hide the Level and Item Level columns for a narrower table.
 
 Updated:
-- Updated the addon for patch 12.1.5.
-- Borders, dividers and lines now stay crisp and the same thickness at any UI scale, and no longer flicker while you resize or scroll a window.
-- Every border in the addon now has the same weight: cards, buttons, dropdowns, search bars, input fields and sliders.
-- Headers, tabs, search bars and content now use the same spacing and alignment on every tab, so pages no longer shift when you switch between them.
-- Tables across the addon share one look: matching row heights, column spacing, sort arrows and status icons.
-- Turning a module off now fully stops its background work, unless another enabled module needs that data.
-- Bank tab reorganized: Bags and Bank show your current character, Warband shows your other characters' items (Personal) and your Warband Bank (Warband), and Guild Bank lists each character's guild with its stored items.
-- All pop-up windows now share the same title bar, close button, Escape-to-close, dragging and UI scale, including Money Logs, Gold Target, Reagent Deposit, Mail Details, Reminders, plan windows and character dialogs.
-- The Custom Plan and Weekly Vault windows have a cleaner, more compact layout with evenly spaced fields.
-- Windows that hold a table now size it to fit, so no column is cut off (Money Logs, Reagent Deposit).
-- Removed the "Recent Obtains" title and tightened the spacing on the Collections Recent view.
-- Removed the icon from the Filter button.
-- Faster tab switching and scrolling, with less memory churn in Storage, tooltips, lists and the Weekly Vault button.
+- Starring a character now moves it out of its custom section into Favorites, and unstarring returns it to Characters.
+- PvE crest column headers now name each crest tier (Adventurer to Myth) instead of showing "Crest" five times.
+- The PvE weekly columns (Bounty, Nightmare, Soul, Vaults, Status) now share an even, readable width.
 
 Fixed:
-- Fixed errors caused by item and coin functions that patch 12.1.5 removed (including Collections scanning errors).
-- Fixed the "Weekly Vault Ready" reminder not appearing at login.
-- Fixed currencies, guild, specialization and item level sometimes showing blank after a temporary data hiccup; the last known value is now kept.
-- Fixed Mythic+ weekly best not showing correctly.
-- Fixed Bank rows overlapping after switching tabs, and the Personal section expanding or collapsing everything at once.
-- Fixed the Guild Bank losing items from tabs you had not opened during that visit, and characters' guilds not being listed.
-- Fixed the To-Do empty-state card being wider than the header and search bar.
-- Fixed the Money Logs table not filling the window and the Amount column being cut off.
-- Fixed the Gold Target input field having no border.
-- Fixed the Gear tab character selector looking thinner than the buttons next to it.
-- Fixed an invisible layer that blocked your next click after confirming character tracking.
-- Fixed the Mail Details window leaving an invisible layer behind when reopened.
-- Fixed search box hint text not hiding when you click into the box.
+- Fixed sections below a collapsed or expanded section in the Characters tab sometimes disappearing until the window was reopened.
+- Fixed the missing icon on the A Nightmarish Task column in the PvE tab.
 
 CurseForge: Warband Nexus]=]
 
@@ -2186,6 +2175,9 @@ L["SORT_MODE_GUILD"] = "길드 (가-하)"
 L["FILTER_MENU_TOOLTIP"] = "정렬, 구역별 필터, 사용자 지정 캐릭터 머리글 관리."
 L["FILTER_SUBMENU_SORT"] = "정렬..."
 L["FILTER_SUBMENU_VIEW"] = "구역 표시..."
+L["FILTER_SUBMENU_DISPLAY"] = "표시..."
+L["PVE_FILTER_SHOW_LEVEL"] = "레벨 표시"
+L["PVE_FILTER_SHOW_ILVL"] = "아이템 레벨 표시"
 L["SECTION_FILTER_ALL"] = "모든 구역"
 L["SECTION_FILTER_FAVORITES"] = "즐겨찾기만"
 L["SECTION_FILTER_REGULAR"] = "캐릭터만(그룹 없음)"

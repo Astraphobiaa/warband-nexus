@@ -2474,7 +2474,7 @@ local function WnApplyAtlasChromeUnderlayCore(frame, texKey, nameKey, inset, can
         for ci = 1, nCand do
             local name = candidates[ci]
             if type(name) == "string" and name ~= "" then
-                local okMeta, meta = pcall(C_tex.GetAtlasInfo, C_tex, name)
+                local okMeta, meta = pcall(C_tex.GetAtlasInfo, name)
                 if okMeta and type(meta) == "table" and (meta.file or meta.width or meta.filename) then
                     ns.UI_ClearTextureSliceSafe(tex)
                     local okAtlas = pcall(function()
@@ -4574,8 +4574,6 @@ function ns.UI_OpenTryCountFromContext(_anchorFrame, collectibleType, collectibl
     if not collectibleType or not collectibleID or not ns.UI_ShowTryCountPopup then return end
     ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
 end
-
-ns.SafeColorArray = SafeColorArray
 
 -- SETTINGS UI HELPERS
 

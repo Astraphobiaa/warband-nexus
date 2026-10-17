@@ -54,10 +54,21 @@ end
 --- Shared identity layout: Professions fav/class/name rhythm + optional chevron + PvE level/iLvl.
 local _pveIdentityLayoutByNameW = {}
 --- @param chevronPrefixPx number|nil 0 = no expand chevron (PvP overview); nil = Professions/PvE default.
+--- PvE tab Filter > Display toggles (profile.pveHideLevel / pveHideItemLevel). PvP overview passes an
+--- explicit chevron prefix and always keeps both columns.
+local function PvE_ResolveIdentityColumnFlags(chevronPrefixPx)
+    if chevronPrefixPx ~= nil then return false, false end
+    local WN = ns.WarbandNexus
+    local p = WN and WN.db and WN.db.profile
+    if not p then return false, false end
+    return p.pveHideLevel == true, p.pveHideItemLevel == true
+end
+
 local function PvE_BuildIdentityLayout(nameW, chevronPrefixPx)
     local nwKey = math.max(PVE_NAME_COL_MIN_W, tonumber(nameW) or PVE_NAME_COL_MIN_W)
     local chevKey = (chevronPrefixPx == nil) and "default" or tostring(chevronPrefixPx)
-    local cacheKey = nwKey .. ":" .. chevKey
+    local hideLevel, hideIlvl = PvE_ResolveIdentityColumnFlags(chevronPrefixPx)
+    local cacheKey = nwKey .. ":" .. chevKey .. ":" .. (hideLevel and "L0" or "L1") .. (hideIlvl and "I0" or "I1")
     local cached = _pveIdentityLayoutByNameW[cacheKey]
     if cached then return cached end
     local crc = ns.UI_CHAR_ROW_COLUMNS or {}
@@ -65,6 +76,8 @@ local function PvE_BuildIdentityLayout(nameW, chevronPrefixPx)
     local levelW = crc.level and crc.level.width or 82
     local levelTot = crc.level and crc.level.total or 97
     local ilvlW = crc.itemLevel and crc.itemLevel.width or 75
+    if hideLevel then levelTot = 0 end
+    if hideIlvl then ilvlW = 0 end
 
     local chevron = chevronPrefixPx
     if chevron == nil then chevron = PvE_GetChevronPrefixPx() end
@@ -85,6 +98,8 @@ local function PvE_BuildIdentityLayout(nameW, chevronPrefixPx)
         ilvlColW = ilvlW,
         inlineStart = ilvlLeft + ilvlW + PVE_ILVL_TO_INLINE_GAP,
         identityGradientEnd = nameLeft + nw,
+        hideLevel = hideLevel,
+        hideItemLevel = hideIlvl,
     }
     _pveIdentityLayoutByNameW[cacheKey] = layout
     return layout
@@ -281,7 +296,7 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     levelText:SetText(string.format("|cff%02x%02x%02x%d|r",
         classColor.r * 255, classColor.g * 255, classColor.b * 255,
         char.level or 1))
-    levelText:Show()
+    levelText:SetShown(not layout.hideLevel)
 
     local itemLevelText = charHeader._pveCharRowIlvl
     if not itemLevelText then
@@ -302,7 +317,7 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     else
         itemLevelText:SetText(dimHex .. "--|r")
     end
-    itemLevelText:Show()
+    itemLevelText:SetShown(not layout.hideItemLevel)
 
     charHeader._pveInlineStartPx = layout.inlineStart
 end

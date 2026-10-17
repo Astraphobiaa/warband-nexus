@@ -122,6 +122,7 @@ local function PvE_BuildColumnPickerRows()
     rows[#rows + 1] = { key = "slot3", label = GetLocalizedText("VAULT_SLOT_WORLD", "World"), checked = vc.world ~= false, vault = true, onToggle = function(checked) vc.world = checked end }
     rows[#rows + 1] = { key = "bountiful", label = GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"), checked = vc.bounty ~= false, vault = true, onToggle = function(checked) vc.bounty = checked end }
     rows[#rows + 1] = { key = "nightmare_task", label = GetLocalizedText("PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task"), checked = ex.nightmare_task ~= false, vault = false, onToggle = function(checked) ex.nightmare_task = checked end }
+    rows[#rows + 1] = { key = "tormented_soul", label = GetLocalizedText("PVE_COL_TORMENTED_SOUL", "Tormented Soul"), checked = ex.tormented_soul ~= false, vault = false, onToggle = function(checked) ex.tormented_soul = checked end }
     rows[#rows + 1] = { key = "purging_vaults", label = GetLocalizedText("PVE_COL_PURGING_VAULTS", "Purging the Vaults"), checked = ex.purging_vaults ~= false, vault = false, onToggle = function(checked) ex.purging_vaults = checked end }
     return rows
 end
@@ -139,6 +140,7 @@ local function PvE_ColumnPickerShowAll()
     ex.restored_key = true
     ex.shard_of_dundun = true
     ex.nightmare_task = true
+    ex.tormented_soul = true
     ex.purging_vaults = true
     vc.raids = true
     vc.mythicPlus = true

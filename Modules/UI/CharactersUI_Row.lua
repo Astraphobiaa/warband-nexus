@@ -499,15 +499,23 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN 5: Name
     local nameOffset = GetColumnOffset("name")
     local nameLeftPadding = 4
+    -- Realm subline is optional (profile.showCharacterRealmName, nil = shown); without it the name
+    -- centers vertically in the row. Pooled rows re-anchor every paint.
+    local showRealm = WarbandNexus.db.profile.showCharacterRealmName ~= false
     
     if not row.nameText then
         row.nameText = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
-        row.nameText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -8)
         row.nameText:SetWidth(CHAR_ROW_COLUMNS.name.width)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         row.nameText:SetNonSpaceWrap(false)
         row.nameText:SetMaxLines(1)
+    end
+    row.nameText:ClearAllPoints()
+    if showRealm then
+        row.nameText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -8)
+    else
+        row.nameText:SetPoint("LEFT", nameOffset + nameLeftPadding, 0)
     end
     row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
         classColor.r * 255, classColor.g * 255, classColor.b * 255,
@@ -526,10 +534,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.realmText:SetMaxLines(1)  -- Single line only
         ns.UI_SetTextColorRole(row.realmText, "Normal")
     end
-    local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    ns.UI_SetTextColorRole(row.realmText, "Normal")
-    row.realmText:SetText(displayRealm)
-    PresentFS(row.realmText)
+    if showRealm then
+        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+        ns.UI_SetTextColorRole(row.realmText, "Normal")
+        row.realmText:SetText(displayRealm)
+        PresentFS(row.realmText)
+    else
+        -- Empty text keeps the class-gradient width (max of name/realm) on the name alone.
+        row.realmText:SetText("")
+        row.realmText:Hide()
+    end
     
     -- COLUMN: Guild — after mail column; width from max guild name; text centered before Level
     local guildOffset = GetColumnOffset("guild")

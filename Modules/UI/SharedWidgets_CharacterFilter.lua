@@ -306,6 +306,9 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     local onRefresh = opts.onRefresh
     local onDeleteSection = opts.onDeleteSection
     local sortTabId = opts.sortTabId
+    -- Optional tab-specific submenus after Sort / Show section: { { label, buildRows = fn() -> rows } }.
+    -- Rows use the same shape as the built-in flyouts ({ label, selected, onPick }).
+    local extraMenus = opts.extraMenus
     if not sortOptions or not dbSortTable or not dbSectionFilter or not onRefresh then
         return nil
     end
@@ -417,8 +420,12 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             (L and L["FILTER_SUBMENU_SORT"]) or "Sort…",
             (L and L["FILTER_SUBMENU_VIEW"]) or "Show section…",
         }
+        local extraCount = (type(extraMenus) == "table") and #extraMenus or 0
+        for ei = 1, extraCount do
+            rootLabels[#rootLabels + 1] = extraMenus[ei].label or ""
+        end
         local rw = math.max(btn:GetWidth(), math.ceil(measureMaxLabelWidth(rootLabels)) + sideMargin * 2 + 24)
-        local rootRowCount = 2
+        local rootRowCount = 2 + extraCount
         local rh = rootRowCount * itemHeight + ((UI_SPACING and UI_SPACING.AFTER_ELEMENT) or 8)
         local root = ns.UI.Factory:CreateContainer(UIParent, rw, rh, true)
         root._wnAdvRoot = true
@@ -501,6 +508,15 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             }
             openFlyoutFrom(root, rows, 0)
         end)
+
+        for ei = 1, extraCount do
+            local menu = extraMenus[ei]
+            local rowIndex = 2 + ei
+            makeRootRow(rowIndex, rootLabels[rowIndex], function()
+                local rows = (type(menu.buildRows) == "function") and menu.buildRows() or nil
+                openFlyoutFrom(root, rows, -(rowIndex - 1) * itemHeight)
+            end)
+        end
 
         root:Show()
 

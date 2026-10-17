@@ -79,7 +79,9 @@ function PvEHeader.EnsureStrip(L, parent, height, iconSize)
     return strip
 end
 
-local PVE_NIGHTMARE_TASK_ICON = "Interface\\Icons\\Spell_Shadow_Nightmare"
+-- Prey UI icon (fileID 7493985, interface/icons/ui_prey.blp; listfile checked 2026-10-15).
+-- "Spell_Shadow_Nightmare" does not exist in the client and rendered as an empty slot.
+local PVE_NIGHTMARE_TASK_ICON = "Interface\\Icons\\UI_Prey"
 local PVE_PURGING_VAULTS_ICON = "Interface\\Icons\\INV_Misc_Idol_03"
 
 --- Cell payload for a boolean weekly-quest column (Midnight 12.1 Trovehunter's Bounty weeklies).
@@ -104,6 +106,68 @@ local function BuildPvEWeeklyQuestCell(L, done, isCurrentChar, questID, titleKey
         tooltipTitle = GetLocalizedText(titleKey, titleFallback),
         tooltipIcon = iconPath,
         pveBountyData = { done = done == true, unknown = unknown },
+    }
+end
+
+local PVE_TORMENTED_SOUL_ICON = "Interface\\Icons\\Ability_Warlock_ImprovedSoulLeech"
+
+--- Pack a semantic multi-return RGB helper into a tooltip color triple (theme-aware at call time).
+local function PvETooltipRGB(fn)
+    if fn then
+        local r, g, b = fn()
+        if r then return { r, g, b } end
+    end
+    return { 1, 1, 1 }
+end
+
+--- Cell payload for the weekly Tormented Soul column (once per week per character).
+--- Status comes from the PvE cache service; the UI never reads the aura/quest APIs itself.
+local function BuildTormentedSoulCell(L, delveChar, isCurrentChar, emDash, dimColor)
+    local GetLocalizedText = L.GetLocalizedText
+    local W = L.WarbandNexus
+    local status = W.GetTormentedSoulStatus and W:GetTormentedSoulStatus(delveChar, isCurrentChar) or nil
+    local text, color, richText, statusText, statusColor
+    if status == "done" then
+        text, richText = L.VAULT_SLOT_CHECK, true
+        statusText = GetLocalizedText("PVE_TORMENTED_STATUS_DONE", "Used this week")
+        statusColor = PvETooltipRGB(ns.UI_GetSemanticGreenColor)
+    elseif status == "pending" then
+        local mark = ns.UI_GetIconMarkup and ns.UI_GetIconMarkup("clock", 12, 12, 0, 0) or ""
+        if mark == "" and ns.UI_GetSemanticGoldHex then
+            mark = ns.UI_GetSemanticGoldHex() .. "!|r"
+        end
+        text, richText = mark, true
+        statusText = GetLocalizedText("PVE_TORMENTED_STATUS_PENDING", "Active - bonus pending on next Nightmare hunt")
+        statusColor = PvETooltipRGB(ns.UI_GetSemanticGoldColor)
+    elseif status == "available" then
+        text, color = emDash, dimColor
+        statusText = GetLocalizedText("PVE_TORMENTED_STATUS_AVAILABLE", "Available this week")
+        statusColor = PvETooltipRGB(ns.UI_GetTooltipBodyColor)
+    else
+        text, color = emDash, dimColor
+        statusText = GetLocalizedText("PVE_BOUNTY_NEED_LOGIN", "No saved status for this character. Log in to refresh.")
+        statusColor = PvETooltipRGB(ns.UI_GetTooltipBodyColor)
+    end
+    local lines = {
+        { text = statusText, color = statusColor },
+        { text = GetLocalizedText("PVE_TORMENTED_WEEKLY_NOTE", "Bonus equipment: once per week per character."),
+          color = PvETooltipRGB(ns.UI_GetTooltipDescColor) },
+    }
+    if isCurrentChar and W.IsTormentedSoulLootedToday then
+        local looted = W:IsTormentedSoulLootedToday()
+        local fmt = GetLocalizedText("PVE_TORMENTED_LOOTED_TODAY", "Looted today: %s")
+        lines[#lines + 1] = {
+            text = string.format(fmt, looted and GetLocalizedText("YES", "Yes") or GetLocalizedText("NO", "No")),
+            color = PvETooltipRGB(ns.UI_GetTooltipDescColor),
+        }
+    end
+    return {
+        text = text,
+        color = color,
+        richText = richText,
+        tooltip = lines,
+        tooltipTitle = GetLocalizedText("PVE_COL_TORMENTED_SOUL", "Tormented Soul"),
+        tooltipIcon = PVE_TORMENTED_SOUL_ICON,
     }
 end
 
@@ -328,6 +392,28 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             onRefresh = function()
                 L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
             end,
+            -- Display: hide the Level / Item Level identity columns (profile.pveHideLevel / pveHideItemLevel);
+            -- the identity layout drops their width, so the grid starts further left.
+            extraMenus = {
+                {
+                    label = L.GetLocalizedText("FILTER_SUBMENU_DISPLAY", "Display..."),
+                    buildRows = function()
+                        local p = self.db.profile
+                        return {
+                            {
+                                label = L.GetLocalizedText("PVE_FILTER_SHOW_LEVEL", "Show Level"),
+                                selected = p.pveHideLevel ~= true,
+                                onPick = function() p.pveHideLevel = not (p.pveHideLevel == true) end,
+                            },
+                            {
+                                label = L.GetLocalizedText("PVE_FILTER_SHOW_ILVL", "Show Item Level"),
+                                selected = p.pveHideItemLevel ~= true,
+                                onPick = function() p.pveHideItemLevel = not (p.pveHideItemLevel == true) end,
+                            },
+                        }
+                    end,
+                },
+            },
             -- PvE: section filter only â€” roster edits (delete custom header) stay on Character tab.
         })
         if sortBtn then
@@ -584,9 +670,19 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             key = "nightmare_task",
             label = "",
             width = L.PVE_BOUNTIFUL_COL_W,
-            icon = "Interface\\Icons\\Spell_Shadow_Nightmare",
+            icon = PVE_NIGHTMARE_TASK_ICON,
             tooltipTitle = GetLocalizedText("PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task"),
             headerLabel = L.GetLocalizedText("PVE_HEADER_NIGHTMARE_SHORT", "Nightmare"),
+        }
+    end
+    if pveExtraCols.tormented_soul ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "tormented_soul",
+            label = "",
+            width = L.PVE_BOUNTIFUL_COL_W,
+            icon = PVE_TORMENTED_SOUL_ICON,
+            tooltipTitle = GetLocalizedText("PVE_COL_TORMENTED_SOUL", "Tormented Soul"),
+            headerLabel = L.GetLocalizedText("PVE_HEADER_TORMENTED_SHORT", "Soul"),
         }
     end
     if pveExtraCols.purging_vaults ~= false then
@@ -634,6 +730,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         visiblePveColumnKeys[ck] = true
         colSigParts[i] = ck
     end
+    -- Filter > Display toggles move the grid start (identity layout), so they must bust the fast path.
+    colSigParts[#colSigParts + 1] = ((profile and profile.pveHideLevel == true) and "L0" or "L1")
+        .. ((profile and profile.pveHideItemLevel == true) and "I0" or "I1")
     local colSig = table.concat(colSigParts, "\1")
     local function GapBetweenColumns(leftIdx)
         local leftCol = PVE_COLUMNS[leftIdx]
@@ -1102,7 +1201,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     if currentChar then
         local ck0 = GetRowCanonicalPvEKey(currentChar)
         if ck0 and L.ns.CharacterService then
-            -- Section outranks Favorites, so resolve the section first (see ResolveRosterBucket).
+            -- Favorites and sections are mutually exclusive (see ResolveRosterBucket).
             local curGid = L.ns.CharacterService.GetCharacterCustomSectionId
                 and L.ns.CharacterService:GetCharacterCustomSectionId(self, ck0) or nil
             local inFav = (not curGid) and L.ns.CharacterService.IsFavoriteCharacter
@@ -1892,6 +1991,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 delveChar.nightmareTaskComplete, isCurrentChar,
                 (wnConst and wnConst.PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID) or 94446,
                 "PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task", PVE_NIGHTMARE_TASK_ICON, EM_DASH, DIM_COLOR)
+            colValuesByKey.tormented_soul = BuildTormentedSoulCell(L, delveChar, isCurrentChar, EM_DASH, DIM_COLOR)
             colValuesByKey.purging_vaults = BuildPvEWeeklyQuestCell(L,
                 delveChar.purgingVaultsComplete, isCurrentChar,
                 (wnConst and wnConst.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID) or 95520,
