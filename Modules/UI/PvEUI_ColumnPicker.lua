@@ -124,6 +124,7 @@ local function PvE_BuildColumnPickerRows()
     rows[#rows + 1] = { key = "nightmare_task", label = GetLocalizedText("PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task"), checked = ex.nightmare_task ~= false, vault = false, onToggle = function(checked) ex.nightmare_task = checked end }
     rows[#rows + 1] = { key = "tormented_soul", label = GetLocalizedText("PVE_COL_TORMENTED_SOUL", "Tormented Soul"), checked = ex.tormented_soul ~= false, vault = false, onToggle = function(checked) ex.tormented_soul = checked end }
     rows[#rows + 1] = { key = "purging_vaults", label = GetLocalizedText("PVE_COL_PURGING_VAULTS", "Purging the Vaults"), checked = ex.purging_vaults ~= false, vault = false, onToggle = function(checked) ex.purging_vaults = checked end }
+    rows[#rows + 1] = { key = "delve_nemesis", label = GetLocalizedText("PVE_COL_DELVE_NEMESIS", "Delve Nemesis"), checked = ex.delve_nemesis ~= false, vault = false, onToggle = function(checked) ex.delve_nemesis = checked end }
     return rows
 end
 
@@ -142,6 +143,7 @@ local function PvE_ColumnPickerShowAll()
     ex.nightmare_task = true
     ex.tormented_soul = true
     ex.purging_vaults = true
+    ex.delve_nemesis = true
     vc.raids = true
     vc.mythicPlus = true
     vc.world = true

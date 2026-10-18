@@ -75,7 +75,7 @@ local function PvE_BuildIdentityLayout(nameW, chevronPrefixPx)
     local nw = math.max(PVE_NAME_COL_MIN_W, crc.name and crc.name.width or 100, tonumber(nameW) or 100)
     local levelW = crc.level and crc.level.width or 82
     local levelTot = crc.level and crc.level.total or 97
-    local ilvlW = crc.itemLevel and crc.itemLevel.width or 75
+    local ilvlW = crc.itemLevel and crc.itemLevel.width or 82
     if hideLevel then levelTot = 0 end
     if hideIlvl then ilvlW = 0 end
 
@@ -313,7 +313,7 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
     local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "|cff666666"
     if itemLevel > 0 then
-        itemLevelText:SetText(string.format("%s%s %d|r", goldHex, (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
+        itemLevelText:SetText(string.format("%s%s %s|r", goldHex, (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", ns.UI_FormatCharRowItemLevel(itemLevel)))
     else
         itemLevelText:SetText(dimHex .. "--|r")
     end

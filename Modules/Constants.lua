@@ -289,6 +289,13 @@ local Constants = {
     -- Both reward a Trovehunter's Bounty; verified on warcraft.wiki.gg.
     PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID = 94446,
     PVE_PURGING_VAULTS_WEEKLY_QUEST_ID = 95520,
+    -- Delve Nemesis (12.1 Season 2: Azta'rec, Venomfall Deeps). 92888 = hidden weekly "nemesis killed"
+    -- tracker; AllTheThings marks it isWeekly on Azta'rec Tier ? and it fired on both Nullaeus tiers in S1.
+    -- 97913 (Azta'rec Tier ??) is left out on purpose: ATT flags it "one-time quest, determine weekly",
+    -- and a one-time flag would pin the column to done for the rest of the season.
+    -- UNVERIFIED in-game (source: ATT Delves/Midnight/Season 2, 2026-10-18) - confirm with
+    -- /dump C_QuestLog.IsQuestFlaggedCompleted(92888) before and after a kill, then after reset.
+    PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID = 92888,
     -- Tormented Soul (Midnight 12.1 Season 2 Prey consumable, Binds to Warband). Using the item casts
     -- 1306916, which applies a ~24h aura consumed by the next Nightmare Prey hunt (bonus Hero-track piece).
     -- Rule (Prey renown 9): bonus equipment once per week, per character. 97637 = hidden daily

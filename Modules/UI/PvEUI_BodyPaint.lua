@@ -83,6 +83,7 @@ end
 -- "Spell_Shadow_Nightmare" does not exist in the client and rendered as an empty slot.
 local PVE_NIGHTMARE_TASK_ICON = "Interface\\Icons\\UI_Prey"
 local PVE_PURGING_VAULTS_ICON = "Interface\\Icons\\INV_Misc_Idol_03"
+local PVE_DELVE_NEMESIS_ICON = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
 
 --- Cell payload for a boolean weekly-quest column (Midnight 12.1 Trovehunter's Bounty weeklies).
 --- Alts read the per-character PvE cache snapshot; the logged-in character may fall back to the live quest API.
@@ -693,6 +694,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             icon = "Interface\\Icons\\INV_Misc_Idol_03",
             tooltipTitle = GetLocalizedText("PVE_COL_PURGING_VAULTS", "Purging the Vaults"),
             headerLabel = L.GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"),
+        }
+    end
+    if pveExtraCols.delve_nemesis ~= false then
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "delve_nemesis",
+            label = "",
+            width = L.PVE_BOUNTIFUL_COL_W,
+            icon = PVE_DELVE_NEMESIS_ICON,
+            tooltipTitle = GetLocalizedText("PVE_COL_DELVE_NEMESIS", "Delve Nemesis"),
+            headerLabel = L.GetLocalizedText("PVE_HEADER_NEMESIS_SHORT", "Nemesis"),
         }
     end
     if vaultCols.status ~= false then
@@ -1996,6 +2007,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 delveChar.purgingVaultsComplete, isCurrentChar,
                 (wnConst and wnConst.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID) or 95520,
                 "PVE_COL_PURGING_VAULTS", "Purging the Vaults", PVE_PURGING_VAULTS_ICON, EM_DASH, DIM_COLOR)
+            colValuesByKey.delve_nemesis = BuildPvEWeeklyQuestCell(L,
+                delveChar.delveNemesisComplete, isCurrentChar,
+                (wnConst and wnConst.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID) or 92888,
+                "PVE_COL_DELVE_NEMESIS", "Delve Nemesis", PVE_DELVE_NEMESIS_ICON, EM_DASH, DIM_COLOR)
             local voidcoreData = L.WarbandNexus:GetCurrencyData(L.PVE_VOIDCORE_ID, charKey)
             local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
             local vmax = (voidcoreData and voidcoreData.maxQuantity) or 0

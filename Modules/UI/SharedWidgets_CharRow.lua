@@ -49,10 +49,10 @@ local CHAR_ROW_COLUMNS = {
         min = 70,   -- "Zzz 150.00%" rested line
     },
     itemLevel = {
-        width = 75,
+        width = 82,
         spacing = 15,
-        total = 90,
-        min = 64,   -- "iLvl 288"
+        total = 97,
+        min = 74,   -- "iLvl 288.9"
     },
     gold = {
         width = 190,
@@ -394,7 +394,19 @@ local function SyncGridColumnDividers(parent, xPositions, height)
     end
 end
 
+--- Average item level for roster cells at one decimal ("206.1"). Truncates rather than rounds
+--- (206.97 -> "206.9") so the cell never reads above the real equipped average; the epsilon
+--- absorbs float noise (206.1 * 10 = 2060.9999...).
+---@param itemLevel number|nil Raw fractional GetAverageItemLevel() value
+---@return string|nil
+local function FormatCharRowItemLevel(itemLevel)
+    local n = tonumber(itemLevel)
+    if not n then return nil end
+    return string.format("%.1f", math.floor(n * 10 + 1e-6) / 10)
+end
+
 ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
+ns.UI_FormatCharRowItemLevel = FormatCharRowItemLevel
 ns.UI_GetColumnOffset = GetColumnOffset
 ns.UI_GetCharRowRightRailWidth = GetCharRowRightRailWidth
 ns.UI_ComputeCharRowGuildColumnWidth = ComputeCharRowGuildColumnWidth
