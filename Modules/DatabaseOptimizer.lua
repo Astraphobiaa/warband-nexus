@@ -238,7 +238,10 @@ function WarbandNexus:DeleteCharacter(characterKey)
 
     local resolvedKey = characterKey
     local U = ns.Utilities
-    if U and U.GetCanonicalCharacterKey then
+    -- An exact row index always wins. Canonicalizing first mapped the current player's Name-Realm to
+    -- the session GUID row, so deleting an untracked same-name stale copy deleted the logged-in
+    -- character instead (2026-10-21).
+    if not self.db.global.characters[characterKey] and U and U.GetCanonicalCharacterKey then
         resolvedKey = U:GetCanonicalCharacterKey(characterKey) or characterKey
     end
     if not self.db.global.characters[resolvedKey] then
@@ -246,6 +249,19 @@ function WarbandNexus:DeleteCharacter(characterKey)
             if key == characterKey or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(key, characterKey)) then
                 resolvedKey = key
                 break
+            end
+        end
+    end
+    -- Ambiguous Name-Realm (a stale same-name copy exists): a non-index key that resolved to the
+    -- logged-in character's row could mean either row. Refuse rather than delete the live character.
+    if resolvedKey ~= characterKey and self.db.global.characters[resolvedKey] then
+        local liveKey = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(self)
+        local target = self.db.global.characters[resolvedKey]
+        if liveKey and resolvedKey == liveKey and target.name and target.realm then
+            for key, row in pairs(self.db.global.characters) do
+                if key ~= resolvedKey and type(row) == "table" and row.name == target.name and row.realm == target.realm then
+                    return false
+                end
             end
         end
     end

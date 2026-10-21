@@ -1382,7 +1382,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local deleteBtn = CreateCharacterDeleteDialogButton(btnContainer, deleteBtnLabel, 150, true)
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
                 deleteBtn:SetScript("OnClick", function()
-                    local delKey = (ns.UI_GetCharKey and char) and ns.UI_GetCharKey(char)
+                    -- Delete the row that was clicked: its own table index first. The canonical key of an
+                    -- untracked row is Name-Realm, which resolves to the logged-in character when a stale
+                    -- same-name copy is deleted.
+                    local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+                    local rowIndex = char and char._key
+                    if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
+                    local delKey = rowIndex
+                        or ((ns.UI_GetCharKey and char) and ns.UI_GetCharKey(char))
                         or (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey))
                         or charKey
                     local success = WarbandNexus:DeleteCharacter(delKey)
