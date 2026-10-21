@@ -245,8 +245,9 @@ local function ResolveMailItemTooltipData(item)
         link = nil
     end
 
-    if not link and itemID and C_Item and C_Item.GetItemLinkByID then
-        local ok, resolved = pcall(C_Item.GetItemLinkByID, itemID)
+    -- Item link = C_Item.GetItemInfo's 2nd return (no C_Item.GetItemLinkByID in 12.1.5).
+    if not link and itemID and C_Item and C_Item.GetItemInfo then
+        local ok, _, resolved = pcall(C_Item.GetItemInfo, itemID)
         if ok and type(resolved) == "string" and resolved ~= "" then
             if not (issecretvalue and issecretvalue(resolved)) then
                 link = resolved

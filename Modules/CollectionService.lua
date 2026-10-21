@@ -1374,7 +1374,7 @@ function WarbandNexus:GetToysGroupedBySourceType()
     end
     local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
     local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-    local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+    local origFilterString = Mat.GetToyBoxSearchText()
     local origSourceFilters = {}
     local count = self:GetToySourceTypeCount()
     for i = 1, count do
@@ -1501,7 +1501,7 @@ function WarbandNexus:EnsureMountSourceIndexMap()
             if ok and checked ~= nil then origSourceFilters[i] = checked end
         end
     end
-    local origSearch = (C_MountJournal.GetSearch and C_MountJournal.GetSearch()) or ""
+    local origSearch = Mat.GetMountJournalSearchText()
     pcall(function()
         if C_MountJournal.SetSearch then C_MountJournal.SetSearch("") end
         if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(false) end
@@ -1872,7 +1872,7 @@ function WarbandNexus:GetCollectionCountsFromAPI()
             if not InCombatLockdown() then
                 origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
                 origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-                origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+                origFilterString = Mat.GetToyBoxSearchText()
                 pcall(function()
                     C_ToyBox.SetCollectedShown(true)
                     C_ToyBox.SetUncollectedShown(true)
@@ -2603,8 +2603,7 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
     -- and use item info (name/icon) for the notification instead of species info.
     -- The NEW_PET_ADDED event will handle the authoritative collection detection when learned.
     if classID == 15 and subclassID == 2 then
-        -- C_Item.GetItemSpell (10.2.5+) with global fallback for older API signatures
-        local getItemSpell = (C_Item and C_Item.GetItemSpell) or _G.GetItemSpell
+        local getItemSpell = C_Item and C_Item.GetItemSpell
         local spellName, spellID = nil, nil
         if getItemSpell then
             spellName, spellID = getItemSpell(itemID)
@@ -2963,7 +2962,7 @@ COLLECTION_CONFIGS = {
             -- Save original filter state to restore after scan
             local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
             local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-            local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+            local origFilterString = Mat.GetToyBoxSearchText()
 
             -- Capture per-source itemID → sourceTypeIndex via filter trick (Blizzard ToyBox source filter).
             -- Pure API: Blizzard's source filter is the authoritative classifier.
@@ -3957,8 +3956,6 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             if not icon and spellID then
                 if C_Spell and C_Spell.GetSpellTexture then
                     icon = validIcon(C_Spell.GetSpellTexture(spellID))
-                elseif GetSpellTexture then
-                    icon = validIcon(GetSpellTexture(spellID))
                 end
             end
             if not icon then usedFallbackIcon = true end

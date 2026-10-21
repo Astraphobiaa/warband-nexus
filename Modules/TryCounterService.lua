@@ -2933,8 +2933,6 @@ function Fns.IsMountLearnedByItemSpell(itemID)
     local spellID
     if C_Item and C_Item.GetItemSpell then
         spellID = select(2, C_Item.GetItemSpell(itemID))
-    elseif _G.GetItemSpell then
-        spellID = select(2, _G.GetItemSpell(itemID))
     end
     if not spellID or type(spellID) ~= "number" then return false end
     if issecretvalue and issecretvalue(spellID) then return false end
@@ -7237,45 +7235,6 @@ function WarbandNexus:InitializeTryCounter()
             end)
         end)
         self.useContainerItemHooked = true
-    end
-
-    if not self.legacyUseContainerItemHooked and _G.UseContainerItem and C_Container and C_Container.GetContainerItemID then
-        local maxCarriedBagID = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
-        pcall(function()
-            hooksecurefunc("UseContainerItem", function(bagID, slotIndex)
-                if bagID and slotIndex then
-                    local safeBag = not (issecretvalue and issecretvalue(bagID)) and bagID or nil
-                    local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and slotIndex or nil
-                    if safeBag and safeSlot and safeBag >= 0 and safeBag <= maxCarriedBagID then
-                        local slotKey = safeBag * 100 + safeSlot
-                        local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
-                        if itemID and not (issecretvalue and issecretvalue(itemID)) then
-                            V.bagSlotItemCache[slotKey] = itemID
-                        else
-                            itemID = V.bagSlotItemCache[slotKey]
-                        end
-                        if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
-                            Fns.ScheduleContainerOpenAttempt(itemID, safeBag, safeSlot)
-                        end
-                    end
-                end
-            end)
-        end)
-        self.legacyUseContainerItemHooked = true
-    end
-
-    if not self.useItemByGUIDHooked and C_Container and C_Container.UseItemByGUID and C_Item and C_Item.GetItemIDByGUID then
-        pcall(function()
-            hooksecurefunc(C_Container, "UseItemByGUID", function(itemGUID)
-                if itemGUID and not (issecretvalue and issecretvalue(itemGUID)) then
-                    local itemID = C_Item.GetItemIDByGUID(itemGUID)
-                    if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
-                        Fns.ScheduleContainerOpenAttempt(itemID, nil, nil)
-                    end
-                end
-            end)
-        end)
-        self.useItemByGUIDHooked = true
     end
 
     if not self.useItemByNameHooked and C_Item and C_Item.UseItemByName then

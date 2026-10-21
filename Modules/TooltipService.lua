@@ -423,7 +423,7 @@ local _primaryKindLookupFailed = {}
 
 --- Primary stat line kind for tooltip coloring: Str/Agi/Int that matches the character's spec.
 --- Order: (1) C_SpecializationInfo for that spec+class (covers all client-defined specs, future patches),
---- (2) static SPEC_ID_PRIMARY_KIND, (3) C_SpecializationInfo.GetSpecPrimaryStat if present, (4) return scan.
+--- (2) static SPEC_ID_PRIMARY_KIND, (3) return scan.
 local function ResolvePrimaryStatKindForSpec(specID)
     if not specID or specID < 1 then return nil end
     if _primaryKindBySpec[specID] then return _primaryKindBySpec[specID] end
@@ -466,20 +466,6 @@ local function ResolvePrimaryStatKindForSpec(specID)
         if t then
             _primaryKindBySpec[specID] = t
             return t
-        end
-    end
-
-    if C_SpecializationInfo and C_SpecializationInfo.GetSpecPrimaryStat then
-        local ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, C_SpecializationInfo, specID)
-        if not ok or not code then
-            ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, specID)
-        end
-        if ok and code then
-            local k = PrimaryStatCodeToKind(code)
-            if k then
-                _primaryKindBySpec[specID] = k
-                return k
-            end
         end
     end
 

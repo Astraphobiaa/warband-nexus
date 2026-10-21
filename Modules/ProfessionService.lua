@@ -2357,10 +2357,11 @@ end
         lastUpdate    = number,
     }
 
-    Note: C_CraftingOrders APIs are async and require profession context.
-    We use the simplest available methods for an MVP count.
+    Personal: C_CraftingOrders.GetPersonalOrdersInfo() (one entry per profession).
+    Guild: no synchronous getter exists (12.1.5 API doc); the count arrives with
+    CRAFTINGORDERS_UPDATE_ORDER_COUNT, passed in as guildCountFromEvent, else the last one seen is kept.
 ]]
-local function CollectCraftingOrdersData()
+local function CollectCraftingOrdersData(guildCountFromEvent)
     if not WarbandNexus or not WarbandNexus.db then return end
     if not C_CraftingOrders then return end
 
@@ -2383,19 +2384,32 @@ local function CollectCraftingOrdersData()
     -- Initialize
     if not charData.craftingOrders then charData.craftingOrders = {} end
     local baseProfName = nil
+    local baseProfEnum = nil
     if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
         local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo then baseProfName = SafeAPIString(baseInfo.professionName) end
+        if ok and baseInfo then
+            baseProfName = SafeAPIString(baseInfo.professionName)
+            if type(baseInfo.profession) == "number" then baseProfEnum = baseInfo.profession end
+        end
     end
 
+    local prevOrders = charData.craftingOrders[skillLineID]
     local personalCount = 0
-    local guildCount = 0
+    local guildCount = guildCountFromEvent or (prevOrders and prevOrders.guildCount) or 0
     local publicCount = 0
 
-    -- Personal orders count
-    if C_CraftingOrders.GetNumPersonalOrders then
-        local ok, count = pcall(C_CraftingOrders.GetNumPersonalOrders)
-        if ok and count then personalCount = count end
+    -- Personal orders: CraftingOrderPersonalOrdersInfo { profession (Enum.Profession), numPersonalOrders, professionName }
+    if baseProfEnum and C_CraftingOrders.GetPersonalOrdersInfo then
+        local ok, infos = pcall(C_CraftingOrders.GetPersonalOrdersInfo)
+        if ok and type(infos) == "table" then
+            for i = 1, #infos do
+                local info = infos[i]
+                if type(info) == "table" and info.profession == baseProfEnum then
+                    if type(info.numPersonalOrders) == "number" then personalCount = info.numPersonalOrders end
+                    break
+                end
+            end
+        end
     end
 
     -- Claimed order (adds to personal context)
@@ -2406,13 +2420,6 @@ local function CollectCraftingOrdersData()
         end
     end
 
-    -- Guild orders — try synchronous count if available
-    if C_CraftingOrders.GetNumGuildOrders then
-        local ok, count = pcall(C_CraftingOrders.GetNumGuildOrders)
-        if ok and count then guildCount = count end
-    end
-
-    local prevOrders = charData.craftingOrders[skillLineID]
     local ordersDirty = not prevOrders
         or prevOrders.personalCount ~= personalCount
         or prevOrders.guildCount ~= guildCount
@@ -2696,6 +2703,18 @@ function WarbandNexus:OnTradeSkillListUpdate()
             end
         end
     end)
+end
+
+--[[
+    Called on CRAFTINGORDERS_UPDATE_ORDER_COUNT (orderType, numOrders): the crafter order page
+    publishes its per-type tab counts here. The only source of the guild order count.
+]]
+function WarbandNexus:OnCraftingOrdersOrderCount(orderType, numOrders)
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
+    if type(orderType) ~= "number" or type(numOrders) ~= "number" then return end
+    local guildType = Enum and Enum.CraftingOrderType and Enum.CraftingOrderType.Guild
+    pcall(CollectCraftingOrdersData, (guildType and orderType == guildType) and numOrders or nil)
 end
 
 --[[
@@ -3074,44 +3093,9 @@ end
 --[[
     How many crafts are possible from materials (same math as Recipe Companion: warband bank +
     all tracked characters' bags/banks). Uses limiting required reagent slots only; optional slots skipped.
-    Tries C_TradeSkillUI.GetRecipeReagentInfo when available (often matches profession list for current toon).
 ]]
 function WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
     if not recipeID or not C_TradeSkillUI then return nil end
-
-    local function tryBlizzardReagentLines()
-        if not C_TradeSkillUI.GetRecipeNumReagents or not C_TradeSkillUI.GetRecipeReagentInfo then
-            return nil
-        end
-        local nOk, num = pcall(C_TradeSkillUI.GetRecipeNumReagents, recipeID)
-        if not nOk or not num or num < 1 then return nil end
-
-        local minCraft = math.huge
-        local any = false
-        for idx = 1, num do
-            local ok, a, b, c, d = pcall(C_TradeSkillUI.GetRecipeReagentInfo, recipeID, idx)
-            if ok then
-                local req, have
-                if type(a) == "table" then
-                    local t = a
-                    req = tonumber(t.quantityRequired or t.count)
-                    have = tonumber(t.playerQuantity or t.quantityAvailable or t.quantityInInventory)
-                else
-                    -- Typical: name, icon, quantityRequired, quantityOnHand
-                    req = tonumber(c)
-                    have = tonumber(d)
-                end
-                if req and req > 0 then
-                    any = true
-                    minCraft = math.min(minCraft, math.floor((have or 0) / req))
-                end
-            end
-        end
-        if any and minCraft ~= math.huge then
-            return math.max(0, minCraft)
-        end
-        return nil
-    end
 
     local function sumItemAcrossTracked(itemID)
         if not itemID or not self.GetDetailedItemCountsFast then return 0 end
@@ -3186,11 +3170,6 @@ function WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
         if not haveLimiting then return nil end
         if minCraft == math.huge then return 0 end
         return math.max(0, math.floor(minCraft))
-    end
-
-    local apiCount = tryBlizzardReagentLines()
-    if apiCount ~= nil then
-        return apiCount
     end
 
     local n = fromSchematic(false)

@@ -382,6 +382,13 @@ function WarbandNexus:InitializeEventManager()
             WarbandNexus:OnTradeSkillListUpdate()
         end
     end)
+    -- Crafter order page tab counts (the guild order count has no getter)
+    self:RegisterEvent("CRAFTINGORDERS_UPDATE_ORDER_COUNT", function(_, orderType, numOrders)
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
+        if WarbandNexus.OnCraftingOrdersOrderCount then
+            WarbandNexus:OnCraftingOrdersOrderCount(orderType, numOrders)
+        end
+    end)
     self:RegisterEvent("QUEST_TURNED_IN", function(event, questID, ...)
         -- Consolidated handler: DailyQuestManager + ProfessionService share this event.
         -- AceEvent allows ONE handler per (event, self) — DailyQuestManager no longer registers

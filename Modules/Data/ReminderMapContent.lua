@@ -109,11 +109,7 @@ local function CollectQuestIDsOnMap(mapID, playerMap, seen, out, filterFn)
 
     if C_TaskQuest then
         local taskPOIs
-        if C_TaskQuest.GetQuestsForPlayerByMapID then
-            local ok, result = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, mapID)
-            if ok and type(result) == "table" then taskPOIs = result end
-        end
-        if not taskPOIs and C_TaskQuest.GetQuestsOnMap then
+        if C_TaskQuest.GetQuestsOnMap then
             local ok, result = pcall(C_TaskQuest.GetQuestsOnMap, mapID)
             if ok and type(result) == "table" then taskPOIs = result end
         end

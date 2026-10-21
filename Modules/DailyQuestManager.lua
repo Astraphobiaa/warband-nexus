@@ -844,13 +844,9 @@ function WarbandNexus:ScanMidnightQuests()
     end
 
     for mapID, zoneName in pairs(MIDNIGHT_MAPS) do
-        -- TaskQuest: prefer GetQuestsForPlayerByMapID (returns mapID per quest) to avoid wrong-zone WQs
+        -- TaskQuest: GetQuestsOnMap entries carry mapID; filtered below to avoid wrong-zone WQs
         local taskPOIs
-        if C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
-            local ok, result = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, mapID)
-            if ok and type(result) == "table" then taskPOIs = result end
-        end
-        if not taskPOIs and C_TaskQuest and C_TaskQuest.GetQuestsOnMap then
+        if C_TaskQuest and C_TaskQuest.GetQuestsOnMap then
             local ok, result = pcall(C_TaskQuest.GetQuestsOnMap, mapID)
             if ok and type(result) == "table" then taskPOIs = result end
         end

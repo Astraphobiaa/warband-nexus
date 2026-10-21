@@ -125,3 +125,18 @@ jobs:
           else
             echo "lua5.1 unavailable - skipping API contract lints"
           fi
+
+      # Features that called functions removed before 12.1.5: each test drives the documented
+      # replacement through the shipped file and fails if the dead call comes back.
+      - name: Removed-API replacements (real files under WoW stub)
+        run: |
+          if command -v lua5.1 >/dev/null 2>&1; then
+            lua5.1 .github/scripts/test_crafting_order_counts.lua
+            lua5.1 .github/scripts/test_hero_spec_name.lua
+            lua5.1 .github/scripts/test_journal_search_restore.lua
+            lua5.1 .github/scripts/test_mail_reagent_kind.lua
+            lua5.1 .github/scripts/test_plan_chat_links.lua
+            lua5.1 .github/scripts/test_removed_api_references.lua
+          else
+            echo "lua5.1 unavailable - skipping removed-API gate"
+          fi
