@@ -227,7 +227,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 end
             end
             if not collected and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, drop.itemID)
+                local ok1, _, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, drop.itemID) -- speciesID is the 13th return (12th = displayID)
                 if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
                     local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
                     if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
@@ -1151,7 +1151,7 @@ local function ItemTooltipCollectibleOwned(id)
         end
     end
     if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-        local ok1, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id)
+        local ok1, _, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id) -- speciesID is the 13th return (12th = displayID)
         if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
             local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
             if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then

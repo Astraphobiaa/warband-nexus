@@ -95,6 +95,12 @@ jobs:
             lua5.1 .github/scripts/test_item_level_event.lua
             lua5.1 .github/scripts/test_pve_weekly_flags.lua
             lua5.1 .github/scripts/test_profession_weekly_knowledge.lua
+            lua5.1 .github/scripts/test_character_tracking_toggle.lua
+            lua5.1 .github/scripts/test_character_delete_stale_copy.lua
+            lua5.1 .github/scripts/test_rekey_week_stamps.lua
+            lua5.1 .github/scripts/test_roster_dedup_guid_first.lua
+            lua5.1 .github/scripts/test_guild_leave_recheck.lua
+            lua5.1 .github/scripts/test_remove_plan_keeps_try_count.lua
             lua5.1 .github/scripts/test_account_wide_currency_value.lua
             lua5.1 .github/scripts/test_character_merge_gold.lua
             lua5.1 .github/scripts/test_full_character_save_keys.lua
@@ -105,4 +111,17 @@ jobs:
             lua5.1 .github/scripts/test_concentration_current_expansion.lua
           else
             echo "lua5.1 unavailable - skipping persistence gate"
+          fi
+
+      # API contract lints: multi-return positions, call shapes, struct fields and deprecated globals
+      # checked against Blizzard_APIDocumentationGenerated 12.1.5 / warcraft.wiki.gg signatures.
+      - name: API contract lints (static scan of shipped files)
+        run: |
+          if command -v lua5.1 >/dev/null 2>&1; then
+            lua5.1 .github/scripts/test_api_return_positions.lua
+            lua5.1 .github/scripts/test_api_call_shapes.lua
+            lua5.1 .github/scripts/test_api_struct_fields.lua
+            lua5.1 .github/scripts/test_deprecated_api_calls.lua
+          else
+            echo "lua5.1 unavailable - skipping API contract lints"
           fi

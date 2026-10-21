@@ -1758,16 +1758,8 @@ local function QuestProgressComplete(questID)
         local ok, done = pcall(C_QuestLog.ReadyForTurnIn, questID)
         if ok and done == true then return true end
     end
-    -- Still in quest log and all objectives done (flag may lag after instance/combat).
-    if C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetInfo then
-        local ok, logIndex = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
-        if ok and logIndex and logIndex > 0 then
-            local ok2, info = pcall(C_QuestLog.GetInfo, logIndex)
-            if ok2 and type(info) == "table" and info.isComplete then
-                return true
-            end
-        end
-    end
+    -- (A QuestInfo.isComplete branch lived here; QuestInfo has no such field (12.1.5 API doc), so it
+    -- never fired. C_QuestLog.IsComplete / ReadyForTurnIn above already cover "in log, objectives done".)
     return false
 end
 
@@ -3749,7 +3741,8 @@ function WarbandNexus:CollectConcentrationOnLogin()
         for ii = 1, #profIdxPair do
             local index = profIdxPair[ii]
             if index then
-                local ok, name, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
+                -- GetProfessionInfo: name, icon, skillLevel, maxSkillLevel, numAbilities, spelloffset, skillLine
+                local ok, name, _, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
                 if ok and name and name ~= "" and skillLine and skillLine > 0 and not charData.concentration[skillLine] then
                     local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, skillLine)
                     if concOk and currencyID and currencyID > 0 then

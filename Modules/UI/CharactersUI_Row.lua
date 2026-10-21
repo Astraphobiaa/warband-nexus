@@ -378,7 +378,13 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row:SetScript("OnMouseUp", function(self, button)
         if button ~= "RightButton" then return end
         if not ns.UI_ShowCharacterRowContextMenu then return end
+        -- Tracking acts on this exact row: its own table index, not the canonical key (Name-Realm for
+        -- an untracked row, which can resolve to the logged-in character).
+        local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+        local rowIndex = char._key
+        if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
         ns.UI_ShowCharacterRowContextMenu(self, charKey, {
+            trackingKey = rowIndex,
             charName = char.name,
             isTracked = char.isTracked ~= false,
             isCurrent = isCurrent,
@@ -1096,6 +1102,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.trackingBtn:SetPoint("RIGHT", rail, "RIGHT", -(insetTrack + 11), 0)
     if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(row.trackingBtn) end
     row.trackingBtn.charKey = charKey
+    do
+        local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+        local rowIndex = char._key
+        row.trackingBtn.trackingKey = (rowIndex and chars and chars[rowIndex] ~= nil) and rowIndex or nil
+    end
     row.trackingBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     if row.trackingBtn.icon then
         if isCharTracked then
@@ -1122,8 +1133,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 and ns.Utilities:GetCanonicalCharacterKey(ck) or ck
             local rowData = addon and addon.db and addon.db.global and addon.db.global.characters
                 and rowKey and (addon.db.global.characters[rowKey] or (ck and addon.db.global.characters[ck]))
+            if selfBtn.trackingKey and addon.db.global.characters[selfBtn.trackingKey] then
+                rowData = addon.db.global.characters[selfBtn.trackingKey]
+            end
             local tracked = rowData and rowData.isTracked ~= false
-            CS:ShowTrackingChangeConfirmation(addon, rowKey or ck, selfBtn.charName, not tracked)
+            CS:ShowTrackingChangeConfirmation(addon, selfBtn.trackingKey or rowKey or ck, selfBtn.charName, not tracked)
         end)
     end
     if ShowTooltip and row.trackingBtn.SetScript then
@@ -1382,7 +1396,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local deleteBtn = CreateCharacterDeleteDialogButton(btnContainer, deleteBtnLabel, 150, true)
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
                 deleteBtn:SetScript("OnClick", function()
-                    local delKey = (ns.UI_GetCharKey and char) and ns.UI_GetCharKey(char)
+                    -- Delete the row that was clicked: its own table index first. The canonical key of an
+                    -- untracked row is Name-Realm, which resolves to the logged-in character when a stale
+                    -- same-name copy is deleted.
+                    local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+                    local rowIndex = char and char._key
+                    if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
+                    local delKey = rowIndex
+                        or ((ns.UI_GetCharKey and char) and ns.UI_GetCharKey(char))
                         or (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey))
                         or charKey
                     local success = WarbandNexus:DeleteCharacter(delKey)

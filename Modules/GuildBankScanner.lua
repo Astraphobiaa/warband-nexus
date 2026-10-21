@@ -858,7 +858,7 @@ end
 ---@return string? oldGuildName
 ---@return string? newGuildName
 ---@return boolean ambiguous True when guild name could not be read safely
-function WarbandNexus:SyncPlayerGuildMembership()
+function WarbandNexus:SyncPlayerGuildMembership(confirmLeave)
     local rawKey = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
     if not rawKey then
         return nil, nil, true
@@ -880,7 +880,25 @@ function WarbandNexus:SyncPlayerGuildMembership()
     if ambiguous then
         return oldGn, nil, true
     end
+    -- "Left the guild" deletes the guild-bank cache when no other alt is in that guild, and it is
+    -- read from IsInGuild() at PLAYER_ENTERING_WORLD, before guild data may be loaded (unverified).
+    -- A leave is irreversible, a delay is not: re-read once a few seconds later before acting.
+    if oldGn and not newGn and not confirmLeave then
+        if not self._guildLeaveRecheckPending and C_Timer and C_Timer.After then
+            self._guildLeaveRecheckPending = true
+            C_Timer.After(8, function()
+                self._guildLeaveRecheckPending = nil
+                self:SyncPlayerGuildMembership(true)
+            end)
+        end
+        return oldGn, nil, true
+    end
     self:HandleGuildMembershipChange(oldGn, newGn, tableKey)
+    -- The login caller only reports non-ambiguous results, and the first read of a leave is now
+    -- deferred (ambiguous), so the confirmed recheck reports the leave itself.
+    if confirmLeave and oldGn and not newGn then
+        self:Print("|cffffcc00" .. ((ns.L and ns.L["GUILD_LEFT"]) or "You are no longer in a guild. Guild Bank tab disabled.") .. "|r")
+    end
     if oldGn ~= newGn then
         charData.guildName = newGn
         charData.lastSeen = time()

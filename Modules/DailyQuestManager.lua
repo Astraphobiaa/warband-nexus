@@ -577,6 +577,24 @@ local function IsQuestInLog(questID)
     return ok and type(logIndex) == "number" and logIndex > 0
 end
 
+--- uiMapID for a quest-log entry. QuestInfo (C_QuestLog.GetInfo) has no mapID / zoneName field
+--- (12.1.5 API doc), so the log scan matched nothing by map: task quests report their zone via
+--- C_TaskQuest.GetQuestZoneID, other quests via the first return of C_QuestLog.GetNextWaypoint.
+---@param questID number
+---@return number|nil
+local function GetQuestLogEntryMapID(questID)
+    if not questID then return nil end
+    local function readMap(fn)
+        if not fn then return nil end
+        local ok, mapID = pcall(fn, questID)
+        if not ok or mapID == nil or (issecretvalue and issecretvalue(mapID)) then return nil end
+        mapID = tonumber(mapID)
+        return (mapID and mapID > 0) and mapID or nil
+    end
+    return readMap(C_TaskQuest and C_TaskQuest.GetQuestZoneID)
+        or readMap(C_QuestLog and C_QuestLog.GetNextWaypoint)
+end
+
 local function GetQuestTitle(questID, fallbackInfo)
     local title
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then
@@ -969,8 +987,9 @@ function WarbandNexus:ScanMidnightQuests()
         for i = 1, numEntries do
             local info = C_QuestLog.GetInfo(i)
             if info and not info.isHeader and info.questID then
-                local inMidnight = info.mapID and MIDNIGHT_MAP_SET[info.mapID]
-                local inMidnightParent = info.mapID and midnightParentMaps[info.mapID]
+                local entryMapID = GetQuestLogEntryMapID(info.questID)
+                local inMidnight = entryMapID and MIDNIGHT_MAP_SET[entryMapID]
+                local inMidnightParent = entryMapID and midnightParentMaps[entryMapID]
                 -- Never use info.title raw (may be secret); GetQuestTitle normalizes + fallback
                 local title = GetQuestTitle(info.questID, info)
                 local lTitle = title:lower()
@@ -979,9 +998,9 @@ function WarbandNexus:ScanMidnightQuests()
                     and (lTitle:find("special assignment", 1, true) or lTitle:find("assignment:", 1, true))
 
                 if inMidnight or isPrey or isMidnightSA then
-                    local zoneName = info.zoneName or (info.mapID and MIDNIGHT_MAPS[info.mapID]) or ""
+                    local zoneName = (entryMapID and MIDNIGHT_MAPS[entryMapID]) or ""
                     if (isPrey or isMidnightSA) and zoneName == "" then zoneName = "Quel'Thalas" end
-                    AddQuest(info.questID, info.mapID or 0, zoneName, info)
+                    AddQuest(info.questID, entryMapID or 0, zoneName, info)
                 end
             end
         end

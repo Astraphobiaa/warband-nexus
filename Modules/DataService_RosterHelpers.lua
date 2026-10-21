@@ -230,7 +230,19 @@ local function CollectCharacterDuplicateRenames(charsTbl)
                     local existingTime = existingData and existingData.lastSeen or 0
                     local newTime = charData.lastSeen or 0
                     duplicateCount = duplicateCount + 1
-                    if newTime > existingTime then
+                    -- GUID-first: the GUID-indexed row survives a Name-Realm duplicate regardless of
+                    -- lastSeen. A login-race Name-Realm row is the newest by construction, and a rename
+                    -- drops the loser's buckets wherever the survivor already has one, so "newest wins"
+                    -- discarded the GUID row's bags / bank / gear for a near-empty snapshot.
+                    local newIsGuid = type(charKey) == "string" and charKey:find("^Player%-") ~= nil
+                    local existingIsGuid = type(existingKey) == "string" and existingKey:find("^Player%-") ~= nil
+                    local preferNew
+                    if newIsGuid ~= existingIsGuid then
+                        preferNew = newIsGuid
+                    else
+                        preferNew = newTime > existingTime
+                    end
+                    if preferNew then
                         renames[existingKey] = charKey
                         toRemove[existingKey] = true
                         seen[mergeKey] = charKey
@@ -272,6 +284,20 @@ local function ApplyCharacterRosterDeduplication(db, migrationService)
         local survivorKey = renames[loserKey]
         local loserData = chars[loserKey]
         local survivorData = survivorKey and chars[survivorKey]
+        -- The GUID row now survives even when the loser was seen more recently: take the loser's newer
+        -- scalar fields (level, guild, spec, ...) so the alt does not show stale values. Identity and
+        -- tracking stay with the survivor; 0 / "" never overwrite a real value.
+        if survivorData and loserData
+            and (tonumber(loserData.lastSeen) or 0) > (tonumber(survivorData.lastSeen) or 0) then
+            for field, value in pairs(loserData) do
+                local vt = type(value)
+                if field ~= "guid" and field ~= "_key" and field ~= "isTracked" and field ~= "trackingConfirmed"
+                    and ((vt == "number" and value ~= 0) or (vt == "string" and value ~= "") or vt == "boolean")
+                    and not (issecretvalue and issecretvalue(value)) then
+                    survivorData[field] = value
+                end
+            end
+        end
         if survivorData and loserData and MS and MS.MergeCharacterRowPreserveWinner then
             MS:MergeCharacterRowPreserveWinner(survivorData, loserData)
         end

@@ -909,7 +909,7 @@ local function FetchCurrencyFromAPI(currencyID)
         currencyID = currencyID,
         quantity = normalizedQuantity,
         name = displayName,
-        isDiscovered = (info.discovered == true) or (info.isDiscovered == true),
+        isDiscovered = (info.discovered == true),  -- CurrencyInfo field is `discovered` (12.1.5 API doc)
         isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
         maxQuantity = displayCap,

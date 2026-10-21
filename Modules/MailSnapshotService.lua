@@ -149,7 +149,8 @@ local function ClassifyMailItemKind(itemID)
         if ok and isReagent then return "reagent" end
     end
     if C_Item and C_Item.GetItemInfoInstant then
-        local ok, _, _, _, _, classID = pcall(C_Item.GetItemInfoInstant, itemID)
+        -- GetItemInfoInstant: itemID, itemType, itemSubType, itemEquipLoc, icon, classID (12.1.5 API doc).
+        local ok, _, _, _, _, _, classID = pcall(C_Item.GetItemInfoInstant, itemID)
         if ok then
             if classID == ITEM_CLASS_TRADEGOODS then return "reagent" end
             if classID == ITEM_CLASS_CONSUMABLE then return "consumable" end
@@ -188,8 +189,9 @@ local function ResolveItemQuality(itemID, link, inboxQuality)
             return q
         end
     end
-    if itemID and C_Item and C_Item.GetItemInfoInstant then
-        local ok, _, _, quality = pcall(C_Item.GetItemInfoInstant, itemID)
+    -- GetItemInfoInstant has no quality return (its 3rd value is itemSubType); use the ID lookup.
+    if itemID and C_Item and C_Item.GetItemQualityByID then
+        local ok, quality = pcall(C_Item.GetItemQualityByID, itemID)
         q = SafeMailNumber(quality)
         if ok and q and q >= 0 and q <= 7 then
             return q
@@ -545,7 +547,8 @@ local function ReadInboxItems(mailIndex)
                 quality = ResolveItemQuality(itemID, link, quality)
                 local icon = SafeMailString(texture)
                 if (not icon) and itemID and C_Item and C_Item.GetItemInfoInstant then
-                    local okTex, _, _, _, tex = pcall(C_Item.GetItemInfoInstant, itemID)
+                    -- icon is the 5th return; the 4th is itemEquipLoc ("INVTYPE_HEAD"), which was saved as the icon.
+                    local okTex, _, _, _, _, tex = pcall(C_Item.GetItemInfoInstant, itemID)
                     if okTex then
                         icon = SafeMailString(tex)
                     end

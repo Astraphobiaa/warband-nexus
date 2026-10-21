@@ -240,7 +240,8 @@ function M.ResolveAchievementEarnerLabel(achievementID, storedObtainedBy)
     if not achievementID or type(achievementID) ~= "number" then return nil end
     if issecretvalue and issecretvalue(achievementID) then return nil end
 
-    local ok, _, _, _, completed, _, _, _, _, _, _, _, wasEarnedByMe, earnedBy =
+    -- GetAchievementInfo: ... flags(9), icon(10), rewardText(11), isGuild(12), wasEarnedByMe(13), earnedBy(14)
+    local ok, _, _, _, completed, _, _, _, _, _, _, _, _, wasEarnedByMe, earnedBy =
         pcall(GetAchievementInfo, achievementID)
     if not ok or not completed then return nil end
 

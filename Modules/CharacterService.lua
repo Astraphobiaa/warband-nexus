@@ -124,6 +124,27 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     end
 
     local chars = addon.db.global.characters
+
+    -- Another character's row (the Characters-tab toggle and right-click menu work on every row):
+    -- flip that row's flags only. GetCharactersTablePersistKey below always resolves to the LOGGED-IN
+    -- player, so an alt key routed through it merged the alt row into the current one, deleted the
+    -- alt row, and untracked the current character; next login CleanupOrphanedData then purged every
+    -- GUID-keyed bucket the alt owned. (fixed 2026-10-21)
+    local otherKey = self:ResolveOtherCharacterRowKey(addon, charKey)
+    if otherKey then
+        local row = chars[otherKey]
+        row.isTracked = isTracked
+        row.trackingConfirmed = true
+        if ns.Utilities and ns.Utilities.InvalidateCharacterKeyIndex then
+            ns.Utilities:InvalidateCharacterKeyIndex()
+        end
+        addon:SendMessage(E.CHARACTER_TRACKING_CHANGED, {
+            charKey = otherKey,
+            isTracked = isTracked
+        })
+        return
+    end
+
     local persistKey = self:GetCharactersTablePersistKey(addon, charKey) or charKey
     if not persistKey then return end
 
@@ -601,6 +622,8 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
     if cd then
         if cd.currencies then removed = removed + PurgeCharKeyedEntries(cd.currencies, charKey) end
         if cd.totalEarned then removed = removed + PurgeCharKeyedEntries(cd.totalEarned, charKey) end
+        if cd.currencyProgressWeek then removed = removed + PurgeCharKeyedEntries(cd.currencyProgressWeek, charKey) end
+        if cd.weeklyEarnedThisWeek then removed = removed + PurgeCharKeyedEntries(cd.weeklyEarnedThisWeek, charKey) end
     end
 
     removed = removed + PurgeCharKeyedEntries(g.gearData, charKey)
@@ -621,6 +644,7 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
             removed = removed + PurgeCharKeyedEntries(mp.bestRuns, charKey)
             removed = removed + PurgeCharKeyedEntries(mp.dungeonScores, charKey)
             removed = removed + PurgeCharKeyedEntries(mp.runHistory, charKey)
+            removed = removed + PurgeCharKeyedEntries(mp.runHistoryWeek, charKey)
         end
         local gv = pc.greatVault
         if gv then
@@ -680,6 +704,61 @@ function CharacterService:ResolveSubsidiaryCharacterKey(addon, optionalCharKey)
         end
     end
     return addon and U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(addon) or nil
+end
+
+--- Row key of an EXISTING character row that is not the logged-in player, or nil (self / unknown row).
+--- A row's own guid decides first: a same-name copy with a different GUID is another character.
+--- @param addon table WarbandNexus
+--- @param charKey string|nil Row key from the UI (GUID or Name-Realm)
+--- @return string|nil
+function CharacterService:ResolveOtherCharacterRowKey(addon, charKey)
+    if not charKey or charKey == "" or (issecretvalue and issecretvalue(charKey)) then return nil end
+    local chars = addon and addon.db and addon.db.global and addon.db.global.characters
+    if not chars then return nil end
+    -- Self entry points (login dialog, badge, /wn track) pass ResolveCharactersTableKey() itself, which
+    -- can be a same-name stale row before the live character has one: that is always the self path.
+    if charKey == self:ResolveCharactersTableKey(addon) then return nil end
+    local U = ns.Utilities
+    local rowKey = chars[charKey] and charKey or nil
+    if not rowKey and U and U.GetCanonicalCharacterKey then
+        local canon = U:GetCanonicalCharacterKey(charKey)
+        if canon and chars[canon] then rowKey = canon end
+    end
+    -- Untracked rows drop their guid, so a UI key can be Name-Realm while the row stays GUID-indexed.
+    -- Accept a name+realm match only when exactly one row has it (a stale same-name copy is ambiguous).
+    if not rowKey and U and U.SplitCharacterKey and U.GetCharacterKey then
+        local n, r = U:SplitCharacterKey(charKey)
+        local want = n and r and U:GetCharacterKey(n, r)
+        if want then
+            local hit
+            for k, row in pairs(chars) do
+                if type(row) == "table" and type(row.name) == "string" and type(row.realm) == "string"
+                    and not (issecretvalue and (issecretvalue(row.name) or issecretvalue(row.realm)))
+                    and U:GetCharacterKey(row.name, row.realm) == want then
+                    if hit then hit = false break end
+                    hit = k
+                end
+            end
+            if hit then rowKey = hit end
+        end
+    end
+    if not rowKey or type(chars[rowKey]) ~= "table" then return nil end
+
+    local row = chars[rowKey]
+    local playerGuid = U and U.SafeGuid and U:SafeGuid("player")
+    local rowGuid = row.guid
+    if type(rowGuid) ~= "string" or rowGuid == "" or (issecretvalue and issecretvalue(rowGuid)) then
+        rowGuid = (type(rowKey) == "string" and rowKey:find("^Player%-")) and rowKey or nil
+    end
+    if playerGuid and rowGuid then
+        if rowGuid == playerGuid then return nil end
+        return rowKey
+    end
+
+    if rowKey == self:ResolveCharactersTableKey(addon) then return nil end
+    local legacy = U and U.GetCharacterKey and U:GetCharacterKey()
+    if legacy and (legacy == charKey or legacy == rowKey) then return nil end
+    return rowKey
 end
 
 --- Table index for `db.global.characters` writes (tracking dialog, etc.): existing row, else GUID bucket for current player.

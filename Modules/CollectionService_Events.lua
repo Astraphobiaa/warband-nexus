@@ -417,13 +417,13 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
         if not self._previousIllusionState[illusionID] then
             newIllusionLearned = true
             -- NEW ILLUSION COLLECTED!
-            local name = illusionInfo.name
-            
-            -- Try spell name if no name
-            if (not name or name == "") and illusionInfo.spellID then
-                local spellName = C_Spell and C_Spell.GetSpellName(illusionInfo.spellID)
-                if spellName and spellName ~= "" then
-                    name = spellName
+            -- TransmogIllusionInfo has no name / spellID (12.1.5 API doc); the name comes from
+            -- GetIllusionStrings, the same source the collection row uses.
+            local name
+            if C_TransmogCollection and C_TransmogCollection.GetIllusionStrings then
+                local okStr, illName = pcall(C_TransmogCollection.GetIllusionStrings, illusionID)
+                if okStr and type(illName) == "string" and not (issecretvalue and issecretvalue(illName)) then
+                    name = illName
                 end
             end
             

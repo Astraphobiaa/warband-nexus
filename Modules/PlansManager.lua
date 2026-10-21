@@ -728,8 +728,13 @@ function WarbandNexus:GetPlanDisplayName(plan)
                 for ii = 1, #illusions do
                     local illusionInfo = illusions[ii]
                     if illusionInfo.sourceID == plan.illusionID then
-                        if illusionInfo.name and illusionInfo.name ~= "" then
-                            return illusionInfo.name
+                        -- TransmogIllusionInfo carries no name; GetIllusionStrings does (12.1.5 API doc).
+                        if C_TransmogCollection.GetIllusionStrings then
+                            local okStr, illName = pcall(C_TransmogCollection.GetIllusionStrings, illusionInfo.sourceID)
+                            if okStr and type(illName) == "string" and illName ~= ""
+                                and not (issecretvalue and issecretvalue(illName)) then
+                                return illName
+                            end
                         end
                         break
                     end
@@ -974,7 +979,8 @@ function WarbandNexus:BuildAchievementPlanPayload(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return nil end
     if issecretvalue and issecretvalue(achievementID) then return nil end
 
-    local ok, id, name, points, _, _, _, _, _, icon, _, rewardText = pcall(GetAchievementInfo, achievementID)
+    -- GetAchievementInfo: ..., description(8), flags(9), icon(10), rewardText(11)
+    local ok, id, name, points, _, _, _, _, _, _, icon, rewardText = pcall(GetAchievementInfo, achievementID)
     if not ok or not id or id ~= achievementID then return nil end
     if issecretvalue then
         if name and issecretvalue(name) then name = nil end
@@ -1118,30 +1124,15 @@ end
     @return boolean - Success
 ]]
 function WarbandNexus:RemovePlan(planID)
+    -- Removing a plan never touches try counts: they are counted per collectible whether or not it is
+    -- planned, and only an obtain resets them. (Removal used to zero them, which wiped e.g. 150 boss
+    -- kills when a mount was un-planned from a Collections list; 2026-10-22, user decision.)
     -- Helper: search and remove from a plan list
-    local function resetTryCountsForRemovedPlan(plan)
-        if not plan or not self.ResetTryCount then return end
-        local t = plan.type
-        if t == "mount" and plan.mountID then
-            self:ResetTryCount("mount", plan.mountID)
-        elseif t == "pet" and plan.speciesID then
-            self:ResetTryCount("pet", plan.speciesID)
-        elseif t == "toy" and plan.itemID then
-            self:ResetTryCount("toy", plan.itemID)
-        elseif t == "illusion" then
-            if plan.sourceID then self:ResetTryCount("illusion", plan.sourceID) end
-            if plan.illusionID and plan.illusionID ~= plan.sourceID then
-                self:ResetTryCount("illusion", plan.illusionID)
-            end
-        end
-    end
-
     local function removeFromList(list, id, label)
         if not list then return false end
         for i = 1, #list do
             if list[i].id == id then
                 local plan = list[i]
-                resetTryCountsForRemovedPlan(plan)
                 local name = plan.name
                 local planType = plan.type
                 table.remove(list, i)
