@@ -344,6 +344,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateReminderQuestCatalog(db)
     self:MigrateFontScalePreset(db)
     self:MigrateRemoveTransmogV1(db)
+    self:MigrateRemoveHeroSpecV1(db)
     self:DropStaleLegacyGlobalCurrencies(db)
     self:DropStaleLegacyGlobalReputations(db)
     self:MigrateKnowledgeSpecTabsSlimV1(db)
@@ -452,6 +453,23 @@ function MigrationService:RunGuidSubsidiaryRemap(db)
     self:MigrateSubsidiaryAliasBucketsV1(db)
     self:FinalizeGuidOnlySubsidiaryV1(db)
     return total
+end
+
+--- Drop heroSpecID / heroSpecName from character rows: nothing displayed them (their only reader,
+--- GetWeeklyDashboard, had no caller), so they were dead weight in SavedVariables. (2026-10-22)
+---@param db table AceDB root
+function MigrationService:MigrateRemoveHeroSpecV1(db)
+    if not db or not db.global or db.global.heroSpecRemovedV1 then return end
+    local chars = db.global.characters
+    if type(chars) == "table" then
+        for _, row in pairs(chars) do
+            if type(row) == "table" then
+                row.heroSpecID = nil
+                row.heroSpecName = nil
+            end
+        end
+    end
+    db.global.heroSpecRemovedV1 = true
 end
 
 --- Remove legacy transmog plans and cache buckets after feature removal.
@@ -1254,10 +1272,6 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
         winner.specID = loser.specID
         winner.specName = winner.specName or loser.specName
         winner.specIcon = winner.specIcon or loser.specIcon
-    end
-    if winner.heroSpecID == nil and loser.heroSpecID ~= nil then
-        winner.heroSpecID = loser.heroSpecID
-        winner.heroSpecName = winner.heroSpecName or loser.heroSpecName
     end
     if (not winner.guildName or winner.guildName == "")
         and loser.guildName and loser.guildName ~= ""

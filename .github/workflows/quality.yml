@@ -101,6 +101,7 @@ jobs:
             lua5.1 .github/scripts/test_roster_dedup_guid_first.lua
             lua5.1 .github/scripts/test_guild_leave_recheck.lua
             lua5.1 .github/scripts/test_remove_plan_keeps_try_count.lua
+            lua5.1 .github/scripts/test_remove_hero_spec.lua
             lua5.1 .github/scripts/test_account_wide_currency_value.lua
             lua5.1 .github/scripts/test_character_merge_gold.lua
             lua5.1 .github/scripts/test_full_character_save_keys.lua
@@ -132,7 +133,6 @@ jobs:
         run: |
           if command -v lua5.1 >/dev/null 2>&1; then
             lua5.1 .github/scripts/test_crafting_order_counts.lua
-            lua5.1 .github/scripts/test_hero_spec_name.lua
             lua5.1 .github/scripts/test_journal_search_restore.lua
             lua5.1 .github/scripts/test_mail_reagent_kind.lua
             lua5.1 .github/scripts/test_plan_chat_links.lua

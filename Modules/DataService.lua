@@ -275,27 +275,6 @@ function WarbandNexus:GetCharacterData(forceRefresh)
     return self.db.global.characters[tableKey]
 end
 
---- Active hero talent spec: heroSpecID (a trait SubTreeID) and its name.
---- C_ClassTalents.GetHeroTalentSpecInfo does not exist in 12.1.5; the name is the SubTree's,
---- C_Traits.GetSubTreeInfo(activeConfigID, subTreeID).name (12.1.5 API doc).
-local function ResolveActiveHeroTalentSpec()
-    if not (C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec) then return nil, nil end
-    local okID, heroSpecID = pcall(C_ClassTalents.GetActiveHeroTalentSpec)
-    if not okID or not heroSpecID or (issecretvalue and issecretvalue(heroSpecID)) then return nil, nil end
-    local heroSpecName
-    if C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GetSubTreeInfo then
-        local okCfg, configID = pcall(C_ClassTalents.GetActiveConfigID)
-        if okCfg and configID and not (issecretvalue and issecretvalue(configID)) then
-            local okInfo, info = pcall(C_Traits.GetSubTreeInfo, configID, heroSpecID)
-            local name = okInfo and type(info) == "table" and info.name or nil
-            if type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= "" then
-                heroSpecName = name
-            end
-        end
-    end
-    return heroSpecID, heroSpecName
-end
-
 local function CollectPlayerLocation()
     if not C_Map or not C_Map.GetBestMapForUnit then return nil end
     local okMap, uiMapID = pcall(C_Map.GetBestMapForUnit, "player")
@@ -402,12 +381,6 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
             charData.specID = specID
             charData.specName = specName
             charData.specIcon = specIcon
-        end
-        -- Hero Talent (Midnight 12.0+): active hero spec subclass name
-        local heroSpecID, heroSpecName = ResolveActiveHeroTalentSpec()
-        if heroSpecID then
-            charData.heroSpecID = heroSpecID
-            if heroSpecName then charData.heroSpecName = heroSpecName end
         end
         
     elseif dataType == "itemLevel" then
@@ -835,8 +808,6 @@ function WarbandNexus:SaveMinimalCharacterData()
         specID = existingEntry and existingEntry.specID,
         specName = existingEntry and existingEntry.specName,
         specIcon = existingEntry and existingEntry.specIcon,
-        heroSpecID = existingEntry and existingEntry.heroSpecID,
-        heroSpecName = existingEntry and existingEntry.heroSpecName,
         -- GUID: never call UnitGUID here (untracked / minimal row). Preserve existing SV guid only;
         -- fresh capture happens when the user enables tracking (CharacterService:ConfirmCharacterTracking).
         guid = (function()
@@ -927,7 +898,7 @@ for _, k in ipairs({
     "lastSeen", "professions", "timePlayed", "concentration", "recipes", "professionExpansions",
     "discoveredSkillLines", "knowledgeData", "professionCooldowns", "professionEquipment",
     "cooldownRecipeIDs", "craftingOrders", "professionData", "rested", "guid", "stats", "specID",
-    "specName", "specIcon", "heroSpecID", "heroSpecName", "hasMail", "mailSnapshot",
+    "specName", "specIcon", "hasMail", "mailSnapshot",
     "lastFullSaveAt",
 }) do
     FULL_SAVE_OWNED_KEYS[k] = true
@@ -1145,13 +1116,6 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         specID, specName, specIcon = existingEntry.specID, existingEntry.specName, existingEntry.specIcon
     end
     
-    -- Hero Talent (Midnight 12.0+)
-    local heroSpecID, heroSpecName = ResolveActiveHeroTalentSpec()
-    -- No active config yet (talents still loading at login): keep the stored name for the same hero spec.
-    if heroSpecID and not heroSpecName and existingEntry and existingEntry.heroSpecID == heroSpecID then
-        heroSpecName = existingEntry.heroSpecName
-    end
-    
     -- Scan for Mythic Keystone (always scan on login to check if key exists)
     local keystoneData = preserveMythicKey
     if not lightOnly and self.ScanMythicKeystone then
@@ -1221,8 +1185,6 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         existingEntry.specID = specID
         existingEntry.specName = specName
         existingEntry.specIcon = specIcon
-        existingEntry.heroSpecID = heroSpecID
-        existingEntry.heroSpecName = heroSpecName
         existingEntry.hasMail = (function()
             if HasNewMail and HasNewMail() then return true end
             if preserveHasMail then return true end
@@ -1321,8 +1283,6 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         specID               = specID,
         specName             = specName,
         specIcon             = specIcon,
-        heroSpecID           = heroSpecID,
-        heroSpecName         = heroSpecName,
         hasMail              = (function()
             if HasNewMail and HasNewMail() then return true end
             if preserveHasMail then return true end
