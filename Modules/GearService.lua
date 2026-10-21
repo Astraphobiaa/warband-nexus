@@ -1717,8 +1717,20 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
         local location = ItemLocation:CreateFromEquipmentSlot(slotID)
         if not location or not location:IsValid() then return end
 
-        local info = C_ItemUpgrade.GetItemUpgradeItemInfo
-                     and C_ItemUpgrade.GetItemUpgradeItemInfo(location)
+        -- GetItemUpgradeItemInfo() takes no argument: it describes the item placed in the Item Upgrade
+        -- frame (Blizzard_ItemUpgradeUI reads it after SetItemUpgradeFromLocation). Passing a location
+        -- did nothing, so at the upgrade NPC every slot inherited that one item's ranks and costs.
+        -- Use it only for the slot that holds the item in the frame; the tooltip pass above covers the rest.
+        if not (C_ItemUpgrade.GetItemUpgradeItemInfo and C_ItemUpgrade.GetItemHyperlink and GetInventoryItemLink) then return end
+        local frameLink = C_ItemUpgrade.GetItemHyperlink()
+        local slotLink = GetInventoryItemLink("player", slotID)
+        if type(frameLink) ~= "string" or type(slotLink) ~= "string" then return end
+        if issecretvalue and (issecretvalue(frameLink) or issecretvalue(slotLink)) then return end
+        local frameItem = frameLink:match("|H(item:[^|]+)|h") or frameLink
+        local slotItem = slotLink:match("|H(item:[^|]+)|h") or slotLink
+        if frameItem ~= slotItem then return end
+
+        local info = C_ItemUpgrade.GetItemUpgradeItemInfo()
         if not info then return end
 
         local currUpgrade = info.currUpgrade or 0
@@ -1967,9 +1979,11 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                 end
                 pcall(function()
                     if C_ItemUpgrade and C_ItemUpgrade.GetHighWatermarkSlotForItem then
-                        local location = ItemLocation:CreateFromEquipmentSlot(slotID)
-                        if location and location:IsValid() then
-                            local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(location)
+                        -- itemInfo is "Item ID, Link, or Name" (12.1.5 API doc), not an ItemLocation:
+                        -- passing the location errored inside this pcall, so no watermark was ever read.
+                        local wmLink = slotEntry.itemLink or (GetInventoryItemLink and GetInventoryItemLink("player", slotID))
+                        if type(wmLink) == "string" and not (issecretvalue and issecretvalue(wmLink)) then
+                            local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(wmLink)
                             if hwSlot and C_ItemUpgrade.GetHighWatermarkForSlot then
                                 local charHW, accountHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
                                 local apiWM = (type(charHW) == "number") and charHW or 0
@@ -2060,9 +2074,11 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
 
                 pcall(function()
                     if C_ItemUpgrade and C_ItemUpgrade.GetHighWatermarkSlotForItem then
-                        local location = ItemLocation:CreateFromEquipmentSlot(slotID)
-                        if location and location:IsValid() then
-                            local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(location)
+                        -- itemInfo is "Item ID, Link, or Name" (12.1.5 API doc), not an ItemLocation:
+                        -- passing the location errored inside this pcall, so no watermark was ever read.
+                        local wmLink = slotEntry.itemLink or (GetInventoryItemLink and GetInventoryItemLink("player", slotID))
+                        if type(wmLink) == "string" and not (issecretvalue and issecretvalue(wmLink)) then
+                            local hwSlot = C_ItemUpgrade.GetHighWatermarkSlotForItem(wmLink)
                             if hwSlot and C_ItemUpgrade.GetHighWatermarkForSlot then
                                 local charHW, accountHW = C_ItemUpgrade.GetHighWatermarkForSlot(hwSlot)
                                 local apiWM = (type(charHW) == "number") and charHW or 0
