@@ -275,6 +275,27 @@ function WarbandNexus:GetCharacterData(forceRefresh)
     return self.db.global.characters[tableKey]
 end
 
+--- Active hero talent spec: heroSpecID (a trait SubTreeID) and its name.
+--- C_ClassTalents.GetHeroTalentSpecInfo does not exist in 12.1.5; the name is the SubTree's,
+--- C_Traits.GetSubTreeInfo(activeConfigID, subTreeID).name (12.1.5 API doc).
+local function ResolveActiveHeroTalentSpec()
+    if not (C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec) then return nil, nil end
+    local okID, heroSpecID = pcall(C_ClassTalents.GetActiveHeroTalentSpec)
+    if not okID or not heroSpecID or (issecretvalue and issecretvalue(heroSpecID)) then return nil, nil end
+    local heroSpecName
+    if C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GetSubTreeInfo then
+        local okCfg, configID = pcall(C_ClassTalents.GetActiveConfigID)
+        if okCfg and configID and not (issecretvalue and issecretvalue(configID)) then
+            local okInfo, info = pcall(C_Traits.GetSubTreeInfo, configID, heroSpecID)
+            local name = okInfo and type(info) == "table" and info.name or nil
+            if type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+                heroSpecName = name
+            end
+        end
+    end
+    return heroSpecID, heroSpecName
+end
+
 local function CollectPlayerLocation()
     if not C_Map or not C_Map.GetBestMapForUnit then return nil end
     local okMap, uiMapID = pcall(C_Map.GetBestMapForUnit, "player")
@@ -383,17 +404,10 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
             charData.specIcon = specIcon
         end
         -- Hero Talent (Midnight 12.0+): active hero spec subclass name
-        if C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec then
-            local heroSpecID = C_ClassTalents.GetActiveHeroTalentSpec()
-            if heroSpecID and not (issecretvalue and issecretvalue(heroSpecID)) then
-                charData.heroSpecID = heroSpecID
-                if C_ClassTalents.GetHeroTalentSpecInfo then
-                    local heroInfo = C_ClassTalents.GetHeroTalentSpecInfo(heroSpecID)
-                    if heroInfo then
-                        charData.heroSpecName = heroInfo.name
-                    end
-                end
-            end
+        local heroSpecID, heroSpecName = ResolveActiveHeroTalentSpec()
+        if heroSpecID then
+            charData.heroSpecID = heroSpecID
+            if heroSpecName then charData.heroSpecName = heroSpecName end
         end
         
     elseif dataType == "itemLevel" then
@@ -1144,17 +1158,10 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     end
     
     -- Hero Talent (Midnight 12.0+)
-    local heroSpecID, heroSpecName = nil, nil
-    if C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec then
-        heroSpecID = C_ClassTalents.GetActiveHeroTalentSpec()
-        if heroSpecID and not (issecretvalue and issecretvalue(heroSpecID)) then
-            if C_ClassTalents.GetHeroTalentSpecInfo then
-                local heroInfo = C_ClassTalents.GetHeroTalentSpecInfo(heroSpecID)
-                if heroInfo then heroSpecName = heroInfo.name end
-            end
-        else
-            heroSpecID = nil
-        end
+    local heroSpecID, heroSpecName = ResolveActiveHeroTalentSpec()
+    -- No active config yet (talents still loading at login): keep the stored name for the same hero spec.
+    if heroSpecID and not heroSpecName and existingEntry and existingEntry.heroSpecID == heroSpecID then
+        heroSpecName = existingEntry.heroSpecName
     end
     
     -- Scan for Mythic Keystone (always scan on login to check if key exists)
