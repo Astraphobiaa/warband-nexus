@@ -144,9 +144,11 @@ end
 
 local function ClassifyMailItemKind(itemID)
     if not itemID then return "other" end
-    if C_Item and C_Item.IsCraftingReagent then
-        local ok, isReagent = pcall(C_Item.IsCraftingReagent, itemID)
-        if ok and isReagent then return "reagent" end
+    -- isCraftingReagent is C_Item.GetItemInfo's 17th return (12.1.5 API doc; there is no C_Item.IsCraftingReagent).
+    -- Nothing comes back until the item is cached; the class check below covers that.
+    if C_Item and C_Item.GetItemInfo then
+        local ok, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, isReagent = pcall(C_Item.GetItemInfo, itemID)
+        if ok and isReagent == true then return "reagent" end
     end
     if C_Item and C_Item.GetItemInfoInstant then
         -- GetItemInfoInstant: itemID, itemType, itemSubType, itemEquipLoc, icon, classID (12.1.5 API doc).
