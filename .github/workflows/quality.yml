@@ -100,6 +100,7 @@ jobs:
             lua5.1 .github/scripts/test_full_character_save_keys.lua
             lua5.1 .github/scripts/test_reputation_warm_new_alt.lua
             lua5.1 .github/scripts/test_timer_handles.lua
+            lua5.1 .github/scripts/test_vault_plan_progress.lua
           else
             echo "lua5.1 unavailable - skipping persistence gate"
           fi
