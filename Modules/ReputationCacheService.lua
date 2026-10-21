@@ -640,8 +640,15 @@ function ReputationCache:Initialize()
         end
     end
 
+    -- Last session logged out with a reputation scan still owed (see FlushReputationCacheOnLogout).
+    local owedRescan = db.pendingRescanKey ~= nil and db.pendingRescanKey == currentSubsidiaryKey
+    if owedRescan then
+        needsScan = true
+        scanReason = "Scan owed from last session's logout"
+    end
+
     local DF = ns.DataFreshness
-    if needsScan and DF and DF.IsReputationWarm and DF.IsReputationWarm(db, self.version, currentSubsidiaryKey) then
+    if needsScan and not owedRescan and DF and DF.IsReputationWarm and DF.IsReputationWarm(db, self.version, currentSubsidiaryKey) then
         needsScan = false
         scanReason = "Persisted warm — event-driven updates only"
     end
@@ -1777,6 +1784,14 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
             db.characters[currentCharKey] = {}
         end
         db.characters[currentCharKey][factionID] = compact
+        -- A faction once seen as account-wide (transient read or a patch moving it back) must leave
+        -- db.accountWide, or every scan keeps purging it from all character buckets.
+        local numAw = tonumber(factionID)
+        db.accountWide[factionID] = nil
+        if numAw then
+            db.accountWide[numAw] = nil
+            db.accountWide[tostring(numAw)] = nil
+        end
     end
     
     -- Store faction-level info once per factionID (not per char)
@@ -1816,10 +1831,13 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     -- Get current character key
     local currentCharKey = CurrentReputationSubsidiaryKey()
     
-    -- Clear ONLY current character's data (preserve other characters)
+    -- Clear ONLY current character's data (preserve other characters). Keep the previous rows: a
+    -- partial scan (faction data not loaded, secret names skipped) must not delete what it missed.
+    local previousCharFactions = {}
     if not db.characters[currentCharKey] then
         db.characters[currentCharKey] = {}
     else
+        for fid, row in pairs(db.characters[currentCharKey]) do previousCharFactions[fid] = row end
         wipe(db.characters[currentCharKey])
     end
     
@@ -1843,6 +1861,9 @@ function ReputationCache:UpdateAll(normalizedDataArray)
             else
                 db.characters[currentCharKey][numFactionID] = compact
                 charCount = charCount + 1
+                -- Per-character now: drop a stale account-wide row (see UpdateFaction).
+                db.accountWide[numFactionID] = nil
+                if tonumber(numFactionID) then db.accountWide[tostring(numFactionID)] = nil end
             end
             
             -- Store faction-level info in shared factionInfo (once per factionID)
@@ -1860,6 +1881,23 @@ function ReputationCache:UpdateAll(normalizedDataArray)
         end
     end
     
+    -- Carry over factions the previous scan had but this one did not return (partial walk).
+    local seenThisScan = {}
+    for ni = 1, #normalizedDataArray do
+        local fid = normalizedDataArray[ni].factionID
+        if fid then
+            seenThisScan[fid] = true
+            local nid = tonumber(fid)
+            if nid then seenThisScan[nid] = true; seenThisScan[tostring(nid)] = true end
+        end
+    end
+    for fid, row in pairs(previousCharFactions) do
+        if not seenThisScan[fid] and db.characters[currentCharKey][fid] == nil then
+            db.characters[currentCharKey][fid] = row
+        end
+    end
+    if db.pendingRescanKey == currentCharKey then db.pendingRescanKey = nil end
+
     -- Purge stale character entries for factions that are now account-wide.
     -- Old scans (before isAccountWide fix or from other characters) may have stored
     -- account-wide factions in db.characters[charKey]. Remove them so they don't
@@ -2777,6 +2815,15 @@ end
 
 ---Cancel pending reputation UI refresh timers on PLAYER_LOGOUT (DB already persisted).
 function WarbandNexus:FlushReputationCacheOnLogout()
+    -- A throttled / trailing scan still pending holds this session's last reputation gains; it cannot
+    -- run during teardown, so mark the character for a forced rescan on its next login.
+    if ReputationCache.updateThrottle or ReputationCache._trailingScanTimer then
+        local db = GetDB()
+        local key = CurrentReputationSubsidiaryKey()
+        if db and key then db.pendingRescanKey = key end
+        if ReputationCache.updateThrottle then ReputationCache.updateThrottle:Cancel(); ReputationCache.updateThrottle = nil end
+        if ReputationCache._trailingScanTimer then ReputationCache._trailingScanTimer:Cancel(); ReputationCache._trailingScanTimer = nil end
+    end
     if ReputationCache.uiRefreshTimer then
         ReputationCache.uiRefreshTimer:Cancel()
         ReputationCache.uiRefreshTimer = nil
