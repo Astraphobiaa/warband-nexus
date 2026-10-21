@@ -34,7 +34,7 @@ for _, path in ipairs(listFiles()) do
     local fh = io.open(path, "rb")
     local src = fh:read("*a")
     fh:close()
-    src = src:gsub("%-%-%[(=*)%[.-%]%1%]", function(c) return (c:gsub("[^\n]", "")) end)
+    src = src:gsub("(%-%-%[(=*)%[.-%]%2%])", function(c) return (c:gsub("[^\n]", "")) end)
     src = src:gsub("%-%-[^\n]*", "")
     local relPath = path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", "")
     -- Location variables created in this file (e.g. `local location = ItemLocation:CreateFrom...`).

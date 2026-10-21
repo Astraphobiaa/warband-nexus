@@ -3749,7 +3749,8 @@ function WarbandNexus:CollectConcentrationOnLogin()
         for ii = 1, #profIdxPair do
             local index = profIdxPair[ii]
             if index then
-                local ok, name, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
+                -- GetProfessionInfo: name, icon, skillLevel, maxSkillLevel, numAbilities, spelloffset, skillLine
+                local ok, name, _, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
                 if ok and name and name ~= "" and skillLine and skillLine > 0 and not charData.concentration[skillLine] then
                     local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, skillLine)
                     if concOk and currencyID and currencyID > 0 then

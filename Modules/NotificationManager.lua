@@ -672,7 +672,7 @@ end
 function WarbandNexus:TestAchievementAlertEarn(achievementID)
     if not EnsureNotificationTestsEnabled(self) then return end
     achievementID = tonumber(achievementID) or 6
-    local okInfo, name = pcall(GetAchievementInfo, achievementID)
+    local okInfo, _, name = pcall(GetAchievementInfo, achievementID) -- 1st return is the id
     if not okInfo or not name then
         self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
         return
@@ -713,7 +713,7 @@ end
 function WarbandNexus:TestAchievementEarnedEvent(achievementID)
     if not EnsureNotificationTestsEnabled(self) then return end
     achievementID = tonumber(achievementID) or 6
-    local okInfo, name = pcall(GetAchievementInfo, achievementID)
+    local okInfo, _, name = pcall(GetAchievementInfo, achievementID) -- 1st return is the id
     if not okInfo or not name then
         self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
         return
@@ -2325,7 +2325,8 @@ local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
         return nil
     end
 
-    local ok, _, criteriaType, _, _, _, _, assetID = pcall(GetAchievementCriteriaInfo, achievementID, criteriaIndex)
+    -- GetAchievementCriteriaInfo: ..., charName(6), flags(7), assetID(8)
+    local ok, _, criteriaType, _, _, _, _, _, assetID = pcall(GetAchievementCriteriaInfo, achievementID, criteriaIndex)
     if not ok then return nil end
 
     local linkedID = nil
@@ -2339,7 +2340,7 @@ local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
 
     local linkedIcon = nil
     if linkedID then
-        local okInfo, _, _, _, _, _, _, _, _, icon = pcall(GetAchievementInfo, linkedID)
+        local okInfo, _, _, _, _, _, _, _, _, _, icon = pcall(GetAchievementInfo, linkedID) -- icon = 10th
         if okInfo and icon and not (issecretvalue and issecretvalue(icon)) then
             linkedIcon = icon
         end
@@ -3046,7 +3047,7 @@ local HIERARCHY_TEST_STEP_SEC = 0.65
 
 local function TestHierarchyAchievementName(achievementID)
     if not achievementID then return nil end
-    local ok, name = pcall(GetAchievementInfo, achievementID)
+    local ok, _, name = pcall(GetAchievementInfo, achievementID) -- 1st return is the id
     if not ok or not name or name == "" then return nil end
     if issecretvalue and issecretvalue(name) then return nil end
     return name
@@ -3081,7 +3082,7 @@ local function TestHierarchyLinkedSubCriteriaHint(metaID, subID)
         return "Have a Heart"
     end
     for i = 1, numCriteria do
-        local ok, criteriaName, criteriaType, _, _, _, _, assetID =
+        local ok, criteriaName, criteriaType, _, _, _, _, _, assetID = -- assetID = 8th
             pcall(GetAchievementCriteriaInfo, metaID, i)
         if ok and tonumber(criteriaType) == AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED then
             local linked = tonumber(assetID)
@@ -3790,7 +3791,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
     -- Replace-mode achievement fallback: fire ACHIEVEMENT_EARNED only (no AddAlert); expect WN toast ~1.25s
     if type == "achievementfallback" or type == "achfallback" then
         local achievementID = tonumber(id) or 6
-        local okInfo, name = pcall(GetAchievementInfo, achievementID)
+        local okInfo, _, name = pcall(GetAchievementInfo, achievementID) -- 1st return is the id
         if not okInfo or not name then
             self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
             return

@@ -9,7 +9,9 @@
     This scans every shipped Lua file for `a, b, c = [pcall(]API(...)` destructuring of the APIs below
     and checks each meaningfully named variable against the documented return order.
     Return orders: Blizzard_APIDocumentationGenerated 12.1.5 (70448), ItemDocumentation.lua for
-    C_Item.*; C_PetJournal.GetPetInfoByItemID from its warcraft.wiki.gg page (not in the generated docs).
+    C_Item.*. C_PetJournal.GetPetInfoByItemID, GetAchievementInfo, GetAchievementCriteriaInfo and
+    GetProfessionInfo are not in the generated docs; their orders come from the warcraft.wiki.gg API
+    pages (via Ketho/vscode-wow-api Wiki.lua, 12.0.5 snapshot; wiki.gg itself was offline 2026-10-21).
 ]]
 
 local ROOT = os.getenv("WN_ROOT") or "."
@@ -22,6 +24,12 @@ local RETURNS = {
     ["C_PetJournal.GetPetInfoByItemID"] = { "name", "icon", "petType", "creatureID", "sourceText", "description",
         "isWild", "canBattle", "isTradeable", "isUnique", "obtainable", "displayID", "speciesID" },
 }
+RETURNS["GetAchievementInfo"] = { "id", "name", "points", "completed", "month", "day", "year", "description",
+    "flags", "icon", "rewardText", "isGuild", "wasEarnedByMe", "earnedBy", "isStatistic" }
+RETURNS["GetAchievementCriteriaInfo"] = { "criteriaString", "criteriaType", "completed", "quantity", "reqQuantity",
+    "charName", "flags", "assetID", "quantityString", "criteriaID", "eligible", "duration", "elapsed" }
+RETURNS["GetProfessionInfo"] = { "name", "icon", "skillLevel", "maxSkillLevel", "numAbilities", "spelloffset",
+    "skillLine", "skillModifier", "specializationIndex", "specializationOffset", "skillLineName" }
 -- Legacy global with the same return order as C_Item.GetItemInfo.
 RETURNS["GetItemInfo"] = RETURNS["C_Item.GetItemInfo"]
 RETURNS["C_Item.GetItemInfoInstant"].alias = "GetItemInfoInstant"
@@ -29,6 +37,12 @@ RETURNS["GetItemInfoInstant"] = RETURNS["C_Item.GetItemInfoInstant"]
 
 -- Variable-name pattern (lowercased) -> documented return name. First match wins, so specific first.
 local CLASSIFY = {
+    { "wasearnedbyme", "wasEarnedByMe" }, { "earnedby", "earnedBy" }, { "isguild", "isGuild" },
+    { "rewardtext", "rewardText" }, { "isstatistic", "isStatistic" }, { "assetid", "assetID" },
+    { "criteriaid", "criteriaID" }, { "criteriatype", "criteriaType" }, { "reqquantity", "reqQuantity" },
+    { "quantitystring", "quantityString" }, { "skilllinename", "skillLineName" }, { "skillline", "skillLine" },
+    { "maxskill", "maxSkillLevel" }, { "skilllevel", "skillLevel" }, { "spelloffset", "spelloffset" },
+    { "^achname$", "name" }, { "^name%d*$", "name" }, { "^achid$", "id" },
     { "minl", "itemMinLevel" }, { "reqlevel", "itemMinLevel" }, { "requiredlevel", "itemMinLevel" },
     { "subclass", "subclassID" }, { "classid", "classID" },
     { "speciesid", "speciesID" }, { "specid", "speciesID" }, { "displayid", "displayID" },
@@ -39,6 +53,7 @@ local CLASSIFY = {
     { "expansion", "expansionID" }, { "reagent", "isCraftingReagent" },
 }
 local EQUIV = { icon = { icon = true, itemTexture = true }, itemTexture = { icon = true, itemTexture = true },
+    name = { name = true, itemName = true, criteriaString = true },
     subclassID = { subclassID = true, subClassID = true } }
 
 local function classify(var)
@@ -83,12 +98,20 @@ for _, path in ipairs(listFiles()) do
     local src = fh:read("*a")
     fh:close()
     -- Strip comments but keep newlines so line numbers stay right.
-    src = src:gsub("%-%-%[(=*)%[.-%]%1%]", function(c) return (c:gsub("[^\n]", "")) end)
+    src = src:gsub("(%-%-%[(=*)%[.-%]%2%])", function(c) return (c:gsub("[^\n]", "")) end)
     src = src:gsub("%-%-[^\n]*", "")
     local relPath = path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", "")
     -- Statements of the form `local a, b,\n c = [pcall(]API(...)` may span lines.
-    for startPos, lhs, rhs in src:gmatch("()local%s+([%w_][%w_%s,]-)%s*=%s*([%w_%.]+%(?%s*[%w_%.]*)") do
+    -- Try every `local` independently (anchored): with gmatch, a rejected match that swallowed the next
+    -- `local` statement would also skip that statement.
+    local searchFrom = 1
+    while true do
+        local startPos = src:find("%f[%w_]local%s", searchFrom)
+        if not startPos then break end
+        searchFrom = startPos + 5
+        local lhs, rhs = src:match("^local%s+([%w_][%w_%s,]-)%s*=%s*([%w_%.]+%(?%s*[%w_%.]*)", startPos)
         local api, isPcall
+        if not lhs then lhs, rhs = "", "" end
         local inner = rhs:match("^pcall%(%s*([%w_%.]+)")
         if inner then api, isPcall = inner, true else api = rhs:match("^([%w_%.]+)%(") end
         -- Only a pure `a, b,\n c` identifier list counts; `x if y then z` means the lazy match swallowed

@@ -2204,7 +2204,8 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     end
 
     if not priorAchievementCollected and GetAchievementInfo then
-        local okPts, _, _, pts, _, _, _, _, _, _, _, isGuild, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
+        -- GetAchievementInfo: points(3) ... rewardText(11), isGuild(12), wasEarnedByMe(13)
+        local okPts, _, _, pts, _, _, _, _, _, _, _, _, isGuild, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
         if okPts and IsAchievementEarnedByMe(wasEarnedByMe) and isGuild ~= true then
             local pt = tonumber(pts) or 0
             if pt > 0 then
@@ -2409,7 +2410,8 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         displayIcon = nil
     end
     local accountFirstEarn = true
-    local okEarn, _, _, _, completed, _, _, _, _, _, _, _, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
+    -- wasEarnedByMe is GetAchievementInfo's 13th return (12th = isGuild)
+    local okEarn, _, _, _, completed, _, _, _, _, _, _, _, _, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
     if okEarn and completed == true and wasEarnedByMe == false then
         accountFirstEarn = false
     end

@@ -974,7 +974,8 @@ function WarbandNexus:BuildAchievementPlanPayload(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return nil end
     if issecretvalue and issecretvalue(achievementID) then return nil end
 
-    local ok, id, name, points, _, _, _, _, _, icon, _, rewardText = pcall(GetAchievementInfo, achievementID)
+    -- GetAchievementInfo: ..., description(8), flags(9), icon(10), rewardText(11)
+    local ok, id, name, points, _, _, _, _, _, _, icon, rewardText = pcall(GetAchievementInfo, achievementID)
     if not ok or not id or id ~= achievementID then return nil end
     if issecretvalue then
         if name and issecretvalue(name) then name = nil end
