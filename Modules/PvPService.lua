@@ -158,7 +158,9 @@ end
 
 -- SNAPSHOTS (rated brackets + honor) — persist, then emit.
 
-function PvPService:SnapshotRatedInfo(skipEmit)
+---@param skipEmit boolean|nil
+---@param authoritative boolean|nil true only for the PVP_RATED_STATS_UPDATE server reply
+function PvPService:SnapshotRatedInfo(skipEmit, authoritative)
     if not CanCollect() then return end
     local charKey = GetCharKey()
     if not charKey then return end
@@ -173,6 +175,17 @@ function PvPService:SnapshotRatedInfo(skipEmit)
                 weeklyPlayed, weeklyWon, _lastWeeksBest, _hasWonToday, tier, _ranking,
                 roundsSeasonPlayed, roundsSeasonWon, roundsWeeklyPlayed, roundsWeeklyWon
                 = pcall(GetPersonalRatedInfo, b.index)
+            -- Before the server reply, GetPersonalRatedInfo reads 0 for everything. Only the
+            -- PVP_RATED_STATS_UPDATE reply may replace a stored rated row with an all-zero read
+            -- (e.g. a new season); the login / pre-match fallbacks must not.
+            local prevRow = store.brackets[b.key]
+            local incomingEmpty = ok and (SafeNum(rating) or 0) == 0 and (SafeNum(seasonBest) or 0) == 0
+                and (SafeNum(seasonPlayed) or 0) == 0
+            local storedHasData = type(prevRow) == "table"
+                and ((tonumber(prevRow.rating) or 0) > 0 or (tonumber(prevRow.seasonPlayed) or 0) > 0)
+            if ok and incomingEmpty and storedHasData and not authoritative then
+                ok = false
+            end
             if ok then
                 local row = store.brackets[b.key] or {}
                 row.rating = SafeNum(rating) or row.rating or 0
@@ -829,7 +842,7 @@ local PVP_EVENT_HANDLERS = {
     end,
     -- Server replies to RequestRatedInfo() land here (wiki: API_RequestRatedInfo).
     PVP_RATED_STATS_UPDATE = function()
-        PvPService:SnapshotRatedInfo()
+        PvPService:SnapshotRatedInfo(nil, true)
     end,
 }
 

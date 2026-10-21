@@ -348,10 +348,11 @@ local function BuildSavedInstanceEncounterList(slotIndex, numEncounters)
     for j = 1, numEncounters do
         local bossName, _, isKilled = GetSavedInstanceEncounterInfo(slotIndex, j)
         if issecretvalue and bossName and issecretvalue(bossName) then bossName = nil end
+        if issecretvalue and issecretvalue(isKilled) then isKilled = nil end
         if bossName then
             encounters[#encounters + 1] = {
                 name = bossName,
-                killed = isKilled or false,
+                killed = isKilled == true,
             }
         end
     end
@@ -1759,11 +1760,16 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
                         if issecretvalue and encName and issecretvalue(encName) then encName = nil end
                         if issecretvalue and instanceName and issecretvalue(instanceName) then instanceName = nil end
                         if issecretvalue and diffName and issecretvalue(diffName) then diffName = nil end
+                        -- Raw API fields can be secret (difficultyID, encounter IDs); never persist a secret.
+                        local function plain(v)
+                            if v ~= nil and issecretvalue and issecretvalue(v) then return nil end
+                            return v
+                        end
                         data.encounters[ei] = {
-                            encounterID = enc.encounterID,
-                            bestDifficulty = enc.bestDifficulty,
-                            uiOrder = enc.uiOrder,
-                            instanceID = enc.instanceID or instanceID,
+                            encounterID = plain(enc.encounterID),
+                            bestDifficulty = bestDiff,
+                            uiOrder = plain(enc.uiOrder),
+                            instanceID = plain(enc.instanceID) or plain(instanceID),
                             name = encName,
                             instanceName = instanceName,
                             difficultyName = diffName,
@@ -2060,8 +2066,18 @@ function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
     -- includePreviousWeeks = false, includeIncompleteRuns = true
     -- In WoW, untimed (completed over-time) runs count fully toward Great Vault progression.
     local runs = C_MythicPlus.GetRunHistory(false, true)
+    local mpCache = self.db.global.pveCache.mythicPlus
+    local storedRuns = mpCache.runHistory[charKey]
+    local storedWeek = mpCache.runHistoryWeek and mpCache.runHistoryWeek[charKey]
+    local storedThisWeek = type(storedRuns) == "table" and #storedRuns > 0 and type(storedWeek) == "number"
+        and not (WarbandNexus.HasWeeklyResetOccurred and WarbandNexus:HasWeeklyResetOccurred(storedWeek))
+    -- Runs are never removed inside a week. A nil / empty history while this week's runs are stored is
+    -- an unready read (before CHALLENGE_MODE_MAPS_UPDATE at login), not "no runs": keep them.
+    if (not runs or #runs == 0) and storedThisWeek then
+        return
+    end
     if not runs then
-        self.db.global.pveCache.mythicPlus.runHistory[charKey] = {}
+        mpCache.runHistory[charKey] = {}
         return
     end
 
@@ -4009,6 +4025,18 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     -- transitions to complete (server computing rewards). Build a lookup by
     -- activityID so known-good values survive a re-scan that returns 0.
     local activities = self.db.global.pveCache.greatVault.activities[charKey]
+    -- dungeonRunCounts / worldTierProgress are written only by ProcessGreatVaultActivities together
+    -- with weeklyResetTime (the NEXT reset at that snapshot). Once that reset has passed they describe
+    -- last week: drop them so tooltips do not show last week's Heroic/Mythic runs and delve tiers.
+    -- weeklyResetTime itself is left alone: the post-reset "chest waiting" detection reads it.
+    do
+        local resetStart = GetCurrentWeeklyResetStartTime()
+        local snapNext = NormalizeResetEpoch(activities.weeklyResetTime)
+        if resetStart and resetStart > 0 and type(snapNext) == "number" and snapNext > 0 and snapNext <= resetStart then
+            activities.dungeonRunCounts = nil
+            activities.worldTierProgress = nil
+        end
+    end
     local preservedILvl = {}
     local vaultCategories = {"raids", "mythicPlus", "pvp", "world"}
     for ci = 1, #vaultCategories do
