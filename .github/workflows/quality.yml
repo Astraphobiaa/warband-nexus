@@ -119,6 +119,24 @@ jobs:
             echo "lua5.1 unavailable - skipping persistence gate"
           fi
 
+      # Earlier suites that were never wired into CI. Some load shipped files under the stub, some
+      # mirror the logic they check (those cannot catch a regression in the shipped file).
+      - name: Earlier unit suites
+        run: |
+          if command -v lua5.1 >/dev/null 2>&1; then
+            lua5.1 .github/scripts/test_reset_service.lua
+            lua5.1 .github/scripts/test_dead_run_and_shopping_list.lua
+            lua5.1 .github/scripts/test_guild_bank_logout_flush.lua
+            lua5.1 .github/scripts/test_illusion_live_update_keys.lua
+            lua5.1 .github/scripts/test_profession_persistence_logout.lua
+            lua5.1 .github/scripts/test_secret_bag_scan_guards.lua
+            lua5.1 .github/scripts/test_try_counter_encounter_matrix.lua
+            lua5.1 .github/scripts/test_vault_preserve_import.lua
+            lua5.1 .github/scripts/test_warband_features_1_to_4.lua
+          else
+            echo "lua5.1 unavailable - skipping earlier unit suites"
+          fi
+
       # API contract lints: multi-return positions, call shapes, struct fields and deprecated globals
       # checked against Blizzard_APIDocumentationGenerated 12.1.5 / warcraft.wiki.gg signatures.
       - name: API contract lints (static scan of shipped files)
