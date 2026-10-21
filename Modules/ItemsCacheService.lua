@@ -1470,8 +1470,11 @@ end
 ---Throttled bag update (prevents BAG_UPDATE spam)
 ---Returns true if the update was processed (or scheduled), false if suppressed.
 ThrottledBagUpdate = function(bagID)
-    -- Suppress during bank open deferred scans (OnBankOpened handles it)
+    -- During the staged bank-open scan, queue the bag instead of dropping it: OnBagUpdate already
+    -- stored the new hash, so a dropped change counted as handled and was never saved (items moved
+    -- by the auto-deposit or the player mid-scan stayed stale). finishBankScan flushes the queue.
     if bankScanInProgress then
+        pendingUpdates[bagID] = true
         return false
     end
     
@@ -1719,6 +1722,10 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
         bankScanInProgress = false
         if aborted and self.InvalidateLiveOpenWarbandBankSummary then
             self:InvalidateLiveOpenWarbandBankSummary()
+        end
+        -- Bags that changed while the scan ran were queued by ThrottledBagUpdate: rescan them now.
+        if next(pendingUpdates) then
+            ScheduleDeferredBagFlush(0.05)
         end
     end
 
