@@ -102,6 +102,11 @@ jobs:
             lua5.1 .github/scripts/test_guild_leave_recheck.lua
             lua5.1 .github/scripts/test_remove_plan_keeps_try_count.lua
             lua5.1 .github/scripts/test_remove_hero_spec.lua
+            lua5.1 .github/scripts/test_keystone_logout_save.lua
+            lua5.1 .github/scripts/test_bank_scan_queue.lua
+            lua5.1 .github/scripts/test_reputation_scan_merge.lua
+            lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
+            lua5.1 .github/scripts/test_data_guards_round3.lua
             lua5.1 .github/scripts/test_account_wide_currency_value.lua
             lua5.1 .github/scripts/test_character_merge_gold.lua
             lua5.1 .github/scripts/test_full_character_save_keys.lua
@@ -123,6 +128,7 @@ jobs:
             lua5.1 .github/scripts/test_api_call_shapes.lua
             lua5.1 .github/scripts/test_api_struct_fields.lua
             lua5.1 .github/scripts/test_deprecated_api_calls.lua
+            lua5.1 .github/scripts/test_zero_sentinel_fallbacks.lua
           else
             echo "lua5.1 unavailable - skipping API contract lints"
           fi

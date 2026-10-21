@@ -755,17 +755,23 @@ function WarbandNexus:ScanCurrentCharacterMailSnapshot(opts)
 end
 
 function M.ScheduleScan(addon, forceInbox)
+    if forceInbox then M.forcedScanPending = true end
     if scanPending then return end
     scanPending = true
     C_Timer.After(SCAN_DEBOUNCE_SEC, function()
         scanPending = false
         if addon and addon.ScanCurrentCharacterMailSnapshot then
-            addon:ScanCurrentCharacterMailSnapshot({ forceInbox = forceInbox == true })
+            -- Read the inbox only while the mailbox is open: after MAIL_CLOSED the inbox API is not a
+            -- reliable source, and a 0 read there replaced the snapshot every MAIL_INBOX_UPDATE kept.
+            local force = M.forcedScanPending == true and M.mailboxOpen == true
+            M.forcedScanPending = false
+            addon:ScanCurrentCharacterMailSnapshot({ forceInbox = force })
         end
     end)
 end
 
 local function OnMailboxOpened()
+    M.mailboxOpen = true
     if CheckInbox then
         pcall(CheckInbox)
     end
@@ -1257,8 +1263,16 @@ function WarbandNexus:InitializeMailSnapshotService()
         M.ScheduleScan(WarbandNexus, true)
     end)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_CLOSED", function()
+        -- A forced inbox scan still waiting on its debounce (item taken right before closing) runs
+        -- now, while the inbox is still the live one, instead of after the close.
+        if M.forcedScanPending and WarbandNexus.ScanCurrentCharacterMailSnapshot then
+            M.forcedScanPending = false
+            WarbandNexus:ScanCurrentCharacterMailSnapshot({ forceInbox = true })
+        end
+        M.mailboxOpen = false
         wipe(pendingOutgoingMails)
-        M.ScheduleScan(WarbandNexus, true)
+        -- Refresh the has-mail flag only; the snapshot is already current from MAIL_INBOX_UPDATE.
+        M.ScheduleScan(WarbandNexus, false)
     end)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_SEND_SUCCESS", OnMailSendSuccess)
     WarbandNexus.RegisterEvent(MailSnapshotEvents, "MAIL_FAILED", OnMailSendFailed)

@@ -349,6 +349,7 @@ function MigrationService:RunMigrations(db)
     self:DropStaleLegacyGlobalReputations(db)
     self:MigrateKnowledgeSpecTabsSlimV1(db)
     self:MigratePruneCacheBackupsV1(db)
+    self:MigrateSlimCacheBackupsV2(db)
     self:MigratePruneOrphanSvKeysV1(db)
     self:MigrateDropLegacyCollectionDataV1(db)
     self:MigratePruneRedundantCollectionCacheV1(db)
@@ -1998,6 +1999,26 @@ function MigrationService:MigratePruneCacheBackupsV1(db)
         end
     end
     db.global.cacheBackupsPrunedV1 = true
+end
+
+--- Backups written after V1 still held `data = <live cache table>` (a second copy in SavedVariables).
+--- Keep only the fields InvalidateCache changes; see DatabaseOptimizer BackupCache. (2026-10-22)
+---@param db table AceDB root
+function MigrationService:MigrateSlimCacheBackupsV2(db)
+    if not db or not db.global or db.global.cacheBackupsSlimV2 then return end
+    local backups = db.global.cacheBackups
+    if type(backups) == "table" then
+        for _, entry in pairs(backups) do
+            if type(entry) == "table" then
+                local data = entry.data
+                if type(data) == "table" and entry.version == nil and entry.lastScan == nil then
+                    entry.lastScan = data.lastScan
+                end
+                entry.data = nil
+            end
+        end
+    end
+    db.global.cacheBackupsSlimV2 = true
 end
 
 --- Remove orphaned dev instrumentation keys written at SavedVariables root (_agentLog_*).

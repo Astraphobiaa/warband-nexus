@@ -20,17 +20,20 @@ local CACHE_PATHS = {
     pve        = "pveCache",
 }
 
---- Backup a cache to db.global.cacheBackups[name] before invalidation.
---- A shallow copy is sufficient (caches re-fetch from API; backup is only for recovery).
+--- Record what InvalidateCache is about to change, so RestoreCacheBackup can undo it.
+--- Invalidation is non-destructive (only version / lastScan are reset; the data stays), so only those
+--- two fields are kept. Storing `data = current` saved a REFERENCE to the live table: SavedVariables
+--- then wrote every invalidated cache twice, and a restore put back the same, already-reset table.
 local function BackupCache(self, name)
     local key = CACHE_PATHS[name]
     if not key then return end
     local current = self.db.global[key]
-    if current == nil then return end
+    if type(current) ~= "table" then return end
     self.db.global.cacheBackups = self.db.global.cacheBackups or {}
     self.db.global.cacheBackups[name] = {
-        savedAt = time(),
-        data    = current,
+        savedAt  = time(),
+        version  = current.version,
+        lastScan = current.lastScan,
     }
 end
 
@@ -54,8 +57,10 @@ end
 function WarbandNexus:RestoreCacheBackup(name)
     local key = CACHE_PATHS[name]
     local backups = self.db.global.cacheBackups
-    if not key or not backups or not backups[name] then return false end
-    self.db.global[key] = backups[name].data
+    local cache = key and self.db.global[key]
+    if not key or not backups or not backups[name] or type(cache) ~= "table" then return false end
+    cache.version = backups[name].version
+    cache.lastScan = backups[name].lastScan
     return true
 end
 
@@ -529,7 +534,15 @@ function WarbandNexus:EnforceCharacterLimit(limit)
             self:Print(string.format("Removed old character: %s", charName))
         end
     end
-    
+
+    -- Same contract as CleanupStaleCharacters: drop the cached roster and tell listeners, or the
+    -- removed rows linger in the UI until the next unrelated refresh.
+    if removed > 0 then
+        if self.InvalidateGetAllCharactersCache then self:InvalidateGetAllCharactersCache() end
+        if self.SendMessage and ns.Constants and ns.Constants.EVENTS then
+            self:SendMessage(ns.Constants.EVENTS.CHARACTER_UPDATED, { dataType = "rosterPrune", removed = removed })
+        end
+    end
     return removed
 end
 

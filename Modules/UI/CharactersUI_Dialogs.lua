@@ -468,6 +468,49 @@ function WarbandNexus:OpenCustomHeaderRosterWindow(groupId)
     end
 end
 
+--- Generic destructive-action confirm (same shell as the custom-header delete dialog below).
+---@param opts table { name:string, title:string, body:string|nil, confirmText:string|nil, onConfirm:function }
+function ns.UI_ShowConfirmDialog(opts)
+    local CreateExternalWindow = ns.UI_CreateExternalWindow
+    local CreateThemedButton = ns.UI_CreateThemedButton
+    local FontMgr = ns.FontManager
+    if type(opts) ~= "table" or type(opts.onConfirm) ~= "function" or not CreateExternalWindow then return end
+    local dialog, contentFrame = CreateExternalWindow({
+        name = opts.name or "WnConfirmDialog",
+        title = opts.title or ((ns.L and ns.L["CONFIRM"]) or "Confirm"),
+        icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        width = 420,
+        height = 170,
+    })
+    if not dialog or not contentFrame then return end
+    local PAD = DialogPad()
+    local warn = FontMgr:CreateFontString(contentFrame, "body", "OVERLAY")
+    warn:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD * 2)
+    warn:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -PAD, -PAD * 2)
+    warn:SetJustifyH("CENTER")
+    warn:SetText(opts.body or ((ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!"))
+
+    local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, 360, 40)
+    btnContainer:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", PAD, PAD)
+    btnContainer:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -PAD, PAD)
+    local okBtn = CreateThemedButton and CreateThemedButton(btnContainer, opts.confirmText or ((ns.L and ns.L["CONFIRM"]) or "Confirm"), 150, 36)
+    if okBtn then
+        okBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
+        okBtn:SetScript("OnClick", function()
+            if dialog.Close then dialog:Close() else dialog:Hide() end
+            opts.onConfirm()
+        end)
+    end
+    local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, (ns.L and ns.L["CANCEL"]) or "Cancel", 150, 36)
+    if cancelBtn then
+        cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
+        cancelBtn:SetScript("OnClick", function()
+            if dialog.Close then dialog:Close() else dialog:Hide() end
+        end)
+    end
+    dialog:Show()
+end
+
 function WarbandNexus:ConfirmDeleteCustomCharacterHeader(groupId, groupName)
     local CreateExternalWindow = ns.UI_CreateExternalWindow
     local CreateThemedButton = ns.UI_CreateThemedButton

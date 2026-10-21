@@ -738,11 +738,23 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     resetBtn:SetScript("OnClick", function()
         if not WarbandNexus.ClearCharacterBankMoneyLogs then return end
-        resetBtn:Disable()
-        WarbandNexus:ClearCharacterBankMoneyLogs(nil)
-        C_Timer.After(0.25, function()
-            if resetBtn and resetBtn.Enable then resetBtn:Enable() end
-        end)
+        -- Clearing the money log is irreversible: confirm first (it used to run on a single click).
+        local function doReset()
+            resetBtn:Disable()
+            WarbandNexus:ClearCharacterBankMoneyLogs(nil)
+            C_Timer.After(0.25, function()
+                if resetBtn and resetBtn.Enable then resetBtn:Enable() end
+            end)
+        end
+        if ns.UI_ShowConfirmDialog then
+            ns.UI_ShowConfirmDialog({
+                name = "WnConfirmMoneyLogReset",
+                title = (ns.L and ns.L["MONEY_LOGS_RESET"]) or "Reset",
+                onConfirm = doReset,
+            })
+        else
+            doReset()
+        end
     end)
 
     local function refreshCurrentTab()

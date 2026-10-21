@@ -501,8 +501,17 @@ function M.DrawTab(parent)
         if not resetBtn then
             resetBtn = M.ns.UI_CreateThemedButton(card, (M.L and M.L["PVP_RESET_HISTORY"]) or "Reset Statistics", 150)
             resetBtn:SetScript("OnClick", function()
-                if M.ns.PvPService then
-                    M.ns.PvPService:ResetMatchStats(nil, "all")
+                if not M.ns.PvPService then return end
+                -- Wiping all match statistics is irreversible: confirm first.
+                local function doReset() M.ns.PvPService:ResetMatchStats(nil, "all") end
+                if M.ns.UI_ShowConfirmDialog then
+                    M.ns.UI_ShowConfirmDialog({
+                        name = "WnConfirmPvPStatsReset",
+                        title = (M.L and M.L["PVP_RESET_HISTORY"]) or "Reset Statistics",
+                        onConfirm = doReset,
+                    })
+                else
+                    doReset()
                 end
             end)
             bundle.resetBtn = resetBtn

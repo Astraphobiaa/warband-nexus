@@ -604,7 +604,9 @@ end
 --[[
     Reset all weekly vault plans (called on weekly reset)
 ]]
-function WarbandNexus:ResetWeeklyPlans()
+---@param onlyStaleBefore number|nil When set (weekly-reset check), only plans whose lastReset is older
+---       are reset; plans already reset this week keep their progress and manual overrides.
+function WarbandNexus:ResetWeeklyPlans(onlyStaleBefore)
     if not self.db or not self.db.global or not self.db.global.plans then
         return
     end
@@ -613,6 +615,7 @@ function WarbandNexus:ResetWeeklyPlans()
 
     local function resetOneVaultPlan(plan)
         if not plan or plan.type ~= PLAN_TYPES.WEEKLY_VAULT then return end
+        if onlyStaleBefore and (tonumber(plan.lastReset) or 0) >= onlyStaleBefore then return end
         do
             local ds = plan.slots.dungeon
             for si = 1, #ds do
@@ -834,8 +837,10 @@ function WarbandNexus:CheckWeeklyReset()
     if list and #list > 0 then
         for i = 1, #list do
             local plan = list[i]
-            if plan and plan.type == PLAN_TYPES.WEEKLY_VAULT and plan.lastReset < threshold then
-                self:ResetWeeklyPlans()
+            if plan and plan.type == PLAN_TYPES.WEEKLY_VAULT and (tonumber(plan.lastReset) or 0) < threshold then
+                -- Reset only the stale plans: one stale plan used to wipe every vault plan, including
+                -- this week's progress and manual slot overrides on plans already reset.
+                self:ResetWeeklyPlans(threshold)
                 return
             end
         end
@@ -846,8 +851,8 @@ function WarbandNexus:CheckWeeklyReset()
     for _i = 1, #_plans do
         local plan = _plans[_i]
         if plan.type == "weekly_vault" then
-            if plan.lastReset < threshold then
-                self:ResetWeeklyPlans()
+            if (tonumber(plan.lastReset) or 0) < threshold then
+                self:ResetWeeklyPlans(threshold)
                 return
             end
         end

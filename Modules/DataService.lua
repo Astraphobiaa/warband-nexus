@@ -1531,8 +1531,11 @@ function WarbandNexus:UpdateProfessionData()
         if not newData or not next(newData) then return end
 
         local existingData = self.db.global.characters[key].professions
-        -- Slot-level merge: preserve existing slots if newData is missing one of them
-        if existingData and type(existingData) == "table" then
+        -- GetProfessions() returns every slot in one call. Once it reports a primary profession the
+        -- profession system is loaded, so a missing slot means "not learned" (dropped): trust the read.
+        -- The slot merge below only protects reads that returned no primary at all (still loading).
+        local newHasPrimary = (newData[1] ~= nil) or (newData[2] ~= nil)
+        if existingData and type(existingData) == "table" and not newHasPrimary then
             if existingData[1] and not newData[1] then
                 newData[1] = existingData[1]
             end
