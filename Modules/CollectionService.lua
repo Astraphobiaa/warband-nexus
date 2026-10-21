@@ -2603,8 +2603,7 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
     -- and use item info (name/icon) for the notification instead of species info.
     -- The NEW_PET_ADDED event will handle the authoritative collection detection when learned.
     if classID == 15 and subclassID == 2 then
-        -- C_Item.GetItemSpell (10.2.5+) with global fallback for older API signatures
-        local getItemSpell = (C_Item and C_Item.GetItemSpell) or _G.GetItemSpell
+        local getItemSpell = C_Item and C_Item.GetItemSpell
         local spellName, spellID = nil, nil
         if getItemSpell then
             spellName, spellID = getItemSpell(itemID)
@@ -3957,8 +3956,6 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             if not icon and spellID then
                 if C_Spell and C_Spell.GetSpellTexture then
                     icon = validIcon(C_Spell.GetSpellTexture(spellID))
-                elseif GetSpellTexture then
-                    icon = validIcon(GetSpellTexture(spellID))
                 end
             end
             if not icon then usedFallbackIcon = true end

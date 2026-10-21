@@ -295,15 +295,6 @@ local function ResolveMainStatFromSpecID(specID)
     if SPEC_MAIN_STAT[specID] then
         return SPEC_MAIN_STAT[specID]
     end
-    if C_SpecializationInfo and C_SpecializationInfo.GetSpecPrimaryStat then
-        local ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, C_SpecializationInfo, specID)
-        if not ok or code == nil then
-            ok, code = pcall(C_SpecializationInfo.GetSpecPrimaryStat, specID)
-        end
-        if ok and code ~= nil then
-            return PrimaryStatEnumToMainStatCode(code)
-        end
-    end
     return nil
 end
 
@@ -387,7 +378,7 @@ function WarbandNexus:GetCurrentCharacterMainStat()
     local specIndex = GetSpecialization and GetSpecialization()
     if not specIndex or not GetSpecializationInfo then return nil end
     -- Midnight+: GetSpecializationInfo slot indices for "primary stat enum" drift across patches.
-    -- Prefer global specID → SPEC_MAIN_STAT / C_SpecializationInfo.GetSpecPrimaryStat (same as offline GetCharacterMainStat).
+    -- Prefer global specID → SPEC_MAIN_STAT (same as offline GetCharacterMainStat).
     local specID = select(1, GetSpecializationInfo(specIndex))
     if specID and type(specID) == "number" and specID > 0 then
         local m = ResolveMainStatFromSpecID(specID)
@@ -1830,22 +1821,6 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
                     if #costs > 0 then
                         slotEntry.nextUpgradeCosts = costs
                     end
-                end
-            end
-            if not slotEntry.nextUpgradeCosts and C_ItemUpgrade.GetItemUpgradeCost then -- legacy; not in current API list
-                local rawCosts = C_ItemUpgrade.GetItemUpgradeCost(location, currUpgrade + 1) or {}
-                local costs = {}
-                for i = 1, #rawCosts do
-                    local entry = rawCosts[i]
-                    if entry.currencyID and (entry.amount or entry.cost) then
-                        costs[#costs + 1] = {
-                            currencyID = entry.currencyID,
-                            amount     = entry.amount or entry.cost,
-                        }
-                    end
-                end
-                if #costs > 0 then
-                    slotEntry.nextUpgradeCosts = costs
                 end
             end
         end

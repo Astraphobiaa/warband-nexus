@@ -3093,44 +3093,9 @@ end
 --[[
     How many crafts are possible from materials (same math as Recipe Companion: warband bank +
     all tracked characters' bags/banks). Uses limiting required reagent slots only; optional slots skipped.
-    Tries C_TradeSkillUI.GetRecipeReagentInfo when available (often matches profession list for current toon).
 ]]
 function WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
     if not recipeID or not C_TradeSkillUI then return nil end
-
-    local function tryBlizzardReagentLines()
-        if not C_TradeSkillUI.GetRecipeNumReagents or not C_TradeSkillUI.GetRecipeReagentInfo then
-            return nil
-        end
-        local nOk, num = pcall(C_TradeSkillUI.GetRecipeNumReagents, recipeID)
-        if not nOk or not num or num < 1 then return nil end
-
-        local minCraft = math.huge
-        local any = false
-        for idx = 1, num do
-            local ok, a, b, c, d = pcall(C_TradeSkillUI.GetRecipeReagentInfo, recipeID, idx)
-            if ok then
-                local req, have
-                if type(a) == "table" then
-                    local t = a
-                    req = tonumber(t.quantityRequired or t.count)
-                    have = tonumber(t.playerQuantity or t.quantityAvailable or t.quantityInInventory)
-                else
-                    -- Typical: name, icon, quantityRequired, quantityOnHand
-                    req = tonumber(c)
-                    have = tonumber(d)
-                end
-                if req and req > 0 then
-                    any = true
-                    minCraft = math.min(minCraft, math.floor((have or 0) / req))
-                end
-            end
-        end
-        if any and minCraft ~= math.huge then
-            return math.max(0, minCraft)
-        end
-        return nil
-    end
 
     local function sumItemAcrossTracked(itemID)
         if not itemID or not self.GetDetailedItemCountsFast then return 0 end
@@ -3205,11 +3170,6 @@ function WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
         if not haveLimiting then return nil end
         if minCraft == math.huge then return 0 end
         return math.max(0, math.floor(minCraft))
-    end
-
-    local apiCount = tryBlizzardReagentLines()
-    if apiCount ~= nil then
-        return apiCount
     end
 
     local n = fromSchematic(false)

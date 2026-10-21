@@ -1112,7 +1112,7 @@ local function CaptureOutgoingMail(recipient, subject, body)
 
     local now = GetTime()
     if (now - lastCapturedTime) < 0.05 and lastCapturedRecipient == recipient then
-        -- Prevent duplicate capture if both global SendMail and C_Mail.SendMail fired in same call
+        -- Prevent a duplicate capture of the same send
         return
     end
     lastCapturedTime = now
@@ -1273,8 +1273,5 @@ function WarbandNexus:InitializeMailSnapshotService()
     -- Hook SendMail to capture outgoing mail details before delivery
     if SendMail then
         hooksecurefunc("SendMail", CaptureOutgoingMail)
-    end
-    if C_Mail and C_Mail.SendMail then
-        pcall(hooksecurefunc, C_Mail, "SendMail", CaptureOutgoingMail)
     end
 end

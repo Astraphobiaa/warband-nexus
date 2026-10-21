@@ -2479,7 +2479,7 @@ end
 local function WalkFactionsForCompanion()
     -- Resolve the companion faction and return (factionID, currentValue, friendshipStanding).
     -- ID first (locale-independent, and immune to a collapsed faction header that
-    -- GetNumFactions would hide), then the enUS name walk as a last resort.
+    -- the index walk would hide), then the enUS name walk as a last resort.
     if not C_Reputation then return nil end
     local cachedID = ReputationCache._companionFactionID or ResolveCompanionFactionIDFromDelves()
     if cachedID then
@@ -2488,9 +2488,7 @@ local function WalkFactionsForCompanion()
     end
     local bestID, bestCur, bestFriend
 
-    local numFactions = (C_Reputation.GetNumFactions and C_Reputation.GetNumFactions())
-        or (GetNumFactions and GetNumFactions())
-        or 0
+    local numFactions = (C_Reputation.GetNumFactions and C_Reputation.GetNumFactions()) or 0
     for i = 1, numFactions do
         local fid, fname
         if C_Reputation.GetFactionDataByIndex then
@@ -2499,10 +2497,6 @@ local function WalkFactionsForCompanion()
             if d then
                 fid, fname = d.factionID, d.name
             end
-        end
-        if not fid and GetFactionInfo then
-            local n, _, _, _, _, _, _, _, _, _, _, _, _, id = GetFactionInfo(i)
-            fname, fid = n, id
         end
         if fid and fname and type(fname) == "string"
             and not (issecretvalue and issecretvalue(fname)) then

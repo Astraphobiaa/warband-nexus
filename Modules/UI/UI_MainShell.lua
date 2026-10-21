@@ -1852,9 +1852,6 @@ function ns.UIShell.CreateMainWindow(self)
         if C_AddOns and C_AddOns.GetAddOnMetadata then
             metaVer = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
         end
-        if (not metaVer or metaVer == "") and GetAddOnMetadata then
-            metaVer = GetAddOnMetadata(ADDON_NAME, "Version")
-        end
         if not metaVer or metaVer == "" then
             metaVer = "?"
         end

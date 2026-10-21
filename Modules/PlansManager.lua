@@ -1491,15 +1491,6 @@ function WarbandNexus:IsAchievementTracked(achievementID)
         end
     end
 
-    if GetTrackedAchievements then
-        local tracked = { GetTrackedAchievements() }
-        for i = 1, #tracked do
-            if tracked[i] == achievementID then
-                return true
-            end
-        end
-    end
-
     return false
 end
 
@@ -1516,18 +1507,6 @@ function WarbandNexus:ToggleAchievementTracking(achievementID)
         local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Manual) or 0
         local ok = pcall(contentTracking.ToggleTracking, 2, achievementID, stopType)
         toggled = ok == true
-    else
-        if trackedBefore then
-            if RemoveTrackedAchievement then
-                RemoveTrackedAchievement(achievementID)
-                toggled = true
-            end
-        else
-            if AddTrackedAchievement then
-                AddTrackedAchievement(achievementID)
-                toggled = true
-            end
-        end
     end
 
     if not toggled then return false end
@@ -2333,11 +2312,6 @@ function WarbandNexus:GetPlanChatLink(plan)
     end
 
     if t == "achievement" and plan.achievementID and type(plan.achievementID) == "number" then
-        if C_AchievementInfo and C_AchievementInfo.GetAchievementLink then
-            local ok, link = pcall(C_AchievementInfo.GetAchievementLink, plan.achievementID)
-            local s = SafeChatLinkString(ok and link)
-            if s then return s end
-        end
         if GetAchievementLink then
             local ok, link = pcall(GetAchievementLink, plan.achievementID)
             return SafeChatLinkString(ok and link)

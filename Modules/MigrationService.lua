@@ -697,12 +697,8 @@ function MigrationService:MigrateGenderField(db)
     if db.global.characters[currentKey] then
         local savedGender = db.global.characters[currentKey].gender
         
-        -- Detect current gender using C_PlayerInfo (most reliable)
+        -- Detect current gender (UnitSex: 2 = male, 3 = female)
         local detectedGender = UnitSex("player")
-        local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
-        if raceInfo and raceInfo.gender ~= nil then
-            detectedGender = (raceInfo.gender == 1) and 3 or 2
-        end
         
         -- Update if different or missing
         if not savedGender or savedGender ~= detectedGender then
