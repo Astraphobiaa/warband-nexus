@@ -1041,8 +1041,9 @@ end
 local function ChatLootAuthorIsPlayer(author)
     local playerName = UnitName("player")
     if not playerName or (issecretvalue and issecretvalue(playerName)) then return false end
-    if author == nil or author == "" then return true end
+    -- Secret check first: comparing a secret value (even with "") is itself disallowed.
     if issecretvalue and issecretvalue(author) then return false end
+    if author == nil or author == "" then return true end
     local authorBase = author:match("^([^%-]+)") or author
     return author == playerName or authorBase == playerName
 end

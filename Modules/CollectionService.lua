@@ -4058,10 +4058,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
                 local illusionInfo = C_TransmogCollection.GetIllusionInfo(id)
                 if illusionInfo then
                     illusionIcon = validIcon(illusionInfo.icon)
-                    -- Secondary source fallback from illusionInfo
-                    if (not sourceText or sourceText == "") and illusionInfo.sourceText then
-                        illusionSourceFallback = illusionInfo.sourceText
-                    end
+                    -- (TransmogIllusionInfo has no sourceText; GetIllusionStrings above is the only source.)
                 end
             end
             local resolvedSource = sourceText

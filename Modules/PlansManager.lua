@@ -728,8 +728,13 @@ function WarbandNexus:GetPlanDisplayName(plan)
                 for ii = 1, #illusions do
                     local illusionInfo = illusions[ii]
                     if illusionInfo.sourceID == plan.illusionID then
-                        if illusionInfo.name and illusionInfo.name ~= "" then
-                            return illusionInfo.name
+                        -- TransmogIllusionInfo carries no name; GetIllusionStrings does (12.1.5 API doc).
+                        if C_TransmogCollection.GetIllusionStrings then
+                            local okStr, illName = pcall(C_TransmogCollection.GetIllusionStrings, illusionInfo.sourceID)
+                            if okStr and type(illName) == "string" and illName ~= ""
+                                and not (issecretvalue and issecretvalue(illName)) then
+                                return illName
+                            end
                         end
                         break
                     end

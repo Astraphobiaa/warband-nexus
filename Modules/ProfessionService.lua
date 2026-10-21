@@ -1758,16 +1758,8 @@ local function QuestProgressComplete(questID)
         local ok, done = pcall(C_QuestLog.ReadyForTurnIn, questID)
         if ok and done == true then return true end
     end
-    -- Still in quest log and all objectives done (flag may lag after instance/combat).
-    if C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetInfo then
-        local ok, logIndex = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
-        if ok and logIndex and logIndex > 0 then
-            local ok2, info = pcall(C_QuestLog.GetInfo, logIndex)
-            if ok2 and type(info) == "table" and info.isComplete then
-                return true
-            end
-        end
-    end
+    -- (A QuestInfo.isComplete branch lived here; QuestInfo has no such field (12.1.5 API doc), so it
+    -- never fired. C_QuestLog.IsComplete / ReadyForTurnIn above already cover "in log, objectives done".)
     return false
 end
 
