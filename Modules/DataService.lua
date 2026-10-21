@@ -872,14 +872,16 @@ function WarbandNexus:ScheduleDeferredCharacterSave(wantFull)
 end
 
 --- Run a pending deferred full save (post-combat or logout).
-function WarbandNexus:FlushDeferredCharacterSave()
+---@param atLogout boolean|nil PLAYER_LOGOUT: light save only (no keystone / stats / PvE / gear re-scan
+---       during client teardown, where those APIs can read empty and would overwrite stored data).
+function WarbandNexus:FlushDeferredCharacterSave(atLogout)
     CancelCharacterSaveDebounce()
     if not pendingFullCharacterSave then
         return
     end
     pendingFullCharacterSave = false
     local ok, err = pcall(function()
-        self:SaveCurrentCharacterData({ bypassCombatDefer = true })
+        self:SaveCurrentCharacterData({ bypassCombatDefer = true, lightOnly = atLogout and true or nil })
     end)
     if ok then
         self._characterFullSavePending = nil
@@ -1120,6 +1122,15 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     local keystoneData = preserveMythicKey
     if not lightOnly and self.ScanMythicKeystone then
         keystoneData = self:ScanMythicKeystone()
+        -- A keystone never disappears mid-week (a run replaces it, it is never destroyed), so a "no key"
+        -- read while a key stored THIS week exists is an unready API (login burst), not a lost key.
+        if keystoneData == nil and type(preserveMythicKey) == "table" then
+            local stamp = tonumber(preserveMythicKey.scanTime)
+            local RS = ns.ResetService
+            if stamp and RS and RS.HasWeeklyResetOccurred and not RS.HasWeeklyResetOccurred(stamp) then
+                keystoneData = preserveMythicKey
+            end
+        end
     end
     
     if not lightOnly and self.SaveItemsCompressed and key then
@@ -1708,7 +1719,7 @@ function WarbandNexus:FlushDataServiceOnLogout()
         end
     end
     if self.FlushDeferredCharacterSave then
-        self:FlushDeferredCharacterSave()
+        self:FlushDeferredCharacterSave(true)
     end
     if self.UpdateCharacterGold then
         self:UpdateCharacterGold()
