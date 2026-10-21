@@ -249,6 +249,73 @@ do
     stub.world.completedQuests = liveQuests
 end
 
+-- Phases 8-10: PLAYER_LOGOUT teardown reads in the rest of the profession flush.
+local profInfoBySkillLine = {}
+local tradeSkillReady = false
+local recipeCategoryName = "Midnight"
+_G.C_TradeSkillUI = {
+    GetProfessionInfoBySkillLineID = function(id) return profInfoBySkillLine[id] end,
+    IsTradeSkillReady = function() return tradeSkillReady end,
+    GetProfessionChildSkillLineID = function() return 2906 end,
+    GetAllRecipeIDs = function() return { 501, 502 } end,
+    GetRecipeInfo = function(id) return { recipeID = id, name = "Recipe " .. id, categoryID = 900, learned = true, firstCraft = false } end,
+    GetCategoryInfo = function() return { name = recipeCategoryName, parentCategoryID = 0 } end,
+}
+
+print("Phase 8: One unready expansion line does not publish 0/0 over saved skill")
+do
+    local charData = WarbandNexus.db.global.characters["Player-01"]
+    charData.discoveredSkillLines = {
+        Alchemy = { { id = 2906, name = "Midnight Alchemy" }, { id = 2871, name = "Khaz Algar Alchemy" } },
+    }
+    charData.professionExpansions = {
+        Alchemy = {
+            { name = "Midnight Alchemy", skillLevel = 100, maxSkillLevel = 100, skillLineID = 2906 },
+            { name = "Khaz Algar Alchemy", skillLevel = 100, maxSkillLevel = 100, skillLineID = 2871 },
+        },
+    }
+    profInfoBySkillLine[2906] = { skillLevel = 0, maxSkillLevel = 0, professionName = "Midnight Alchemy" }
+    profInfoBySkillLine[2871] = { skillLevel = 100, maxSkillLevel = 100, professionName = "Khaz Algar Alchemy" }
+
+    WarbandNexus:FlushProfessionOnLogout()
+    local list = charData.professionExpansions.Alchemy
+    local midnight
+    for i = 1, #list do if list[i].skillLineID == 2906 then midnight = list[i] end end
+    assert_eq(#list, 2, "both expansion lines kept")
+    assert_eq(midnight and midnight.maxSkillLevel, 100, "Midnight line keeps 100 max when it reads 0/0 at logout")
+    assert_eq(midnight and midnight.skillLevel, 100, "Midnight line keeps 100 skill when it reads 0/0 at logout")
+end
+
+print("Phase 9: Unreadable catch-up currency keeps the saved catch-up entry")
+do
+    local charData = WarbandNexus.db.global.characters["Player-01"]
+    local wk = charData.professionData.bySkillLine[2906].weeklyKnowledge
+    wk.catchUp = { current = 50, total = 200, source = "api_currency" }
+    wk.lastUpdate = time()
+    -- wow_stub: C_CurrencyInfo.GetCurrencyInfo returns nil (teardown / not loaded)
+    WarbandNexus:FlushProfessionOnLogout()
+    local alch = WarbandNexus:GetCharacterWeeklyKnowledge(charData, 2906)
+    assert_eq(alch.catchUp.current, 50, "catch-up current kept when the currency reads nil")
+    assert_eq(alch.catchUp.total, 200, "catch-up total kept when the currency reads nil")
+end
+
+print("Phase 10: Recipe summary is not replaced by an empty scan at logout")
+do
+    local charData = WarbandNexus.db.global.characters["Player-01"]
+    charData.recipes = charData.recipes or {}
+    charData.recipes[2906] = {
+        skillLineID = 2906, totalCount = 56, knownCount = 43,
+        firstCraftDoneCount = 36, firstCraftTotalCount = 49,
+    }
+    recipeCategoryName = "Unloaded"          -- category data not ready: no Midnight recipes match
+    tradeSkillReady = true
+    WarbandNexus:OnTradeSkillListUpdate()    -- leaves a pending list update (0.5s debounce)
+    WarbandNexus:FlushProfessionOnLogout()
+    assert_eq(charData.recipes[2906].totalCount, 56, "recipe total kept after an empty logout scan")
+    assert_eq(charData.recipes[2906].firstCraftDoneCount, 36, "first-craft progress kept after an empty logout scan")
+    tradeSkillReady = false
+end
+
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))
 if failed > 0 then
     error("Profession weekly knowledge suite failed with " .. failed .. " failure(s).")

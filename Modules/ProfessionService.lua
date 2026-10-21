@@ -1341,10 +1341,27 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
         if skillLines and #skillLines > 0 then
             local expansions = {}
             local hasValidSkill = false
+            local existingData = charData.professionExpansions[profName]
             for sli = 1, #skillLines do
                 local sl = skillLines[sli]
                 local profOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, sl.id)
-                if profOk and profInfo then
+                -- Per-line guard (login burst, PLAYER_LOGOUT teardown): a line that reads 0/0 or not at
+                -- all keeps its previous entry. The whole-list guard below only catches the case where
+                -- EVERY line is unready; one valid line used to publish the others as 0/0 or drop them.
+                local prevLine
+                if (not profOk or not profInfo or (tonumber(profInfo.maxSkillLevel) or 0) <= 0)
+                    and type(existingData) == "table" then
+                    for ei = 1, #existingData do
+                        local e = existingData[ei]
+                        if e and e.skillLineID == sl.id and (tonumber(e.maxSkillLevel) or 0) > 0 then
+                            prevLine = e
+                            break
+                        end
+                    end
+                end
+                if prevLine then
+                    expansions[#expansions + 1] = prevLine
+                elseif profOk and profInfo then
                     local skillLevel    = profInfo.skillLevel or 0
                     local maxSkillLevel = profInfo.maxSkillLevel or 0
                     local updatedName = SafeAPIString(profInfo.professionName) or sl.name
@@ -1374,7 +1391,6 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
             -- On login the API can return profInfo with 0/0 skill levels before the
             -- profession system is fully loaded, which would replace good saved data.
             -- If existing data already exists and new data has no valid skills, keep the old data.
-            local existingData = charData.professionExpansions[profName]
             if #expansions > 0 and (hasValidSkill or not existingData) then
                 charData.professionExpansions[profName] = expansions
             end
@@ -1903,6 +1919,15 @@ local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineI
             catchUpTotal = currencyInfo.maxQuantity or 0
         end
     end
+    -- Unreadable currency (nil info / 0 cap) keeps the previous catch-up entry.
+    if catchUpTotal <= 0 then
+        local prevWk = bucket.weeklyKnowledge
+        local prevCatchUp = type(prevWk) == "table" and prevWk.catchUp
+        if type(prevCatchUp) == "table" and (tonumber(prevCatchUp.total) or 0) > 0 then
+            catchUpCurrent = tonumber(prevCatchUp.current) or 0
+            catchUpTotal = tonumber(prevCatchUp.total) or 0
+        end
+    end
 
     local progress = {
         firstCraft  = BuildProgressEntry(firstCraftCurrent, firstCraftTotal, "api_recipe"),
@@ -2096,6 +2121,11 @@ local function CollectRecipeSummaryData()
     end
 
     local prevRecipe = charData.recipes and charData.recipes[skillLineID]
+    -- 0 Midnight recipes while a populated summary exists = category data not ready (or teardown);
+    -- persisting it zeroed known/first-craft counts and the weekly firstCraft progress.
+    if totalCount == 0 and prevRecipe and (tonumber(prevRecipe.totalCount) or 0) > 0 then
+        return
+    end
     local recipeDirty = not prevRecipe
         or prevRecipe.totalCount ~= totalCount
         or prevRecipe.knownCount ~= knownCount
@@ -4187,7 +4217,9 @@ function WarbandNexus:FlushProfessionOnLogout()
     tradeSkillListUpdatePending = false
     knowledgeRefreshPending = false
 
-    if windowOpen then
+    -- Only flush work a debounce still owed. An open window alone is no reason to re-read every
+    -- C_TradeSkillUI collector during PLAYER_LOGOUT teardown; live events already persisted it.
+    if windowOpen and listPending then
         RunAllProfessionCollectors()
     end
 
