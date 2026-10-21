@@ -230,7 +230,19 @@ local function CollectCharacterDuplicateRenames(charsTbl)
                     local existingTime = existingData and existingData.lastSeen or 0
                     local newTime = charData.lastSeen or 0
                     duplicateCount = duplicateCount + 1
-                    if newTime > existingTime then
+                    -- GUID-first: the GUID-indexed row survives a Name-Realm duplicate regardless of
+                    -- lastSeen. A login-race Name-Realm row is the newest by construction, and a rename
+                    -- drops the loser's buckets wherever the survivor already has one, so "newest wins"
+                    -- discarded the GUID row's bags / bank / gear for a near-empty snapshot.
+                    local newIsGuid = type(charKey) == "string" and charKey:find("^Player%-") ~= nil
+                    local existingIsGuid = type(existingKey) == "string" and existingKey:find("^Player%-") ~= nil
+                    local preferNew
+                    if newIsGuid ~= existingIsGuid then
+                        preferNew = newIsGuid
+                    else
+                        preferNew = newTime > existingTime
+                    end
+                    if preferNew then
                         renames[existingKey] = charKey
                         toRemove[existingKey] = true
                         seen[mergeKey] = charKey
