@@ -2075,8 +2075,8 @@ local function CollectRecipeSummaryData()
             local inSkillLine
             if C_TradeSkillUI.IsRecipeInSkillLine then
                 local okSl, isIn = pcall(C_TradeSkillUI.IsRecipeInSkillLine, recipeID, skillLineID)
-                if okSl and isIn ~= nil and not (issecretvalue and issecretvalue(isIn)) then
-                    inSkillLine = (isIn == true)
+                if okSl and not (issecretvalue and issecretvalue(isIn)) and type(isIn) == "boolean" then
+                    inSkillLine = isIn
                 end
             end
             if inSkillLine == nil then

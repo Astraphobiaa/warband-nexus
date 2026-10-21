@@ -29,8 +29,9 @@ FLAVORS: dict[str, dict] = {
         # Forever has no Warband bank, so the retail Notes ("Modern Warband bank management ...")
         # must not be reused. Fill in the player-facing text before generating.
         "notes": None,
-        # Sets ns.FLAVOR_HINT before anything reads it, so it loads before the first module.
-        "extra_files_before_modules": ["Modules\\Flavor_Camelot.lua"],
+        # Sets ns.FLAVOR_HINT before anything reads it, so it is the first file the TOC loads
+        # (ahead of libraries, locales and Core.lua).
+        "extra_files_first": ["Modules\\Flavor_Camelot.lua"],
     },
 }
 
@@ -49,8 +50,9 @@ def render(flavor: str, spec: dict, main_text: str) -> str:
             line = "## Interface: " + spec["interface"]
         elif line.startswith("## Notes:") and spec.get("notes"):
             line = "## Notes: " + spec["notes"]
-        elif not inserted and line.startswith("Modules\\"):
-            for extra in spec.get("extra_files_before_modules", []):
+        elif not inserted and line.strip() and not line.startswith("#"):
+            # First file entry of the main TOC: the flavor's extra files load before it.
+            for extra in spec.get("extra_files_first", []):
                 out.append(extra)
             inserted = True
         out.append(line)
@@ -59,7 +61,7 @@ def render(flavor: str, spec: dict, main_text: str) -> str:
 
 def missing_decisions(spec: dict) -> list[str]:
     problems = [f"'{k}' is not decided yet" for k, v in spec.items() if v is None]
-    for extra in spec.get("extra_files_before_modules", []):
+    for extra in spec.get("extra_files_first", []):
         if not (ROOT / extra.replace("\\", "/")).is_file():
             problems.append(f"extra file {extra} does not exist")
     return problems

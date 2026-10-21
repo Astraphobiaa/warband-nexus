@@ -740,6 +740,13 @@ function WarbandNexus:ScanCurrentCharacterMailSnapshot(opts)
     end
     local inboxCount = (totalItems > numItems) and totalItems or numItems
 
+    -- At MAIL_CLOSED an empty read while a non-empty snapshot exists is not trusted (opened and
+    -- closed before the inbox finished loading): keep the snapshot.
+    if opts.fromClose and inboxCount == 0 and type(row.mailSnapshot) == "table"
+        and (tonumber(row.mailSnapshot.count) or 0) > 0 then
+        return true
+    end
+
     local messages = {}
     if numItems > 0 then
         messages = BuildMessagesFromInbox(numItems)
@@ -1267,7 +1274,7 @@ function WarbandNexus:InitializeMailSnapshotService()
         -- now, while the inbox is still the live one, instead of after the close.
         if M.forcedScanPending and WarbandNexus.ScanCurrentCharacterMailSnapshot then
             M.forcedScanPending = false
-            WarbandNexus:ScanCurrentCharacterMailSnapshot({ forceInbox = true })
+            WarbandNexus:ScanCurrentCharacterMailSnapshot({ forceInbox = true, fromClose = true })
         end
         M.mailboxOpen = false
         wipe(pendingOutgoingMails)

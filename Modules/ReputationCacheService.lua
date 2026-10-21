@@ -1784,13 +1784,16 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
             db.characters[currentCharKey] = {}
         end
         db.characters[currentCharKey][factionID] = compact
-        -- A faction once seen as account-wide (transient read or a patch moving it back) must leave
-        -- db.accountWide, or every scan keeps purging it from all character buckets.
+        -- See UpdateAll: an account-wide row is demoted only after a second per-character read.
         local numAw = tonumber(factionID)
-        db.accountWide[factionID] = nil
-        if numAw then
-            db.accountWide[numAw] = nil
-            db.accountWide[tostring(numAw)] = nil
+        local aw = db.accountWide[factionID] or (numAw and (db.accountWide[numAw] or db.accountWide[tostring(numAw)]))
+        if type(aw) == "table" then
+            if aw._demoteSeen then
+                db.accountWide[factionID] = nil
+                if numAw then db.accountWide[numAw] = nil; db.accountWide[tostring(numAw)] = nil end
+            else
+                aw._demoteSeen = true
+            end
         end
     end
     
@@ -1861,9 +1864,18 @@ function ReputationCache:UpdateAll(normalizedDataArray)
             else
                 db.characters[currentCharKey][numFactionID] = compact
                 charCount = charCount + 1
-                -- Per-character now: drop a stale account-wide row (see UpdateFaction).
-                db.accountWide[numFactionID] = nil
-                if tonumber(numFactionID) then db.accountWide[tostring(numFactionID)] = nil end
+                -- A faction stored account-wide that now reads per-character: demote it on the SECOND
+                -- such scan (one misread must not strip every other character of a warband rep). The
+                -- first read flags the row; the purge below then spares this character's fresh row.
+                local aw = db.accountWide[numFactionID] or db.accountWide[tostring(numFactionID)]
+                if type(aw) == "table" then
+                    if aw._demoteSeen then
+                        db.accountWide[numFactionID] = nil
+                        db.accountWide[tostring(numFactionID)] = nil
+                    else
+                        aw._demoteSeen = true
+                    end
+                end
             end
             
             -- Store faction-level info in shared factionInfo (once per factionID)
@@ -1891,8 +1903,12 @@ function ReputationCache:UpdateAll(normalizedDataArray)
             if nid then seenThisScan[nid] = true; seenThisScan[tostring(nid)] = true end
         end
     end
+    -- Bounded: a row not re-read for 7 days is no longer carried (a faction really lost, e.g. the
+    -- guild faction after leaving, or one removed in a patch, ages out instead of living forever).
+    local carryNow = time()
     for fid, row in pairs(previousCharFactions) do
-        if not seenThisScan[fid] and db.characters[currentCharKey][fid] == nil then
+        if not seenThisScan[fid] and db.characters[currentCharKey][fid] == nil
+            and type(row) == "table" and (carryNow - (tonumber(row._scanTime) or 0)) < 7 * 86400 then
             db.characters[currentCharKey][fid] = row
         end
     end
@@ -1907,12 +1923,15 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     local purged = 0
     -- Build account-wide lookup with BOTH key types
     local awLookup = {}
-    for fid in pairs(db.accountWide) do
-        awLookup[fid] = true
-        local nid = tonumber(fid)
-        if nid then
-            awLookup[nid] = true
-            awLookup[tostring(nid)] = true
+    for fid, awRow in pairs(db.accountWide) do
+        -- A row flagged for demotion (read per-character this scan) must not purge that fresh row.
+        if not (type(awRow) == "table" and awRow._demoteSeen) then
+            awLookup[fid] = true
+            local nid = tonumber(fid)
+            if nid then
+                awLookup[nid] = true
+                awLookup[tostring(nid)] = true
+            end
         end
     end
     for charKey, charFactions in pairs(db.characters) do

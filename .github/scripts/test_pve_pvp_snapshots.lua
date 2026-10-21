@@ -125,8 +125,11 @@ do
     GetCurrentArenaSeason = function() return 0 end
     local store = { brackets = { ["3v3"] = { rating = 1850, seasonBest = 1900, seasonPlayed = 120 } }, honor = {} }
     WarbandNexus.db.global.pvpProgress = { [KEY] = store }
+    store.ratedUpdated = RESET - 3600                  -- last week's snapshot
+    GetCurrentArenaSeason = function() return 41 end
     ns.PvPService:SnapshotRatedInfo(true)              -- T+5 login / pre-match fallback
     assert_eq(store.brackets["3v3"].rating, 1850, "fallback keeps the stored rating")
+    assert_eq(store.ratedUpdated, RESET - 3600, "a pass with every bracket skipped does not refresh the weekly stamp")
     ns.PvPService:SnapshotRatedInfo(nil, true)         -- authoritative server reply
     assert_eq(store.brackets["3v3"].rating, 0, "the server reply may still reset it")
 end

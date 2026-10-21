@@ -10,7 +10,8 @@
        manual slot overrides on the others).
     4. The mail snapshot was rescanned with forceInbox after MAIL_CLOSED, when the inbox API is not a
        reliable source; a pending forced scan now runs at the close event instead.
-    5. UpdateProfessionData kept a dropped profession forever (slot merge on every read).
+    5. UpdateProfessionData kept a dropped profession forever (slot merge on every read); it is now
+       dropped after two reads 60s apart (outside the login burst) both miss it.
     6. The money-log and PvP-statistics reset buttons now confirm first (static check: UI buttons).
 
     Loads the shipped modules under wow_stub.lua.
@@ -104,11 +105,12 @@ do
     assert_eq(WarbandNexus:RestoreCacheBackup("reputation"), true, "restore succeeds")
     assert_eq(G.reputationData.version, 7, "restore reverts the invalidation")
     assert_eq(G.reputationData.lastScan, 1234, "restore reverts lastScan")
-    G.cacheBackups.pve = { savedAt = 1, data = { lastScan = 55, big = { 1, 2, 3 } } }
+    G.cacheBackups.pve = { savedAt = 1, data = { version = 3, lastScan = 55, big = { 1, 2, 3 } } }
     assert_eq(type(ns.MigrationService.MigrateSlimCacheBackupsV2), "function", "backup slimming migration exists")
     if ns.MigrationService.MigrateSlimCacheBackupsV2 then ns.MigrationService:MigrateSlimCacheBackupsV2(WarbandNexus.db) end
     assert_eq(G.cacheBackups.pve.data, nil, "migration strips the old data copy")
     assert_eq(G.cacheBackups.pve.lastScan, 55, "migration keeps the restorable lastScan")
+    assert_eq(G.cacheBackups.pve.version, 3, "migration keeps the restorable version")
 end
 
 print("Phase 2: The character-limit prune tells listeners")
@@ -155,21 +157,62 @@ do
     stub.Advance(1)
     local snap = G.characters[KEY].mailSnapshot
     assert_eq(snap and snap.count, 3, "snapshot kept after MAIL_CLOSED (no inbox re-read)")
+
+    -- Opened, an inbox update queued a forced scan, then closed before it ran with an empty read.
+    handlers.MAIL_SHOW()
+    handlers.MAIL_INBOX_UPDATE()
+    handlers.MAIL_CLOSED()
+    stub.Advance(1)
+    snap = G.characters[KEY].mailSnapshot
+    assert_eq(snap and snap.count, 3, "empty read at the close does not wipe the snapshot")
 end
 
-print("Phase 5: A dropped profession leaves the stored professions")
+print("Phase 5: A profession is dropped only after two reads 60s apart report it missing")
 do
-    G.characters[KEY] = { name = "Tester", isTracked = true,
-        professions = { [1] = { name = "Tailoring", skillLine = 197 }, [2] = { name = "Mining", skillLine = 186 } } }
-    WarbandNexus.CollectProfessionData = function() return { [1] = { name = "Tailoring", skillLine = 197 } } end
+    local function seedRow()
+        G.characters[KEY] = { name = "Tester", isTracked = true,
+            professions = { [1] = { name = "Tailoring", skillLine = 197 }, [2] = { name = "Mining", skillLine = 186 } },
+            professionExpansions = { Tailoring = { {} }, Mining = { {} } },
+            discoveredSkillLines = { Tailoring = { { id = 2918 } }, Mining = { { id = 2916 } } },
+            knowledgeData = { Mining = {} }, concentration = {} }
+        return G.characters[KEY]
+    end
+    WarbandNexus._wnSessionStartedAt = now - 600       -- well into the session
+    local onlyTailoring = function() return { [1] = { name = "Tailoring", skillLine = 197 } } end
+    local both = function() return { [1] = { name = "Tailoring", skillLine = 197 }, [2] = { name = "Mining", skillLine = 186 } } end
+
+    local row = seedRow()
+    WarbandNexus.CollectProfessionData = onlyTailoring
     WarbandNexus:UpdateProfessionData()
-    local profs = G.characters[KEY].professions
-    assert_eq(profs[1] and profs[1].name, "Tailoring", "kept profession stays")
-    assert_eq(profs[2], nil, "dropped profession removed")
-    WarbandNexus.CollectProfessionData = function() return { cooking = { name = "Cooking" } } end
+    assert_eq(row.professions[2] and row.professions[2].name, "Mining", "one partial read keeps the profession")
+
+    now = now + 30
     WarbandNexus:UpdateProfessionData()
-    assert_eq(G.characters[KEY].professions[1] and G.characters[KEY].professions[1].name, "Tailoring",
-        "a read without primaries (still loading) keeps the stored primaries")
+    assert_eq(row.professions[2] and row.professions[2].name, "Mining", "a second read under 60s later still keeps it")
+
+    now = now + 40                                      -- 70s after the first missing read
+    WarbandNexus:UpdateProfessionData()
+    assert_eq(row.professions[2], nil, "confirmed missing: dropped profession removed")
+    assert_eq(row.professionExpansions.Mining, nil, "its stores purged, so Heal cannot rebuild it")
+    assert_eq(row.professions[1] and row.professions[1].name, "Tailoring", "kept profession stays")
+
+    row = seedRow()
+    WarbandNexus.CollectProfessionData = onlyTailoring
+    WarbandNexus:UpdateProfessionData()                 -- candidate
+    WarbandNexus.CollectProfessionData = both
+    WarbandNexus:UpdateProfessionData()                 -- reappears
+    now = now + 120
+    WarbandNexus.CollectProfessionData = onlyTailoring
+    WarbandNexus:UpdateProfessionData()                 -- new candidate, not a confirmation
+    assert_eq(row.professions[2] and row.professions[2].name, "Mining", "a profession that reappeared is not dropped")
+
+    row = seedRow()
+    WarbandNexus._wnSessionStartedAt = now - 5          -- login burst: partial reads do not count
+    WarbandNexus:UpdateProfessionData()
+    now = now + 90
+    WarbandNexus._wnSessionStartedAt = now - 10
+    WarbandNexus:UpdateProfessionData()
+    assert_eq(row.professions[2] and row.professions[2].name, "Mining", "reads in the first 30s of a session never drop")
 end
 
 print("Phase 6: Irreversible reset buttons confirm first")

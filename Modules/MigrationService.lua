@@ -2012,6 +2012,7 @@ function MigrationService:MigrateSlimCacheBackupsV2(db)
             if type(entry) == "table" then
                 local data = entry.data
                 if type(data) == "table" and entry.version == nil and entry.lastScan == nil then
+                    entry.version = data.version
                     entry.lastScan = data.lastScan
                 end
                 entry.data = nil

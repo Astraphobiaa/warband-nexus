@@ -72,13 +72,16 @@ local function fac(id, value, accountWide)
 end
 local function rdb() return WarbandNexus.db.global.reputationData end
 
-print("Phase 1: A faction that turns per-character leaves db.accountWide")
+print("Phase 1: A faction that turns per-character leaves db.accountWide after a second scan")
 do
     RC:UpdateAll({ fac(100, 50, true), fac(200, 10) })
     assert_eq(rdb().accountWide[100] ~= nil, true, "faction 100 stored account-wide")
     RC:UpdateAll({ fac(100, 60, false), fac(200, 11) })
-    assert_eq(rdb().accountWide[100], nil, "faction 100 removed from accountWide once per-character")
+    assert_eq(rdb().accountWide[100] ~= nil, true, "one per-character read does not strip the account-wide row")
     assert_eq(rdb().characters[KEY][100] and rdb().characters[KEY][100].currentValue, 60, "per-character row kept, not purged")
+    RC:UpdateAll({ fac(100, 61, false), fac(200, 11) })
+    assert_eq(rdb().accountWide[100], nil, "second per-character read removes it from accountWide")
+    assert_eq(rdb().characters[KEY][100] and rdb().characters[KEY][100].currentValue, 61, "per-character row still kept")
 end
 
 print("Phase 2: A partial scan keeps the factions it did not return")
@@ -89,6 +92,15 @@ do
     assert_eq(bucket[100] and bucket[100].currentValue, 62, "re-read faction updated")
     assert_eq(bucket[200] and bucket[200].currentValue, 12, "missing faction 200 carried over")
     assert_eq(bucket[300] and bucket[300].currentValue, 400, "missing faction 300 carried over")
+end
+
+print("Phase 2b: A faction not re-read for 7 days stops being carried over")
+do
+    local bucket = rdb().characters[KEY]
+    bucket[300]._scanTime = time() - 8 * 86400
+    RC:UpdateAll({ fac(100, 63) })
+    assert_eq(rdb().characters[KEY][300], nil, "8-day-old unread faction ages out")
+    assert_eq(rdb().characters[KEY][200] ~= nil, true, "recently read faction still carried")
 end
 
 print("Phase 3: A scan still owed at logout is marked for the next login")

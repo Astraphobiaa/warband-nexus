@@ -1727,6 +1727,12 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
                             Utilities:SafeLoadAddOn("Blizzard_EncounterJournal")
                         end
                     data.encounters = {}
+                    -- Raw API fields can be secret (difficultyID, encounter IDs); never persist a secret.
+                    -- issecretvalue(nil) is false, so no nil test (comparing a secret is itself forbidden).
+                    local function plain(v)
+                        if issecretvalue and issecretvalue(v) then return nil end
+                        return v
+                    end
                     for ei = 1, #encounters do
                         local enc = encounters[ei]
                         local encName, instanceID
@@ -1760,11 +1766,6 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
                         if issecretvalue and encName and issecretvalue(encName) then encName = nil end
                         if issecretvalue and instanceName and issecretvalue(instanceName) then instanceName = nil end
                         if issecretvalue and diffName and issecretvalue(diffName) then diffName = nil end
-                        -- Raw API fields can be secret (difficultyID, encounter IDs); never persist a secret.
-                        local function plain(v)
-                            if v ~= nil and issecretvalue and issecretvalue(v) then return nil end
-                            return v
-                        end
                         data.encounters[ei] = {
                             encounterID = plain(enc.encounterID),
                             bestDifficulty = bestDiff,

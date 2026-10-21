@@ -168,6 +168,7 @@ function PvPService:SnapshotRatedInfo(skipEmit, authoritative)
     if not store then return end
 
     local changed = false
+    local bracketWritten = false
     for i = 1, #RATED_BRACKETS do
         local b = RATED_BRACKETS[i]
         if GetPersonalRatedInfo then
@@ -203,6 +204,8 @@ function PvPService:SnapshotRatedInfo(skipEmit, authoritative)
                 row.roundsWeeklyWon = SafeNum(roundsWeeklyWon) or row.roundsWeeklyWon
                 store.brackets[b.key] = row
                 changed = true
+                -- Only a read carrying real values (or the server reply) proves the stats are current.
+                if authoritative or not incomingEmpty then bracketWritten = true end
             end
         end
     end
@@ -219,7 +222,10 @@ function PvPService:SnapshotRatedInfo(skipEmit, authoritative)
     end
     if changed then
         store.lastUpdated = time()
-        store.ratedUpdated = time() -- weekly-reset staleness stamp (IsRatedWeeklyStale)
+        -- Weekly-reset staleness stamp (IsRatedWeeklyStale): only a real bracket write may refresh it.
+        -- A season-number-only pass (every bracket skipped as an unready read) must not make last
+        -- week's weekly numbers look current.
+        if bracketWritten then store.ratedUpdated = time() end
         if not skipEmit then EmitUpdated() end
     end
 end

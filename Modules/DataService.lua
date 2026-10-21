@@ -1514,6 +1514,9 @@ end
 --[[
     Update only profession data (lightweight — names, icons, skill levels)
 ]]
+-- Session start (addon load = login / reload): profession reads in the first seconds can be partial.
+WarbandNexus._wnSessionStartedAt = WarbandNexus._wnSessionStartedAt or time()
+
 function WarbandNexus:UpdateProfessionData()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
     local success, err = pcall(function()
@@ -1530,16 +1533,59 @@ function WarbandNexus:UpdateProfessionData()
         -- before the profession system is loaded or during teardown, which destroys saved data.
         if not newData or not next(newData) then return end
 
-        local existingData = self.db.global.characters[key].professions
-        -- GetProfessions() returns every slot in one call. Once it reports a primary profession the
-        -- profession system is loaded, so a missing slot means "not learned" (dropped): trust the read.
-        -- The slot merge below only protects reads that returned no primary at all (still loading).
-        local newHasPrimary = (newData[1] ~= nil) or (newData[2] ~= nil)
-        if existingData and type(existingData) == "table" and not newHasPrimary then
-            if existingData[1] and not newData[1] then
+        local row = self.db.global.characters[key]
+        local existingData = row.professions
+        -- Dropped-profession detection. GetProfessions() can return 1 of 2 primaries while the
+        -- profession system loads, so one read missing a profession proves nothing, and the slot
+        -- merge below keeps it. A primary is only treated as unlearned when two reads at least
+        -- 60s apart, both taken 30s+ into the session, report it missing; then its slot is not
+        -- merged back and its stores are purged (HealCharacterProfessions rebuilds from those).
+        local confirmedDrop = {}
+        do
+            local now = time()
+            local sessionAge = now - (WarbandNexus._wnSessionStartedAt or now)
+            local rawPrimary = {}
+            for si = 1, 2 do
+                local p = newData[si]
+                if p and type(p.name) == "string" and not (issecretvalue and issecretvalue(p.name)) then
+                    rawPrimary[p.name] = true
+                end
+            end
+            local pending = row.professionDropPending
+            if type(pending) == "table" then
+                for name in pairs(pending) do
+                    if rawPrimary[name] then pending[name] = nil end   -- reappeared: not dropped
+                end
+            end
+            if next(rawPrimary) and sessionAge >= 30 and type(existingData) == "table" then
+                for si = 1, 2 do
+                    local old = existingData[si]
+                    local name = old and old.name
+                    if type(name) == "string" and name ~= "" and not rawPrimary[name]
+                        and not (issecretvalue and issecretvalue(name)) then
+                        pending = row.professionDropPending or {}
+                        row.professionDropPending = pending
+                        local firstSeen = tonumber(pending[name])
+                        if not firstSeen then
+                            pending[name] = now
+                        elseif now - firstSeen >= 60 then
+                            confirmedDrop[name] = true
+                            pending[name] = nil
+                        end
+                    end
+                end
+            end
+            if type(row.professionDropPending) == "table" and not next(row.professionDropPending) then
+                row.professionDropPending = nil
+            end
+        end
+
+        -- Slot-level merge: preserve existing slots if newData is missing one of them
+        if existingData and type(existingData) == "table" then
+            if existingData[1] and not newData[1] and not confirmedDrop[existingData[1].name or ""] then
                 newData[1] = existingData[1]
             end
-            if existingData[2] and not newData[2] then
+            if existingData[2] and not newData[2] and not confirmedDrop[existingData[2].name or ""] then
                 newData[2] = existingData[2]
             end
             if existingData.cooking and not newData.cooking then
@@ -1576,6 +1622,23 @@ function WarbandNexus:UpdateProfessionData()
                     end
                 end
             end
+        end
+
+        if next(confirmedDrop) then
+            -- Purge every store HealCharacterProfessions recovers a slot from, or it puts it back.
+            for name in pairs(confirmedDrop) do
+                if type(row.professionExpansions) == "table" then row.professionExpansions[name] = nil end
+                if type(row.discoveredSkillLines) == "table" then row.discoveredSkillLines[name] = nil end
+                if type(row.professionEquipment) == "table" then row.professionEquipment[name] = nil end
+                if type(row.concentration) == "table" then row.concentration[name] = nil end
+                if type(row.knowledgeData) == "table" then row.knowledgeData[name] = nil end
+                if type(row.recipes) == "table" then
+                    for slID, rec in pairs(row.recipes) do
+                        if type(rec) == "table" and rec.professionName == name then row.recipes[slID] = nil end
+                    end
+                end
+            end
+            changed = true
         end
 
         ns._professionDataReady = true
