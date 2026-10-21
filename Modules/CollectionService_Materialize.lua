@@ -40,6 +40,30 @@ end
 ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
 ns.ResetBlizzardCollectionsLoadState = ResetBlizzardCollectionsLoadState
 
+-- Player's journal search text, so scans that clear the search can put it back.
+-- C_ToyBox.GetFilterString and C_MountJournal.GetSearch do not exist in 12.1.5 (only the setters do);
+-- Blizzard_Collections keeps the text in ToyBox.searchString / MountJournal.searchBox.
+local function ReadSearchText(text)
+    if issecretvalue and issecretvalue(text) then return "" end
+    return type(text) == "string" and text or ""
+end
+local function GetToyBoxSearchText()
+    local box = _G.ToyBox
+    if type(box) ~= "table" then return "" end
+    if box.searchString ~= nil then return ReadSearchText(box.searchString) end
+    local edit = box.searchBox
+    if not (edit and edit.GetText) then return "" end
+    local ok, text = pcall(edit.GetText, edit)
+    return ok and ReadSearchText(text) or ""
+end
+local function GetMountJournalSearchText()
+    local journal = _G.MountJournal
+    local edit = type(journal) == "table" and journal.searchBox
+    if not (edit and edit.GetText) then return "" end
+    local ok, text = pcall(edit.GetText, edit)
+    return ok and ReadSearchText(text) or ""
+end
+
 ---Chunked pet journal prep for BuildFullCollectionData (replaces synchronous COLLECTION_CONFIGS.pet.iterator).
 ---Spreads SetPetSourceChecked / GetPetInfoByIndex work across frames using FRAME_BUDGET_MS.
 ---@param budgetMs number
@@ -220,8 +244,7 @@ local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
             EnsureBlizzardCollectionsLoaded()
             state.origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
             state.origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-            state.origFilterString = (C_ToyBox.GetFilterString and C_ToyBox.GetFilterString()) or ""
-            if _iv and state.origFilterString and _iv(state.origFilterString) then state.origFilterString = "" end
+            state.origFilterString = GetToyBoxSearchText()
             if InCombatLockdown() then
                 state.toyToSource = {}
                 state.phase = "prep_list_filters"
@@ -343,6 +366,8 @@ local Mat = {
     ResetBlizzardCollectionsLoadState = ResetBlizzardCollectionsLoadState,
     PetJournalBuildMaterializeStep = PetJournalBuildMaterializeStep,
     ToyBoxBuildMaterializeStep = ToyBoxBuildMaterializeStep,
+    GetToyBoxSearchText = GetToyBoxSearchText,
+    GetMountJournalSearchText = GetMountJournalSearchText,
 }
 ns.CollectionMaterialize = Mat
 ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded

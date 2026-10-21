@@ -1374,7 +1374,7 @@ function WarbandNexus:GetToysGroupedBySourceType()
     end
     local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
     local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-    local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+    local origFilterString = Mat.GetToyBoxSearchText()
     local origSourceFilters = {}
     local count = self:GetToySourceTypeCount()
     for i = 1, count do
@@ -1501,7 +1501,7 @@ function WarbandNexus:EnsureMountSourceIndexMap()
             if ok and checked ~= nil then origSourceFilters[i] = checked end
         end
     end
-    local origSearch = (C_MountJournal.GetSearch and C_MountJournal.GetSearch()) or ""
+    local origSearch = Mat.GetMountJournalSearchText()
     pcall(function()
         if C_MountJournal.SetSearch then C_MountJournal.SetSearch("") end
         if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(false) end
@@ -1872,7 +1872,7 @@ function WarbandNexus:GetCollectionCountsFromAPI()
             if not InCombatLockdown() then
                 origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
                 origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-                origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+                origFilterString = Mat.GetToyBoxSearchText()
                 pcall(function()
                     C_ToyBox.SetCollectedShown(true)
                     C_ToyBox.SetUncollectedShown(true)
@@ -2963,7 +2963,7 @@ COLLECTION_CONFIGS = {
             -- Save original filter state to restore after scan
             local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
             local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-            local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+            local origFilterString = Mat.GetToyBoxSearchText()
 
             -- Capture per-source itemID → sourceTypeIndex via filter trick (Blizzard ToyBox source filter).
             -- Pure API: Blizzard's source filter is the authoritative classifier.

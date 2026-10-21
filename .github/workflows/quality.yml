@@ -133,6 +133,7 @@ jobs:
           if command -v lua5.1 >/dev/null 2>&1; then
             lua5.1 .github/scripts/test_crafting_order_counts.lua
             lua5.1 .github/scripts/test_hero_spec_name.lua
+            lua5.1 .github/scripts/test_journal_search_restore.lua
           else
             echo "lua5.1 unavailable - skipping removed-API gate"
           fi
