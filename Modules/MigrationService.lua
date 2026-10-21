@@ -1152,21 +1152,26 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
 end
 
 --- When collapsing duplicate `db.global.characters` rows (same player GUID), copy missing payloads from `loser` into `winner`.
---- Does not strip fields already populated on `winner` (live save/API wins); prefers richer gold when loser has higher copper.
+--- Does not strip fields already populated on `winner` (live save/API wins); gold comes from whichever row was seen last.
 ---@param winner table
 ---@param loser table
 function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
     if type(winner) ~= "table" or type(loser) ~= "table" then return end
-    local U = ns.Utilities
     local function emptyTable(t)
         return not t or type(t) ~= "table" or not next(t)
     end
-    local wCop = U and U.GetCharTotalCopper and U:GetCharTotalCopper(winner) or 0
-    local lCop = U and U.GetCharTotalCopper and U:GetCharTotalCopper(loser) or 0
-    if lCop > wCop then
+    -- Gold is a balance, not a high-water mark: the newer row's amount is the true one even
+    -- when it is lower (the character spent). Copying the larger balance resurrected spent gold.
+    local function hasMoney(row)
+        return row.gold ~= nil or row.silver ~= nil or row.copper ~= nil or row.totalCopper ~= nil
+    end
+    local wSeen = tonumber(winner.lastSeen) or 0
+    local lSeen = tonumber(loser.lastSeen) or 0
+    if hasMoney(loser) and (not hasMoney(winner) or lSeen > wSeen) then
         winner.gold = loser.gold
         winner.silver = loser.silver
         winner.copper = loser.copper
+        winner.totalCopper = loser.totalCopper
     end
     -- Tracking is a user decision and must survive a merge. A login-race duplicate row
     -- (player GUID not resolvable yet -> row lands under Name-Realm) is created untracked
