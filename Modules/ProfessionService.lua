@@ -2357,10 +2357,11 @@ end
         lastUpdate    = number,
     }
 
-    Note: C_CraftingOrders APIs are async and require profession context.
-    We use the simplest available methods for an MVP count.
+    Personal: C_CraftingOrders.GetPersonalOrdersInfo() (one entry per profession).
+    Guild: no synchronous getter exists (12.1.5 API doc); the count arrives with
+    CRAFTINGORDERS_UPDATE_ORDER_COUNT, passed in as guildCountFromEvent, else the last one seen is kept.
 ]]
-local function CollectCraftingOrdersData()
+local function CollectCraftingOrdersData(guildCountFromEvent)
     if not WarbandNexus or not WarbandNexus.db then return end
     if not C_CraftingOrders then return end
 
@@ -2383,19 +2384,32 @@ local function CollectCraftingOrdersData()
     -- Initialize
     if not charData.craftingOrders then charData.craftingOrders = {} end
     local baseProfName = nil
+    local baseProfEnum = nil
     if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
         local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-        if ok and baseInfo then baseProfName = SafeAPIString(baseInfo.professionName) end
+        if ok and baseInfo then
+            baseProfName = SafeAPIString(baseInfo.professionName)
+            if type(baseInfo.profession) == "number" then baseProfEnum = baseInfo.profession end
+        end
     end
 
+    local prevOrders = charData.craftingOrders[skillLineID]
     local personalCount = 0
-    local guildCount = 0
+    local guildCount = guildCountFromEvent or (prevOrders and prevOrders.guildCount) or 0
     local publicCount = 0
 
-    -- Personal orders count
-    if C_CraftingOrders.GetNumPersonalOrders then
-        local ok, count = pcall(C_CraftingOrders.GetNumPersonalOrders)
-        if ok and count then personalCount = count end
+    -- Personal orders: CraftingOrderPersonalOrdersInfo { profession (Enum.Profession), numPersonalOrders, professionName }
+    if baseProfEnum and C_CraftingOrders.GetPersonalOrdersInfo then
+        local ok, infos = pcall(C_CraftingOrders.GetPersonalOrdersInfo)
+        if ok and type(infos) == "table" then
+            for i = 1, #infos do
+                local info = infos[i]
+                if type(info) == "table" and info.profession == baseProfEnum then
+                    if type(info.numPersonalOrders) == "number" then personalCount = info.numPersonalOrders end
+                    break
+                end
+            end
+        end
     end
 
     -- Claimed order (adds to personal context)
@@ -2406,13 +2420,6 @@ local function CollectCraftingOrdersData()
         end
     end
 
-    -- Guild orders — try synchronous count if available
-    if C_CraftingOrders.GetNumGuildOrders then
-        local ok, count = pcall(C_CraftingOrders.GetNumGuildOrders)
-        if ok and count then guildCount = count end
-    end
-
-    local prevOrders = charData.craftingOrders[skillLineID]
     local ordersDirty = not prevOrders
         or prevOrders.personalCount ~= personalCount
         or prevOrders.guildCount ~= guildCount
@@ -2696,6 +2703,18 @@ function WarbandNexus:OnTradeSkillListUpdate()
             end
         end
     end)
+end
+
+--[[
+    Called on CRAFTINGORDERS_UPDATE_ORDER_COUNT (orderType, numOrders): the crafter order page
+    publishes its per-type tab counts here. The only source of the guild order count.
+]]
+function WarbandNexus:OnCraftingOrdersOrderCount(orderType, numOrders)
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
+    if type(orderType) ~= "number" or type(numOrders) ~= "number" then return end
+    local guildType = Enum and Enum.CraftingOrderType and Enum.CraftingOrderType.Guild
+    pcall(CollectCraftingOrdersData, (guildType and orderType == guildType) and numOrders or nil)
 end
 
 --[[
