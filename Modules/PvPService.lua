@@ -140,7 +140,9 @@ local function GetWeekStart()
     local ok, secs = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
     secs = ok and SafeNum(secs) or nil
     if not secs or secs <= 0 or secs > WEEK_SECONDS then return nil end
-    return time() + secs - WEEK_SECONDS
+    local start = time() + secs - WEEK_SECONDS
+    if ns.NormalizeResetEpoch then start = ns.NormalizeResetEpoch(start) end
+    return start
 end
 
 ---True when a store's rated snapshot predates the current weekly reset:

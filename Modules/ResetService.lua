@@ -17,6 +17,21 @@ ns.ResetService = ResetService
 local DAY_SECONDS = 86400
 local WEEK_SECONDS = 7 * DAY_SECONDS
 
+---Snap a reset epoch to the nearest whole minute.
+---`GetServerTime() + secondsUntilReset` is sampled from two clocks at two instants, so the same
+---reset reads ...:59:58, ...:59:59 or ...:00:00 from one call to the next (seen in live SVs).
+---Stored week/day starts compared with a fresh one using < or ~= then flip to "previous period"
+---mid-week and wipe that period's progress. Blizzard resets land on whole hours, so rounding to
+---the minute is lossless. Callers comparing a STORED period start must normalize it too: rows
+---written before this fix still carry the jittered value.
+---@param epoch number|nil
+---@return number|nil
+function ResetService.NormalizeResetEpoch(epoch)
+    epoch = tonumber(epoch)
+    if not epoch or epoch <= 0 then return epoch end
+    return math.floor((epoch + 30) / 60) * 60
+end
+
 local dailyTimer = nil
 local weeklyTimer = nil
 
@@ -79,28 +94,28 @@ end
 ---@return number
 function ResetService.GetCurrentDailyResetStartTime()
     local now = (GetServerTime and GetServerTime()) or time()
-    return now + ResetService.GetSecondsUntilDailyReset() - DAY_SECONDS
+    return ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilDailyReset() - DAY_SECONDS)
 end
 
 ---Get epoch timestamp (server UTC seconds) when current weekly reset cycle began.
 ---@return number
 function ResetService.GetCurrentWeeklyResetStartTime()
     local now = (GetServerTime and GetServerTime()) or time()
-    return now + ResetService.GetSecondsUntilWeeklyReset() - WEEK_SECONDS
+    return ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilWeeklyReset() - WEEK_SECONDS)
 end
 
 ---Get epoch timestamp (server UTC seconds) of next daily reset.
 ---@return number
 function ResetService.GetNextDailyResetTime()
     local now = (GetServerTime and GetServerTime()) or time()
-    return now + ResetService.GetSecondsUntilDailyReset()
+    return ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilDailyReset())
 end
 
 ---Get epoch timestamp (server UTC seconds) of next weekly reset.
 ---@return number
 function ResetService.GetNextWeeklyResetTime()
     local now = (GetServerTime and GetServerTime()) or time()
-    return now + ResetService.GetSecondsUntilWeeklyReset()
+    return ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilWeeklyReset())
 end
 
 ---Check if a daily reset occurred since the given timestamp.
@@ -197,7 +212,8 @@ function ResetService:CheckAndTriggerResets(source)
     local weeklyFired = false
 
     -- DAILY RESET CHECK
-    if (resets.lastDailyResetEpoch or 0) < currDailyStart then
+    -- Stored epochs from older builds are unrounded; normalize before comparing (see NormalizeResetEpoch).
+    if (ResetService.NormalizeResetEpoch(resets.lastDailyResetEpoch) or 0) < currDailyStart then
         resets.lastDailyResetEpoch = currDailyStart
         dailyFired = true
         if events and events.DAILY_RESET_OCCURRED and WarbandNexus.SendMessage then
@@ -209,7 +225,7 @@ function ResetService:CheckAndTriggerResets(source)
     end
 
     -- WEEKLY RESET CHECK
-    if (resets.lastWeeklyResetEpoch or 0) < currWeeklyStart then
+    if (ResetService.NormalizeResetEpoch(resets.lastWeeklyResetEpoch) or 0) < currWeeklyStart then
         resets.lastWeeklyResetEpoch = currWeeklyStart
         weeklyFired = true
         if events and events.WEEKLY_RESET_OCCURRED and WarbandNexus.SendMessage then
@@ -265,6 +281,7 @@ end
 -- ============================================================================
 
 ns.GetCurrentWeeklyResetStartTime = ResetService.GetCurrentWeeklyResetStartTime
+ns.NormalizeResetEpoch = ResetService.NormalizeResetEpoch
 ns.GetCurrentDailyResetStartTime = ResetService.GetCurrentDailyResetStartTime
 
 function WarbandNexus:HasWeeklyResetOccurred(timestamp)

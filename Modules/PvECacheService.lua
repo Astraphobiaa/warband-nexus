@@ -464,19 +464,29 @@ end
 
 local WEEK_SECONDS = 7 * 86400
 
----Best-effort weekly reset start timestamp (epoch seconds).
+---Snap a reset epoch (stored or computed) to the minute; see ResetService.NormalizeResetEpoch.
+---@param epoch any
+---@return number|nil
+local function NormalizeResetEpoch(epoch)
+    if ns.NormalizeResetEpoch then return ns.NormalizeResetEpoch(epoch) end
+    epoch = tonumber(epoch)
+    if not epoch or epoch <= 0 then return epoch end
+    return math.floor((epoch + 30) / 60) * 60
+end
+
+---Best-effort weekly reset start timestamp (epoch seconds), minute-normalized.
 ---@return number|nil
 local function GetCurrentWeeklyResetStartTime()
     if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and GetServerTime then
         local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
         if secsUntil ~= nil and secsUntil >= 0 then
-            return GetServerTime() + secsUntil - WEEK_SECONDS
+            return NormalizeResetEpoch(GetServerTime() + secsUntil - WEEK_SECONDS)
         end
     end
     if WarbandNexus and WarbandNexus.GetWeeklyResetTime then
         local nextReset = WarbandNexus:GetWeeklyResetTime()
         if nextReset and nextReset > 0 then
-            return nextReset - WEEK_SECONDS
+            return NormalizeResetEpoch(nextReset - WEEK_SECONDS)
         end
     end
     return nil
@@ -1632,7 +1642,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
 
     local rewardData = self.db.global.pveCache.greatVault.rewards
         and self.db.global.pveCache.greatVault.rewards[charKey]
-    local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+    local rewardClaimedResetTime = rewardData and NormalizeResetEpoch(rewardData.claimedResetTime) or nil
     local previousActivities = self.db.global.pveCache.greatVault.activities[charKey]
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
@@ -1661,7 +1671,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     end
     
     -- Calculate weekly reset time for metadata
-    local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
+    local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and NormalizeResetEpoch(GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
     
     -- Create fresh arrays only when we have real data (prevent stale duplicates)
     -- isPostReset is cleared here since we now have real this-week data
@@ -1847,7 +1857,7 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
         end
     end
     local previousResetTime = GetCurrentWeeklyResetStartTime()
-    local claimedResetTime = previousRewardData and tonumber(previousRewardData.claimedResetTime) or nil
+    local claimedResetTime = previousRewardData and NormalizeResetEpoch(previousRewardData.claimedResetTime) or nil
     local claimedAt = previousRewardData and tonumber(previousRewardData.claimedAt) or nil
 
     -- Determine if the vault was effectively "ready" before this update.
@@ -1856,7 +1866,9 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     local activities = self.db.global.pveCache.greatVault.activities
         and self.db.global.pveCache.greatVault.activities[charKey]
     local wasPostResetReady = activities and activities.isPostReset
-        and previousResetTime and (tonumber(activities.weeklyResetTime) or 0) < previousResetTime
+        -- weeklyResetTime is the NEXT reset as of the snapshot; once normalized it equals the new
+        -- week's start exactly, so "crossed" is <=, not <.
+        and previousResetTime and (NormalizeResetEpoch(activities.weeklyResetTime) or 0) <= previousResetTime
 
     if hasAvailable == false and (
         (previousRewardData and previousRewardData.hasAvailableRewards == true)
@@ -3071,7 +3083,7 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         local prevVault = pc.greatVault.activities and pc.greatVault.activities[charKey]
         local previousResetTime = GetCurrentWeeklyResetStartTime()
         local rewardData = pc.greatVault.rewards and pc.greatVault.rewards[charKey]
-        local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+        local rewardClaimedResetTime = rewardData and NormalizeResetEpoch(rewardData.claimedResetTime) or nil
         local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime
             and rewardClaimedResetTime >= previousResetTime
         local incomingCompleted = LegacyGreatVaultArrayHasCompleted(legacyData.greatVault)
@@ -3961,7 +3973,7 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
             pvp = {},
             world = {},
             lastUpdate = time(),
-            weeklyResetTime = (GetServerTime() + (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0)),
+            weeklyResetTime = NormalizeResetEpoch(GetServerTime() + (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0)),
         }
     end
     
@@ -4003,7 +4015,7 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local rewardData = self.db.global.pveCache.greatVault.rewards
         and self.db.global.pveCache.greatVault.rewards[charKey]
-    local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+    local rewardClaimedResetTime = rewardData and NormalizeResetEpoch(rewardData.claimedResetTime) or nil
     local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
     local incomingCompletedRows = false
     for i = 1, #vaultSlots do

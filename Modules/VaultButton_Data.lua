@@ -158,7 +158,9 @@ function ns.VaultRewardsClaimedForCurrentWeek(rewardData)
         return false
     end
     local resetStart = ns.GetCurrentWeeklyResetStartTime and ns.GetCurrentWeeklyResetStartTime()
-    local claimedReset = tonumber(rewardData.claimedResetTime) or 0
+    -- Stored week starts from older builds carry +-1s jitter; normalize like the fresh value.
+    local claimedReset = (ns.NormalizeResetEpoch and ns.NormalizeResetEpoch(rewardData.claimedResetTime))
+        or tonumber(rewardData.claimedResetTime) or 0
     if resetStart and claimedReset > 0 and claimedReset >= resetStart then
         return true
     end
