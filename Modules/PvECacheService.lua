@@ -2349,7 +2349,7 @@ function WarbandNexus:UpdatePvEData()
         if not pvePendingUpdateTimer then
             local delay = UPDATE_THROTTLE - (currentTime - lastUpdateTime)
             if delay < 0.01 then delay = 0.01 end
-            pvePendingUpdateTimer = C_Timer.After(delay, function()
+            pvePendingUpdateTimer = C_Timer.NewTimer(delay, function()
                 pvePendingUpdateTimer = nil
                 if WarbandNexus and WarbandNexus.ProcessPendingPvEUpdate then
                     WarbandNexus:ProcessPendingPvEUpdate()

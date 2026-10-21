@@ -2561,7 +2561,7 @@ local function ScheduleProfessionWindowSync()
     if professionWindowSyncTimer and professionWindowSyncTimer.Cancel then
         professionWindowSyncTimer:Cancel()
     end
-    professionWindowSyncTimer = C_Timer.After(PROFESSION_WINDOW_SYNC_DEBOUNCE, RunProfessionWindowSyncCollectors)
+    professionWindowSyncTimer = C_Timer.NewTimer(PROFESSION_WINDOW_SYNC_DEBOUNCE, RunProfessionWindowSyncCollectors)
 end
 
 local function IsProfessionWindowOpenGrace()

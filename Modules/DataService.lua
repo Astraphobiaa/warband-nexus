@@ -26,7 +26,9 @@ end
 -- Prevents overwriting other modules' handlers for the same message.
 local DataServiceEvents = {}
 
--- Zone debounce (flushable on PLAYER_LOGOUT)
+-- Zone debounce (flushable on PLAYER_LOGOUT). Timer handles come from C_Timer.NewTimer:
+-- C_Timer.After returns nothing (warcraft.wiki.gg/wiki/API_C_Timer.After, verified 2026-10-21),
+-- so `= C_Timer.After(...)` left these nil and the coalesce / cancel / logout flush never ran.
 local zoneUpdateTimer = nil
 
 -- Full character save coalescing (combat defer + debounce)
@@ -533,7 +535,7 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     -- Zone changes (debounced 2s — ZONE_CHANGED fires frequently during flight paths)
     local function DebouncedZoneUpdate()
         if zoneUpdateTimer then return end
-        zoneUpdateTimer = C_Timer.After(2, function()
+        zoneUpdateTimer = C_Timer.NewTimer(2, function()
             zoneUpdateTimer = nil
             self:UpdateCharacterCache("zone")
         end)
@@ -863,7 +865,7 @@ function WarbandNexus:ScheduleDeferredCharacterSave(wantFull)
         WarbandNexus._characterFullSavePending = nil
         return
     end
-    characterSaveDebounceTimer = C_Timer.After(GetCharacterSaveDebounceSec(), function()
+    characterSaveDebounceTimer = C_Timer.NewTimer(GetCharacterSaveDebounceSec(), function()
         characterSaveDebounceTimer = nil
         if not WarbandNexus or not pendingFullCharacterSave then return end
         if IsPlayerInCombat() then
