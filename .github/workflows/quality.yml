@@ -84,3 +84,17 @@ jobs:
           else
             echo "lua5.1 unavailable - skipping behavioural gate"
           fi
+
+      # Save / login / logout persistence regressions: transient or teardown API reads and
+      # reset-epoch jitter must never overwrite stored progress.
+      - name: Persistence behaviour (real files under WoW stub)
+        run: |
+          if command -v lua5.1 >/dev/null 2>&1; then
+            lua5.1 .github/scripts/test_week_stamp_jitter.lua
+            lua5.1 .github/scripts/test_collection_store_logout.lua
+            lua5.1 .github/scripts/test_item_level_event.lua
+            lua5.1 .github/scripts/test_pve_weekly_flags.lua
+            lua5.1 .github/scripts/test_profession_weekly_knowledge.lua
+          else
+            echo "lua5.1 unavailable - skipping persistence gate"
+          fi

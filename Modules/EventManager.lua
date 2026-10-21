@@ -33,23 +33,6 @@ local function ProfiledExec(label, fn)
     return fn()
 end
 
-local function Throttle(key, interval, func)
-    -- If already throttled, skip
-    if activeTimers[key] then
-        return false
-    end
-    
-    -- Set throttle timer BEFORE executing to prevent re-entrancy
-    activeTimers[key] = C_Timer.NewTimer(interval, function()
-        activeTimers[key] = nil
-    end)
-    
-    -- Execute immediately
-    ProfiledExec("Throttle_" .. tostring(key), func)
-    
-    return true
-end
-
 local function Debounce(key, interval, func)
     -- Cancel existing timer
     if activeTimers[key] then
@@ -130,7 +113,10 @@ end
     Updates character's average item level when equipment changes
 ]]
 function WarbandNexus:OnItemLevelChanged()
-    Throttle("ITEM_LEVEL_UPDATE", 0.3, function()
+    -- Debounce (trailing edge): PLAYER_EQUIPMENT_CHANGED fires before GetAverageItemLevel settles and
+    -- PLAYER_AVG_ITEM_LEVEL_UPDATE follows within the window. A leading-edge throttle stored the first
+    -- (stale or 0) reading and dropped the settled one.
+    Debounce("ITEM_LEVEL_UPDATE", 0.3, function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
         end
@@ -161,7 +147,9 @@ function WarbandNexus:OnItemLevelChanged()
             -- writes. (Mixing floored and unfloored writes is what made ilvl displays flicker
             -- between "489" and "489.25"; consumers floor at render time instead.)
             avgItemLevelEquipped = tonumber(avgItemLevelEquipped)
-            if not avgItemLevelEquipped then return end
+            -- 0 = gear not streamed in yet (login / zoning); keep the stored value, same rule as
+            -- SaveCurrentCharacterData and UpdateCharacterCache("itemLevel").
+            if not avgItemLevelEquipped or avgItemLevelEquipped <= 0 then return end
             entry.itemLevel = avgItemLevelEquipped
             entry.lastSeen = time()
             

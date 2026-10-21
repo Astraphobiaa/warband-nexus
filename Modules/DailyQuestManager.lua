@@ -233,7 +233,10 @@ local function GetWeekStartEpoch()
     local ok, secs = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
     secs = ok and tonumber(secs) or nil
     if not secs or secs <= 0 or secs > WEEK_SECONDS then return nil end
-    return time() + secs - WEEK_SECONDS
+    local now = (GetServerTime and GetServerTime()) or time()
+    local start = now + secs - WEEK_SECONDS
+    if ns.NormalizeResetEpoch then start = ns.NormalizeResetEpoch(start) end
+    return start
 end
 
 local function ResolvePlanCharKey(plan)
@@ -265,10 +268,17 @@ local function EnsurePlanCharWeeklyProgress(plan)
     if type(bucket.questIDs) ~= "table" then
         bucket.questIDs = {}
     end
+    -- Wipe only when the stored week is strictly older. The old `~=` test also fired on the
+    -- +-1s jitter of `now + secondsUntilReset` (and on rows stored unrounded by older builds),
+    -- wiping recorded warband weeklies mid-week; those are only ever re-recorded on turn-in.
     local weekStart = GetWeekStartEpoch()
-    if weekStart and bucket.weekStart ~= weekStart then
+    if weekStart then
+        local stored = tonumber(bucket.weekStart) or 0
+        if ns.NormalizeResetEpoch then stored = ns.NormalizeResetEpoch(stored) or 0 end
+        if stored < weekStart then
+            wipe(bucket.questIDs)
+        end
         bucket.weekStart = weekStart
-        wipe(bucket.questIDs)
     end
     return bucket
 end
@@ -302,6 +312,12 @@ local function IsQuestRecordedForPlan(plan, questID)
     end
     return false
 end
+
+-- Per-plan weekly bucket helpers, exposed for .github/scripts regression tests.
+ns.DailyQuestManagerPlanWeekly = {
+    EnsurePlanCharWeeklyProgress = EnsurePlanCharWeeklyProgress,
+    IsQuestRecordedForPlan = IsQuestRecordedForPlan,
+}
 
 local function IsQuestLiveCompleteInLog(questID)
     if not questID or not C_QuestLog or not C_QuestLog.GetLogIndexForQuestID then return false end

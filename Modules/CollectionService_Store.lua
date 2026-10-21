@@ -30,6 +30,14 @@ end
 ---Called after scan completion and real-time updates
 function WarbandNexus:SaveCollectionStore()
     if not self.db or not self.db.global then return end
+    -- Never persist before InitializeCollectionCache loaded SV into RAM: the RAM store still holds
+    -- the empty file-load defaults, and writing them replaces every saved mount/pet/toy/achievement.
+    -- Happens when PLAYER_LOGOUT (or a collection event) lands before the deferred P0 init ran:
+    -- /reload or logout in combat (SafeInit queues until combat ends) or within the first ~0.5s.
+    if not RT.storeHydrated then
+        DebugPrint("|cffffcc00[WN CollectionService]|r SaveCollectionStore skipped: store not loaded from SV yet")
+        return
+    end
     RT.collectionStore.version = CACHE_VERSION
     RT.collectionStore.lastBuilt = RT.collectionStore.lastBuilt or time()
     local toySave = {}

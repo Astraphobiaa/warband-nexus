@@ -479,6 +479,9 @@ local function IsWeeklyProgressStaleForChar(db, charKey, currencyID)
     local weekBucket = db.currencyProgressWeek and db.currencyProgressWeek[charKey]
     local storedWeek = weekBucket and weekBucket[currencyID]
     if type(storedWeek) == "number" and storedWeek > 0 then
+        -- storedWeek is a week START written by an older session: +-1s jitter must not read as
+        -- "previous week" (that zeroed every alt's weekly-cap progress mid-week).
+        if ns.NormalizeResetEpoch then storedWeek = ns.NormalizeResetEpoch(storedWeek) end
         return storedWeek < currentWeekStart
     end
 
@@ -2711,3 +2714,5 @@ end
 
 -- Export to namespace for UI and other modules
 ns.CurrencyCache = CurrencyCache
+-- Weekly-progress staleness decision, exposed for .github/scripts regression tests.
+CurrencyCache.IsWeeklyProgressStaleForChar = IsWeeklyProgressStaleForChar

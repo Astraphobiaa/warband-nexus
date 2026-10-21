@@ -464,19 +464,29 @@ end
 
 local WEEK_SECONDS = 7 * 86400
 
----Best-effort weekly reset start timestamp (epoch seconds).
+---Snap a reset epoch (stored or computed) to the minute; see ResetService.NormalizeResetEpoch.
+---@param epoch any
+---@return number|nil
+local function NormalizeResetEpoch(epoch)
+    if ns.NormalizeResetEpoch then return ns.NormalizeResetEpoch(epoch) end
+    epoch = tonumber(epoch)
+    if not epoch or epoch <= 0 then return epoch end
+    return math.floor((epoch + 30) / 60) * 60
+end
+
+---Best-effort weekly reset start timestamp (epoch seconds), minute-normalized.
 ---@return number|nil
 local function GetCurrentWeeklyResetStartTime()
     if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and GetServerTime then
         local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
         if secsUntil ~= nil and secsUntil >= 0 then
-            return GetServerTime() + secsUntil - WEEK_SECONDS
+            return NormalizeResetEpoch(GetServerTime() + secsUntil - WEEK_SECONDS)
         end
     end
     if WarbandNexus and WarbandNexus.GetWeeklyResetTime then
         local nextReset = WarbandNexus:GetWeeklyResetTime()
         if nextReset and nextReset > 0 then
-            return nextReset - WEEK_SECONDS
+            return NormalizeResetEpoch(nextReset - WEEK_SECONDS)
         end
     end
     return nil
@@ -1632,7 +1642,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
 
     local rewardData = self.db.global.pveCache.greatVault.rewards
         and self.db.global.pveCache.greatVault.rewards[charKey]
-    local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+    local rewardClaimedResetTime = rewardData and NormalizeResetEpoch(rewardData.claimedResetTime) or nil
     local previousActivities = self.db.global.pveCache.greatVault.activities[charKey]
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
@@ -1661,7 +1671,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     end
     
     -- Calculate weekly reset time for metadata
-    local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
+    local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and NormalizeResetEpoch(GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
     
     -- Create fresh arrays only when we have real data (prevent stale duplicates)
     -- isPostReset is cleared here since we now have real this-week data
@@ -1847,7 +1857,7 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
         end
     end
     local previousResetTime = GetCurrentWeeklyResetStartTime()
-    local claimedResetTime = previousRewardData and tonumber(previousRewardData.claimedResetTime) or nil
+    local claimedResetTime = previousRewardData and NormalizeResetEpoch(previousRewardData.claimedResetTime) or nil
     local claimedAt = previousRewardData and tonumber(previousRewardData.claimedAt) or nil
 
     -- Determine if the vault was effectively "ready" before this update.
@@ -1856,7 +1866,9 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     local activities = self.db.global.pveCache.greatVault.activities
         and self.db.global.pveCache.greatVault.activities[charKey]
     local wasPostResetReady = activities and activities.isPostReset
-        and previousResetTime and (tonumber(activities.weeklyResetTime) or 0) < previousResetTime
+        -- weeklyResetTime is the NEXT reset as of the snapshot; once normalized it equals the new
+        -- week's start exactly, so "crossed" is <=, not <.
+        and previousResetTime and (NormalizeResetEpoch(activities.weeklyResetTime) or 0) <= previousResetTime
 
     if hasAvailable == false and (
         (previousRewardData and previousRewardData.hasAvailableRewards == true)
@@ -2010,16 +2022,21 @@ function WarbandNexus:UpdateWorldBossKills(charKey)
         self.db.global.pveCache.lockouts.worldBosses = {}
     end
     
-    self.db.global.pveCache.lockouts.worldBosses[charKey] = {
-        lastUpdate = time(),
-    }
-    
+    -- A kill recorded earlier this reset period stays recorded: an unready or secret quest read
+    -- (login burst, instance) must not turn it back into "not killed" for the rest of the week.
+    local prev = self.db.global.pveCache.lockouts.worldBosses[charKey]
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    local keepKills = type(prev) == "table" and resetStart and resetStart > 0
+        and (tonumber(prev.lastUpdate) or 0) >= resetStart
+
+    local row = { lastUpdate = time() }
     for i = 1, #worldBossQuests do
         local questID = worldBossQuests[i]
-        if C_QuestLog.IsQuestFlaggedCompleted(questID) then
-            self.db.global.pveCache.lockouts.worldBosses[charKey][questID] = true
+        if SafeIsQuestFlaggedCompleted(questID) or (keepKills and prev[questID] == true) then
+            row[questID] = true
         end
     end
+    self.db.global.pveCache.lockouts.worldBosses[charKey] = row
 end
 
 ---Collect M+ run history for current character (this week only)
@@ -2220,8 +2237,18 @@ function WarbandNexus:UpdateDelvesData(charKey)
         if not delves.characters then delves.characters = {} end
         if not delves.characters[charKey] then delves.characters[charKey] = {} end
         
+        -- Weekly completion flags only rise inside one reset period. SafeIsQuestFlaggedCompleted
+        -- reports "unknown" (unready login read, secret, pcall error) as false; without this floor
+        -- one such read turned a done weekly back into "not done" on every alt's PvE row.
+        local dc = delves.characters[charKey]
+        local flagResetStart = GetCurrentWeeklyResetStartTime()
+        local keepDone = flagResetStart and flagResetStart > 0 and (tonumber(dc.lastUpdate) or 0) >= flagResetStart
+        local function SetWeeklyFlag(field, done)
+            dc[field] = (done == true) or (keepDone and dc[field] == true) or false
+        end
+
         -- Bountiful / Trovehunter weeklies — snapshot for this character when they are logged in (quest API is session-local).
-        delves.characters[charKey].bountifulComplete = self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone() or false
+        SetWeeklyFlag("bountifulComplete", self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone())
         local gildedStashes, gildedStashesMax = GetGildedStashCounts()
         local priorGildedStashes = tonumber(delves.characters[charKey].gildedStashes)
         if gildedStashes >= 0 or priorGildedStashes == nil then
@@ -2229,14 +2256,14 @@ function WarbandNexus:UpdateDelvesData(charKey)
         end
         delves.characters[charKey].gildedStashesMax = gildedStashesMax
         local crackedID = Constants.PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID or 92600
-        delves.characters[charKey].crackedKeystoneComplete = SafeIsQuestFlaggedCompleted(crackedID)
+        SetWeeklyFlag("crackedKeystoneComplete", SafeIsQuestFlaggedCompleted(crackedID))
         -- Midnight 12.1 weeklies that also award a Trovehunter's Bounty (PvE tab columns).
         local nightmareID = Constants.PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID or 94446
-        delves.characters[charKey].nightmareTaskComplete = SafeIsQuestFlaggedCompleted(nightmareID)
+        SetWeeklyFlag("nightmareTaskComplete", SafeIsQuestFlaggedCompleted(nightmareID))
         local purgingID = Constants.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID or 95520
-        delves.characters[charKey].purgingVaultsComplete = SafeIsQuestFlaggedCompleted(purgingID)
+        SetWeeklyFlag("purgingVaultsComplete", SafeIsQuestFlaggedCompleted(purgingID))
         local nemesisID = Constants.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID or 92888
-        delves.characters[charKey].delveNemesisComplete = SafeIsQuestFlaggedCompleted(nemesisID)
+        SetWeeklyFlag("delveNemesisComplete", SafeIsQuestFlaggedCompleted(nemesisID))
         -- Tormented Soul aura snapshot (alts read this; logged-in row also queries live).
         local tsChar = delves.characters[charKey]
         local tsActive, tsAppliedAt = ReadTormentedSoulAura()
@@ -3071,7 +3098,7 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         local prevVault = pc.greatVault.activities and pc.greatVault.activities[charKey]
         local previousResetTime = GetCurrentWeeklyResetStartTime()
         local rewardData = pc.greatVault.rewards and pc.greatVault.rewards[charKey]
-        local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+        local rewardClaimedResetTime = rewardData and NormalizeResetEpoch(rewardData.claimedResetTime) or nil
         local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime
             and rewardClaimedResetTime >= previousResetTime
         local incomingCompleted = LegacyGreatVaultArrayHasCompleted(legacyData.greatVault)
@@ -3961,7 +3988,7 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
             pvp = {},
             world = {},
             lastUpdate = time(),
-            weeklyResetTime = (GetServerTime() + (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0)),
+            weeklyResetTime = NormalizeResetEpoch(GetServerTime() + (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0)),
         }
     end
     
@@ -4003,7 +4030,7 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local rewardData = self.db.global.pveCache.greatVault.rewards
         and self.db.global.pveCache.greatVault.rewards[charKey]
-    local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+    local rewardClaimedResetTime = rewardData and NormalizeResetEpoch(rewardData.claimedResetTime) or nil
     local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
     local incomingCompletedRows = false
     for i = 1, #vaultSlots do
