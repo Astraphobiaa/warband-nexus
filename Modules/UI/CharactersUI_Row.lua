@@ -642,7 +642,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
     local itemLevel = char.itemLevel or 0
     if itemLevel > 0 then
-        row.itemLevelText:SetText(string.format("%s%s %d|r", SemanticGoldHex(), (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
+        row.itemLevelText:SetText(string.format("%s%s %s|r", SemanticGoldHex(), (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", ns.UI_FormatCharRowItemLevel(itemLevel)))
     else
         row.itemLevelText:SetText(ThemeTextHex("Muted") .. "--|r")
     end

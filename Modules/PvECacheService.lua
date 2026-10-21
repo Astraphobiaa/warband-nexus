@@ -613,6 +613,7 @@ local function BuildPvESignature(pveCache, charKey)
         .. ":" .. ((delveChar and not isDelveStale and delveChar.crackedKeystoneComplete) and "1" or "0")
         .. ":" .. ((delveChar and not isDelveStale and delveChar.nightmareTaskComplete) and "1" or "0")
         .. ":" .. ((delveChar and not isDelveStale and delveChar.purgingVaultsComplete) and "1" or "0")
+        .. ":" .. ((delveChar and not isDelveStale and delveChar.delveNemesisComplete) and "1" or "0")
         .. ":" .. tostring(ResolveTormentedSoulStatus(delveChar, nil) or "-")
         .. ":" .. tostring((not isDelveStale and delveChar and delveChar.gildedStashes) or (isDelveStale and 0) or -1)
         .. ":" .. tostring(delves and delves.companion and delves.companion.renownLevel or 0)
@@ -722,6 +723,7 @@ local function PruneExpiredDelvesForWeeklyReset()
                 delveChar.crackedKeystoneComplete = false
                 delveChar.nightmareTaskComplete = false
                 delveChar.purgingVaultsComplete = false
+                delveChar.delveNemesisComplete = false
                 -- Tormented Soul: once per week per character. Keep a use stamped after this reset
                 -- (cast recorded before the next snapshot refreshed lastUpdate).
                 local usedAt = tonumber(delveChar.tormentedSoulUsedAt)
@@ -2233,6 +2235,8 @@ function WarbandNexus:UpdateDelvesData(charKey)
         delves.characters[charKey].nightmareTaskComplete = SafeIsQuestFlaggedCompleted(nightmareID)
         local purgingID = Constants.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID or 95520
         delves.characters[charKey].purgingVaultsComplete = SafeIsQuestFlaggedCompleted(purgingID)
+        local nemesisID = Constants.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID or 92888
+        delves.characters[charKey].delveNemesisComplete = SafeIsQuestFlaggedCompleted(nemesisID)
         -- Tormented Soul aura snapshot (alts read this; logged-in row also queries live).
         local tsChar = delves.characters[charKey]
         local tsActive, tsAppliedAt = ReadTormentedSoulAura()
@@ -2510,6 +2514,7 @@ function WarbandNexus:GetPvEData(charKey)
                 crackedKeystoneComplete = false,
                 nightmareTaskComplete = false,
                 purgingVaultsComplete = false,
+                delveNemesisComplete = false,
                 tormentedSoulUsedAt = nil,
                 tormentedSoulBuffActive = false,
                 lastUpdate = delveCharacter.lastUpdate,

@@ -98,7 +98,7 @@ local PVE_STATUS_COL_W = 64
 --- check/dash cells are not squeezed to their header label and the block reads as an even grid.
 local PVE_WEEKLY_COL_MIN_W = 56
 local PVE_WEEKLY_COL_KEYS = {
-    bountiful = true, nightmare_task = true, tormented_soul = true, purging_vaults = true, vault_status = true,
+    bountiful = true, nightmare_task = true, tormented_soul = true, purging_vaults = true, delve_nemesis = true, vault_status = true,
 }
 local PVE_DUNDUN_COL_W = 36
 local PVE_VOIDCORE_COL_W = 40
@@ -193,6 +193,8 @@ local function PvE_BuildCompactHeaderLabel(col)
         return GetLocalizedText("PVE_HEADER_TORMENTED_SHORT", "Soul"), "ffffff"
     elseif key == "purging_vaults" then
         return GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"), "ffffff"
+    elseif key == "delve_nemesis" then
+        return GetLocalizedText("PVE_HEADER_NEMESIS_SHORT", "Nemesis"), "ffffff"
     elseif key == "vault_status" then
         return GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), "ffffff"
     elseif key:match("^crest_") then
@@ -561,7 +563,7 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
                 return PvE_MeasurePlainWidth(bodyFs, formatVault(list, total, typeName, claim, iconSz))
             end
         end
-        if key == "bountiful" or key == "nightmare_task" or key == "tormented_soul" or key == "purging_vaults" then
+        if key == "bountiful" or key == "nightmare_task" or key == "tormented_soul" or key == "purging_vaults" or key == "delve_nemesis" then
             local wIcon = PvE_MeasurePlainWidth(bodyFs, VAULT_SLOT_CHECK)
             local wProg = PvE_MeasurePlainWidth(bodyFs, "0 / 1")
             return math.max(iconSz, wIcon, wProg)
@@ -739,6 +741,7 @@ local function EnsurePvEExtraVisibleColumns(profile)
     if ex.nightmare_task == nil then ex.nightmare_task = true end
     if ex.tormented_soul == nil then ex.tormented_soul = true end
     if ex.purging_vaults == nil then ex.purging_vaults = true end
+    if ex.delve_nemesis == nil then ex.delve_nemesis = true end
     return ex
 end
 
@@ -1284,6 +1287,7 @@ local function GetPvEDefaultColumnKeyOrder(profile)
     order[#order + 1] = "nightmare_task"
     order[#order + 1] = "tormented_soul"
     order[#order + 1] = "purging_vaults"
+    order[#order + 1] = "delve_nemesis"
     order[#order + 1] = "vault_status"
     return order
 end
@@ -1334,6 +1338,7 @@ local function IsPvEInlineColumnKeyVisible(key, profile, vc, ex)
     if key == "nightmare_task" then return ex.nightmare_task ~= false end
     if key == "tormented_soul" then return ex.tormented_soul ~= false end
     if key == "purging_vaults" then return ex.purging_vaults ~= false end
+    if key == "delve_nemesis" then return ex.delve_nemesis ~= false end
     if key == "vault_status" then return vc.status ~= false end
     return false
 end
@@ -1383,6 +1388,7 @@ local function PveBuildStructureColSig(profile)
     if ex.nightmare_task ~= false then keys[#keys + 1] = "nightmare_task" end
     if ex.tormented_soul ~= false then keys[#keys + 1] = "tormented_soul" end
     if ex.purging_vaults ~= false then keys[#keys + 1] = "purging_vaults" end
+    if ex.delve_nemesis ~= false then keys[#keys + 1] = "delve_nemesis" end
     if vc.status ~= false then keys[#keys + 1] = "vault_status" end
     keys = PveOrderColumnKeysBySequence(keys, buildSeq(profile))
     return table.concat(keys, "\1")
@@ -1481,6 +1487,7 @@ function ns.ComputePvEMinScrollWidth(self)
         nightmare_task = PVE_BOUNTIFUL_COL_W,
         tormented_soul = PVE_BOUNTIFUL_COL_W,
         purging_vaults = PVE_BOUNTIFUL_COL_W,
+        delve_nemesis = PVE_BOUNTIFUL_COL_W,
         vault_status = PVE_STATUS_COL_W,
     }
     local inlineTotal = 0
