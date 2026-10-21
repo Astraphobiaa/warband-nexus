@@ -279,8 +279,13 @@ function CommandService:HandleSlashCommand(addon, input)
         if keysFound == 0 then
             addon:Print("|cffff6600[WN] No keystones found across your characters.|r")
         else
-            if IsInGroup() and not IsInRaid() then
-                SendChatMessage("[WN Keys]: Key List", "PARTY")
+            -- C_ChatInfo.SendChatMessage is the documented API (12.1.5); the global SendChatMessage is a
+            -- deprecation shim since 11.2.0 and is gone when loadDeprecationFallbacks is off.
+            local sendChat = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+            if IsInGroup() and not IsInRaid() and not sendChat then
+                addon:Print("|cffff6600[WN] Party chat is unavailable.|r")
+            elseif IsInGroup() and not IsInRaid() then
+                sendChat("[WN Keys]: Key List", "PARTY")
                 local currentLine = ""
                 local lineCount = 0
                 local SEP = "  -  "
@@ -296,7 +301,7 @@ function CommandService:HandleSlashCommand(addon, input)
                             lineCount = lineCount + 1
                             local sendStr = currentLine
                             C_Timer.After(lineCount * 0.2, function()
-                                SendChatMessage(sendStr, "PARTY")
+                                sendChat(sendStr, "PARTY")
                             end)
                             currentLine = entry
                         else
@@ -309,7 +314,7 @@ function CommandService:HandleSlashCommand(addon, input)
                     lineCount = lineCount + 1
                     local sendStr = currentLine
                     C_Timer.After(lineCount * 0.2, function()
-                        SendChatMessage(sendStr, "PARTY")
+                        sendChat(sendStr, "PARTY")
                     end)
                 end
             else
