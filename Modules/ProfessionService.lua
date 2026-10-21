@@ -1915,6 +1915,25 @@ local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineI
         lastUpdate = time(),
     }
 
+    -- Quest-flag counters never drop inside one weekly period (uniques never drop at all).
+    -- During PLAYER_LOGOUT teardown the client reports every quest as not completed, so the
+    -- logout flush used to overwrite real progress with 0 for each character on its own logout.
+    -- Same total required: a changed quest list is a new baseline, not a regression.
+    local prev = bucket.weeklyKnowledge
+        or (charData.professionWeeklyKnowledge and charData.professionWeeklyKnowledge[skillLineID])
+    if type(prev) == "table" then
+        local prevSameWeek = not HasWeeklyResetOccurredForTimestamp(prev.lastUpdate or 0)
+        for i = 0, #RECURRING_WEEKLY_PROGRESS_KEYS do
+            local key = (i == 0) and "uniques" or RECURRING_WEEKLY_PROGRESS_KEYS[i]
+            local old, new = prev[key], progress[key]
+            if (i == 0 or prevSameWeek) and type(old) == "table" and new
+                and (tonumber(old.total) or 0) == new.total
+                and (tonumber(old.current) or 0) > new.current then
+                new.current = tonumber(old.current)
+            end
+        end
+    end
+
     if WeeklyKnowledgeProgressEqual(bucket.weeklyKnowledge, progress) then
         if bucket.weeklyKnowledge then
             bucket.weeklyKnowledge.lastUpdate = progress.lastUpdate or time()
