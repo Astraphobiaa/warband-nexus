@@ -71,6 +71,7 @@ M.errors = {}
 local frameProto = {}
 frameProto.__index = frameProto
 function frameProto:RegisterEvent(ev) self._events[ev] = true end
+function frameProto:RegisterUnitEvent(ev) self._events[ev] = true end
 function frameProto:UnregisterEvent(ev) self._events[ev] = nil end
 function frameProto:UnregisterAllEvents() self._events = {} end
 function frameProto:SetScript(name, fn) self._scripts[name] = fn end
