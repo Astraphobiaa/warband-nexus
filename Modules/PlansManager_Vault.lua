@@ -24,7 +24,7 @@ local VAULT_PLAN_CHECK_DEFER_SEC = 0.85
     Get weekly vault progress from API
     @param characterName string - Character name (optional, defaults to current)
     @param characterRealm string - Realm name (optional, defaults to current)
-    @return table - Progress data with slot-level completion info
+    @return table|nil - Progress data with slot-level completion info; nil when the API has no data yet
 ]]
 function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
     -- Use current character if not specified
@@ -52,10 +52,11 @@ function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
     local raidProgressMax = 0
     local worldProgressMax = 0
     
-    -- Get activities from API
+    -- Get activities from API. The list is nil/empty until the client has the vault data (login,
+    -- reload); a zero table here would read as "no progress" and overwrite the plan.
     local activities = C_WeeklyRewards.GetActivities()
-    if not activities then
-        return progress
+    if type(activities) ~= "table" or #activities == 0 then
+        return nil
     end
     
     -- Parse activities and get slot-level data
@@ -291,12 +292,28 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
             oldProgress.dungeonCount, oldProgress.raidBossCount, oldProgress.worldActivityCount, oldProgress.specialAssignmentCount))
     end
     
+    -- Vault progress only grows within a week. A lower reading before this week's reset has been
+    -- applied to the plan is a partial API read; taking it would un-complete slots and re-fire
+    -- their toasts once the real data lands. ResetWeeklyPlans zeroes progress on a new week.
+    local newDungeon = currentProgress.dungeonCount or 0
+    local newRaid = currentProgress.raidBossCount or 0
+    local newWorld = currentProgress.worldActivityCount or 0
+    local newSA = currentProgress.specialAssignmentCount or 0
+    local weekStart = ns.ResetService and ns.ResetService.GetCurrentWeeklyResetStartTime
+        and ns.ResetService.GetCurrentWeeklyResetStartTime()
+    if weekStart and tonumber(plan.lastReset) and plan.lastReset >= weekStart then
+        newDungeon = math.max(newDungeon, oldProgress.dungeonCount)
+        newRaid = math.max(newRaid, oldProgress.raidBossCount)
+        newWorld = math.max(newWorld, oldProgress.worldActivityCount)
+        newSA = math.max(newSA, oldProgress.specialAssignmentCount)
+    end
+
     -- Update progress
     plan.progress = plan.progress or {}
-    plan.progress.dungeonCount = currentProgress.dungeonCount
-    plan.progress.raidBossCount = currentProgress.raidBossCount
-    plan.progress.worldActivityCount = currentProgress.worldActivityCount
-    plan.progress.specialAssignmentCount = currentProgress.specialAssignmentCount or 0
+    plan.progress.dungeonCount = newDungeon
+    plan.progress.raidBossCount = newRaid
+    plan.progress.worldActivityCount = newWorld
+    plan.progress.specialAssignmentCount = newSA
     plan.progress.specialAssignmentTotal = currentProgress.specialAssignmentTotal or 2
     
     -- Update slot completions and check for newly completed slots

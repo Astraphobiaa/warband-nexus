@@ -766,7 +766,7 @@ local function RefreshCompanion()
         companionRefreshTimer:Cancel()
     end
     pendingRefresh = true
-    companionRefreshTimer = C_Timer.After(COMPANION_REFRESH_DEBOUNCE, function()
+    companionRefreshTimer = C_Timer.NewTimer(COMPANION_REFRESH_DEBOUNCE, function()
         companionRefreshTimer = nil
         pendingRefresh = false
         if not companionFrame or not companionFrame:IsShown() then return end

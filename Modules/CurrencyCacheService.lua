@@ -2106,6 +2106,7 @@ local function RebuildMergedCurrenciesUIReadModel()
                 trackedCharacters[#trackedCharacters + 1] = {
                     rawKey = charKey,
                     canonicalKey = canonicalKey,
+                    lastSeen = tonumber(charData.lastSeen) or 0,
                 }
             end
         end
@@ -2122,9 +2123,19 @@ local function RebuildMergedCurrenciesUIReadModel()
     -- Resolve each character's currency bucket ONCE: the resolution is independent of
     -- the currency ID, but the loop below used to redo the alias scan per currency ×
     -- per character (O(currencies × chars²) on mixed GUID/Name-Realm SVs).
+    -- Account-wide currencies hold one shared quantity, so every row is a snapshot of it taken
+    -- when that character last scanned. The live character's row is the current value; failing
+    -- that, the most recently seen character's. (Taking the max across rows kept showing the
+    -- pre-spend amount after spending.)
+    local liveKey = CurrencySubsidiaryKey(nil)
     for i = 1, #trackedCharacters do
         local tracked = trackedCharacters[i]
         tracked.bucket = ResolveCharCurrencyBucket(db.currencies, tracked.rawKey, tracked.canonicalKey)
+        if liveKey and (tracked.canonicalKey == liveKey or tracked.rawKey == liveKey) then
+            tracked.recency = math.huge
+        else
+            tracked.recency = tracked.lastSeen or 0
+        end
     end
 
     local currencyIDSet = {}
@@ -2150,6 +2161,7 @@ local function RebuildMergedCurrenciesUIReadModel()
         }
         entry.chars = {}
         local maxQty = 0
+        local sharedQty, sharedRecency = nil, nil
         local splitNormCap = nil
         if metadata and metadata.isSeasonProgressSplit and not metadata.isCofferKeyShard then
             local sm = tonumber(metadata.seasonMax) or 0
@@ -2181,8 +2193,13 @@ local function RebuildMergedCurrenciesUIReadModel()
                 entry.chars[rawKey] = qty
             end
             if qty > maxQty then maxQty = qty end
+            -- Ties (no lastSeen on either row) keep the larger value, as before.
+            if stored ~= nil and (sharedRecency == nil or tracked.recency > sharedRecency
+                or (tracked.recency == sharedRecency and qty > sharedQty)) then
+                sharedQty, sharedRecency = qty, tracked.recency
+            end
         end
-        if entry.isAccountWide then entry.value = maxQty else entry.value = nil end
+        if entry.isAccountWide then entry.value = sharedQty or maxQty else entry.value = nil end
         result[currencyID] = entry
     end
 

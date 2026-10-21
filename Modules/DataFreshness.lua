@@ -53,7 +53,9 @@ function DF.IsCurrencyWarm(db, cacheVersion, currentSubsidiaryKey)
     return DF.HasTableRows(DF.ResolveWarmSubsidiaryBucket(db.currencies, currentSubsidiaryKey))
 end
 
---- Reputation DB warm (same contract as currency).
+--- Reputation DB warm (same contract as currency): the current character's bucket has rows.
+--- Account-wide rows alone do not count -- they were written by another character, so a
+--- brand-new alt would otherwise never get its own login scan.
 ---@param db table|nil reputationData.global subtree
 ---@param cacheVersion number
 ---@param currentSubsidiaryKey string|nil
@@ -62,10 +64,7 @@ function DF.IsReputationWarm(db, cacheVersion, currentSubsidiaryKey)
     if not db then return false end
     if not DF.SchemaVersionMatches(db.version, cacheVersion) then return false end
     if not currentSubsidiaryKey then return false end
-    if DF.HasTableRows(DF.ResolveWarmSubsidiaryBucket(db.characters, currentSubsidiaryKey)) then
-        return true
-    end
-    return DF.HasTableRows(db.accountWide)
+    return DF.HasTableRows(DF.ResolveWarmSubsidiaryBucket(db.characters, currentSubsidiaryKey))
 end
 
 --- Character row already has a full login snapshot (legacy rows without lastFullSaveAt included).

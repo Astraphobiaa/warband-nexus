@@ -431,9 +431,6 @@ local function CollectConcentrationData()
                         lastUpdate     = time(),
                     }
                     charData.concentration[slID] = concEntry
-                    if professionName and not charData.concentration[professionName] then
-                        charData.concentration[professionName] = concEntry
-                    end
                     local bucket = EnsureSkillLineBucket(charData, slID, professionName, expansionName)
                     if bucket then
                         bucket.concentration = {
@@ -2561,7 +2558,7 @@ local function ScheduleProfessionWindowSync()
     if professionWindowSyncTimer and professionWindowSyncTimer.Cancel then
         professionWindowSyncTimer:Cancel()
     end
-    professionWindowSyncTimer = C_Timer.After(PROFESSION_WINDOW_SYNC_DEBOUNCE, RunProfessionWindowSyncCollectors)
+    professionWindowSyncTimer = C_Timer.NewTimer(PROFESSION_WINDOW_SYNC_DEBOUNCE, RunProfessionWindowSyncCollectors)
 end
 
 local function IsProfessionWindowOpenGrace()
@@ -3298,6 +3295,31 @@ end
 local CONCENTRATION_PER_SECOND = 10 / 3600  -- 10 per hour → per second
 
 --[[
+    Current concentration entry for one profession on a stored character row.
+    Concentration is keyed by expansion skillLineID; the highest one carrying this professionName is
+    the current (Midnight) line -- same rule the Characters row uses for knowledge. Legacy rows also
+    hold a profession-name key that stayed pinned to the first expansion ever recorded; it is only a
+    fallback when no skillLineID entry exists.
+
+    @param charData table - db.global.characters row
+    @param profName string - Profession name as stored on charData.professions
+    @return table|nil - { current, max, currencyID, skillLineID, lastUpdate, ... }
+]]
+function WarbandNexus:GetProfessionConcentrationEntry(charData, profName)
+    local conc = charData and charData.concentration
+    if type(conc) ~= "table" or not profName then return nil end
+    local best, bestKey = nil, -1
+    for key, entry in pairs(conc) do
+        if type(key) == "number" and key > bestKey and type(entry) == "table" and entry.professionName == profName then
+            best, bestKey = entry, key
+        end
+    end
+    if best then return best end
+    local legacy = conc[profName]
+    return type(legacy) == "table" and legacy or nil
+end
+
+--[[
     Estimate the current concentration for a stored entry, accounting for
     passive regeneration since the snapshot was taken.
     
@@ -3703,9 +3725,6 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                     lastUpdate     = time(),
                                 }
                                 charData.concentration[slID] = concEntry
-                                if profName and not charData.concentration[profName] then
-                                    charData.concentration[profName] = concEntry
-                                end
                                 local bucket = EnsureSkillLineBucket(charData, slID, profName, expansionName)
                                 if bucket then
                                     bucket.concentration = {
@@ -3746,9 +3765,6 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                 lastUpdate     = time(),
                             }
                             charData.concentration[skillLine] = concEntry
-                            if name and not charData.concentration[name] then
-                                charData.concentration[name] = concEntry
-                            end
                             local bucket = EnsureSkillLineBucket(charData, skillLine, name, nil)
                             if bucket then
                                 bucket.concentration = {
@@ -4056,8 +4072,12 @@ local function BuildConcentrationCurrencyMap()
     if not charData or not charData.concentration then return map end
 
     for key, concData in pairs(charData.concentration) do
-        if concData.currencyID and concData.currencyID > 0 then
-            map[concData.currencyID] = key
+        if type(concData) == "table" and concData.currencyID and concData.currencyID > 0 then
+            -- Legacy profession-name rows share a currencyID with their skillLineID row (separate
+            -- tables after a reload); live updates must land on the skillLineID row.
+            if type(key) == "number" or map[concData.currencyID] == nil then
+                map[concData.currencyID] = key
+            end
         end
     end
     

@@ -1440,7 +1440,7 @@ ScheduleDeferredBagFlush = function(delaySec)
     delaySec = delaySec or UPDATE_THROTTLE
     if delaySec < 0.01 then delaySec = 0.01 end
     if deferredThrottleTimer then return end
-    deferredThrottleTimer = C_Timer.After(delaySec, function()
+    deferredThrottleTimer = C_Timer.NewTimer(delaySec, function()
         deferredThrottleTimer = nil
         local ok, err = pcall(function()
             if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then

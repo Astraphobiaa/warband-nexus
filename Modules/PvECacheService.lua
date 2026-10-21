@@ -23,6 +23,10 @@ local issecretvalue = issecretvalue
 local vaultDataFreshThisSession = false
 --- After a vault claim/item change, treat false HasAvailableRewards writes as authoritative for a few seconds.
 local vaultClaimAllowUntil = 0
+-- Session flag: true once UPDATE_INSTANCE_INFO has fired ("Fired when data from RequestRaidInfo is
+-- available", warcraft.wiki.gg, verified 2026-10-21). Before that GetNumSavedInstances() can read 0
+-- for a character that is saved, and the empty write wiped its stored raid/dungeon lockouts.
+local instanceInfoSeenThisSession = false
 
 ---Chat-visible diagnostics when Config → Debug Mode is on (SavedVariables-safe summaries only).
 ---Uses strict IsDebugModeEnabled() so legacy truthy non-boolean profile.debugMode cannot spam chat.
@@ -1944,6 +1948,8 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
 
     local numSavedInstances = GetNumSavedInstances()
     if not numSavedInstances or numSavedInstances == 0 then
+        -- Saved-instance list not loaded yet this session: keep the stored lockouts.
+        if not instanceInfoSeenThisSession then return end
         self.db.global.pveCache.lockouts.raids[charKey] = {}
         self.db.global.pveCache.lockouts.dungeons[charKey] = {}
         return
@@ -2349,7 +2355,7 @@ function WarbandNexus:UpdatePvEData()
         if not pvePendingUpdateTimer then
             local delay = UPDATE_THROTTLE - (currentTime - lastUpdateTime)
             if delay < 0.01 then delay = 0.01 end
-            pvePendingUpdateTimer = C_Timer.After(delay, function()
+            pvePendingUpdateTimer = C_Timer.NewTimer(delay, function()
                 pvePendingUpdateTimer = nil
                 if WarbandNexus and WarbandNexus.ProcessPendingPvEUpdate then
                     WarbandNexus:ProcessPendingPvEUpdate()
@@ -3833,11 +3839,15 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Raid lockout events
     self:RegisterEvent("UPDATE_INSTANCE_INFO", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] UPDATE_INSTANCE_INFO triggered")
+        instanceInfoSeenThisSession = true
         if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         -- A raid boss kill can fill a vault slot; ask for fresh vault data too (throttled).
         WarbandNexus:RequestWeeklyVaultRefresh()
         ThrottledPvEUpdate()
     end)
+    -- Ask for the saved-instance list once per session so UPDATE_INSTANCE_INFO arrives even when no
+    -- other module requests it (the empty-lockout write above waits for it).
+    if RequestRaidInfo then pcall(RequestRaidInfo) end
     
     -- Delves events (Midnight 12.0+)
     pcall(function()

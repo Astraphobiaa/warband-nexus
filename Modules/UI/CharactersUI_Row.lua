@@ -844,7 +844,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     end
                 end
 
-                local concData = char.concentration and char.concentration[profName]
+                -- Current (Midnight) skillLineID entry, not the legacy profName key pinned to the first
+                -- expansion ever recorded.
+                local concData = WarbandNexus.GetProfessionConcentrationEntry
+                    and WarbandNexus:GetProfessionConcentrationEntry(char, profName)
                 if concData and concData.max and concData.max > 0 then
                     -- Spacer
                     lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }

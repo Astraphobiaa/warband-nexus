@@ -26,7 +26,9 @@ end
 -- Prevents overwriting other modules' handlers for the same message.
 local DataServiceEvents = {}
 
--- Zone debounce (flushable on PLAYER_LOGOUT)
+-- Zone debounce (flushable on PLAYER_LOGOUT). Timer handles come from C_Timer.NewTimer:
+-- C_Timer.After returns nothing (warcraft.wiki.gg/wiki/API_C_Timer.After, verified 2026-10-21),
+-- so `= C_Timer.After(...)` left these nil and the coalesce / cancel / logout flush never ran.
 local zoneUpdateTimer = nil
 
 -- Full character save coalescing (combat defer + debounce)
@@ -533,7 +535,7 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     -- Zone changes (debounced 2s — ZONE_CHANGED fires frequently during flight paths)
     local function DebouncedZoneUpdate()
         if zoneUpdateTimer then return end
-        zoneUpdateTimer = C_Timer.After(2, function()
+        zoneUpdateTimer = C_Timer.NewTimer(2, function()
             zoneUpdateTimer = nil
             self:UpdateCharacterCache("zone")
         end)
@@ -863,7 +865,7 @@ function WarbandNexus:ScheduleDeferredCharacterSave(wantFull)
         WarbandNexus._characterFullSavePending = nil
         return
     end
-    characterSaveDebounceTimer = C_Timer.After(GetCharacterSaveDebounceSec(), function()
+    characterSaveDebounceTimer = C_Timer.NewTimer(GetCharacterSaveDebounceSec(), function()
         characterSaveDebounceTimer = nil
         if not WarbandNexus or not pendingFullCharacterSave then return end
         if IsPlayerInCombat() then
@@ -903,6 +905,22 @@ function WarbandNexus:FlushDeferredCharacterSave()
     elseif self.Print then
         self:Print("Error saving character: " .. tostring(err))
     end
+end
+
+--- Keys the full SaveCurrentCharacterData rebuilds on every run (nil there means "clear it").
+--- Anything else on the row belongs to another writer and survives a full save.
+local FULL_SAVE_OWNED_KEYS = {}
+for _, k in ipairs({
+    "name", "realm", "class", "classFile", "classID", "level", "gold", "silver", "copper",
+    "faction", "guildName", "race", "raceFile", "gender", "itemLevel", "mythicKey", "uiMapID",
+    "zoneName", "mapX", "mapY", "isResting", "locationSavedAt", "isTracked", "trackingConfirmed",
+    "lastSeen", "professions", "timePlayed", "concentration", "recipes", "professionExpansions",
+    "discoveredSkillLines", "knowledgeData", "professionCooldowns", "professionEquipment",
+    "cooldownRecipeIDs", "craftingOrders", "professionData", "rested", "guid", "stats", "specID",
+    "specName", "specIcon", "heroSpecID", "heroSpecName", "hasMail", "mailSnapshot",
+    "lastFullSaveAt",
+}) do
+    FULL_SAVE_OWNED_KEYS[k] = true
 end
 
 --- Save complete character data (login/reload and significant changes).
@@ -1250,7 +1268,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
 
     local fullLoc = CollectPlayerLocation()
 
-    self.db.global.characters[key] = {
+    local newRow = {
         name = name,
         realm = realm,
         class = className,
@@ -1322,6 +1340,18 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         mailSnapshot         = preserveMailSnapshot,
         lastFullSaveAt       = (not lightOnly) and time() or (existingEntry and existingEntry.lastFullSaveAt),
     }
+
+    -- The literal above rebuilds only the keys this save owns. Other writers keep their own
+    -- fields on the same row (achievement points, sub-zone, weekly profession knowledge, ...);
+    -- carry those over instead of dropping them on every full save.
+    if existingEntry then
+        for k, v in pairs(existingEntry) do
+            if newRow[k] == nil and not FULL_SAVE_OWNED_KEYS[k] then
+                newRow[k] = v
+            end
+        end
+    end
+    self.db.global.characters[key] = newRow
 
     if self.HealCharacterProfessions then
         self:HealCharacterProfessions(self.db.global.characters[key])

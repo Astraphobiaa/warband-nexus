@@ -95,6 +95,14 @@ jobs:
             lua5.1 .github/scripts/test_item_level_event.lua
             lua5.1 .github/scripts/test_pve_weekly_flags.lua
             lua5.1 .github/scripts/test_profession_weekly_knowledge.lua
+            lua5.1 .github/scripts/test_account_wide_currency_value.lua
+            lua5.1 .github/scripts/test_character_merge_gold.lua
+            lua5.1 .github/scripts/test_full_character_save_keys.lua
+            lua5.1 .github/scripts/test_reputation_warm_new_alt.lua
+            lua5.1 .github/scripts/test_timer_handles.lua
+            lua5.1 .github/scripts/test_vault_plan_progress.lua
+            lua5.1 .github/scripts/test_pve_lockouts_login.lua
+            lua5.1 .github/scripts/test_concentration_current_expansion.lua
           else
             echo "lua5.1 unavailable - skipping persistence gate"
           fi
