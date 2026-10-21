@@ -10,6 +10,8 @@
     4. Logout flush persists weekly knowledge without delay
     5. PUI.GetSkillLineIDForFilter resolves Midnight skill lines with or without professionExpansions
     6. Recurring keys reset on weekly reset while one-time uniques persist
+    7. Logout teardown (every quest reads not-completed) does not wipe same-week progress
+    8. Recurring counters still drop to 0 once the stored value predates the weekly reset
 ]]
 
 local passed = 0
@@ -205,6 +207,46 @@ do
     local sanitized = WarbandNexus:GetCharacterWeeklyKnowledge(charData, 2913)
     assert_eq(sanitized.treatise.current, 0, "Treatise (recurring) reset to 0 after weekly reset")
     assert_eq(sanitized.uniques.current, 4, "Uniques (one-time) preserved across weekly reset")
+end
+
+print("Phase 6: Logout Teardown Does Not Wipe Same-Week Progress")
+do
+    local charKey = "Player-01"
+    local charData = WarbandNexus.db.global.characters[charKey]
+
+    -- Two Alchemy uniques picked up this session (treatise 95127 already done in Phase 3).
+    stub.SetQuestCompleted(89115, true)
+    stub.SetQuestCompleted(89117, true)
+    WarbandNexus:OnProfessionQuestProgressChanged(true)
+    local alch = WarbandNexus:GetCharacterWeeklyKnowledge(charData, 2906)
+    assert_eq(alch.uniques.current, 2, "Alchemy uniques live count is 2 before logout")
+    assert_eq(alch.treatise.current, 1, "Alchemy treatise live count is 1 before logout")
+
+    -- PLAYER_LOGOUT teardown: the client reports every quest as not completed.
+    local liveQuests = stub.world.completedQuests
+    stub.world.completedQuests = {}
+    WarbandNexus:FlushProfessionOnLogout()
+    alch = WarbandNexus:GetCharacterWeeklyKnowledge(charData, 2906)
+    assert_eq(alch.treatise.current, 1, "Treatise survives logout teardown (stays 1 / 1)")
+    assert_eq(alch.uniques.current, 2, "Uniques survive logout teardown (stay 2)")
+    local insc = WarbandNexus:GetCharacterWeeklyKnowledge(charData, 2913)
+    assert_eq(insc.treatise.current, 1, "Other profession's treatise survives logout teardown")
+    stub.world.completedQuests = liveQuests
+end
+
+print("Phase 7: Recurring Counters Still Drop After A Weekly Reset")
+do
+    local charKey = "Player-01"
+    local charData = WarbandNexus.db.global.characters[charKey]
+
+    charData.professionData.bySkillLine[2906].weeklyKnowledge.lastUpdate = time() - (8 * 86400)
+    local liveQuests = stub.world.completedQuests
+    stub.world.completedQuests = { [89115] = true, [89117] = true }
+    WarbandNexus:RefreshCurrentCharacterKnowledgeProgress(true)
+    local alch = WarbandNexus:GetCharacterWeeklyKnowledge(charData, 2906)
+    assert_eq(alch.treatise.current, 0, "Treatise drops to 0 once the stored value is from last week")
+    assert_eq(alch.uniques.current, 2, "Uniques keep their count across the reset")
+    stub.world.completedQuests = liveQuests
 end
 
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))
