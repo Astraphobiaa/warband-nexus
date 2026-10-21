@@ -715,11 +715,32 @@ function CharacterService:ResolveOtherCharacterRowKey(addon, charKey)
     if not charKey or charKey == "" or (issecretvalue and issecretvalue(charKey)) then return nil end
     local chars = addon and addon.db and addon.db.global and addon.db.global.characters
     if not chars then return nil end
+    -- Self entry points (login dialog, badge, /wn track) pass ResolveCharactersTableKey() itself, which
+    -- can be a same-name stale row before the live character has one: that is always the self path.
+    if charKey == self:ResolveCharactersTableKey(addon) then return nil end
     local U = ns.Utilities
     local rowKey = chars[charKey] and charKey or nil
     if not rowKey and U and U.GetCanonicalCharacterKey then
         local canon = U:GetCanonicalCharacterKey(charKey)
         if canon and chars[canon] then rowKey = canon end
+    end
+    -- Untracked rows drop their guid, so a UI key can be Name-Realm while the row stays GUID-indexed.
+    -- Accept a name+realm match only when exactly one row has it (a stale same-name copy is ambiguous).
+    if not rowKey and U and U.SplitCharacterKey and U.GetCharacterKey then
+        local n, r = U:SplitCharacterKey(charKey)
+        local want = n and r and U:GetCharacterKey(n, r)
+        if want then
+            local hit
+            for k, row in pairs(chars) do
+                if type(row) == "table" and type(row.name) == "string" and type(row.realm) == "string"
+                    and not (issecretvalue and (issecretvalue(row.name) or issecretvalue(row.realm)))
+                    and U:GetCharacterKey(row.name, row.realm) == want then
+                    if hit then hit = false break end
+                    hit = k
+                end
+            end
+            if hit then rowKey = hit end
+        end
     end
     if not rowKey or type(chars[rowKey]) ~= "table" then return nil end
 

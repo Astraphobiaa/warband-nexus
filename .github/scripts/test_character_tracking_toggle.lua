@@ -53,6 +53,10 @@ ns.Utilities = {
         return k
     end,
     SafeGuid = function(_, unit) if unit == "player" then return GUID_A end end,
+    SplitCharacterKey = function(_, k)
+        local n, r = tostring(k or ""):match("^([^-]+)%-(.+)$")
+        return n, r
+    end,
     InvalidateCharacterKeyIndex = function() end,
     IsModuleEnabled = function() return true end,
 }
@@ -123,6 +127,32 @@ do
     stub.Advance(1)
     assert_eq(chars["Alpha-Kazzak"] and chars["Alpha-Kazzak"].isTracked, false, "stale copy untracked in place")
     assert_eq(chars[GUID_A].isTracked, true, "logged-in character not untracked by the stale copy")
+end
+
+print("Phase 5: Re-tracking a guid-less untracked alt by its Name-Realm key changes only that alt")
+do
+    local chars = freshRoster()
+    chars[GUID_B].isTracked = false
+    chars[GUID_B].guid = nil                 -- untrack drops the guid; the row stays GUID-indexed
+    CS:ConfirmCharacterTracking(WarbandNexus, "Bravo-Kazzak", true)
+    stub.Advance(1)
+    assert_eq(chars[GUID_B].isTracked, true, "guid-less alt re-tracked")
+    assert_eq(chars[GUID_A].isTracked, true, "logged-in character unchanged")
+    assert_eq(chars["Bravo-Kazzak"], nil, "no stray Name-Realm row created")
+end
+
+print("Phase 6: The self entry point still runs the self path when the live row does not exist yet")
+do
+    WarbandNexus.db.global.characters = {
+        ["Alpha-Kazzak"] = { name = "Alpha", realm = "Kazzak", guid = GUID_OLD, isTracked = false },
+    }
+    local chars = WarbandNexus.db.global.characters
+    local selfKey = CS:ResolveCharactersTableKey(WarbandNexus)
+    CS:ConfirmCharacterTracking(WarbandNexus, selfKey, true)
+    stub.Advance(1)
+    local live = chars[GUID_A] or chars["Alpha-Kazzak"]
+    assert_eq(live and live.isTracked, true, "self dialog tracks the live character")
+    assert_eq(live and live.guid, GUID_A, "self path captured the live GUID")
 end
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")

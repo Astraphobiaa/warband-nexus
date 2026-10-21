@@ -894,6 +894,11 @@ function WarbandNexus:SyncPlayerGuildMembership(confirmLeave)
         return oldGn, nil, true
     end
     self:HandleGuildMembershipChange(oldGn, newGn, tableKey)
+    -- The login caller only reports non-ambiguous results, and the first read of a leave is now
+    -- deferred (ambiguous), so the confirmed recheck reports the leave itself.
+    if confirmLeave and oldGn and not newGn then
+        self:Print("|cffffcc00" .. ((ns.L and ns.L["GUILD_LEFT"]) or "You are no longer in a guild. Guild Bank tab disabled.") .. "|r")
+    end
     if oldGn ~= newGn then
         charData.guildName = newGn
         charData.lastSeen = time()

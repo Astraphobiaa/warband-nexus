@@ -80,7 +80,24 @@ do
     local store = db.global.itemStorage[GUID]
     assert_eq(store and store.bank and store.bank[1], "full-bank", "GUID row's stored bank kept")
     assert_eq(store and store.bags and store.bags[1], "full-bags", "GUID row's stored bags kept")
-    assert_eq(chars[GUID] and chars[GUID].lastSeen ~= nil, true, "merged row keeps a lastSeen")
+    assert_eq(chars[GUID] and chars[GUID].lastSeen, 2000, "survivor takes the newer row's lastSeen")
+end
+
+print("Phase 2: The surviving GUID row takes the newer duplicate's scalar fields")
+do
+    local db2 = { global = {
+        characters = {
+            [GUID] = { name = "Alpha", realm = "Kazzak", guid = GUID, isTracked = true, lastSeen = 1000, level = 88, guildName = "Old Guild" },
+            [NR] = { name = "Alpha", realm = "Kazzak", guid = GUID, isTracked = true, lastSeen = 2000, level = 90, guildName = "New Guild", itemLevel = 0 },
+        },
+    }, profile = {} }
+    db2.global.characters[GUID].itemLevel = 280
+    ns.DataServiceRoster.ApplyCharacterRosterDeduplication(db2, ns.MigrationService)
+    local row = db2.global.characters[GUID]
+    assert_eq(row and row.level, 90, "newer level taken")
+    assert_eq(row and row.guildName, "New Guild", "newer guild taken")
+    assert_eq(row and row.itemLevel, 280, "a 0 from the newer row does not overwrite the real item level")
+    assert_eq(row and row.guid, GUID, "survivor keeps its GUID")
 end
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")

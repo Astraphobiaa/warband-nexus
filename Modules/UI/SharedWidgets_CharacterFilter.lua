@@ -682,7 +682,7 @@ function ns.UI_ShowCharacterRowContextMenu(anchorFrame, charKey, opts)
         noRadio = true,
         onPick = function()
             if ns.CharacterService.ConfirmCharacterTracking then
-                ns.CharacterService:ConfirmCharacterTracking(addon, charKey, not isTracked)
+                ns.CharacterService:ConfirmCharacterTracking(addon, opts.trackingKey or charKey, not isTracked)
             end
             if addon.SendMessage and ns.Constants then
                 addon:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })

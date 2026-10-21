@@ -284,6 +284,20 @@ local function ApplyCharacterRosterDeduplication(db, migrationService)
         local survivorKey = renames[loserKey]
         local loserData = chars[loserKey]
         local survivorData = survivorKey and chars[survivorKey]
+        -- The GUID row now survives even when the loser was seen more recently: take the loser's newer
+        -- scalar fields (level, guild, spec, ...) so the alt does not show stale values. Identity and
+        -- tracking stay with the survivor; 0 / "" never overwrite a real value.
+        if survivorData and loserData
+            and (tonumber(loserData.lastSeen) or 0) > (tonumber(survivorData.lastSeen) or 0) then
+            for field, value in pairs(loserData) do
+                local vt = type(value)
+                if field ~= "guid" and field ~= "_key" and field ~= "isTracked" and field ~= "trackingConfirmed"
+                    and ((vt == "number" and value ~= 0) or (vt == "string" and value ~= "") or vt == "boolean")
+                    and not (issecretvalue and issecretvalue(value)) then
+                    survivorData[field] = value
+                end
+            end
+        end
         if survivorData and loserData and MS and MS.MergeCharacterRowPreserveWinner then
             MS:MergeCharacterRowPreserveWinner(survivorData, loserData)
         end

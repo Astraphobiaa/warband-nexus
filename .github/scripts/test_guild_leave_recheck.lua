@@ -29,13 +29,14 @@ IsInGuild = function() return inGuild end
 GetGuildInfo = function() if inGuild then return "Night Watch" end end
 
 local KEY = "Player-3674-0000000A"
+local printed = {}
 local ns = {}
 local WarbandNexus = {
     db = { global = { characters = {}, guildBank = {} }, profile = {}, char = {} },
     SendMessage = function() end,
     RegisterMessage = function() end,
     RegisterEvent = function() end,
-    Print = function() end,
+    Print = function(_, msg) printed[#printed + 1] = msg end,
     InvalidateGuildBankScan = function() end,
 }
 ns.WarbandNexus = WarbandNexus
@@ -94,6 +95,9 @@ do
     stub.Advance(10)
     assert_eq(WarbandNexus.db.global.characters[KEY].guildName, nil, "guildName cleared after a confirmed leave")
     assert_eq(WarbandNexus.db.global.guildBank["Night Watch"], nil, "orphaned guild bank removed after a confirmed leave")
+    local told = false
+    for i = 1, #printed do if printed[i]:find("no longer in a guild", 1, true) then told = true end end
+    assert_eq(told, true, "player told about the confirmed leave")
 end
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")

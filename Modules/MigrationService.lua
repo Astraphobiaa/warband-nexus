@@ -1559,13 +1559,27 @@ local function MergeSubsidiaryBucketsBeforeRenames(db, renames)
                 if cd.totalEarned and cd.totalEarned[oldKey] and cd.totalEarned[newKey] then
                     cd.totalEarned[newKey] = MergeCurrencyCharBucket(cd.totalEarned[newKey], cd.totalEarned[oldKey])
                 end
-                -- {currencyID = weekStart | earned}: the larger value is the newer week / more progress.
-                if cd.currencyProgressWeek and cd.currencyProgressWeek[oldKey] and cd.currencyProgressWeek[newKey] then
-                    cd.currencyProgressWeek[newKey] = MergeCurrencyCharBucket(cd.currencyProgressWeek[newKey], cd.currencyProgressWeek[oldKey])
+                -- Week stamp and weekly earned amount are one pair per currency: take both from the side
+                -- with the newer stamp, never the max of each (that paired this week's stamp with last
+                -- week's larger amount).
+                local pwk, ewk = cd.currencyProgressWeek, cd.weeklyEarnedThisWeek
+                local oldW, newW = pwk and pwk[oldKey], pwk and pwk[newKey]
+                if type(oldW) == "table" and type(newW) == "table" then
+                    local oldE = ewk and ewk[oldKey]
+                    local newE = ewk and ewk[newKey]
+                    for currencyID, oldStamp in pairs(oldW) do
+                        local o = tonumber(oldStamp) or 0
+                        local n = tonumber(newW[currencyID]) or 0
+                        if o > n then
+                            newW[currencyID] = oldStamp
+                            if type(oldE) == "table" then
+                                if type(newE) ~= "table" then newE = {}; ewk[newKey] = newE end
+                                newE[currencyID] = oldE[currencyID]
+                            end
+                        end
+                    end
                 end
-                if cd.weeklyEarnedThisWeek and cd.weeklyEarnedThisWeek[oldKey] and cd.weeklyEarnedThisWeek[newKey] then
-                    cd.weeklyEarnedThisWeek[newKey] = MergeCurrencyCharBucket(cd.weeklyEarnedThisWeek[newKey], cd.weeklyEarnedThisWeek[oldKey])
-                end
+                -- (Survivor without weekly rows: RemapCharKeyedBucket moves the old pair as-is.)
             end
         end
     end

@@ -38,7 +38,11 @@ ns.DebugPrint = function() end
 ns.DebugVerbosePrint = function() end
 ns.IsDebugModeEnabled = function() return false end
 ns.Profiler = { enabled = false, CAT = {}, Start = function() end, Stop = function() end, SliceLabel = function() return "" end }
-ns.Utilities = { InvalidateCharacterKeyIndex = function() end, GetCanonicalCharacterKey = function(_, k) return k end }
+ns.Utilities = {
+    InvalidateCharacterKeyIndex = function() end,
+    GetCanonicalCharacterKey = function(_, k) return k end,
+    GetCharacterKey = function(_, n, r) return n and r and (n .. "-" .. r) or nil end,
+}
 
 local function LoadFile(rel)
     local fh = assert(io.open(ROOT .. "/" .. rel, "rb"), "missing file: " .. rel)
@@ -90,6 +94,27 @@ do
     assert_eq(cd.weeklyEarnedThisWeek[NEW] and cd.weeklyEarnedThisWeek[NEW][3310], 40, "weeklyEarnedThisWeek moved")
     assert_eq(cd.currencyProgressWeek[OLD], nil, "old currencyProgressWeek key removed")
     assert_eq(cd.weeklyEarnedThisWeek[OLD], nil, "old weeklyEarnedThisWeek key removed")
+end
+
+print("Phase 3: Alias merge keeps each currency's week stamp and amount together")
+do
+    local THIS_WEEK, LAST_WEEK = WEEK_STAMP, WEEK_STAMP - 7 * 86400
+    local db2 = { global = {
+        charactersGuidKeyedV1 = true,
+        characters = { [NEW] = { name = "Alpha", realm = "Kazzak", guid = NEW } },
+        currencyData = {
+            currencies = { [OLD] = { [3310] = 1 }, [NEW] = { [3310] = 1 } },
+            totalEarned = { [OLD] = { [3310] = 90 }, [NEW] = { [3310] = 10 } },
+            -- Alias row: last week's stamp with a large amount; GUID row: this week's stamp, small amount.
+            currencyProgressWeek = { [OLD] = { [3310] = LAST_WEEK }, [NEW] = { [3310] = THIS_WEEK } },
+            weeklyEarnedThisWeek = { [OLD] = { [3310] = 90 }, [NEW] = { [3310] = 10 } },
+        },
+        pveCache = { mythicPlus = {}, greatVault = {}, lockouts = {} },
+    }, profile = {} }
+    MS:MigrateSubsidiaryAliasBucketsV1(db2)
+    local cd = db2.global.currencyData
+    assert_eq(cd.currencyProgressWeek[NEW] and cd.currencyProgressWeek[NEW][3310], THIS_WEEK, "newer week stamp kept")
+    assert_eq(cd.weeklyEarnedThisWeek[NEW] and cd.weeklyEarnedThisWeek[NEW][3310], 10, "amount paired with the newer stamp")
 end
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")
