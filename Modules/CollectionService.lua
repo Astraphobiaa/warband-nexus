@@ -826,6 +826,12 @@ function WarbandNexus:InitializeCollectionCache()
         end
     end
 
+    -- The in-memory store now mirrors SV (or the migration). Until this point it holds the empty
+    -- file-load defaults, and SaveCollectionStore refuses to write them (see storeHydrated there).
+    if ns.CollectionServiceRT then
+        ns.CollectionServiceRT.storeHydrated = true
+    end
+
     -- Count loaded items (debug mode only)
     if debugMode then
         local mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount = 0, 0, 0, 0, 0, 0
