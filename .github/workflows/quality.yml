@@ -99,6 +99,7 @@ jobs:
             lua5.1 .github/scripts/test_character_delete_stale_copy.lua
             lua5.1 .github/scripts/test_rekey_week_stamps.lua
             lua5.1 .github/scripts/test_roster_dedup_guid_first.lua
+            lua5.1 .github/scripts/test_guild_leave_recheck.lua
             lua5.1 .github/scripts/test_account_wide_currency_value.lua
             lua5.1 .github/scripts/test_character_merge_gold.lua
             lua5.1 .github/scripts/test_full_character_save_keys.lua
