@@ -155,6 +155,7 @@ local function PrunePvECacheAliasKeys(pc, charKey)
         prune(mp.bestRuns)
         prune(mp.dungeonScores)
         prune(mp.runHistory)
+        prune(mp.runHistoryWeek)
     end
     local gv = pc.greatVault
     if gv then

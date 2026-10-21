@@ -622,6 +622,8 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
     if cd then
         if cd.currencies then removed = removed + PurgeCharKeyedEntries(cd.currencies, charKey) end
         if cd.totalEarned then removed = removed + PurgeCharKeyedEntries(cd.totalEarned, charKey) end
+        if cd.currencyProgressWeek then removed = removed + PurgeCharKeyedEntries(cd.currencyProgressWeek, charKey) end
+        if cd.weeklyEarnedThisWeek then removed = removed + PurgeCharKeyedEntries(cd.weeklyEarnedThisWeek, charKey) end
     end
 
     removed = removed + PurgeCharKeyedEntries(g.gearData, charKey)
@@ -642,6 +644,7 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
             removed = removed + PurgeCharKeyedEntries(mp.bestRuns, charKey)
             removed = removed + PurgeCharKeyedEntries(mp.dungeonScores, charKey)
             removed = removed + PurgeCharKeyedEntries(mp.runHistory, charKey)
+            removed = removed + PurgeCharKeyedEntries(mp.runHistoryWeek, charKey)
         end
         local gv = pc.greatVault
         if gv then

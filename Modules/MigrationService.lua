@@ -202,6 +202,9 @@ local function RemapPveCacheCharacterKeys(pveCache, renames)
         RemapCharKeyedBucket(mp.bestRuns, renames)
         RemapCharKeyedBucket(mp.dungeonScores, renames)
         RemapCharKeyedBucket(mp.runHistory, renames)
+        -- Week stamp travels with the history: PruneExpiredRunHistoryForWeeklyReset drops any
+        -- runHistory row without one, so a rekey used to wipe that character's runs.
+        RemapCharKeyedBucket(mp.runHistoryWeek, renames)
     end
     local gv = pveCache.greatVault
     if gv then
@@ -1026,6 +1029,10 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
         if cd.totalEarned then
             RemapCharKeyedBucket(cd.totalEarned, renames)
         end
+        -- Weekly-progress stamps / snapshots travel with totalEarned; left behind, the renamed row
+        -- falls back to lastSeen staleness and the old keys linger in SV.
+        RemapCharKeyedBucket(cd.currencyProgressWeek, renames)
+        RemapCharKeyedBucket(cd.weeklyEarnedThisWeek, renames)
     end
 
     -- gearData
@@ -1456,6 +1463,7 @@ local function ForEachPveCharKeyedTable(pveCache, fn)
         if mp.bestRuns then fn(mp.bestRuns) end
         if mp.dungeonScores then fn(mp.dungeonScores) end
         if mp.runHistory then fn(mp.runHistory) end
+        if mp.runHistoryWeek then fn(mp.runHistoryWeek) end
     end
     local gv = pveCache.greatVault
     if gv then
@@ -1550,6 +1558,13 @@ local function MergeSubsidiaryBucketsBeforeRenames(db, renames)
                 end
                 if cd.totalEarned and cd.totalEarned[oldKey] and cd.totalEarned[newKey] then
                     cd.totalEarned[newKey] = MergeCurrencyCharBucket(cd.totalEarned[newKey], cd.totalEarned[oldKey])
+                end
+                -- {currencyID = weekStart | earned}: the larger value is the newer week / more progress.
+                if cd.currencyProgressWeek and cd.currencyProgressWeek[oldKey] and cd.currencyProgressWeek[newKey] then
+                    cd.currencyProgressWeek[newKey] = MergeCurrencyCharBucket(cd.currencyProgressWeek[newKey], cd.currencyProgressWeek[oldKey])
+                end
+                if cd.weeklyEarnedThisWeek and cd.weeklyEarnedThisWeek[oldKey] and cd.weeklyEarnedThisWeek[newKey] then
+                    cd.weeklyEarnedThisWeek[newKey] = MergeCurrencyCharBucket(cd.weeklyEarnedThisWeek[newKey], cd.weeklyEarnedThisWeek[oldKey])
                 end
             end
         end
@@ -1652,6 +1667,8 @@ local function PurgeLegacySubsidiaryKeyWhenCanonicalHasData(db, legacyKey, canon
     if cd then
         nilKey(cd.currencies)
         nilKey(cd.totalEarned)
+        nilKey(cd.currencyProgressWeek)
+        nilKey(cd.weeklyEarnedThisWeek)
     end
     nilKey(g.gearData)
     nilKey(g.pveProgress)
@@ -1668,6 +1685,7 @@ local function PurgeLegacySubsidiaryKeyWhenCanonicalHasData(db, legacyKey, canon
             nilKey(mp.bestRuns)
             nilKey(mp.dungeonScores)
             nilKey(mp.runHistory)
+            nilKey(mp.runHistoryWeek)
         end
         local gv = pc.greatVault
         if gv then
