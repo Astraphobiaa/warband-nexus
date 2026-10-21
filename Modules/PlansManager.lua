@@ -2228,6 +2228,17 @@ local function SafeChatLinkString(link)
     return link
 end
 
+--- Item hyperlink: C_Item.GetItemInfo's 2nd return (there is no C_Item.GetItemLinkByID in 12.1.5).
+--- Nothing comes back until the item is cached, so request it; the next click has the link.
+local function ResolveItemChatLink(itemID)
+    if not (C_Item and C_Item.GetItemInfo) then return nil end
+    local ok, _, link = pcall(C_Item.GetItemInfo, itemID)
+    local s = SafeChatLinkString(ok and link)
+    if s then return s end
+    if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, itemID) end
+    return nil
+end
+
 --- Resolve the collectible id used for try-count storage/display on plan cards.
 ---@return number|nil
 function WarbandNexus:GetPlanCollectibleID(plan)
@@ -2289,23 +2300,36 @@ function WarbandNexus:GetPlanChatLink(plan)
         return nil
     end
 
+    -- Battle pet links need an owned pet's GUID (C_PetJournal.GetBattlePetLink(petID); there is no
+    -- species-level link API), so only a species the player owns can be linked.
     if t == "pet" and plan.speciesID and type(plan.speciesID) == "number" and C_PetJournal then
-        if C_PetJournal.GetPetLink then
-            local ok, link = pcall(C_PetJournal.GetPetLink, plan.speciesID)
-            local s = SafeChatLinkString(ok and link)
-            if s then return s end
+        if C_PetJournal.GetPetInfoBySpeciesID and C_PetJournal.FindPetIDByName and C_PetJournal.GetBattlePetLink then
+            local okName, speciesName = pcall(C_PetJournal.GetPetInfoBySpeciesID, plan.speciesID)
+            if okName and type(speciesName) == "string" and speciesName ~= ""
+                and not (issecretvalue and issecretvalue(speciesName)) then
+                local okFind, foundSpecies, petGUID = pcall(C_PetJournal.FindPetIDByName, speciesName)
+                if okFind and foundSpecies == plan.speciesID and type(petGUID) == "string"
+                    and not (issecretvalue and issecretvalue(petGUID)) then
+                    local ok, link = pcall(C_PetJournal.GetBattlePetLink, petGUID)
+                    local s = SafeChatLinkString(ok and link)
+                    if s then return s end
+                end
+            end
         end
         return nil
     end
 
-    if (t == "toy" or t == "recipe") and plan.itemID and type(plan.itemID) == "number" and C_Item and C_Item.GetItemLinkByID then
-        local ok, link = pcall(C_Item.GetItemLinkByID, plan.itemID)
-        return SafeChatLinkString(ok and link)
+    if t == "toy" and plan.itemID and type(plan.itemID) == "number" then
+        if C_ToyBox and C_ToyBox.GetToyLink then
+            local ok, link = pcall(C_ToyBox.GetToyLink, plan.itemID)
+            local s = SafeChatLinkString(ok and link)
+            if s then return s end
+        end
+        return ResolveItemChatLink(plan.itemID)
     end
 
-    if t == "illusion" and plan.itemID and type(plan.itemID) == "number" and C_Item and C_Item.GetItemLinkByID then
-        local ok, link = pcall(C_Item.GetItemLinkByID, plan.itemID)
-        return SafeChatLinkString(ok and link)
+    if (t == "recipe" or t == "illusion") and plan.itemID and type(plan.itemID) == "number" then
+        return ResolveItemChatLink(plan.itemID)
     end
 
     if t == "achievement" and plan.achievementID and type(plan.achievementID) == "number" then
@@ -2335,15 +2359,16 @@ function WarbandNexus:InsertPlanChatLink(plan)
         end
         return
     end
-    local edit = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()
-    if edit and ChatEdit_InsertLink then
-        ChatEdit_InsertLink(link)
-        return
+    -- ChatEdit_InsertLink / ChatFrame_OpenChat only exist when the loadDeprecationFallbacks CVar is on
+    -- (Blizzard_DeprecatedChatInfo); ChatFrameUtil is the live API.
+    local util = ChatFrameUtil
+    if not util then return end
+    if util.InsertLink then
+        local ok, inserted = pcall(util.InsertLink, link)
+        if ok and inserted then return end
     end
-    if ChatFrame_OpenChat then
-        pcall(ChatFrame_OpenChat, link)
-    elseif ChatEdit_InsertLink then
-        pcall(ChatEdit_InsertLink, link)
+    if util.OpenChat then
+        pcall(util.OpenChat, link)
     end
 end
 

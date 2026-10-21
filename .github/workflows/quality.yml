@@ -135,6 +135,7 @@ jobs:
             lua5.1 .github/scripts/test_hero_spec_name.lua
             lua5.1 .github/scripts/test_journal_search_restore.lua
             lua5.1 .github/scripts/test_mail_reagent_kind.lua
+            lua5.1 .github/scripts/test_plan_chat_links.lua
           else
             echo "lua5.1 unavailable - skipping removed-API gate"
           fi
