@@ -905,6 +905,22 @@ function WarbandNexus:FlushDeferredCharacterSave()
     end
 end
 
+--- Keys the full SaveCurrentCharacterData rebuilds on every run (nil there means "clear it").
+--- Anything else on the row belongs to another writer and survives a full save.
+local FULL_SAVE_OWNED_KEYS = {}
+for _, k in ipairs({
+    "name", "realm", "class", "classFile", "classID", "level", "gold", "silver", "copper",
+    "faction", "guildName", "race", "raceFile", "gender", "itemLevel", "mythicKey", "uiMapID",
+    "zoneName", "mapX", "mapY", "isResting", "locationSavedAt", "isTracked", "trackingConfirmed",
+    "lastSeen", "professions", "timePlayed", "concentration", "recipes", "professionExpansions",
+    "discoveredSkillLines", "knowledgeData", "professionCooldowns", "professionEquipment",
+    "cooldownRecipeIDs", "craftingOrders", "professionData", "rested", "guid", "stats", "specID",
+    "specName", "specIcon", "heroSpecID", "heroSpecName", "hasMail", "mailSnapshot",
+    "lastFullSaveAt",
+}) do
+    FULL_SAVE_OWNED_KEYS[k] = true
+end
+
 --- Save complete character data (login/reload and significant changes).
 ---@param options table|nil lightOnly, bypassCombatDefer, profilerSliceName
 function WarbandNexus:SaveCurrentCharacterData(options)
@@ -1250,7 +1266,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
 
     local fullLoc = CollectPlayerLocation()
 
-    self.db.global.characters[key] = {
+    local newRow = {
         name = name,
         realm = realm,
         class = className,
@@ -1322,6 +1338,18 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         mailSnapshot         = preserveMailSnapshot,
         lastFullSaveAt       = (not lightOnly) and time() or (existingEntry and existingEntry.lastFullSaveAt),
     }
+
+    -- The literal above rebuilds only the keys this save owns. Other writers keep their own
+    -- fields on the same row (achievement points, sub-zone, weekly profession knowledge, ...);
+    -- carry those over instead of dropping them on every full save.
+    if existingEntry then
+        for k, v in pairs(existingEntry) do
+            if newRow[k] == nil and not FULL_SAVE_OWNED_KEYS[k] then
+                newRow[k] = v
+            end
+        end
+    end
+    self.db.global.characters[key] = newRow
 
     if self.HealCharacterProfessions then
         self:HealCharacterProfessions(self.db.global.characters[key])

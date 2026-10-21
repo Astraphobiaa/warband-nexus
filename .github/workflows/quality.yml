@@ -97,6 +97,7 @@ jobs:
             lua5.1 .github/scripts/test_profession_weekly_knowledge.lua
             lua5.1 .github/scripts/test_account_wide_currency_value.lua
             lua5.1 .github/scripts/test_character_merge_gold.lua
+            lua5.1 .github/scripts/test_full_character_save_keys.lua
           else
             echo "lua5.1 unavailable - skipping persistence gate"
           fi
