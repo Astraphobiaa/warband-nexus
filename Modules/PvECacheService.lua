@@ -2022,16 +2022,21 @@ function WarbandNexus:UpdateWorldBossKills(charKey)
         self.db.global.pveCache.lockouts.worldBosses = {}
     end
     
-    self.db.global.pveCache.lockouts.worldBosses[charKey] = {
-        lastUpdate = time(),
-    }
-    
+    -- A kill recorded earlier this reset period stays recorded: an unready or secret quest read
+    -- (login burst, instance) must not turn it back into "not killed" for the rest of the week.
+    local prev = self.db.global.pveCache.lockouts.worldBosses[charKey]
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    local keepKills = type(prev) == "table" and resetStart and resetStart > 0
+        and (tonumber(prev.lastUpdate) or 0) >= resetStart
+
+    local row = { lastUpdate = time() }
     for i = 1, #worldBossQuests do
         local questID = worldBossQuests[i]
-        if C_QuestLog.IsQuestFlaggedCompleted(questID) then
-            self.db.global.pveCache.lockouts.worldBosses[charKey][questID] = true
+        if SafeIsQuestFlaggedCompleted(questID) or (keepKills and prev[questID] == true) then
+            row[questID] = true
         end
     end
+    self.db.global.pveCache.lockouts.worldBosses[charKey] = row
 end
 
 ---Collect M+ run history for current character (this week only)
@@ -2232,8 +2237,18 @@ function WarbandNexus:UpdateDelvesData(charKey)
         if not delves.characters then delves.characters = {} end
         if not delves.characters[charKey] then delves.characters[charKey] = {} end
         
+        -- Weekly completion flags only rise inside one reset period. SafeIsQuestFlaggedCompleted
+        -- reports "unknown" (unready login read, secret, pcall error) as false; without this floor
+        -- one such read turned a done weekly back into "not done" on every alt's PvE row.
+        local dc = delves.characters[charKey]
+        local flagResetStart = GetCurrentWeeklyResetStartTime()
+        local keepDone = flagResetStart and flagResetStart > 0 and (tonumber(dc.lastUpdate) or 0) >= flagResetStart
+        local function SetWeeklyFlag(field, done)
+            dc[field] = (done == true) or (keepDone and dc[field] == true) or false
+        end
+
         -- Bountiful / Trovehunter weeklies — snapshot for this character when they are logged in (quest API is session-local).
-        delves.characters[charKey].bountifulComplete = self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone() or false
+        SetWeeklyFlag("bountifulComplete", self.IsBountifulDelveWeeklyDone and self:IsBountifulDelveWeeklyDone())
         local gildedStashes, gildedStashesMax = GetGildedStashCounts()
         local priorGildedStashes = tonumber(delves.characters[charKey].gildedStashes)
         if gildedStashes >= 0 or priorGildedStashes == nil then
@@ -2241,14 +2256,14 @@ function WarbandNexus:UpdateDelvesData(charKey)
         end
         delves.characters[charKey].gildedStashesMax = gildedStashesMax
         local crackedID = Constants.PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID or 92600
-        delves.characters[charKey].crackedKeystoneComplete = SafeIsQuestFlaggedCompleted(crackedID)
+        SetWeeklyFlag("crackedKeystoneComplete", SafeIsQuestFlaggedCompleted(crackedID))
         -- Midnight 12.1 weeklies that also award a Trovehunter's Bounty (PvE tab columns).
         local nightmareID = Constants.PVE_NIGHTMARE_TASK_WEEKLY_QUEST_ID or 94446
-        delves.characters[charKey].nightmareTaskComplete = SafeIsQuestFlaggedCompleted(nightmareID)
+        SetWeeklyFlag("nightmareTaskComplete", SafeIsQuestFlaggedCompleted(nightmareID))
         local purgingID = Constants.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID or 95520
-        delves.characters[charKey].purgingVaultsComplete = SafeIsQuestFlaggedCompleted(purgingID)
+        SetWeeklyFlag("purgingVaultsComplete", SafeIsQuestFlaggedCompleted(purgingID))
         local nemesisID = Constants.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID or 92888
-        delves.characters[charKey].delveNemesisComplete = SafeIsQuestFlaggedCompleted(nemesisID)
+        SetWeeklyFlag("delveNemesisComplete", SafeIsQuestFlaggedCompleted(nemesisID))
         -- Tormented Soul aura snapshot (alts read this; logged-in row also queries live).
         local tsChar = delves.characters[charKey]
         local tsActive, tsAppliedAt = ReadTormentedSoulAura()
