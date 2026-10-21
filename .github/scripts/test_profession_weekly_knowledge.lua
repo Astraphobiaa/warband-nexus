@@ -316,6 +316,35 @@ do
     tradeSkillReady = false
 end
 
+print("Phase 11: Recipe summary counts Midnight recipes on a client with a translated expansion name")
+do
+    local charData = WarbandNexus.db.global.characters["Player-01"]
+    charData.recipes = {}
+    recipeCategoryName = "Полночь"           -- ruRU-style category name: no English "Midnight"
+    _G.C_TradeSkillUI.IsRecipeInSkillLine = function(recipeID, skillLineID) return skillLineID == 2906 end
+    tradeSkillReady = true
+    WarbandNexus:OnTradeSkillListUpdate()
+    WarbandNexus:FlushProfessionOnLogout()
+    local rec = charData.recipes[2906]
+    assert_eq(rec and rec.totalCount, 2, "both recipes counted via IsRecipeInSkillLine")
+    _G.C_TradeSkillUI.IsRecipeInSkillLine = nil
+    tradeSkillReady = false
+    recipeCategoryName = "Midnight"
+end
+
+print("Phase 12: Login concentration refresh keeps stored values while currency data is not ready")
+do
+    local charData = WarbandNexus.db.global.characters["Player-01"]
+    charData.concentration = { [2906] = { currencyID = 3000, current = 640, max = 1000, lastUpdate = 1234 } }
+    local savedGCI = C_CurrencyInfo.GetCurrencyInfo
+    C_CurrencyInfo.GetCurrencyInfo = function(id) if id == 3000 then return { quantity = 0, maxQuantity = 0 } end end
+    WarbandNexus:CollectConcentrationOnLogin()
+    local c = charData.concentration[2906]
+    assert_eq(c.current, 640, "concentration current kept when maxQuantity reads 0")
+    assert_eq(c.lastUpdate, 1234, "regeneration timestamp not reset by an unready read")
+    C_CurrencyInfo.GetCurrencyInfo = savedGCI
+end
+
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))
 if failed > 0 then
     error("Profession weekly knowledge suite failed with " .. failed .. " failure(s).")

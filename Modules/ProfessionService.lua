@@ -2069,7 +2069,20 @@ local function CollectRecipeSummaryData()
         if riOk and recipeInfo then
             -- Filter to Midnight categories only (strict content isolation).
             local categoryID = recipeInfo.categoryID
-            if IsMidnightRecipeCategory(categoryID, categoryCache) then
+            -- Locale-independent first: IsRecipeInSkillLine (12.1.5 API doc) asks by ID whether the
+            -- recipe belongs to this Midnight child skill line. The category-name test below matches
+            -- the English word "Midnight" and fails where the client translates the expansion name.
+            local inSkillLine
+            if C_TradeSkillUI.IsRecipeInSkillLine then
+                local okSl, isIn = pcall(C_TradeSkillUI.IsRecipeInSkillLine, recipeID, skillLineID)
+                if okSl and isIn ~= nil and not (issecretvalue and issecretvalue(isIn)) then
+                    inSkillLine = (isIn == true)
+                end
+            end
+            if inSkillLine == nil then
+                inSkillLine = IsMidnightRecipeCategory(categoryID, categoryCache)
+            end
+            if inSkillLine then
                 if not IsScrappedOrUnobtainableRecipe(recipeID, recipeInfo) then
                     totalCount = totalCount + 1
 
@@ -3651,9 +3664,11 @@ function WarbandNexus:CollectConcentrationOnLogin()
         for slKey, concData in pairs(charData.concentration) do
             if concData.currencyID and concData.currencyID > 0 then
                 local ok, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, concData.currencyID)
-                if ok and currInfo then
+                -- maxQuantity 0 = currency data not loaded yet at login: writing it (with a fresh
+                -- lastUpdate) zeroed the stored value and restarted the regeneration estimate.
+                if ok and currInfo and (tonumber(currInfo.maxQuantity) or 0) > 0 then
                     concData.current    = currInfo.quantity or concData.current or 0
-                    concData.max        = currInfo.maxQuantity or concData.max or 0
+                    concData.max        = currInfo.maxQuantity
                     concData.lastUpdate = time()
                 end
             end
