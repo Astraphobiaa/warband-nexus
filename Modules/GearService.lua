@@ -665,7 +665,9 @@ end
 
 local function GetItemMinLevelFromItemInfo(itemInfo)
     if not itemInfo or not C_Item or not C_Item.GetItemInfo then return nil end
-    local ok, _, _, _, minLvl = pcall(C_Item.GetItemInfo, itemInfo)
+    -- C_Item.GetItemInfo returns name, link, quality, itemLevel, itemMinLevel, ... (12.1.5 API doc):
+    -- the min level is the 5th value, not the 4th (that read the item level, e.g. 250, as the level req).
+    local ok, _, _, _, _, minLvl = pcall(C_Item.GetItemInfo, itemInfo)
     if not ok or minLvl == nil then return nil end
     if issecretvalue and issecretvalue(minLvl) then return nil end
     if type(minLvl) ~= "number" or minLvl <= 0 then return nil end

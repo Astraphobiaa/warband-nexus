@@ -329,7 +329,8 @@ local function ResolveStorageItemIlvl(item)
         -- Prefer link-based ilvl first so storage row matches tooltip when cache is warm.
         local ilvl = GetEffectiveIlvl(link)
         if ilvl > 0 then return ilvl end
-        local ok, _, _, level = pcall(C_Item.GetItemInfo, link)
+        -- itemLevel is GetItemInfo's 4th return (name, link, quality, itemLevel); `_, _, level` read quality.
+        local ok, _, _, _, level = pcall(C_Item.GetItemInfo, link)
         if ok and level and type(level) == "number" and level > 0 then
             return level
         end
@@ -344,7 +345,7 @@ local function ResolveStorageItemIlvl(item)
         if detFromId > 0 then return detFromId end
         local ilvlId = GetEffectiveIlvl(item.itemID)
         if ilvlId > 0 then return ilvlId end
-        local ok3, _, _, level3 = pcall(C_Item.GetItemInfo, item.itemID)
+        local ok3, _, _, _, level3 = pcall(C_Item.GetItemInfo, item.itemID)
         if ok3 and level3 and type(level3) == "number" and level3 > 0 then
             return level3
         end
@@ -353,7 +354,7 @@ local function ResolveStorageItemIlvl(item)
     end
     local ilvlId = GetEffectiveIlvl(item.itemID)
     if ilvlId > 0 then return ilvlId end
-    local ok2, _, _, level2 = pcall(C_Item.GetItemInfo, item.itemID)
+    local ok2, _, _, _, level2 = pcall(C_Item.GetItemInfo, item.itemID)
     if ok2 and level2 and type(level2) == "number" and level2 > 0 then
         return level2
     end
