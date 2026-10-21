@@ -1936,11 +1936,15 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                 for k, v in pairs(prevSlot) do
                     slotEntry[k] = v
                 end
-                local ilvl = GetEffectiveIlvl(itemLink) or slotEntry.itemLevel or 0
+                -- GetEffectiveIlvl / GetItemQuality return 0 (never nil) while item info is not cached
+                -- (login, logout flush): 0 means "unknown" here, keep the reused slot's stored value.
+                local ilvl = GetEffectiveIlvl(itemLink)
+                if not ilvl or ilvl <= 0 then ilvl = tonumber(slotEntry.itemLevel) or 0 end
                 slotEntry.itemLink = itemLink
                 slotEntry.itemID = itemID or slotEntry.itemID
                 slotEntry.itemLevel = ilvl
-                slotEntry.quality = GetItemQuality(itemLink) or slotEntry.quality
+                local quality = GetItemQuality(itemLink)
+                if quality and quality > 0 then slotEntry.quality = quality end
                 pcall(function()
                     if C_Item and C_Item.GetItemInfo then
                         local nm = C_Item.GetItemInfo(itemLink)
