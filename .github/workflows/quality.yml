@@ -102,6 +102,7 @@ jobs:
             lua5.1 .github/scripts/test_timer_handles.lua
             lua5.1 .github/scripts/test_vault_plan_progress.lua
             lua5.1 .github/scripts/test_pve_lockouts_login.lua
+            lua5.1 .github/scripts/test_concentration_current_expansion.lua
           else
             echo "lua5.1 unavailable - skipping persistence gate"
           fi
