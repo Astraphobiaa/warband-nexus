@@ -145,6 +145,11 @@ function SectionPool.Remember(host, key, header)
         return
     end
     pool.used[key] = true
+    local old = pool.frames[key]
+    if old and old ~= header then
+        -- Chrome signature changed (e.g. classic <-> custom theme): the old header was not reused.
+        SectionPool.Discard(old)
+    end
     header._wnSectionPooled = true
     pool.frames[key] = header
 end

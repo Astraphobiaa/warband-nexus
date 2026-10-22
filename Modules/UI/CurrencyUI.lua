@@ -797,19 +797,21 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- VLM handles its own _isVirtualRow frames; we only need to recycle stale headers.
     -- Nested currency rows live under collapsible section bodies (not direct children of container);
     -- release them to the pool before reparenting wrappers â€” matches ReputationUI / PopulateContent.
-    local recycleBin = ns.UI_RecycleBin
     local oldChildren = {container:GetChildren()}
     for i = 1, #oldChildren do
         if ReleaseCurrencyRowsFromSubtree then
             ReleaseCurrencyRowsFromSubtree(oldChildren[i])
         end
     end
+    -- Section wraps / bodies / headers are pooled per container (SectionPool) and re-bound below by
+    -- stable section key; every redraw used to park ~3 new frames per section in the recycle bin
+    -- forever (2026-10-22). Anything else non-virtual is real garbage.
+    local SP = ns.UI_SectionPool
+    SP.BeginPass(container)
     for i = 1, #oldChildren do
         local child = oldChildren[i]
-        if not child._isVirtualRow then
-            child:Hide()
-            child:ClearAllPoints()
-            child:SetParent(recycleBin or UIParent)
+        if not child._isVirtualRow and not child._wnSectionPooled then
+            SP.Discard(child)
         end
     end
     local oldRegions = {container:GetRegions()}
@@ -987,8 +989,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
     end
 
-    local function CreateWrap(parentFrame, wrapWidth)
-        local wrap = Factory and Factory.CreateContainer and Factory:CreateContainer(parentFrame) or nil
+    local function CreateWrap(parentFrame, wrapWidth, poolKey)
+        local wrap = SP.Acquire(container, "wrap:" .. poolKey, parentFrame, math.max(1, wrapWidth), COLLAPSE_H_CUR + 0.1)
         if not wrap then return nil end
         wrap:SetWidth(math.max(1, wrapWidth))
         wrap:SetHeight(COLLAPSE_H_CUR + 0.1)
@@ -998,8 +1000,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
         return wrap
     end
 
-    local function CreateBody(wrap, bodyWidth)
-        local body = Factory and Factory.CreateContainer and Factory:CreateContainer(wrap) or nil
+    local function CreateBody(wrap, bodyWidth, poolKey)
+        local body = SP.Acquire(container, "body:" .. poolKey, wrap, math.max(1, bodyWidth), 0.1)
         if not body then return nil end
         body:ClearAllPoints()
         body:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, -COLLAPSE_H_CUR)
@@ -1075,14 +1077,14 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 local totalCount = headerData and headerData.count or 0
                 if totalCount > 0 then
                     local innerW = math.max(1, contentW - BASE_INDENT)
-                    local wrap = CreateWrap(renderBody, innerW)
+                    local headerKey = keyPrefix .. (headerData.name or tostring(i))
+                    local wrap = CreateWrap(renderBody, innerW, headerKey)
                     if wrap then
                         ChainSectionFrameBelow(renderBody, wrap, localTail, BASE_INDENT, localTail and SECTION_SPACING or nil, localTail and nil or SECTION_SPACING)
                         localTail = wrap
 
-                        local headerKey = keyPrefix .. (headerData.name or tostring(i))
                         local expandedNow = IsExpanded(headerKey, defaultExpanded)
-                        local headerBody = CreateBody(wrap, innerW)
+                        local headerBody = CreateBody(wrap, innerW, headerKey)
                         local nodeCtx = { body = headerBody, wrap = wrap, parentCtx = parentCtx }
                         local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
                         local headerIcon = GetCurrencyHeaderIcon and GetCurrencyHeaderIcon(headerData.name) or nil
@@ -1097,7 +1099,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             nil,
                             nil,
                             nil,
-                            {
+                            SP.HeaderOpts(container, "hdr:" .. headerKey, {
                                 animatedContent = function() return headerBody end,
                                 persistToggle = function(exp)
                                     PersistExpand(headerKey, exp)
@@ -1117,8 +1119,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     ReflowAncestors(nodeCtx.parentCtx)
                                     SyncScrollMetrics()
                                 end,
-                            }
+                            })
                         )
+                        SP.Remember(container, "hdr:" .. headerKey, header)
                         header:ClearAllPoints()
                         header:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
                         header:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
@@ -1152,8 +1155,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     if #aggregated.warbandTransferable > 0 then
         local sectionKey = "currency-warband"
         local sectionExpanded = IsExpanded(sectionKey, false)
-        local sectionWrap = CreateWrap(parent, width)
-        local sectionBody = CreateBody(sectionWrap, width)
+        local sectionWrap = CreateWrap(parent, width, sectionKey)
+        local sectionBody = sectionWrap and CreateBody(sectionWrap, width, sectionKey)
         if sectionWrap and sectionBody then
             ChainTopFrame(sectionWrap, topChainTail and SECTION_SPACING or nil)
             local sectionHeader, _, warbandIcon = CreateCollapsibleHeader(
@@ -1166,7 +1169,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 nil,
                 nil,
                 nil,
-                {
+                SP.HeaderOpts(container, "hdr:" .. sectionKey, {
                     animatedContent = function() return sectionBody end,
                     persistToggle = function(exp)
                         PersistExpand(sectionKey, exp)
@@ -1184,8 +1187,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnSectionFullH or 0.1))
                         SyncScrollMetrics()
                     end,
-                }
+                })
             )
+            SP.Remember(container, "hdr:" .. sectionKey, sectionHeader)
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
@@ -1242,8 +1246,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     if #aggregated.characterSpecific > 0 then
         local sectionKey = "currency-char-specific"
         local sectionExpanded = IsExpanded(sectionKey, false)
-        local sectionWrap = CreateWrap(parent, width)
-        local sectionBody = CreateBody(sectionWrap, width)
+        local sectionWrap = CreateWrap(parent, width, sectionKey)
+        local sectionBody = sectionWrap and CreateBody(sectionWrap, width, sectionKey)
         if sectionWrap and sectionBody then
             ChainTopFrame(sectionWrap, topChainTail and SECTION_SPACING or nil)
             local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
@@ -1257,7 +1261,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 true,
                 nil,
                 nil,
-                {
+                SP.HeaderOpts(container, "hdr:" .. sectionKey, {
                     animatedContent = function() return sectionBody end,
                     persistToggle = function(exp)
                         PersistExpand(sectionKey, exp)
@@ -1275,8 +1279,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         sectionWrap:SetHeight(COLLAPSE_H_CUR + (exp and sectionBody._wnSectionFullH or 0.1))
                         SyncScrollMetrics()
                     end,
-                }
+                })
             )
+            SP.Remember(container, "hdr:" .. sectionKey, sectionHeader)
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
