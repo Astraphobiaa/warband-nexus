@@ -102,6 +102,8 @@ LoadFile("Modules/ProfessionService.lua")
 LoadFile("Modules/CharacterService.lua")
 LoadFile("Modules/TryCounterService_Shared.lua")
 LoadFile("Modules/PvECacheService.lua")
+LoadFile("Modules/PvECacheService_MythicPlus.lua")
+LoadFile("Modules/PvECacheService_Vault.lua")
 
 print("=== Phase 1: Warband Concentration Burn & Transmute Yield Optimizer ===")
 do

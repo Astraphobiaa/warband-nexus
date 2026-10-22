@@ -78,6 +78,8 @@ end
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/ResetService.lua")
 LoadFile("Modules/PvECacheService.lua")
+LoadFile("Modules/PvECacheService_MythicPlus.lua")
+LoadFile("Modules/PvECacheService_Vault.lua")
 
 local C = ns.Constants
 local WEEKLY = {

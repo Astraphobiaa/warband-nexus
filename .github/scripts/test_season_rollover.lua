@@ -61,6 +61,8 @@ local ns, WN = NewNS()
 LoadFile(ns, "Modules/Constants.lua")
 ns.CharacterService = { IsCharacterTracked = function() return true end }
 LoadFile(ns, "Modules/PvECacheService.lua")
+LoadFile(ns, "Modules/PvECacheService_MythicPlus.lua")
+LoadFile(ns, "Modules/PvECacheService_Vault.lua")
 
 _G.C_MythicPlus = _G.C_MythicPlus or {}
 _G.C_ChallengeMode = _G.C_ChallengeMode or {}

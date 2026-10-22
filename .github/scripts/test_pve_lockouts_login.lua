@@ -95,6 +95,8 @@ end
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/ResetService.lua")
 LoadFile("Modules/PvECacheService.lua")
+LoadFile("Modules/PvECacheService_MythicPlus.lua")
+LoadFile("Modules/PvECacheService_Vault.lua")
 
 local lockouts = WarbandNexus.db.global.pveCache.lockouts
 local function countRows(t) local n = 0; for _ in pairs(t or {}) do n = n + 1 end; return n end

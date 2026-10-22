@@ -79,6 +79,8 @@ end
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/ResetService.lua")
 LoadFile("Modules/PvECacheService.lua")
+LoadFile("Modules/PvECacheService_MythicPlus.lua")
+LoadFile("Modules/PvECacheService_Vault.lua")
 LoadFile("Modules/PvPService.lua")
 
 local KEY = "Player-01"

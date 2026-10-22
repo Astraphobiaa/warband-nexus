@@ -201,6 +201,8 @@ do
     LoadFile("Modules/Constants.lua", pveNs)
     LoadFile("Modules/ResetService.lua", pveNs)
     LoadFile("Modules/PvECacheService.lua", pveNs)
+    LoadFile("Modules/PvECacheService_MythicPlus.lua", pveNs)
+    LoadFile("Modules/PvECacheService_Vault.lua", pveNs)
     addon:RegisterPvECacheEvents()
 
     local probes, refreshes = 0, 0

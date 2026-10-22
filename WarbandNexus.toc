@@ -83,6 +83,9 @@ Modules\ReputationProcessor.lua
 Modules\ReputationCacheService.lua
 Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua
+Modules\PvECacheService_MythicPlus.lua
+Modules\PvECacheService_Vault.lua
+Modules\PvECacheService_VaultSelfTest.lua
 Modules\PvPService.lua
 Modules\PvPService_SelfTest.lua
 Modules\ItemsCacheService.lua
