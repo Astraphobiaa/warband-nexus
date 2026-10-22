@@ -1166,8 +1166,9 @@ function ns.UI_BuildBrowseTodoSummaryLine(item, category, sources, opts)
     if category == "title" and item.sourceAchievement then
         local sourceLabel = ns.UI_NormalizeColonLabelSpacing((L and L["SOURCE_LABEL"]) or "Source:")
         local achievementType = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement"
-        local srcFmt = (L and L["SOURCE_ACHIEVEMENT_FORMAT"]) or "%s %s"
-        local line = format(srcFmt, sourceLabel, achievementType .. " " .. tostring(item.sourceAchievement))
+        -- SOURCE_ACHIEVEMENT_FORMAT is "%s [%s %s]" (label, type, id) in every locale; two args errored.
+        local srcFmt = (L and L["SOURCE_ACHIEVEMENT_FORMAT"]) or "%s %s %s"
+        local line = format(srcFmt, sourceLabel, achievementType, tostring(item.sourceAchievement))
         if #line > 72 then line = line:sub(1, 69) .. "..." end
         return labCol .. line .. "|r"
     end

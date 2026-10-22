@@ -678,7 +678,7 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
             color = {1, 0.67, 0}
         })
         table.insert(lines, {
-            text = string.format("|cffaaaaaa" .. floorDesc .. "|r"),
+            text = "|cffaaaaaa" .. floorDesc .. "|r",  -- not a format string: the text has a literal "0%"
             color = VaultDimLineColor()
         })
     end
@@ -769,7 +769,7 @@ local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
             color = {1, 0.67, 0}
         })
         table.insert(lines, {
-            text = string.format("|cffaaaaaa" .. floorDesc .. "|r"),
+            text = "|cffaaaaaa" .. floorDesc .. "|r",  -- not a format string: the text has a literal "0%"
             color = VaultDimLineColor()
         })
     end

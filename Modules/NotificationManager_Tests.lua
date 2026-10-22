@@ -284,7 +284,7 @@ function WarbandNexus:TestAlertTest(sub)
             progressAnchor = true,
             iconAtlas = "questlog-questtypeicon-heroic",
             criteriaTitle = (L and L["TOAST_CAT_VAULT"]) or "Vault",
-            itemName = (L and L["DUNGEON"]) or "Dungeon",
+            itemName = (L and L["DUNGEON_CAT"]) or "Dungeon",
             titleColor = ToastChrome.CriteriaAccent(),
             playSound = false,
             autoDismiss = ALERT_TEST_DISMISS_SEC,
