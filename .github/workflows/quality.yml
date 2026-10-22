@@ -119,6 +119,7 @@ jobs:
             lua5.1 .github/scripts/test_row_paint_alloc.lua
             lua5.1 .github/scripts/test_hover_shift_alloc.lua
             lua5.1 .github/scripts/test_plans_pooling.lua
+            lua5.1 .github/scripts/test_tab_refresh_routing.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

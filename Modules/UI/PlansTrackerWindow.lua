@@ -294,6 +294,23 @@ end
 
 -- â”€â”€ Refresh debounce â”€â”€
 local pendingRefresh = false
+-- Full-width (vault / daily) cards may be re-shown instead of rebuilt on the pending refresh.
+local pendingReuseFullWidth = false
+-- WN_PLANS_UPDATED coalesce (2026-10-22): CRITERIA_UPDATE drives criteria_update ~1/s while the
+-- tracker is shown and try_count_set fires per kill; each one rebuilt the vault / daily cards.
+-- CreatePlansTrackerWindow sits at the 60-upvalue limit: it reaches Schedule through ns.PlansTrackerWindow.
+local plansUpdatedState = {
+    COALESCE_SEC = 0.3,
+    timer = nil,
+    reuseFullWidth = true,
+    -- Actions that never change a vault / daily card: those cards are re-shown, not rebuilt.
+    neutralActions = {
+        criteria_update = true,
+        try_count_set = true,
+        statistics_reseeded = true,
+        statistics_seeded = true,
+    },
+}
 
 -- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 -- DB helpers
@@ -1388,9 +1405,13 @@ local function RepositionTrackerRows()
 end
 
 --- Full-width vault / daily cards — same factory + height as Plans To-Do tab.
-local function CreateTrackerFullWidthPlanCard(scrollChild, plan, width)
+local function MeasureTrackerFullWidthPlanCard(plan, width)
+    return (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, width)) or 174
+end
+
+local function CreateTrackerFullWidthPlanCard(scrollChild, plan, width, cardH)
     local PCF = ns.UI_PlanCardFactory
-    local cardH = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, width)) or 174
+    cardH = cardH or MeasureTrackerFullWidthPlanCard(plan, width)
     local card = Factory and Factory:CreateContainer(scrollChild, width, cardH, false)
     if not card then
         card = CreateFrame("Frame", nil, scrollChild)
@@ -1410,7 +1431,8 @@ local function CreateTrackerFullWidthPlanCard(scrollChild, plan, width)
     return card
 end
 
-local function RefreshTrackerContentImmediate()
+---@param reuseFullWidth boolean|nil true: every request since the last paint left vault / daily cards unchanged
+local function RefreshTrackerContentImmediate(reuseFullWidth)
     local frame = GetTrackerFrame()
     if not frame or not frame.contentScrollChild then return end
 
@@ -1515,11 +1537,49 @@ local function RefreshTrackerContentImmediate()
         r:ClearAllPoints()
     end
 
+    -- Full-width cards are cached by plan id (`_wnTrackerPooled`, so the sweep above only hid them) and
+    -- re-shown when nothing they paint can have changed; PlanCardFactory builds them from scratch, so a
+    -- changed card is rebuilt and the old one parked (2026-10-22: every refresh rebuilt all of them).
+    local fwCache = scrollChild._wnTrackerFullWidthCards
+    if not fwCache then
+        fwCache = {}
+        scrollChild._wnTrackerFullWidthCards = fwCache
+    end
+    local fwPresent = {}
     for fw = 1, #fullWidthPlans do
         local fwPlan = fullWidthPlans[fw]
-        local fwCard = CreateTrackerFullWidthPlanCard(scrollChild, fwPlan, width)
+        local fwID = fwPlan.id
+        local cardH = MeasureTrackerFullWidthPlanCard(fwPlan, width)
+        local fwDone = fwPlan.fullyCompleted == true
+        local fwCard = fwID ~= nil and fwCache[fwID] or nil
+        if fwCard and reuseFullWidth and fwCard._wnFwPlan == fwPlan and fwCard._wnFwWidth == width
+            and fwCard._wnFwHeight == cardH and fwCard._wnFwDone == fwDone and fwCard:GetParent() == scrollChild then
+            fwCard:Show()
+        else
+            if fwCard then
+                fwCard._wnTrackerPooled = nil
+                if bin then fwCard:SetParent(bin) else fwCard:SetParent(nil) end
+            end
+            fwCard = CreateTrackerFullWidthPlanCard(scrollChild, fwPlan, width, cardH)
+            if fwCard and fwID ~= nil then
+                fwCard._wnTrackerPooled = true
+                fwCard._wnFwPlan = fwPlan
+                fwCard._wnFwWidth = width
+                fwCard._wnFwHeight = cardH
+                fwCard._wnFwDone = fwDone
+                fwCache[fwID] = fwCard
+            end
+        end
+        if fwID ~= nil then fwPresent[fwID] = true end
         if fwCard then
             trackerRowOrder[#trackerRowOrder + 1] = fwCard
+        end
+    end
+    for fwID, card in pairs(fwCache) do
+        if not fwPresent[fwID] then
+            card._wnTrackerPooled = nil
+            if bin then card:SetParent(bin) else card:SetParent(nil) end
+            fwCache[fwID] = nil
         end
     end
 
@@ -1850,15 +1910,46 @@ local function RefreshTrackerContentImmediate()
     SyncTrackerScrollBar(frame)
 end
 
+--- WN_PLANS_UPDATED: one refresh per COALESCE_SEC window; vault / daily cards are re-shown when every
+--- message in the window carried a neutral action.
+function plansUpdatedState.Schedule(payload)
+    local pu = plansUpdatedState
+    local action = type(payload) == "table" and payload.action or nil
+    if not pu.timer then
+        pu.reuseFullWidth = true
+        pu.timer = C_Timer.NewTimer(pu.COALESCE_SEC, function()
+            pu.timer = nil
+            local reuse = pu.reuseFullWidth
+            pu.reuseFullWidth = true
+            local frame = GetTrackerFrame()
+            if frame and frame:IsShown() then
+                RefreshTrackerContent(reuse)
+            end
+        end)
+    end
+    if not (action and pu.neutralActions[action]) then
+        pu.reuseFullWidth = false
+    end
+end
+ns.PlansTrackerWindow = ns.PlansTrackerWindow or {}
+ns.PlansTrackerWindow.SchedulePlansUpdatedRefresh = plansUpdatedState.Schedule
+
 --- Debounced refresh: batches rapid calls into a single frame-deferred refresh
-RefreshTrackerContent = function()
-    if pendingRefresh then return end
+---@param reuseFullWidth boolean|nil true only from plansUpdatedState.Schedule (neutral actions only)
+RefreshTrackerContent = function(reuseFullWidth)
+    if pendingRefresh then
+        if not reuseFullWidth then pendingReuseFullWidth = false end
+        return
+    end
     pendingRefresh = true
+    pendingReuseFullWidth = reuseFullWidth == true
     C_Timer.After(0, function()
         pendingRefresh = false
+        local reuse = pendingReuseFullWidth
+        pendingReuseFullWidth = false
         local frame = GetTrackerFrame()
         if frame and frame:IsShown() then
-            RefreshTrackerContentImmediate()
+            RefreshTrackerContentImmediate(reuse)
         end
     end)
 end
@@ -2725,9 +2816,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
     -- â”€â”€ Listen for plan updates â”€â”€
     -- NOTE: Uses PlansTrackerEvents as 'self' key to avoid overwriting PlansUI's handler.
-    local function OnPlansUpdated()
+    local function OnPlansUpdated(_, payload)
         if frame:IsShown() then
-            RefreshTrackerContent()
+            ns.PlansTrackerWindow.SchedulePlansUpdatedRefresh(payload)
         end
     end
     WarbandNexus.RegisterMessage(PlansTrackerEvents, E.PLANS_UPDATED, OnPlansUpdated)

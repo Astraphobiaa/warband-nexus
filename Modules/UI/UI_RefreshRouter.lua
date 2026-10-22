@@ -45,6 +45,25 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         end
         return false
     end
+    -- Items > Bags / Bank (flat list): a bag change only needs the stats line + results list
+    -- (TryRefreshItemsResultsForBagUpdate), not a full PopulateContent of the tab chrome (2026-10-22).
+    -- ITEMS_UPDATED + BAGS_UPDATED arrive together: coalesce with the shell's 100ms POPULATE_DEBOUNCE.
+    local ITEMS_RESULTS_REFRESH_DEBOUNCE = 0.1
+    local function runItemsResultsRefresh()
+        st.itemsResultsRefreshTimer = nil
+        if HiddenOrMissing() or f.currentTab ~= "items" then return end
+        if WarbandNexus.TryRefreshItemsResultsForBagUpdate and WarbandNexus:TryRefreshItemsResultsForBagUpdate() then
+            return
+        end
+        SchedulePopulateContent()
+    end
+    local function scheduleItemsResultsRefresh()
+        if st.itemsResultsRefreshTimer then
+            st.itemsResultsRefreshTimer:Cancel()
+        end
+        st.itemsResultsRefreshTimer = C_Timer.NewTimer(ITEMS_RESULTS_REFRESH_DEBOUNCE, runItemsResultsRefresh)
+    end
+
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
     -- overwriting other modules' handlers for the same AceEvent message.
     -- AceEvent allows only ONE handler per (event, self) pair.
@@ -52,11 +71,15 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         if not HiddenOrMissing() and (f.currentTab == "items" or f.currentTab == "gear") then
             -- Bank > Warband aggregate can sit on this tab while cache finishes; 800ms POPULATE_COOLDOWN
             -- otherwise drops the follow-up populate and the list looks empty until a tab switch.
-            if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" then
+            local itemsSub = f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()
+            if itemsSub == "warband" then
                 SchedulePopulateContent(true)
             elseif f.currentTab == "gear" then
                 ScheduleGearTabInventoryNarrowRefresh()
+            elseif itemsSub == "inventory" or itemsSub == "personal" then
+                scheduleItemsResultsRefresh()
             else
+                -- Guild: Storage tree (staged chunked paint) keeps the full PopulateContent.
                 SchedulePopulateContent()
             end
         end

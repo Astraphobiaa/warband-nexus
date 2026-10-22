@@ -504,6 +504,18 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     return yOffset + ROW_HEIGHT + GetLayout().betweenRows
 end
 
+--- Row display table: only the read-model fields PopulateCurrencyRowFrame / CurrencyRowOnEnter read
+--- (2026-10-22: was a pairs copy of the whole entry, per-character quantity map included, per row).
+local function NewCurrencyRowDisplayData(data)
+    data = data or {}
+    return {
+        name = data.name,
+        icon = data.icon,
+        iconFileID = data.iconFileID,
+        maxQuantity = data.maxQuantity,
+    }
+end
+
 -- AGGREGATE CURRENCIES (for Show All mode)
 
 ---Aggregate currencies across all characters
@@ -511,14 +523,15 @@ end
 ---@param characters table List of characters
 ---@param currencyHeaders table Blizzard currency headers
 ---@param searchText string Search filter
+---@param globalCurrencies table GetCurrenciesForUI() read model
 ---@return table { warbandTransferable = {headerData}, characterSpecific = {headerData} }
-local function AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero)
+local function AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero, globalCurrencies)
     local result = {
         warbandTransferable = {},  -- Account-wide currencies
         characterSpecific = {},     -- Character-specific (with total across all chars)
     }
     
-    local globalCurrencies = self:GetCurrenciesForUI()
+    globalCurrencies = globalCurrencies or self:GetCurrenciesForUI()
     -- Use actual SavedVariables row key (guid or Name-Realm) so currency DB lookups stay aligned.
     local charLookup = {}
     for ci = 1, #characters do
@@ -772,6 +785,40 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     return result
 end
 
+-- Aggregate snapshot cache (2026-10-22): every draw walked every currency x every tracked character.
+-- GetCurrenciesForUI() returns a new read-model table whenever CurrencyCacheService invalidates it
+-- (CURRENCY_UPDATED / CURRENCIES_UPDATED / CURRENCY_CACHE_CLEARED / CHARACTER_UPDATED /
+-- CHARACTER_TRACKING_CHANGED / MONEY_UPDATED), so its identity is the data version.
+local currencyAggregateCache = { result = nil, currencies = nil, headers = nil, headerCount = nil,
+    search = nil, showZero = nil, roster = nil, rosterParts = {} }
+
+local function GetCurrencyAggregateSnapshot(self, characters, currencyHeaders, searchText, showZero)
+    local globalCurrencies = self:GetCurrenciesForUI()
+    local c = currencyAggregateCache
+    if searchText and issecretvalue and issecretvalue(searchText) then
+        c.result = nil
+        return AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero, globalCurrencies)
+    end
+    local parts = c.rosterParts
+    wipe(parts)
+    for ci = 1, #characters do
+        parts[ci] = (ns.UI_GetCharKey and ns.UI_GetCharKey(characters[ci])) or ""
+    end
+    parts[#parts + 1] = "sk:" .. ((ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey()) or "")
+    local roster = table.concat(parts, "\031")
+    local search = searchText or ""
+    local headerCount = type(currencyHeaders) == "table" and #currencyHeaders or 0
+    if c.result and c.currencies == globalCurrencies and c.headers == currencyHeaders
+        and c.headerCount == headerCount and c.search == search and c.showZero == showZero
+        and c.roster == roster then
+        return c.result
+    end
+    c.result = AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero, globalCurrencies)
+    c.currencies, c.headers, c.headerCount = globalCurrencies, currencyHeaders, headerCount
+    c.search, c.showZero, c.roster = search, showZero, roster
+    return c.result
+end
+
 --- Leaf currency count for SearchStateManager (matches rendered header tree, not chars x currencies pre-scan).
 local function CountAggregatedCurrencyLeaves(headers)
     if not headers then return 0 end
@@ -925,7 +972,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     -- Single aggregate pass drives empty-state + tree (avoids redundant chars x currencies pre-scan).
-    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
+    local aggregated = GetCurrencyAggregateSnapshot(self, characters, globalHeaders, currencySearchText, showZero)
     local hasAnyData = #aggregated.warbandTransferable > 0 or #aggregated.characterSpecific > 0
 
     if not hasAnyData then
@@ -1099,12 +1146,28 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
                         local headerIcon = GetCurrencyHeaderIcon and GetCurrencyHeaderIcon(headerData.name) or nil
 
+                        -- Rows + child categories are built on first expand (2026-10-22: every row of
+                        -- every collapsed category was built on each draw). A collapsed wrap's height
+                        -- never depends on its body, so the section layout is unchanged.
+                        local function populateHeaderBody()
+                            if headerBody._wnSectionBodyBuilt then return end
+                            headerBody._wnSectionBodyBuilt = true
+                            local rowTail = AppendRows(headerBody, headerData.currencies or {}, innerW)
+                            local childHeaders = headerData.children or {}
+                            if #childHeaders > 0 then
+                                RenderTree(childHeaders, headerBody, innerW, rowTail, nodeCtx)
+                            end
+                            headerBody._wnSectionFullH = FinalizeBodyHeight(headerBody)
+                        end
+
                         local header = CreateCollapsibleHeader(
                             wrap,
                             (headerData.name or "") .. " (" .. FormatNumber(totalCount) .. ")",
                             headerKey,
                             expandedNow,
-                            function() end,
+                            function(exp)
+                                if exp then populateHeaderBody() end
+                            end,
                             headerIcon,
                             nil,
                             nil,
@@ -1137,16 +1200,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         header:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
                         header:SetHeight(COLLAPSE_H_CUR)
 
-                        local rowTail = AppendRows(headerBody, headerData.currencies or {}, innerW)
-                        local childHeaders = headerData.children or {}
-                        if #childHeaders > 0 then
-                            RenderTree(childHeaders, headerBody, innerW, rowTail, nodeCtx)
-                        end
-
-                        local fullH = FinalizeBodyHeight(headerBody)
                         if expandedNow then
+                            populateHeaderBody()
                             headerBody:Show()
-                            headerBody:SetHeight(math.max(0.1, fullH))
+                            headerBody:SetHeight(math.max(0.1, headerBody._wnSectionFullH or 0.1))
                             wrap:SetHeight(COLLAPSE_H_CUR + headerBody:GetHeight())
                         else
                             headerBody:Hide()
@@ -1169,12 +1226,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
         local sectionBody = sectionWrap and CreateBody(sectionWrap, width, sectionKey)
         if sectionWrap and sectionBody then
             ChainTopFrame(sectionWrap, topChainTail and SECTION_SPACING or nil)
+            local populateSection  -- builds the category tree on first expand (assigned below)
             local sectionHeader, _, warbandIcon = CreateCollapsibleHeader(
                 sectionWrap,
                 (ns.L and ns.L["CURRENCY_WARBAND_TRANSFERABLE"]) or "All Warband Transferable",
                 sectionKey,
                 sectionExpanded,
-                function() end,
+                function(exp)
+                    if exp and populateSection then populateSection() end
+                end,
                 "dummy",
                 nil,
                 nil,
@@ -1218,31 +1278,34 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 end
             end
             local sectionCtx = { body = sectionBody, wrap = sectionWrap }
-            BuildCurrencyCategoryTree(sectionCtx, roots, "all-warband-", false, sectionBody, width, function(curr)
-                local displayData = {}
-                for k, v in pairs(curr.data or {}) do displayData[k] = v end
-                local sessionChar = curr.sessionCharacter or {}
-                local classFile = sessionChar.classFile
-                local classColor = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] or { r = 1, g = 1, b = 1 }
-                local sessionRealm = ns.Utilities and ns.Utilities.FormatRealmName
-                    and ns.Utilities:FormatRealmName(sessionChar.realm) or (sessionChar.realm or "")
-                local charName = format("|c%s%s  -  %s|r",
-                    format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
-                    sessionChar.name or "",
-                    sessionRealm)
-                displayData.characterName = FormatParenBadge(charName)
-                displayData.quantity = curr.sessionAmount or curr.quantity or 0
-                displayData.totalQuantity = curr.totalQuantity or 0
-                displayData.warbandAmountSplit = true
-                displayData.viewCharKey = curr.sessionCharacterKey or currentCharKey
-                return displayData
-            end)
+            populateSection = function()
+                if sectionBody._wnSectionBodyBuilt then return end
+                sectionBody._wnSectionBodyBuilt = true
+                BuildCurrencyCategoryTree(sectionCtx, roots, "all-warband-", false, sectionBody, width, function(curr)
+                    local displayData = NewCurrencyRowDisplayData(curr.data)
+                    local sessionChar = curr.sessionCharacter or {}
+                    local classFile = sessionChar.classFile
+                    local classColor = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] or { r = 1, g = 1, b = 1 }
+                    local sessionRealm = ns.Utilities and ns.Utilities.FormatRealmName
+                        and ns.Utilities:FormatRealmName(sessionChar.realm) or (sessionChar.realm or "")
+                    local charName = format("|c%s%s  -  %s|r",
+                        format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
+                        sessionChar.name or "",
+                        sessionRealm)
+                    displayData.characterName = FormatParenBadge(charName)
+                    displayData.quantity = curr.sessionAmount or curr.quantity or 0
+                    displayData.totalQuantity = curr.totalQuantity or 0
+                    displayData.warbandAmountSplit = true
+                    displayData.viewCharKey = curr.sessionCharacterKey or currentCharKey
+                    return displayData
+                end)
+                sectionBody._wnSectionFullH = FinalizeBodyHeight(sectionBody)
+            end  -- populateSection
 
-            local sectionFullH = FinalizeBodyHeight(sectionBody)
-            sectionBody._wnSectionFullH = sectionFullH
             if sectionExpanded then
+                populateSection()
                 sectionBody:Show()
-                sectionBody:SetHeight(math.max(0.1, sectionFullH))
+                sectionBody:SetHeight(math.max(0.1, sectionBody._wnSectionFullH or 0.1))
                 sectionWrap:SetHeight(COLLAPSE_H_CUR + sectionBody:GetHeight())
             else
                 sectionBody:Hide()
@@ -1261,12 +1324,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
         if sectionWrap and sectionBody then
             ChainTopFrame(sectionWrap, topChainTail and SECTION_SPACING or nil)
             local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+            local populateSection  -- builds the category tree on first expand (assigned below)
             local sectionHeader = CreateCollapsibleHeader(
                 sectionWrap,
                 (ns.L and ns.L["CURRENCY_CHARACTER_SPECIFIC"]) or "Character-Specific Currencies",
                 sectionKey,
                 sectionExpanded,
-                function() end,
+                function(exp)
+                    if exp and populateSection then populateSection() end
+                end,
                 GetCharacterSpecificIcon and GetCharacterSpecificIcon() or nil,
                 true,
                 nil,
@@ -1305,28 +1371,31 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 end
             end
             local sectionCtx = { body = sectionBody, wrap = sectionWrap }
-            BuildCurrencyCategoryTree(sectionCtx, roots, "all-char-", false, sectionBody, width, function(curr)
-                local displayData = {}
-                for k, v in pairs(curr.data or {}) do displayData[k] = v end
-                local bestCharacter = curr.bestCharacter or {}
-                local classFile = bestCharacter.classFile
-                local classColor = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] or { r = 1, g = 1, b = 1 }
-                local bestRealm = ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(bestCharacter.realm) or (bestCharacter.realm or "")
-                local charName = format("|c%s%s  -  %s|r",
-                    format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
-                    bestCharacter.name or "",
-                    bestRealm)
-                displayData.characterName = FormatParenBadge(charName)
-                displayData.quantity = curr.quantity
-                displayData.viewCharKey = curr.bestCharacterKey
-                return displayData
-            end)
+            populateSection = function()
+                if sectionBody._wnSectionBodyBuilt then return end
+                sectionBody._wnSectionBodyBuilt = true
+                BuildCurrencyCategoryTree(sectionCtx, roots, "all-char-", false, sectionBody, width, function(curr)
+                    local displayData = NewCurrencyRowDisplayData(curr.data)
+                    local bestCharacter = curr.bestCharacter or {}
+                    local classFile = bestCharacter.classFile
+                    local classColor = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] or { r = 1, g = 1, b = 1 }
+                    local bestRealm = ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(bestCharacter.realm) or (bestCharacter.realm or "")
+                    local charName = format("|c%s%s  -  %s|r",
+                        format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
+                        bestCharacter.name or "",
+                        bestRealm)
+                    displayData.characterName = FormatParenBadge(charName)
+                    displayData.quantity = curr.quantity
+                    displayData.viewCharKey = curr.bestCharacterKey
+                    return displayData
+                end)
+                sectionBody._wnSectionFullH = FinalizeBodyHeight(sectionBody)
+            end  -- populateSection
 
-            local sectionFullH = FinalizeBodyHeight(sectionBody)
-            sectionBody._wnSectionFullH = sectionFullH
             if sectionExpanded then
+                populateSection()
                 sectionBody:Show()
-                sectionBody:SetHeight(math.max(0.1, sectionFullH))
+                sectionBody:SetHeight(math.max(0.1, sectionBody._wnSectionFullH or 0.1))
                 sectionWrap:SetHeight(COLLAPSE_H_CUR + sectionBody:GetHeight())
             else
                 sectionBody:Hide()

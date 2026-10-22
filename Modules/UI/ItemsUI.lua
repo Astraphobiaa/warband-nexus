@@ -1327,6 +1327,8 @@ function WarbandNexus:DrawItemList(parent)
     -- Register event listeners (only once)
     RegisterItemsEvents(parent)
     RegisterStorageEvents(parent)
+    -- Set again only once the results body is painted (loading / disabled paths return early).
+    parent._wnItemsResultsPainted = nil
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
     local fixedHeader = mf and mf.fixedHeader
@@ -1598,6 +1600,7 @@ function WarbandNexus:DrawItemList(parent)
         contentHeight = self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
     end
     resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+    parent._wnItemsResultsPainted = true
 
     return scrollTopY + (contentHeight or 0)
 end
@@ -1657,6 +1660,39 @@ function WarbandNexus:RedrawItemsResultsOnly()
     end
 
     SyncItemsTabScrollChrome(mf, scrollChild, contentHeight)
+end
+
+--- Bag / item data changed on a flat-list sub-tab (Bags, Bank): refresh the gold / stats line and the
+--- results list in place; the title card, sub-tab bar and search box do not depend on bag contents.
+--- Returns false when a full PopulateContent is needed: other tab, Storage-tree sub-tabs (Warband,
+--- Guild), loading / disabled / untracked state, or the results body was not painted by DrawItemList
+--- (2026-10-22: every ITEMS_UPDATED / BAGS_UPDATED re-ran PopulateContent for the whole tab).
+function WarbandNexus:TryRefreshItemsResultsForBagUpdate()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return false end
+    local subTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()
+    if subTab ~= "inventory" and subTab ~= "personal" then return false end
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("items")) then return false end
+    if ns.ItemsLoadingState and ns.ItemsLoadingState.isLoading then return false end
+    if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return false end
+    local sc = mf.scrollChild
+    local rc = sc and sc.resultsContainer
+    if not rc or rc:GetParent() ~= sc or not sc._wnItemsResultsPainted or not sc._itemsStatsText then
+        return false
+    end
+    if subTab == "inventory" and sc._itemsGoldDisplay then
+        local charGold = ns.Utilities:GetLiveCharacterMoneyCopper(0)
+        local FormatMoney = ns.UI_FormatMoney
+        if FormatMoney then
+            sc._itemsGoldDisplay:SetText(FormatMoney(charGold, 14))
+        else
+            sc._itemsGoldDisplay:SetText(self:API_FormatMoney(charGold))
+        end
+    end
+    local itemCount, usedSlots, totalSlots, lastScan, colorHex = ResolveItemsSubTabStatsMetrics(self, subTab)
+    sc._itemsStatsText:SetText(FormatItemsBankStatsLine(colorHex, itemCount, usedSlots, totalSlots, lastScan))
+    self:RedrawItemsResultsOnly()
+    return true
 end
 
 --- Build grouped flat list for Items virtual scroll. Returns flatList, endYOffset, itemCount, itemsSearchActive;
