@@ -136,8 +136,8 @@ function M.Collections_LoadBlizzardCollections()
 end
 
 function M.Collections_SanitizeMountExtra(v, default)
-    if v == nil then return default end
     if issecretvalue and issecretvalue(v) then return default end
+    if v == nil then return default end
     return v
 end
 
@@ -1233,8 +1233,8 @@ function M.CreateModelViewer(parent, width, height)
         local costKey = (L and L["PARSE_COST"]) or "Cost"
         local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
         local function isCostOrAmountLine(text)
-            if not text or text == "" then return false end
             if issecretvalue and issecretvalue(text) then return false end
+            if not text or text == "" then return false end
             local t = text:gsub("^%s+", "")
             return t:sub(1, #costKey):lower() == costKey:lower() or t:sub(1, #amountKey):lower() == amountKey:lower()
         end
@@ -1429,8 +1429,8 @@ function M.CreateModelViewer(parent, width, height)
         local costKey = (L and L["PARSE_COST"]) or "Cost"
         local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
         local function isCostOrAmountLine(text)
-            if not text or text == "" then return false end
             if issecretvalue and issecretvalue(text) then return false end
+            if not text or text == "" then return false end
             local t = text:gsub("^%s+", "")
             return t:sub(1, #costKey):lower() == costKey:lower() or t:sub(1, #amountKey):lower() == amountKey:lower()
         end
@@ -1587,8 +1587,8 @@ function M.BuildAchievementSeries(achievementID)
         guard = guard + 1
         if guard > MAX_CHAIN then break end
         local okp, prev = pcall(GetPrev, id)
-        if not okp or prev == nil then break end
         if issecretvalue and issecretvalue(prev) then break end
+        if not okp or prev == nil then break end
         if type(prev) ~= "number" or prev <= 0 then break end
         id = prev
     end
@@ -1599,13 +1599,13 @@ function M.BuildAchievementSeries(achievementID)
         guard = guard + 1
         if guard > MAX_CHAIN then break end
         local cur = series[idx]
-        if cur == nil then break end
         if issecretvalue and issecretvalue(cur) then break end
+        if cur == nil then break end
         local okn, nextIds = pcall(GetSuperceding, cur)
         if not okn or not nextIds or type(nextIds) ~= "table" or #nextIds == 0 then break end
         local nxt = nextIds[1]
-        if nxt == nil then break end
         if issecretvalue and issecretvalue(nxt) then break end
+        if nxt == nil then break end
         if type(nxt) ~= "number" or nxt <= 0 then break end
         series[idx + 1] = nxt
         idx = idx + 1

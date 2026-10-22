@@ -37,8 +37,8 @@ local setCachedCategoryTree
 local PLANS_ACH_CATEGORY_CACHE_MIN_IDS
 
 local function SafeLower(s)
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return s:lower()
 end
 

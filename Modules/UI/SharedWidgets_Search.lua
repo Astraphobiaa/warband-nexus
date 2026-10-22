@@ -64,8 +64,8 @@ local function RosterSectionBarChrome()
 end
 
 local function WnFormatRealmDisplay(raw)
-    if not raw or raw == "" then return "" end
     if issecretvalue and issecretvalue(raw) then return "" end
+    if not raw or raw == "" then return "" end
     if ns.Utilities and ns.Utilities.FormatRealmName then
         return ns.Utilities:FormatRealmName(raw) or raw
     end
@@ -85,8 +85,8 @@ local function WnSafeCharLine(char)
 end
 
 local function WnPickerTextLower(s)
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return s:lower()
 end
 

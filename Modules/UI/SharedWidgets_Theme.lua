@@ -877,8 +877,8 @@ end
 ---@param text string|nil
 ---@return boolean
 function ns.UI_TextHasColoredMarkup(text)
-    if not text or text == "" then return false end
     if issecretvalue and issecretvalue(text) then return false end
+    if not text or text == "" then return false end
     local pos = 1
     while true do
         local s, e, hex6 = text:find("|c[fF][fF](%x%x%x%x%x%x)", pos)

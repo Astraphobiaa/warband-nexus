@@ -84,8 +84,8 @@ function PD.FormatFloat2(value)
 end
 
 local function LocalizeUpgradeTrackName(name)
-    if not name or name == "" then return name end
     if issecretvalue and issecretvalue(name) then return "" end
+    if not name or name == "" then return name end
     local keyMap = {
         Adventurer = "PVE_CREST_ADV", Veteran = "PVE_CREST_VET", Champion = "PVE_CREST_CHAMP",
         Hero = "PVE_CREST_HERO", Myth = "PVE_CREST_MYTH", Explorer = "PVE_CREST_EXPLORER",
@@ -1222,8 +1222,8 @@ end
 local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable, canAffordOverride)
     if not btn then return end
     local slotID = btn._slotID
-    local hasItem = slotData and slotData.itemLink and slotData.itemLink ~= ""
-        and not (issecretvalue and issecretvalue(slotData.itemLink))
+    local hasItem = slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink))
+        and slotData.itemLink ~= ""
     if not hasItem then
         if btn._gearUpgradeArrow then btn._gearUpgradeArrow:Hide() end
         if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Hide() end
@@ -1779,8 +1779,8 @@ function PD.ComputeGearPaperStatValueColW(statInnerW, statPad)
 end
 
 function PD.SafeGearStatNumber(val)
-    if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
+    if val == nil then return nil end
     if type(val) ~= "number" then return nil end
     return val
 end
@@ -2287,8 +2287,8 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     local function ResolveGearPaperdollDisplayID()
         local snap = gearData and gearData.modelSnapshot
         local id = snap and snap.displayID
+        if issecretvalue and issecretvalue(id) then id = nil end
         if type(id) == "string" then id = tonumber(id) end
-        if id and issecretvalue and issecretvalue(id) then id = nil end
         if id and type(id) == "number" and id > 0 then return math.floor(id) end
         if isCurrentChar == true then
             if UnitCreatureDisplayID then
@@ -3794,8 +3794,9 @@ function PD.BuildLiveEquippedSlotSnapshot(slotID)
 end
 
 function PD.GearSlotHasInspectableItemLink(slotRef)
-    if not slotRef or not slotRef.itemLink or slotRef.itemLink == "" then return false end
+    if not slotRef then return false end
     if issecretvalue and issecretvalue(slotRef.itemLink) then return true end
+    if not slotRef.itemLink or slotRef.itemLink == "" then return false end
     return true
 end
 
@@ -3828,8 +3829,8 @@ function PD.GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, n
         if nsig ~= osig then return false end
     end
 
-    local expectUpgradeShown = (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink and slotData.itemLink ~= ""
-            and not (issecretvalue and issecretvalue(slotData.itemLink)))
+    local expectUpgradeShown = (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink))
+            and slotData.itemLink ~= "")
         or (canUpgrade == true and not notUpgradeable)
     local upShown = sb._gearUpgradeArrow and sb._gearUpgradeArrow:IsShown() == true
     if expectUpgradeShown ~= upShown then return false end
@@ -3838,8 +3839,8 @@ function PD.GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, n
     if sb._gearLastCanAffordNext ~= aff then return false end
 
     local wantLock = false
-    if not (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink and slotData.itemLink ~= ""
-        and not (issecretvalue and issecretvalue(slotData.itemLink))) then
+    if not (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink
+        and not (issecretvalue and issecretvalue(slotData.itemLink)) and slotData.itemLink ~= "") then
         if notUpgradeable and slotData and slotData.itemLink
             and not (issecretvalue and issecretvalue(slotData.itemLink)) then
             wantLock = true
@@ -3849,8 +3850,8 @@ function PD.GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, n
     if wantLock ~= lockShown then return false end
 
     local tNew = ""
-    if type(trackText) == "string" and trackText ~= ""
-        and not (issecretvalue and issecretvalue(trackText)) then
+    if type(trackText) == "string" and not (issecretvalue and issecretvalue(trackText))
+        and trackText ~= "" then
         tNew = trackText
     end
     local tOld = ""

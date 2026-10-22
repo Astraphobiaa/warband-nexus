@@ -391,8 +391,8 @@ end
 
 --- Returns true when search text is non-empty and safe to filter on.
 function ns.UI_IsSearchQueryActive(searchText)
-    if not searchText or searchText == "" then return false end
     if issecretvalue and issecretvalue(searchText) then return false end
+    if not searchText or searchText == "" then return false end
     return true
 end
 

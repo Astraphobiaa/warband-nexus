@@ -25,8 +25,8 @@ local issecretvalue = issecretvalue
 
 local function SafeVaultNumber(v, default)
     default = default or 0
-    if v == nil then return default end
     if issecretvalue and issecretvalue(v) then return default end
+    if v == nil then return default end
     return tonumber(v) or default
 end
 
@@ -62,8 +62,8 @@ local function SetVaultSlotFill(slotFrame, r, g, b, a)
 end
 
 local function SafeStorageKey(s)
-    if not s or s == "" then return nil end
     if issecretvalue and issecretvalue(s) then return nil end
+    if not s or s == "" then return nil end
     return s
 end
 

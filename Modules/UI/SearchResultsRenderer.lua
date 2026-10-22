@@ -100,10 +100,12 @@ function SearchResultsRenderer:RenderEmptyState(addon, container, searchText, ta
         return 0
     end
     
-    local isSearch = searchText and searchText ~= ""
-    if isSearch and issecretvalue and issecretvalue(searchText) then
+    local isSearch
+    if issecretvalue and issecretvalue(searchText) then
         isSearch = false
         searchText = nil
+    else
+        isSearch = searchText and searchText ~= ""
     end
     
     if isSearch and ns.UI_ShowSearchEmptyStateCard then

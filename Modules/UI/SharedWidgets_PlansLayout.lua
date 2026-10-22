@@ -329,8 +329,8 @@ end
 
 --- Safe achievement/collectible points label (locale format + secret guard).
 function ns.UI_FormatPlanPoints(points)
-    if points == nil then return nil end
     if issecretvalue and issecretvalue(points) then return nil end
+    if points == nil then return nil end
     local pts = tonumber(points)
     if not pts or pts <= 0 then return nil end
     local ptsFmt = (ns.L and ns.L["POINTS_FORMAT"]) or "%d Points"

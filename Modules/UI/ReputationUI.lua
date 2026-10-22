@@ -24,8 +24,8 @@ local ReputationUIEvents = {} -- Unique AceEvent identity for this module
 local issecretvalue = issecretvalue
 
 local function SafeLower(s)
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return s:lower()
 end
 
@@ -1911,10 +1911,10 @@ function WarbandNexus:DrawReputationList(container, width)
     end
     
     local function GetHeaderIcon(headerName)
-        if not headerName or headerName == "" then
+        if issecretvalue and issecretvalue(headerName) then
             return "Interface\\Icons\\Achievement_Reputation_01"
         end
-        if issecretvalue and issecretvalue(headerName) then
+        if not headerName or headerName == "" then
             return "Interface\\Icons\\Achievement_Reputation_01"
         end
         if headerName:find("Guild") then
@@ -2135,8 +2135,8 @@ function WarbandNexus:DrawReputationList(container, width)
         return factionList, filtered, isSearching
     end
 
-    local repSearchActive = reputationSearchText and reputationSearchText ~= ""
-        and not (issecretvalue and issecretvalue(reputationSearchText))
+    local repSearchActive = reputationSearchText and not (issecretvalue and issecretvalue(reputationSearchText))
+        and reputationSearchText ~= ""
     if repSearchActive then
         totalAccountWide = 0
         for hi = 1, #accountWideHeaders do

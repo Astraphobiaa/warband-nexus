@@ -773,8 +773,8 @@ ns.GEAR_UPGRADE_TRACK_TIER_HEX = {
 }
 
 local function NormalizeColorMarkupHex(hex)
-    if not hex or hex == "" then return "ffffff" end
     if issecretvalue and issecretvalue(hex) then return "ffffff" end
+    if not hex or hex == "" then return "ffffff" end
     hex = tostring(hex):gsub("^#", ""):lower()
     if #hex == 8 and hex:sub(1, 2) == "ff" then
         hex = hex:sub(3, 8)
@@ -786,8 +786,8 @@ end
 
 ---@return string|nil six-digit RRGGBB
 function ns.UI_GetUpgradeTrackTierHex(englishName)
-    if not englishName or englishName == "" then return nil end
     if issecretvalue and issecretvalue(englishName) then return nil end
+    if not englishName or englishName == "" then return nil end
     local trimmed = englishName:match("^%s*(.-)%s*$") or englishName
     return ns.GEAR_UPGRADE_TRACK_TIER_HEX and ns.GEAR_UPGRADE_TRACK_TIER_HEX[trimmed] or nil
 end
@@ -795,8 +795,8 @@ end
 --- Safe |cff…|r for upgrade-track labels (gear slots, crest rows).
 ---@return string
 function ns.UI_FormatUpgradeTrackMarkup(englishName, displayText, fallbackQuality)
-    if not displayText or displayText == "" then return "" end
     if issecretvalue and issecretvalue(displayText) then return displayText end
+    if not displayText or displayText == "" then return "" end
     local hex = ns.UI_GetUpgradeTrackTierHex(englishName)
     if not hex and fallbackQuality ~= nil then
         hex = GetQualityHex(fallbackQuality)

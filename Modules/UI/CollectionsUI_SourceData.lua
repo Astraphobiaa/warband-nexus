@@ -308,8 +308,8 @@ end
 -- Show source text line by line: each source type (Drop, Location, Vendor, etc.) on its own line.
 -- Format: yellow "Label : " white "Value". Currency icon next to Cost/Amount.
 local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
-    if not rawSource or rawSource == "" then return "" end
     if issecretvalue and issecretvalue(rawSource) then return "" end
+    if not rawSource or rawSource == "" then return "" end
     rawSource = StripWoWFormatCodes(rawSource)
     if rawSource == "" then return "" end
     local PARSE_GUARD_MAX = 100000

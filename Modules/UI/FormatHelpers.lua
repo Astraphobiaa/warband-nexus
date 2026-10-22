@@ -16,14 +16,14 @@ local sub = string.sub
 local insert = table.insert
 local gmatch = string.gmatch
 local function NormalizeColonLabelSpacing(label)
+    if issecretvalue and issecretvalue(label) then
+        return ""
+    end
     if label == nil then return "" end
     if type(label) ~= "string" then
         label = tostring(label)
     end
     if label == "" then return "" end
-    if issecretvalue and issecretvalue(label) then
-        return ""
-    end
     local trimmed = label:match("^%s*(.-)%s*$") or label
     trimmed = trimmed:gsub("%s*:%s*$", "")
     return trimmed .. " : "
@@ -70,8 +70,8 @@ local function FormatNumber(number)
     return formatted
 end
 local function FormatTextNumbers(text)
-    if not text or text == "" then return text end
     if issecretvalue and issecretvalue(text) then return "" end
+    if not text or text == "" then return text end
     
     -- Find all numbers (4+ digits) and format them
     -- Pattern matches whole numbers not already formatted (no dots inside)

@@ -19,8 +19,8 @@ function M.SafeLower(s)
     if Utilities and Utilities.SafeLower then
         return Utilities:SafeLower(s)
     end
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return s:lower()
 end
 
@@ -160,8 +160,8 @@ end
 local UTF8_EM_DASH = "\226\128\148"
 
 local function StripRealmFromCharacterLabel(ob)
-    if type(ob) ~= "string" or ob == "" then return nil end
     if issecretvalue and issecretvalue(ob) then return nil end
+    if type(ob) ~= "string" or ob == "" then return nil end
     local emSep = " " .. UTF8_EM_DASH .. " "
     local cut = ob:find(emSep, 1, true)
     if cut then
@@ -177,12 +177,10 @@ end
 --- Default EU (DD.MM.YYYY) until Settings date-format lands addon-wide.
 function M.FormatAchievementEarnedCalendarDate(month, day, year, unixTs)
     local m, d, y
-    if month ~= nil and day ~= nil and year ~= nil then
-        if issecretvalue and (issecretvalue(month) or issecretvalue(day) or issecretvalue(year)) then
-            month, day, year = nil, nil, nil
-        else
-            m, d, y = tonumber(month), tonumber(day), tonumber(year)
-        end
+    if issecretvalue and (issecretvalue(month) or issecretvalue(day) or issecretvalue(year)) then
+        month, day, year = nil, nil, nil
+    elseif month ~= nil and day ~= nil and year ~= nil then
+        m, d, y = tonumber(month), tonumber(day), tonumber(year)
     end
     if (not m or not d or not y) and type(unixTs) == "number" and unixTs > 0 and date then
         local t = date("*t", unixTs)
@@ -225,8 +223,8 @@ local function EarnerFromAchievementCriteria(achievementID)
     if issecretvalue and issecretvalue(num) then return nil end
     for i = 1, num do
         local okC, _, _, completed, _, _, charName = pcall(GetAchievementCriteriaInfo, achievementID, i)
-        if okC and completed and type(charName) == "string" and charName ~= ""
-            and not (issecretvalue and issecretvalue(charName)) then
+        if okC and completed and type(charName) == "string" and not (issecretvalue and issecretvalue(charName))
+            and charName ~= "" then
             return StripRealmFromCharacterLabel(charName)
         end
     end
@@ -245,15 +243,15 @@ function M.ResolveAchievementEarnerLabel(achievementID, storedObtainedBy)
         pcall(GetAchievementInfo, achievementID)
     if not ok or not completed then return nil end
 
-    if type(earnedBy) == "string" and earnedBy ~= ""
-        and not (issecretvalue and issecretvalue(earnedBy)) then
+    if type(earnedBy) == "string" and not (issecretvalue and issecretvalue(earnedBy))
+        and earnedBy ~= "" then
         return StripRealmFromCharacterLabel(earnedBy)
     end
 
     if wasEarnedByMe == true and UnitName then
         local playerName = UnitName("player")
-        if type(playerName) == "string" and playerName ~= ""
-            and not (issecretvalue and issecretvalue(playerName)) then
+        if type(playerName) == "string" and not (issecretvalue and issecretvalue(playerName))
+            and playerName ~= "" then
             return StripRealmFromCharacterLabel(playerName)
         end
     end
@@ -375,8 +373,8 @@ local COLLECTIONS_TT_WHITE_R, COLLECTIONS_TT_WHITE_G, COLLECTIONS_TT_WHITE_B = 1
 
 --- Labeled line for Collections GameTooltip (always white).
 function M.AddCollectionsTooltipLine(tt, label, value, wrap)
-    if not tt or not value or value == "" then return end
     if issecretvalue and issecretvalue(value) then return end
+    if not tt or not value or value == "" then return end
     local text = value
     if label and label ~= "" then
         text = label .. ": " .. value

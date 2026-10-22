@@ -18,8 +18,8 @@ local FontManager = ns.FontManager  -- Centralized font management
 local issecretvalue = issecretvalue
 
 local function SafeLower(s)
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return s:lower()
 end
 
@@ -1020,10 +1020,10 @@ end
 --- Partial update for Bank > Warband type leaf (avoid full DrawStorageResults on expand/collapse).
 --- Also the single item search matcher for the Storage tree and the Items flat list.
 function WarbandNexus:_StorageLeafItemMatchesSearch(item, storageSearchText)
-    if not storageSearchText or storageSearchText == "" then
+    if issecretvalue and issecretvalue(storageSearchText) then
         return true
     end
-    if issecretvalue and issecretvalue(storageSearchText) then
+    if not storageSearchText or storageSearchText == "" then
         return true
     end
     local hit = itemSearchMemo.LowerName(item.name):find(storageSearchText, 1, true)
@@ -1168,8 +1168,8 @@ function WarbandNexus:_RenderStorageLeafRowsQuick(rowsContainer, rowWidth, typeI
     end
     rowsContainer._wnVirtualContentHeight = nil
     local searchActive = storageSearchText
-        and storageSearchText ~= ""
         and not (issecretvalue and issecretvalue(storageSearchText))
+        and storageSearchText ~= ""
     local stride = STORAGE_ROW_STRIDE
     local y = 0
     local rowIdx = 0

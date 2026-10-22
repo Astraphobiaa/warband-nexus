@@ -441,8 +441,8 @@ end
 
 --- English track names from Blizzard tooltip/API → locale (e.g. zhCN PVE_CREST_*).
 local function LocalizeUpgradeTrackName(name)
-    if not name or name == "" then return name end
     if issecretvalue and issecretvalue(name) then return "" end
+    if not name or name == "" then return name end
     local L = ns.L
     if not L then return name end
     local trimmed = name:match("^%s*(.-)%s*$") or name
@@ -993,8 +993,8 @@ end
 
 --- Color character name in storage source line; warband stays plain.
 local function ColoredStorageSourceName(classFile, name)
-    if not name or name == "" then return name end
     if issecretvalue and issecretvalue(name) then return "" end
+    if not name or name == "" then return name end
     return "|cff" .. GetClassHex(classFile) .. name .. "|r"
 end
 

@@ -39,8 +39,8 @@ local OVERVIEW_HDR_ICON = 22
 local OVERVIEW_COL_PREFIX = "pvpOv_"
 
 local function MeasureFsWidth(fs, text)
-    if not fs or not text or text == "" then return 0 end
     if issecretvalue and issecretvalue(text) then return 0 end
+    if not fs or not text or text == "" then return 0 end
     fs:SetText(text)
     return fs:GetStringWidth() or 0
 end
@@ -120,8 +120,8 @@ local function ApplyOverviewHeaderIcon(iconTex, col, iconSize)
 end
 
 local function MeasureHeaderLabelWidth(hdrFs, compactLabel)
-    if not hdrFs or not compactLabel or compactLabel == "" then return 0 end
     if issecretvalue and issecretvalue(compactLabel) then return 0 end
+    if not hdrFs or not compactLabel or compactLabel == "" then return 0 end
     local nl = compactLabel:find("\n", 1, true)
     if not nl then
         return MeasureFsWidth(hdrFs, compactLabel)

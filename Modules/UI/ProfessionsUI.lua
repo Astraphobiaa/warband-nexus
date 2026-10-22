@@ -169,8 +169,8 @@ local EXPANSION_ORDER = {
 -- Extracts the base expansion key from an expansion-qualified name.
 -- e.g. "Midnight Tailoring" â†’ "Midnight", "Khaz Algar Alchemy" â†’ "Khaz Algar"
 function PUI.ExtractExpansionKey(expName)
-    if not expName or expName == "" then return nil end
     if issecretvalue and issecretvalue(expName) then return nil end
+    if not expName or expName == "" then return nil end
     for ei = 1, #EXPANSION_ORDER do
         local known = EXPANSION_ORDER[ei]
         if expName:find(known, 1, true) == 1 then return known end
@@ -1224,8 +1224,8 @@ local function FormatRealmName(realm)
     if ns.Utilities and ns.Utilities.FormatRealmName then
         return ns.Utilities:FormatRealmName(realm)
     end
-    if not realm or realm == "" then return "" end
     if issecretvalue and issecretvalue(realm) then return "" end
+    if not realm or realm == "" then return "" end
     return realm:gsub("(%l)(%u)", "%1 %2")
 end
 
@@ -1236,9 +1236,10 @@ function PUI.GetExpansionFilter()
 end
 
 function PUI.ExpansionNameMatchesFilter(expansionName, filterKey)
-    if not expansionName or expansionName == "" then return false end
+    local nameSecret = issecretvalue and issecretvalue(expansionName)
+    if not nameSecret and (not expansionName or expansionName == "") then return false end
     if filterKey == "All" then return true end
-    if issecretvalue and issecretvalue(expansionName) then return false end
+    if nameSecret then return false end
     -- Match by prefix (e.g. "Midnight Tailoring" vs "Midnight") or by extracted key
     if expansionName == filterKey or expansionName:sub(1, #filterKey) == filterKey then return true end
     local key = PUI.ExtractExpansionKey(expansionName)
@@ -1468,7 +1469,7 @@ function PUI.CharacterHasPrimaryProfession(char)
             local prof = char.professions[pi]
             if prof then
                 local nm = prof.name
-                if nm and nm ~= "" then
+                if nm and ((issecretvalue and issecretvalue(nm)) or nm ~= "") then
                     if issecretvalue and issecretvalue(nm) then
                         if prof.skillLine or prof.skillLineID then return true end
                     else
@@ -1594,7 +1595,7 @@ end
 function PUI.ProfessionSlotCanOpen(isCurrent, prof)
     if not isCurrent or not prof then return false end
     local nm = prof.name
-    if nm and nm ~= "" then
+    if nm and ((issecretvalue and issecretvalue(nm)) or nm ~= "") then
         if issecretvalue and issecretvalue(nm) then
             return (prof.skillLine or prof.skillLineID) and true or false
         end
@@ -2364,8 +2365,8 @@ end
 
 --- Resolve professionEquipment row for char+profName; caches pairs(eqByProf) fallback per draw.
 function PUI.ResolveProfessionEquipmentData(charKey, profName)
-    if not charKey or not profName or profName == "" then return nil end
     if issecretvalue and issecretvalue(profName) then return nil end
+    if not charKey or not profName or profName == "" then return nil end
     local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
     local eqByProf = charData and charData.professionEquipment
     if not eqByProf then return nil end

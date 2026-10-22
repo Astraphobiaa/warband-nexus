@@ -203,8 +203,8 @@ function ns.UI_GetSubsidiaryCharKey(optionalCharKey)
         local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, optionalCharKey)
         if k then return k end
     end
-    if optionalCharKey and optionalCharKey ~= ""
-        and not (issecretvalue and issecretvalue(optionalCharKey)) then
+    if optionalCharKey and not (issecretvalue and issecretvalue(optionalCharKey))
+        and optionalCharKey ~= "" then
         if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
             return ns.Utilities:GetCanonicalCharacterKey(optionalCharKey) or optionalCharKey
         end
@@ -588,10 +588,10 @@ ns.UI_GetCharacterSpecificIcon = GetCharacterSpecificIcon
     @return string - Texture path (always non-nil)
 ]]
 local function GetCurrencyHeaderIcon(headerName)
-    if not headerName or headerName == "" then
+    if issecretvalue and issecretvalue(headerName) then
         return "Interface\\Icons\\INV_Misc_Coin_01"
     end
-    if issecretvalue and issecretvalue(headerName) then
+    if not headerName or headerName == "" then
         return "Interface\\Icons\\INV_Misc_Coin_01"
     end
     -- Legacy (all old expansions)

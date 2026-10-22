@@ -978,8 +978,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     f.mapGetIdBtn:SetScript("OnClick", function()
         if not C_Map or not C_Map.GetBestMapForUnit then return end
         local ok, mid = pcall(C_Map.GetBestMapForUnit, "player")
-        if not ok or mid == nil then return end
         if issecretvalue and issecretvalue(mid) then return end
+        if not ok or mid == nil then return end
         mid = tonumber(mid)
         if mid and mid > 0 and NormalizeZoneReminderUIMapID then
             local canon = NormalizeZoneReminderUIMapID(mid)

@@ -246,8 +246,9 @@ end
 ---@param duration number|nil
 ---@return string handlerKey
 local function ClassifyCriteriaHandler(criteriaType, duration)
-    local dur = tonumber(duration)
-    if dur and dur > 0 and not (issecretvalue and issecretvalue(duration)) then
+    local dur
+    if not (issecretvalue and issecretvalue(duration)) then dur = tonumber(duration) end
+    if dur and dur > 0 then
         return HANDLER.TIMED
     end
     local t = tonumber(criteriaType)
@@ -556,10 +557,10 @@ local function GetCustomPlanBodyText(plan)
     if not plan or plan.type ~= "custom" then return nil end
     local customDefault = (ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan"
     local d = plan.source or plan.description or plan.note or ""
+    if issecretvalue and issecretvalue(d) then return nil end
     if type(d) ~= "string" or d == "" or d == "Custom plan" or d == customDefault then
         return nil
     end
-    if issecretvalue and issecretvalue(d) then return nil end
     return SanitizeAchievementText(d, 72)
 end
 

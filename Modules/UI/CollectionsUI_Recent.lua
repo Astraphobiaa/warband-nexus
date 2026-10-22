@@ -131,8 +131,8 @@ end
 -- Strip legacy "Name — Realm" payloads for Recent display (realm-free; matches CollectiblePayloadObtainedBy).
 local UTF8_EM_DASH = "\226\128\148"
 function M.RecentCharacterLabelForDisplay(ob)
-    if type(ob) ~= "string" or ob == "" then return nil end
     if issecretvalue and issecretvalue(ob) then return nil end
+    if type(ob) ~= "string" or ob == "" then return nil end
     local emSep = " " .. UTF8_EM_DASH .. " "
     local cut = ob:find(emSep, 1, true)
     if cut then

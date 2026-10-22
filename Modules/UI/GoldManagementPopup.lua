@@ -55,8 +55,8 @@ local FormatNumberSep = ns.UI_FormatNumber
 
 -- Strip dots/spaces/commas â†’ pure digit string (never string ops on secret GetText)
 local function StripFormatting(str)
-    if str == nil or type(str) ~= "string" then return "" end
     if issecretvalue and issecretvalue(str) then return "" end
+    if str == nil or type(str) ~= "string" then return "" end
     return str:gsub("[^%d]", "")
 end
 

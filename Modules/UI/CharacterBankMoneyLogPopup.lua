@@ -117,8 +117,8 @@ local function GetToFromText(entryType)
 end
 
 local function LookupCharacterRow(storageKey)
-    if not storageKey or storageKey == "" then return nil end
     if issecretvalue and issecretvalue(storageKey) then return nil end
+    if not storageKey or storageKey == "" then return nil end
     local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
     if not chars then return nil end
     local charData = chars[storageKey]
@@ -144,14 +144,14 @@ local function LookupCharacterRow(storageKey)
 end
 
 local function ResolveMoneyLogCharacterLabel(entry)
-    if entry and entry.characterName and entry.characterName ~= "" then
-        if not (issecretvalue and issecretvalue(entry.characterName)) then
+    if entry and entry.characterName and not (issecretvalue and issecretvalue(entry.characterName)) then
+        if entry.characterName ~= "" then
             return entry.characterName
         end
     end
     local storageKey = entry and entry.character
-    if not storageKey or storageKey == "" then return "-" end
     if issecretvalue and issecretvalue(storageKey) then return "-" end
+    if not storageKey or storageKey == "" then return "-" end
     if type(storageKey) == "string" and storageKey:sub(1, 7) ~= "Player-" then
         local name, realm = storageKey:match("^([^%-]+)%-(.+)$")
         if name and realm and ns.Utilities and ns.Utilities.FormatRealmName then

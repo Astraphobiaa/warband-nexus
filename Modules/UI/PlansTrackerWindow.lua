@@ -611,8 +611,8 @@ local function SyncTrackerScrollBar(frame)
 end
 
 local function IsNonSecretNonEmptyString(s)
-    if type(s) ~= "string" or s == "" then return false end
     if issecretvalue and issecretvalue(s) then return false end
+    if type(s) ~= "string" or s == "" then return false end
     return true
 end
 
@@ -661,10 +661,10 @@ end
 --- Formatted card subtitle with Quest/Drop/Source styling (matches My Plans; uses PLAN_UI_COLORS)
 local function GetPlanDescriptionFormatted(plan)
     local raw = GetPlanDescription(plan)
-    if not raw or raw == "" then return PCol("descDim", "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
     if issecretvalue and issecretvalue(raw) then
         return PCol("descDim", "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
     end
+    if not raw or raw == "" then return PCol("descDim", "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
     local srcLabel = PCol("label")
     local body = PCol("body")
     local dim = PCol("descDim", "|cff888888")
@@ -1142,8 +1142,8 @@ function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
             row(locMk14, "LOCATION_LABEL", "Location:", src.zone)
         end
     end
-    if #items == 0 and category ~= "title" and item.source and item.source ~= "" then
-        if not (issecretvalue and issecretvalue(item.source)) then
+    if #items == 0 and category ~= "title" and item.source and not (issecretvalue and issecretvalue(item.source)) then
+        if item.source ~= "" then
             local formatted = FormatPlanSourceCriteriaText(item.source)
             if formatted then
                 items[#items + 1] = { text = formatted }

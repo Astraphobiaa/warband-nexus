@@ -18,8 +18,8 @@ local issecretvalue = issecretvalue
 
 --- Lowercase for search only when the string is safe to touch (Midnight 12.0+).
 local function SafeLower(s)
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return s:lower()
 end
 

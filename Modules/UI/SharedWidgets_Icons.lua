@@ -584,8 +584,8 @@ end
 local KEYSTONE_CATEGORY_ICON = "Interface\\Icons\\INV_Misc_Key_03"
 
 local function ItemLinkLooksKeystone(link)
-    if not link or link == "" then return false end
     if issecretvalue and issecretvalue(link) then return false end
+    if not link or link == "" then return false end
     return link:find("|Hkeystone:", 1, true) ~= nil
 end
 

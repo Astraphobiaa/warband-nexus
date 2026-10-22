@@ -14,8 +14,8 @@ local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(.
 local issecretvalue = issecretvalue
 
 local function SafeLower(s)
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return s:lower()
 end
 
@@ -165,8 +165,8 @@ local PVE_COMPACT_CREST_BY_ID = {
 local function PvE_BuildCompactHeaderLabel(col)
     if not col then return "", "ffffff" end
     local rawLabel = col.headerLabel or col.tooltipTitle or ""
-    if not rawLabel or rawLabel == "" then return "", "ffffff" end
     if issecretvalue and issecretvalue(rawLabel) then return "", "ffffff" end
+    if not rawLabel or rawLabel == "" then return "", "ffffff" end
 
     local key = col.key or ""
     if key == "coffer_shards" then
@@ -429,8 +429,8 @@ end
 
 --- Park pooled column labels before rebuilding the header row (stale anchors/text caused orphan labels).
 local function PvE_StripMarkupForMeasure(text)
-    if not text or text == "" then return "" end
     if issecretvalue and issecretvalue(text) then return "" end
+    if not text or text == "" then return "" end
     local s = tostring(text)
     s = s:gsub("|T.-|t", "@@@")
     s = s:gsub("|A.-|a", "@@@")

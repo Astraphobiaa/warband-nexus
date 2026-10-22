@@ -14,8 +14,8 @@ ns.ReminderSetAlertDialogHelpers = H
 function H.SafePositiveIntFromMapEdit(edit)
     if not edit or not edit.GetText then return nil end
     local raw = edit:GetText()
-    if raw == nil then return nil end
     if issecretvalue and issecretvalue(raw) then return nil end
+    if raw == nil then return nil end
     if raw == "" then return nil end
     local n = tonumber(raw)
     if not n or n <= 0 then return nil end
