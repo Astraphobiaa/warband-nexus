@@ -935,6 +935,13 @@ local function RepositionPveFixedHeader(mf, hdrCache, headerParent, chrome, head
     return nextY
 end
 
+--- Cell values (crests, keys, voidcore, bounty, keystone) are not part of the draw signature, so a
+--- data message must force the next paint off the fast path or the cells keep their old values
+--- (2026-10-22). The router calls this for PvE-cache updates and for currencies the tab shows.
+function ns.PvEUI.MarkDataDirty()
+    ns.PvEUI._dataDirty = true
+end
+
 function ns.PvEUI.InvalidateBodyCache(parent)
     PveTeardownKeptBodyArtifacts(parent)
     if parent then

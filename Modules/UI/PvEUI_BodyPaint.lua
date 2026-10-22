@@ -503,6 +503,21 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     if not PVE_RESTORED_KEY_ID then
         PVE_RESTORED_KEY_ID = PVE_RESTORED_KEY_FALLBACK_ID
     end
+    -- Currencies these cells show: the router marks PvE data dirty only for these (2026-10-22).
+    do
+        local shown = ns.PvEUI._shownCurrencyIDs
+        if shown then wipe(shown) else shown = {}; ns.PvEUI._shownCurrencyIDs = shown end
+        for ci = 1, #PVE_DAWNCRESTS do
+            local cid = PVE_DAWNCRESTS[ci] and PVE_DAWNCRESTS[ci].id
+            if cid then shown[cid] = true end
+        end
+        if PVE_SHARDS_ID then shown[PVE_SHARDS_ID] = true end
+        if PVE_RESTORED_KEY_ID then shown[PVE_RESTORED_KEY_ID] = true end
+        if L.PVE_DUNDUN_ID then shown[L.PVE_DUNDUN_ID] = true end
+        if L.PVE_VOIDCORE_ID then shown[L.PVE_VOIDCORE_ID] = true end
+        local mfShownId = (L.GetPvEManafluxID and L.GetPvEManafluxID()) or L.PVE_MANAFLUX_ID or 3465
+        if mfShownId then shown[mfShownId] = true end
+    end
 
     profile = profile or (self.db and self.db.profile)
     local vaultCols, pveExtraCols, vbProfile, vaultTrackColW, PVE_COLUMNS
@@ -777,6 +792,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         end
 
         local chr = L._pveDrawPool.colHeaderRow
+        -- Cell data changed (PvE cache / a shown currency): take the full paint path as if the draw
+        -- sig had changed; the fast path only re-lays out widths (2026-10-22: stale crest / key cells).
+        if ns.PvEUI and ns.PvEUI._dataDirty then
+            ns.PvEUI._dataDirty = false
+            parent._pveDrawSig = nil
+        end
         if parent._pveBodyReady and parent._pveDrawSig == drawSig and chr and chr:GetParent() == parent then
             local contentSideCached = parent._wnPveContentSide or L.SIDE_MARGIN
             local mfCached = mf or (L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame)

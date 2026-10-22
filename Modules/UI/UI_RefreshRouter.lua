@@ -211,6 +211,8 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             if ns.PvE_ClearVaultStatusScratch then
                 ns.PvE_ClearVaultStatusScratch()
             end
+            -- Cell values (keystone, bounty, delve weeklies) are outside the draw sig: force a full paint.
+            if ns.PvEUI and ns.PvEUI.MarkDataDirty then ns.PvEUI.MarkDataDirty() end
             -- Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
             -- Reset cooldown so this event is never silently dropped.
             st.lastEventPopulateTime = 0
@@ -245,6 +247,11 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             SchedulePopulateContent()
         elseif f.currentTab == "pve" then
             -- Restored Key / crest columns: vault open grants currency before hover tooltip refresh.
+            -- Only currencies a PvE cell shows (or a batch) matter; they must also leave the fast
+            -- path, which kept the old cell values (2026-10-22).
+            local shownCur = ns.PvEUI and ns.PvEUI._shownCurrencyIDs
+            if type(currencyID) == "number" and shownCur and not shownCur[currencyID] then return end
+            if ns.PvEUI and ns.PvEUI.MarkDataDirty then ns.PvEUI.MarkDataDirty() end
             st.lastEventPopulateTime = 0
             SchedulePopulateContent(true)
         else
