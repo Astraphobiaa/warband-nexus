@@ -1622,7 +1622,7 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     --   DataServices (T+0.5..3s): handled by InitializationService
     --   Core P0 (T+4s):   Lightweight resets + profession basics (batched, <3ms)
     --   Core P1 (T+5s):   Expansion professions (moderate)
-    --   Core P2 (T+5.5s): PvE data refresh (needs PvECache from T+2s)
+    --   Core P2 (T+5.5s): PvE data refresh (needs PvECache from T+2.2s)
     --   Core P2.5 (T+9s): Profession knowledge warmup (staggered past TryCounter init)
     --   Core P3 (T+6.5s): Plan tracking (initial login only, low priority)
     if isInitialLogin or isReloadingUi then

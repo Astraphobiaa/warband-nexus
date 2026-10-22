@@ -3882,8 +3882,9 @@ function WarbandNexus:RegisterPvECacheEvents()
 
     -- Keystone loot toast: CHAT_MSG_LOOT arg1 = message (wiki); guard issecretvalue before string ops.
     self:RegisterEvent("CHAT_MSG_LOOT", function(_, message, author)
-        if not LootMessageIsMythicKeystone(message) then return end
+        -- Author first: group loot lines skip the link parse + C_Item keystone probe (2026-10-22).
         if not ChatLootAuthorIsPlayer(author) then return end
+        if not LootMessageIsMythicKeystone(message) then return end
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] CHAT_MSG_LOOT mythic keystone")
         if WarbandNexus.RequestKeystoneRefresh then
             WarbandNexus:RequestKeystoneRefresh("CHAT_MSG_LOOT", true)

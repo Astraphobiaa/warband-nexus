@@ -166,7 +166,9 @@ function M.ScheduleSavedInstancesLiveRefresh(triggerPvEUpdate)
     end
     -- RequestRaidInfo drives UPDATE_INSTANCE_INFO; PvECacheService performs the
     -- delayed cache write after Blizzard's saved-instance API has populated.
-    if RequestRaidInfo then
+    -- Only when asked: the UPDATE_INSTANCE_INFO path passes false, otherwise every
+    -- answer requested the next one while the window stayed open (2026-10-22).
+    if triggerPvEUpdate and RequestRaidInfo then
         pcall(RequestRaidInfo)
     end
     if savedLiveRefreshPending then return end
@@ -200,7 +202,8 @@ local StartSavedInstancesLiveRefresh = function()
             end)
             return
         end
-        ScheduleSavedInstancesLiveRefresh(true)
+        -- UPDATE_INSTANCE_INFO is the answer to RequestRaidInfo: repaint only (2026-10-22).
+        ScheduleSavedInstancesLiveRefresh(event ~= "UPDATE_INSTANCE_INFO")
     end)
 end
 

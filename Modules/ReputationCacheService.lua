@@ -1288,6 +1288,19 @@ function ReputationCache:RegisterEventListeners()
         DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Queued: " .. parsedName .. " +" .. gainAmount .. " (waiting for DB update)")
     end
 
+    ---Own loot only: CHAT_MSG_LOOT arg2 is the author (wiki); nil/"" reads as self.
+    ---Secret checks come first: comparing a secret value is itself disallowed (2026-10-22).
+    ---@param author string|nil
+    ---@return boolean
+    local function LootAuthorIsPlayer(author)
+        if issecretvalue and issecretvalue(author) then return false end
+        if author == nil or author == "" then return true end
+        local playerName = UnitName("player")
+        if not playerName or (issecretvalue and issecretvalue(playerName)) then return false end
+        local authorBase = author:match("^([^%-]+)") or author
+        return author == playerName or authorBase == playerName
+    end
+
     ---Extract itemID from a CHAT_MSG_LOOT message item link.
     ---@return number|nil
     local function ExtractLootItemID(message)
@@ -1463,7 +1476,14 @@ function ReputationCache:RegisterEventListeners()
     ---values), so space them: at most one per CHAT_FULLSCAN_MIN_INTERVAL. Kills a second apart now
     ---share one trailing scan instead of each paying a ~200-faction rebuild + UI redraw.
     local CHAT_FULLSCAN_MIN_INTERVAL = 1.5
-    local function ScheduleFullScanForChat()
+    local function ScheduleFullScanForChat(fromRegen)
+        -- Combat: defer like UPDATE_FACTION below — one bypass scan after PLAYER_REGEN_ENABLED;
+        -- queued notifications wait for it (2026-10-22). fromRegen skips this check because
+        -- lockdown can still read true while PLAYER_REGEN_ENABLED is dispatched.
+        if not fromRegen and InCombatLockdown and InCombatLockdown() then
+            ReputationCache.combatChatScanPending = true
+            return
+        end
         -- Cancel existing timer if it's slower than what we need
         if ReputationCache.updateThrottle then
             ReputationCache.updateThrottle:Cancel()
@@ -1485,15 +1505,18 @@ function ReputationCache:RegisterEventListeners()
         ReputationCache.updateThrottle = C_Timer.NewTimer(delay, function()
             ReputationCache.updateThrottle = nil
             ReputationCache._updateThrottleIsChat = nil
+            -- Combat began after arming: same deferral as above (2026-10-22).
+            if InCombatLockdown and InCombatLockdown() then
+                ReputationCache.combatChatScanPending = true
+                return
+            end
             ReputationCache._lastChatFullScanAt = GetTime()
             ReputationCache:PerformFullScan(true)  -- bypass throttle: pending notifications need processing
         end)
     end
     
-    repEventFrame:SetScript("OnEvent", function(frame, event, ...)
-        local P = ns.Profiler
-        local t0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
-        local function inner(...)
+    -- Defined once; was a closure rebuilt per event and re-thrown through pcall (2026-10-22).
+    local function HandleRepEvent(event, ...)
             -- Guard: only process if character is tracked
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
@@ -1622,7 +1645,10 @@ function ReputationCache:RegisterEventListeners()
         -- Seed a pending rep notification so the next FullScan can
         -- derive the exact gain from friendship snapshot diff.
         if event == "CHAT_MSG_LOOT" then
-            local message = ...
+            local message, author = ...
+            -- Own loot only, before any parsing: a party member's chunk is not our companion's
+            -- XP, and each group loot line cost a parse plus two delta probes (2026-10-22).
+            if not LootAuthorIsPlayer(author) then return end
             local itemID = ExtractLootItemID(message)
             local isCompanionXPMsg = LootMessageIsCompanionXP(message)
             local seeded = false
@@ -1673,6 +1699,14 @@ function ReputationCache:RegisterEventListeners()
         end
 
         if event == "PLAYER_REGEN_ENABLED" then
+            -- Combat-deferred chat scan: bypasses the throttle and also covers a deferred
+            -- UPDATE_FACTION sync (2026-10-22).
+            if ReputationCache.combatChatScanPending then
+                ReputationCache.combatChatScanPending = nil
+                ReputationCache.combatScanPending = nil
+                ScheduleFullScanForChat(true)
+                return
+            end
             if ReputationCache.combatScanPending then
                 ReputationCache.combatScanPending = nil
                 if not ReputationCache.updateThrottle then
@@ -1685,12 +1719,15 @@ function ReputationCache:RegisterEventListeners()
             return
         end
     end
-    local ok, err = pcall(inner, ...)
-    if not ok then error(err, 0) end
-    if t0 and P then
-        P:TraceEventHandler(event, t0, ...)
-    end
-end)
+
+    repEventFrame:SetScript("OnEvent", function(frame, event, ...)
+        local P = ns.Profiler
+        local t0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
+        HandleRepEvent(event, ...)
+        if t0 and P then
+            P:TraceEventHandler(event, t0, ...)
+        end
+    end)
 
     -- Reputations re-enable: events were dropped while off; resync the DB with one full scan.
     ReputationCache._moduleToggleSink = ReputationCache._moduleToggleSink or {}

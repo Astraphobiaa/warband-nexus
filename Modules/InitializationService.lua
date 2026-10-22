@@ -315,7 +315,7 @@ function InitializationService:InitializeDataServices(addon)
     -- PRIORITY TIERS:
     --   P0 (T+0.5s): Merged into InitializeCoreInfrastructure (same tick as CoreEventSetup)
     --   P1 (T+2.35s): Owned collection RAM hydrate (staggered past Core T+2 login-light save)
-    --   P2 (T+2s):   Character + tracked-only caches (batched)
+    --   P2 (T+2.2s): Character + tracked-only caches (batched)
     --   P3 (T+3s):   Items cache + vault (tracked only)
     --   P4 (T+6s):   Moderate index build (TryCounter, deferred for smoother reload)
     --   P5 (T+8s):   Full collection warmup (non-critical, on-demand still works)
@@ -368,7 +368,8 @@ function InitializationService:InitializeDataServices(addon)
     -- Tracking state is resolved inside each timer tick, never up front: IsCharacterTracked
     -- can return a false negative at OnEnable time (GetNormalizedRealmName is briefly empty
     -- after /reload), and gating the timers on that left the items cache dead all session.
-    C_Timer.After(2, function()
+    -- T+2.2, not T+2: Core's login-light character save owns the T+2 frame (2026-10-22).
+    C_Timer.After(2.2, function()
         local LT = ns.LoadingTracker
         if LT and ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon) then
             LT:Register("caches", (ns.L and ns.L["LT_CURRENCY_CACHES"]) or "Currency & Caches")
@@ -401,7 +402,7 @@ function InitializationService:InitializeDataServices(addon)
     end)
 
     -- P4: Items cache (tracked characters only; tracked state re-checked at run time)
-    -- C_MythicPlus priming handled by RegisterPvECacheEvents (T+2s → +3s = T+5s).
+    -- C_MythicPlus priming handled by RegisterPvECacheEvents (T+2.2s → +3s = T+5.2s).
     -- NOTE: OnUIInteract() removed — VaultScanner is the sole owner (PLAYER_ENTERING_WORLD, T+1s).
     -- P4 completes LoadingTracker "caches" — must run even if InitializeItemsCache errors or
     -- was deferred from combat. Complete() on a never-registered key is a no-op.
@@ -442,8 +443,9 @@ function InitializationService:InitializeUIServices(addon)
         end, "UIEventSetup")
     end)
     
-    -- T+0.5s: Tooltip hook — needs Tooltip:Initialize from T+0.3s
-    C_Timer.After(0.5, function()
+    -- T+0.7s: Tooltip hook — needs Tooltip:Initialize from T+0.3s; off the T+0.5 core-init
+    -- frame (2026-10-22).
+    C_Timer.After(0.7, function()
         SafeInit(function()
             if addon and addon.Tooltip and addon.Tooltip.InitializeGameTooltipHook then
                 addon.Tooltip:InitializeGameTooltipHook()
@@ -470,8 +472,8 @@ function InitializationService:InitializeBackgroundServices(addon)
         end, "ErrorHandler")
     end)
     
-    -- Reminder Service: Time & zone-based plan reminders (4s)
-    C_Timer.After(4, function()
+    -- Reminder Service: Time & zone-based plan reminders (4.2s; Core P0 owns T+4, 2026-10-22)
+    C_Timer.After(4.2, function()
         SafeInit(function()
             if addon and addon.InitializeReminderService then
                 addon:InitializeReminderService()
@@ -480,7 +482,8 @@ function InitializationService:InitializeBackgroundServices(addon)
     end)
 
     -- Bank money services are non-critical at startup; defer their event hooks.
-    C_Timer.After(3, function()
+    -- T+3.2: the items cache owns T+3 (2026-10-22).
+    C_Timer.After(3.2, function()
         SafeInit(function()
             if addon and addon.InitializeGoldManagementService then
                 addon:InitializeGoldManagementService()

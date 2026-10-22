@@ -2741,35 +2741,49 @@ function WarbandNexus:OnNewRecipeLearned()
     end)
 end
 
-local professionQuestProgressDebounceTimer = nil
+local professionQuestProgressDebounceTimer, professionQuestProgressLastRunAt = nil, nil
+-- Throttle, not debounce (2026-10-22): QUEST_LOG_UPDATE / bag / trait-currency fire every few
+-- hundred ms while questing, and the old 0.35s trailing timer was recreated on each one, re-running
+-- every quest-flag list per profession each time the stream paused. Now: first trigger runs after
+-- the 0.35s settle delay, later triggers fold into one run at most every MIN_INTERVAL; that run
+-- reads live state, so the final state is never lost.
+local PROFESSION_QUEST_PROGRESS_SETTLE, PROFESSION_QUEST_PROGRESS_MIN_INTERVAL = 0.35, 3.0
+
+local function RunProfessionQuestProgressRefresh()
+    if professionQuestProgressDebounceTimer then
+        professionQuestProgressDebounceTimer:Cancel()
+        professionQuestProgressDebounceTimer = nil
+    end
+    professionQuestProgressLastRunAt = GetTime()
+    if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+    local charKey = ResolveTrackedCharactersTableKey()
+    if not charKey then return end
+    local charData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+    if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 then
+        NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
+    end
+end
 
 function WarbandNexus:OnProfessionQuestProgressChanged(immediate)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
 
-    local function run()
-        if professionQuestProgressDebounceTimer then
-            professionQuestProgressDebounceTimer:Cancel()
-            professionQuestProgressDebounceTimer = nil
-        end
-        if not WarbandNexus or not IsCurrentCharacterTracked() then return end
-        local charKey = ResolveTrackedCharactersTableKey()
-        if not charKey then return end
-        local charData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-        if not charData then return end
-        if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 then
-            NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
-        end
-    end
-
     if immediate or not (C_Timer and C_Timer.NewTimer) then
-        run()
-    else
-        if professionQuestProgressDebounceTimer then
-            professionQuestProgressDebounceTimer:Cancel()
-        end
-        professionQuestProgressDebounceTimer = C_Timer.NewTimer(0.35, run)
+        RunProfessionQuestProgressRefresh()
+        return
     end
+    -- A run is already owed; it reads live state when it fires.
+    if professionQuestProgressDebounceTimer then return end
+    local delay = PROFESSION_QUEST_PROGRESS_SETTLE
+    local lastRunAt = professionQuestProgressLastRunAt
+    if lastRunAt then
+        local remaining = (lastRunAt + PROFESSION_QUEST_PROGRESS_MIN_INTERVAL) - GetTime()
+        if remaining > delay then
+            delay = remaining
+        end
+    end
+    professionQuestProgressDebounceTimer = C_Timer.NewTimer(delay, RunProfessionQuestProgressRefresh)
 end
 
 function WarbandNexus:RefreshCurrentCharacterKnowledgeProgress(suppressNotify)

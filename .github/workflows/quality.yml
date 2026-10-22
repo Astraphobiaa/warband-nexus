@@ -115,6 +115,7 @@ jobs:
             lua5.1 .github/scripts/test_section_pool.lua
             lua5.1 .github/scripts/test_section_pool_adoption.lua
             lua5.1 .github/scripts/test_items_flat_list_cache.lua
+            lua5.1 .github/scripts/test_event_storms_round2.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua
