@@ -313,6 +313,8 @@ local _pveDrawPool = {
     vaultTrackColW = nil,
     sectionShells = {}, -- [expandKey] = { header, body }
 }
+-- Single pool: PvEUI_CharList.lua (acquire) and PvEUI_BodyPaint.lua (L._pveDrawPool) must share this table.
+ns.PvEUI._pveDrawPool = _pveDrawPool
 local _pveVaultStatusScratch = {}
 
 function ns.PvE_ClearVaultStatusScratch()

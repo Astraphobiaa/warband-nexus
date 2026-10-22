@@ -1594,6 +1594,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             if charDetailContent.SetClipsChildren then
                 charDetailContent:SetClipsChildren(true)
             end
+            -- Pooled header keeps its last click state; the paint's profile value is authoritative.
+            charHeader._wnCollExpanded = charExpanded and true or false
+            local chevIcon = charHeader._wnCollExpandIcon or expandIconTex
+            if chevIcon and ns.UI_CollapseExpandSetState then
+                ns.UI_CollapseExpandSetState(chevIcon, charExpanded and true or false)
+            end
+            -- Full paint = draw sig changed (data / columns / roster): the populate key + width cache
+            -- would otherwise keep the previous paint's expanded cards.
+            charDetailContent._wnPopulateKey = nil
+            charDetailContent._wnPopulateBodyW = nil
         end
         if prevDet == nil then
             rowHost._pveCharKeysOrdered = {}
@@ -2074,9 +2084,28 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             local UnbindSeason = L.ns.UI_UnbindSeasonProgressAmount
             local UnbindVaultCol = L.ns.UI_UnbindVaultColumnDisplay
             local UnbindBounty = L.ns.UI_UnbindPvEBountyDisplay
+            local inlinePool = L._pveDrawPool.inline
+            local rowCells = inlinePool and inlinePool[charKey]
             for ci = 1, #PVE_COLUMNS do
                 local col = PVE_COLUMNS[ci]
                 local val = colValuesByKey[col.key]
+                local staleCell = (not val) and rowCells and rowCells[col.key]
+                if staleCell then
+                    -- Pooled row: visible column with no value this paint must not keep the last text/tooltip.
+                    if staleCell.fs then
+                        if UnbindSeason then UnbindSeason(staleCell.fs) end
+                        if UnbindVaultCol then UnbindVaultCol(staleCell.fs) end
+                        if UnbindBounty then UnbindBounty(staleCell.fs) end
+                        staleCell.fs:SetText("")
+                        staleCell.fs:Hide()
+                    end
+                    if staleCell.hit then
+                        staleCell.hit:Hide()
+                        staleCell.hit:SetScript("OnEnter", nil)
+                        staleCell.hit:SetScript("OnLeave", nil)
+                        staleCell.hit:SetScript("OnMouseUp", nil)
+                    end
+                end
                 if val then
                     local cw = colWidths[ci]
                     local colCenterX = colOffsets[ci] + cw * 0.5
@@ -2165,7 +2194,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     end
                 end
             end
-            if L.UI_SyncGridColumnDividers and #pveColumnDividerXs > 0 then
+            if L.UI_SyncGridColumnDividers and (#pveColumnDividerXs > 0 or charHeader._wnGridColDividers) then
                 L.UI_SyncGridColumnDividers(charHeader, pveColumnDividerXs, charHeader:GetHeight() or PVE_CHAR_ROW_HEADER_H)
             end
         end

@@ -2,24 +2,32 @@
 local _, ns = ...
 local FontManager = ns.FontManager
 
+--- Shared with PvEUI.lua (`_pveDrawPool`, assigned to ns.PvEUI._pveDrawPool at load) and BodyPaint (L._pveDrawPool).
 local function getPool()
     local PvEUI = ns.PvEUI
-    PvEUI._pveDrawPool = PvEUI._pveDrawPool or { charRows = {}, inline = {} }
-    return PvEUI._pveDrawPool
+    local pool = PvEUI._pveDrawPool
+    if not pool then
+        pool = {}
+        PvEUI._pveDrawPool = pool
+    end
+    pool.charRows = pool.charRows or {}
+    pool.inline = pool.inline or {}
+    return pool
 end
 
+--- Reused rows come back unanchored: the caller re-chains them (stale anchors into a recycled
+--- section body or an old row order must not survive). BodyPaint registers new rows in pool.charRows.
 local function PvEAcquireCharRowFrames(rowHost, charKey)
     local pool = getPool()
-    pool.charRows = pool.charRows or {}
     local row = pool.charRows[charKey]
     if row and row.header and row.detail then
-        row.header:SetParent(rowHost)
-        row.detail:SetParent(rowHost)
-        row.header:Show()
-        return row.header, row.detail, row.expandIcon, true
+        local header, detail = row.header, row.detail
+        if header:GetParent() ~= rowHost then header:SetParent(rowHost) end
+        if detail:GetParent() ~= rowHost then detail:SetParent(rowHost) end
+        header:ClearAllPoints()
+        header:Show()
+        return header, detail, row.expandIcon, true
     end
-    row = {}
-    pool.charRows[charKey] = row
     return nil, nil, nil, false
 end
 
