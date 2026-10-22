@@ -143,6 +143,9 @@ local itemSummaryIndex = {
     guildPending = false,
     coldInitDone = false,
     sessionGen = {},  -- [charKey] = { bags=N, bank=N } bumped on incremental writes
+    -- Tooltip count memo: item array -> { n, t1, t2, counts = { [itemID] = stacks } }. Weak keys: a
+    -- replaced / re-decompressed array drops its memo. Valid while length and tokens are unchanged.
+    arrayCounts = setmetatable({}, { __mode = "k" }),
 }
 
 local SUMMARY_BUILD_BUDGET_MS = 4
@@ -2890,12 +2893,31 @@ local function CharacterKeysMatchForTooltip(charKey, liveKey)
     return false
 end
 
-local function CountItemIDInArray(items, itemID)
+--- Stacks of itemID in an item array. Callers (GetDetailedItemCountsFast) already return early for
+--- keystone item IDs. With tokens (t1, t2) the array is indexed once and later hovers are O(1): the
+--- tooltip used to walk every alt's bags + bank on every item hover (2026-10-22). Pass no tokens for
+--- an array that is mutated in place (the live character's buckets).
+local function CountItemIDInArray(items, itemID, t1, t2)
     if not items or not itemID then return 0 end
-    local U = ns.Utilities
-    if U and U.IsKeystoneItemID and U:IsKeystoneItemID(itemID) then return 0 end
+    local n = #items
+    if t1 ~= nil then
+        local memo = itemSummaryIndex.arrayCounts[items]
+        if not memo or memo.n ~= n or memo.t1 ~= t1 or memo.t2 ~= t2 then
+            local counts = {}
+            for i = 1, n do
+                local item = items[i]
+                local id = item and item.itemID
+                if id and not item.isKeystone then
+                    counts[id] = (counts[id] or 0) + (item.stackCount or 1)
+                end
+            end
+            memo = { n = n, t1 = t1, t2 = t2, counts = counts }
+            itemSummaryIndex.arrayCounts[items] = memo
+        end
+        return memo.counts[itemID] or 0
+    end
     local total = 0
-    for i = 1, #items do
+    for i = 1, n do
         local item = items[i]
         if item and item.itemID == itemID and not item.isKeystone then
             total = total + (item.stackCount or 1)
@@ -2907,7 +2929,8 @@ end
 local function CountItemInWarbandBank(itemID)
     local warbandData = WarbandNexus:GetWarbandBankData()
     if warbandData and warbandData.items then
-        return CountItemIDInArray(warbandData.items, itemID)
+        -- Every warband save replaces the cached table and bumps the scan generation.
+        return CountItemIDInArray(warbandData.items, itemID, warbandBankScanGeneration, 0)
     end
     return 0
 end
@@ -3018,7 +3041,34 @@ end
 local function CountCharacterItemFromStorage(self, storageKey, itemID)
     local data = self:GetItemsData(storageKey)
     if not data then return 0, 0 end
-    return CountItemIDInArray(data.bags, itemID), CountItemIDInArray(data.bank, itemID)
+    -- The live character's buckets are rewritten in place (ReplaceBagInItemArray): no memo there.
+    if storageKey == ResolveCurrentItemStorageKey() then
+        return CountItemIDInArray(data.bags, itemID), CountItemIDInArray(data.bank, itemID)
+    end
+    local gen = itemSummaryIndex.sessionGen[storageKey]
+    local gb, gk = gen and gen.bags or 0, gen and gen.bank or 0
+    return CountItemIDInArray(data.bags, itemID, gb, data.bagsLastUpdate or 0),
+        CountItemIDInArray(data.bank, itemID, gk, data.bankLastUpdate or 0)
+end
+
+-- Tooltip count-row helpers (one table: this chunk is near the Lua 5.1 local limit).
+local CountRows = {}
+
+function CountRows.CompareGuild(a, b)
+    if a.count ~= b.count then return a.count > b.count end
+    return (a.guildName or "") < (b.guildName or "")
+end
+
+function CountRows.CompareCharacter(a, b)
+    if a.isLiveSession ~= b.isLiveSession then return a.isLiveSession end
+    return a.total > b.total
+end
+
+function CountRows.CharacterName(charKey, charData)
+    if charData.name then return charData.name end
+    if type(charKey) ~= "string" or charKey == "" then return nil end
+    if issecretvalue and issecretvalue(charKey) then return nil end
+    return charKey:match("^([^-]+)")
 end
 
 local function ScheduleBackgroundSummaryDrain()
@@ -3074,10 +3124,7 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         end
     end
     if #guildRows > 1 then
-        table.sort(guildRows, function(a, b)
-            if a.count ~= b.count then return a.count > b.count end
-            return (a.guildName or "") < (b.guildName or "")
-        end)
+        table.sort(guildRows, CountRows.CompareGuild)
     end
 
     local result = {
@@ -3102,12 +3149,7 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         if bagCount > 0 or bankCount > 0 then
             result.personalBankTotal = result.personalBankTotal + bankCount
             result.characters[#result.characters + 1] = {
-                charName = (function()
-                    if charData.name then return charData.name end
-                    if type(charKey) ~= "string" or charKey == "" then return nil end
-                    if issecretvalue and issecretvalue(charKey) then return nil end
-                    return charKey:match("^([^-]+)")
-                end)(),
+                charName = CountRows.CharacterName(charKey, charData),
                 classFile = charData.classFile or charData.class,
                 bagCount = bagCount,
                 bankCount = bankCount,
@@ -3117,10 +3159,7 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         end
     end
 
-    table.sort(result.characters, function(a, b)
-        if a.isLiveSession ~= b.isLiveSession then return a.isLiveSession end
-        return a.total > b.total
-    end)
+    table.sort(result.characters, CountRows.CompareCharacter)
 
     return result
 end
