@@ -296,7 +296,8 @@ local NOTIF = "Modules/UI/SettingsUI_Notifications.lua"
 check(not has(NOTIF, "dep%.color"), "Notifications: no build-time dep.color copy")
 check(not has(NOTIF, "useAlertFrameLabel, color = {1, 1, 1}"), "Notifications: useAlertFrameLabel not reset to raw white")
 check(has(NOTIF, 'widget = useAlertFrameLabel, role = "Bright"'), "Notifications: useAlertFrameLabel re-enables with Bright role")
-check(has(NOTIF, "dep%.widget:SetTextColor%(COLORS%.accent%[1%], COLORS%.accent%[2%], COLORS%.accent%[3%]%)"), "Notifications: accent read at call time")
+check(has(NOTIF, "ns%.UI_SetInkColor%(dep%.widget, COLORS%.accent%[1%], COLORS%.accent%[2%], COLORS%.accent%[3%]%)"),
+    "Notifications: accent read at call time, and the Dim role from the disabled state is cleared")
 
 -- ---------- L8: money log popup repainted on theme / accent change ----------
 print("\n[L8 RefreshColors]")

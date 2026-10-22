@@ -501,7 +501,9 @@ function M.AppendNotificationsPanel(ctx)
                         if dep.role then
                             ns.UI_SetTextColorRole(dep.widget, dep.role)
                         else
-                            dep.widget:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+                            -- UI_SetInkColor also clears the "Dim" role set while disabled, which the
+                            -- theme refresh would otherwise re-apply to this accent label.
+                            ns.UI_SetInkColor(dep.widget, COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
                         end
                     else
                         ns.UI_SetTextColorRole(dep.widget, "Dim", 0.6)
