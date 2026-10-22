@@ -3275,9 +3275,12 @@ end
 
 --- DrawTab runs in a setfenv environment: a bare `cachedRowWidth = x` there wrote into that env
 --- table, never this file's local, so the first paint's column scale ignored the body width until a
---- viewport relayout (2026-10-22). DrawTab sets it through here.
+--- viewport relayout (2026-10-22). DrawTab sets it through here; a changed width re-scales the
+--- column layout, which ResolveProfessionColumnLayout otherwise keeps cached.
 function ProfUI.SetCachedRowWidth(w)
+    if cachedRowWidth == w then return end
     cachedRowWidth = w
+    PUI.InvalidateProfessionColumnLayout()
 end
 
 function ProfUI.AbortChunkedRowPaint()
