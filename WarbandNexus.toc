@@ -83,7 +83,6 @@ Modules\ReputationProcessor.lua
 Modules\ReputationCacheService.lua
 Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua
-Modules\PvECacheService_VaultSelfTest.lua
 Modules\PvPService.lua
 Modules\PvPService_SelfTest.lua
 Modules\ItemsCacheService.lua
@@ -180,6 +179,7 @@ Modules\NotificationManager_ToastChrome.lua
 Modules\NotificationManager_AlertStack.lua
 Modules\NotificationManager_Changelog.lua
 Modules\NotificationManager.lua
+Modules\NotificationManager_Tests.lua
 Modules\UI\AchievementBrowseVirtualList.lua
 Modules\UI\FramePoolFactory.lua
 Modules\UI\SectionPool.lua
