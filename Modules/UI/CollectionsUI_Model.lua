@@ -2665,16 +2665,21 @@ function M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
     local titlePlain, subPlain = M.GetCollectionsSubTabHeaderText(tabKey)
     local tabChanged = (row._tabKey ~= tabKey)
     row._tabKey = tabKey
-    if tabChanged or row._titlePlain ~= titlePlain then
+    -- Colors are part of the cache key (2026-10-22): a live theme / accent switch keeps the text, so a
+    -- text-only check left the old title accent and subtitle ink on the new header surface.
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    if tabChanged or row._titlePlain ~= titlePlain or row._titleHex ~= hexColor then
         row._titlePlain = titlePlain
-        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-        local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
+        row._titleHex = hexColor
         row._title:SetText("|cff" .. hexColor .. titlePlain .. "|r")
     end
-    if tabChanged or row._subPlain ~= subPlain then
+    local subHex = M.CollectionsListWhiteHex()
+    if tabChanged or row._subPlain ~= subPlain or row._subHex ~= subHex then
         row._subPlain = subPlain
+        row._subHex = subHex
         -- Bright role ink at call time (fixed |cffffffff was white on the light header) (2026-10-22).
-        row._subtitle:SetText(subPlain ~= "" and (M.CollectionsListWhiteHex() .. subPlain .. "|r") or "")
+        row._subtitle:SetText(subPlain ~= "" and (subHex .. subPlain .. "|r") or "")
         row._subtitle:SetShown(subPlain ~= "")
     end
     row:Show()

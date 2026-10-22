@@ -179,6 +179,13 @@ SetTheme("light")
 row = NewSubRow()
 UpdateSub({ contentSubHeader = row }, "mounts")
 check_eq(row._subtitle.text, LIGHT.Bright .. "12 / 40 collected|r", "light: sub-header subtitle uses Bright role ink")
+-- Live switch on the SAME cached row: unchanged text must still be repainted with the new ink.
+SetTheme("dark")
+UpdateSub({ contentSubHeader = row }, "mounts")
+check_eq(row._subtitle.text, "|cffffffff12 / 40 collected|r", "live light->dark: cached sub-header repainted")
+SetTheme("light")
+UpdateSub({ contentSubHeader = row }, "mounts")
+check_eq(row._subtitle.text, LIGHT.Bright .. "12 / 40 collected|r", "live dark->light: cached sub-header repainted")
 
 -- ---------- L2: collection row meta label chrome (SharedWidgets_RowPool.lua) ----------
 print("\n[L2 ApplyCollectionRowMetaLabelChrome]")
