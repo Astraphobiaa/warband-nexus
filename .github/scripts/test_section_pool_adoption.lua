@@ -36,6 +36,7 @@ local ADOPTED = {
     { "Reputation", "Modules/UI/ReputationUI.lua", "function WarbandNexus:DrawReputationList%(container, width%)" },
     -- Characters: the two text blocks inside the persistent gold-card bundle (built once).
     { "Characters", "Modules/UI/CharactersUI.lua", "function WarbandNexus:DrawCharacterList%(parent%)", 2 },
+    { "Professions", "Modules/UI/ProfessionsUI_DrawTab.lua", "function WarbandNexus:DrawProfessionsTab%(parent%)" },
     { "Items", "Modules/UI/ItemsUI.lua", "function WarbandNexus:DrawItemsResults%(parent, yOffset, width, currentItemsSubTab, itemsSearchText%)" },
 }
 

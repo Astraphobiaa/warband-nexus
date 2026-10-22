@@ -389,6 +389,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local isFirstSection = true
     local sectionRows = parent._wnProfNestedRows
     parent._wnProfSectionHeaders = {}
+    -- Section headers and content frames are pooled on the scroll child (SectionPool, "prf:" keys)
+    -- and re-bound every paint instead of being recreated and parked in the recycle bin (2026-10-22).
+    local SP = ns.UI_SectionPool
+    SP.BeginPass(parent)
     parent._wnProfSectionStack = {}
     parent._wnProfSectionStackTopY = yOffset
     parent:SetHeight(1)
@@ -465,12 +469,12 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     parent._wnProfRelayoutSectionStack = RelayoutProfessionsSectionStack
 
-    local function AcquireSectionContentFrame(anchorHeader)
+    local function AcquireSectionContentFrame(anchorHeader, poolKey)
         local hostW = math.max(1, profStackW)
         local Fact = ns.UI and ns.UI.Factory
         local contentFrame
         if Fact and Fact.CreateContainer then
-            contentFrame = Fact:CreateContainer(anchorHeader, hostW, 1, false)
+            contentFrame = SP.Acquire(parent, "prf:content:" .. poolKey, anchorHeader, hostW, 1)
         else
             contentFrame = CreateFrame("Frame", nil, anchorHeader)
             contentFrame:SetSize(hostW, 1)
@@ -586,8 +590,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
             true,  -- isAtlas
             nil,
             nil,
-            headerVisualOpts
+            SP.HeaderOpts(parent, "prf:hdr:" .. tostring(sectionKey), headerVisualOpts)
         )
+        SP.Remember(parent, "prf:hdr:" .. tostring(sectionKey), header)
         -- Match Characters tab icon sizing exactly:
         --   Favorites          (gold preset, NO useCharacterGroupExpand) -> 28x28
         --   Custom roster      (useCharacterGroupExpand + groupId)        -> 24x24
@@ -618,7 +623,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             header._wnProfSectionCount:Hide()
         end
 
-        sectionContent = AcquireSectionContentFrame(header)
+        sectionContent = AcquireSectionContentFrame(header, tostring(sectionKey))
         local sectionHeight = QueueProfessionsSectionRows(sectionContent, chars, isExpanded)
         if isExpanded then
             sectionContent:Show()
