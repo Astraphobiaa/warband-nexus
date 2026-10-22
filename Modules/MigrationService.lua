@@ -300,7 +300,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 5
+local MIGRATION_FAST_PATH_REVISION = 6
 
 ---Run all database migrations. Returns true if a full schema reset was performed.
 ---@param db table AceDB instance
@@ -353,6 +353,7 @@ function MigrationService:RunMigrations(db)
     self:MigratePruneOrphanSvKeysV1(db)
     self:MigrateDropLegacyCollectionDataV1(db)
     self:MigratePruneRedundantCollectionCacheV1(db)
+    self:MigrateSlimCollectionStoreV1(db)
     self:MigratePruneAceCharLegacyBagItemsV1(db)
     self:MigrateNormalizeCharacterKeyPrefsV1(db)
     self:FinalizeGuidOnlySubsidiaryV1(db)
@@ -2102,6 +2103,41 @@ function MigrationService:MigratePruneRedundantCollectionCacheV1(db)
         end
     end
     db.global.collectionCachePrunedV1 = true
+end
+
+--- Strip display metadata from db.global.collectionStore rows (~3 MB SV): names, icons, source text
+--- and descriptions resolve lazily from the journal APIs. Keep-lists live in CollectionService_Store.lua
+--- (ns.CollectionStorePersistFields); toy and illusion rows are untouched. (2026-10-22)
+---@param db table AceDB root
+function MigrationService:MigrateSlimCollectionStoreV1(db)
+    if not db or not db.global or db.global.collectionStoreSlimV1 then return end
+    local keepByCategory = ns.CollectionStorePersistFields
+    -- CollectionService_Store.lua not loaded: leave the flag unset so the next login retries.
+    if type(keepByCategory) ~= "table" then return end
+    local store = db.global.collectionStore
+    if type(store) == "table" then
+        local stripped = 0
+        for category, keep in pairs(keepByCategory) do
+            local map = store[category]
+            if type(map) == "table" then
+                for id, row in pairs(map) do
+                    if type(row) == "table" then
+                        if row.id == nil then row.id = id end
+                        for k in pairs(row) do
+                            if not keep[k] then
+                                row[k] = nil
+                                stripped = stripped + 1
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if DebugPrint and stripped > 0 then
+            DebugPrint("|cff9370DB[Migration]|r collectionStoreSlimV1: stripped " .. tostring(stripped) .. " display field(s)")
+        end
+    end
+    db.global.collectionStoreSlimV1 = true
 end
 
 --- One-shot: legacy AceDB char-scope bag dumps (itemStorage is authoritative).

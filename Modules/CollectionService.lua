@@ -297,7 +297,7 @@ end
     - P1: RunCollectionOwnedCacheWarmup — owned O(1) cache; quiet when store already matches CACHE_VERSION (no extra LoadingTracker row)
     - P5: EnsureFullCollectionData — EnsureCollectionData if any category missing / version mismatch
     
-    Persisted in db.global.collectionStore (per row): mount/pet include id, name, icon, source, collected, sourceType/sourceTypeIndex metadata; toy id+name only (collected from API when needed). Achievements/titles/illusions have their own store tables.
+    Persisted in db.global.collectionStore (per row, 2026-10-22): mount id+collected+sourceType, pet id+collected+sourceTypeIndex, achievement id+collected+points, title id+collected; display fields resolve lazily from the API (CollectionService_Store.lua). Toy id+name only (collected from API when needed). Illusions keep their full rows.
     Profiler labels (when /wn profiler on): EnsureBlizzard_CollectionsLoad, BuildFullCollectionData [async], EnsureCollectionData [async], BuildCollectionCache / BuildCollectionCache_quiet [async].
 ]]
 
@@ -760,6 +760,14 @@ function WarbandNexus:InitializeCollectionCache()
         collectionStore.illusion = dbStore.illusion or {}
         collectionStore.scanCompleted = dbStore.scanCompleted or {}
         collectionStore.lastBuilt = dbStore.lastBuilt or 0
+        -- SV rows are slim (CollectionService_Store.lua): attach the lazy display-field resolver.
+        local slimRows = ns.CollectionServiceRT and ns.CollectionServiceRT.SlimCollectionStoreRows
+        if slimRows then
+            slimRows("mount", collectionStore.mount)
+            slimRows("pet", collectionStore.pet)
+            slimRows("achievement", collectionStore.achievement)
+            slimRows("title", collectionStore.title)
+        end
         if debugMode then
             local m, p, t, a, ti, il = 0, 0, 0, 0, 0, 0
             for _ in pairs(collectionStore.mount) do m = m + 1 end
@@ -2196,7 +2204,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         -- Mark as collected in store so Collections UI and GetAllAchievementsData show it as completed
         if not collectionStore.achievement then collectionStore.achievement = {} end
         if not prevAchEntry then
-            collectionStore.achievement[achievementID] = { collected = true }
+            collectionStore.achievement[achievementID] = { id = achievementID, collected = true }
         else
             prevAchEntry.collected = true
         end
@@ -3291,6 +3299,51 @@ COLLECTION_CONFIGS = {
         end,
     },
 }
+
+---Display fields for one slim collectionStore row (2026-10-22), resolved on first read.
+---Same synchronous reads the scans use for that id; the row's persisted fields are not overridden.
+---@param category string mount|pet|achievement|title
+---@param id number
+---@return table|nil
+ns.CollectionServiceRT.ResolveStoreRowDisplay = function(category, id)
+    if category == "achievement" then
+        if not GetAchievementInfo then return nil end
+        local ok, achID, name, _, _, _, _, _, description, _, icon, rewardText = pcall(GetAchievementInfo, id)
+        if not ok or not achID then return nil end
+        local _sv = issecretvalue
+        local rewardItemID, rewardTitle
+        local rewardSuccess, item, title = pcall(GetAchievementReward, id)
+        if rewardSuccess then
+            if type(item) == "number" then rewardItemID = item end
+            if type(title) == "string" and title ~= "" and not (_sv and _sv(title)) then
+                rewardTitle = title
+            elseif type(item) == "string" and item ~= "" and not (_sv and _sv(item)) then
+                rewardTitle = item
+            end
+        end
+        if not rewardTitle and rewardText and rewardText ~= "" and not (_sv and _sv(rewardText)) then
+            rewardTitle = rewardText
+        end
+        local categoryID
+        if GetAchievementCategory then
+            local cat = GetAchievementCategory(id)
+            if cat and cat > 0 then categoryID = cat end
+        end
+        return {
+            name = SafeAchievementDisplayName(id, name),
+            icon = (icon and not (_sv and _sv(icon))) and icon or nil,
+            description = (description and not (_sv and _sv(description))) and description or nil,
+            categoryID = categoryID,
+            rewardItemID = rewardItemID,
+            rewardTitle = rewardTitle,
+        }
+    end
+    local config = COLLECTION_CONFIGS[category]
+    if not config or not config.extract then return nil end
+    local ok, data = pcall(config.extract, id)
+    if ok and type(data) == "table" then return data end
+    return nil
+end
 
 ---Scan a collection type asynchronously (coroutine-based with duplicate protection)
 function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)

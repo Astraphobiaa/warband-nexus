@@ -16,6 +16,109 @@ local HydrateOwnedCacheFromStore = RT.HydrateOwnedCacheFromStore
 local function getDeferredTimer() return RT.deferredStoreSaveTimer end
 local function setDeferredTimer(t) RT.deferredStoreSaveTimer = t end
 
+-- Slim persisted rows (2026-10-22). SV keeps only what cannot be read back from the client:
+-- collected flags, achievement points (summed over every row by SumAchievementJournalPointsMax)
+-- and the journal-filter source indices (rebuilt only by a filter sweep, not per id).
+-- Display metadata (name, icon, source text, ...) lives in RAM: values a scan already produced
+-- move into derivedByField, anything else resolves once per id via RT.ResolveStoreRowDisplay.
+-- Toys are already id+name; illusions are not slimmed (GetIllusionStrings is not a proven sync read).
+local STORE_PERSIST_FIELDS = {
+    mount = { id = true, collected = true, sourceType = true },
+    pet = { id = true, collected = true, sourceTypeIndex = true },
+    achievement = { id = true, collected = true, points = true },
+    title = { id = true, collected = true },
+}
+-- Fields a reader may ask for that the API resolver returns; other missing keys stay nil
+-- (e.g. SumAchievementJournalPointsMax probes isGuild, which no writer ever stored).
+local STORE_DERIVED_FIELDS = {
+    mount = { name = true, icon = true, spellID = true, source = true, description = true, creatureDisplayID = true,
+        shouldHideOnChar = true, isFactionSpecific = true, faction = true, isSteadyFlight = true },
+    pet = { name = true, icon = true, source = true, description = true, petType = true, creatureDisplayID = true,
+        obtainable = true },
+    achievement = { name = true, icon = true, description = true, categoryID = true, rewardItemID = true, rewardTitle = true },
+    title = { name = true, titleString = true, playerTitle = true, iconAtlas = true, source = true, type = true },
+}
+ns.CollectionStorePersistFields = STORE_PERSIST_FIELDS
+
+local derivedByField = {}   -- [category][field][id] = value (RAM only)
+local derivedResolved = {}  -- [category][id] = true once the API resolver filled this id
+local storeRowMeta = {}
+
+local function SetDerived(category, id, key, value, overwrite)
+    local byField = derivedByField[category][key]
+    if not byField then
+        byField = {}
+        derivedByField[category][key] = byField
+    end
+    if overwrite or byField[id] == nil then
+        byField[id] = value
+    end
+end
+
+for category, keep in pairs(STORE_PERSIST_FIELDS) do
+    derivedByField[category] = {}
+    derivedResolved[category] = {}
+    local derived = STORE_DERIVED_FIELDS[category]
+    storeRowMeta[category] = {
+        __index = function(row, key)
+            if keep[key] then return nil end
+            local id = rawget(row, "id")
+            if id == nil then return nil end
+            local byField = derivedByField[category][key]
+            local value = byField and byField[id]
+            if value ~= nil or not derived[key] or derivedResolved[category][id] then
+                return value
+            end
+            local data = RT.ResolveStoreRowDisplay and RT.ResolveStoreRowDisplay(category, id)
+            if type(data) == "table" then
+                for k, v in pairs(data) do
+                    if not keep[k] then SetDerived(category, id, k, v, false) end
+                end
+                derivedResolved[category][id] = true
+                byField = derivedByField[category][key]
+                value = byField and byField[id]
+            end
+            -- Unresolved (API not ready / secret): same placeholder the list readers print; retried next read.
+            if value == nil and key == "name" and not derivedResolved[category][id] then
+                return "ID:" .. tostring(id)
+            end
+            return value
+        end,
+        -- Writers that set display fields on a slim row keep them in RAM, never in SV.
+        __newindex = function(row, key, value)
+            local id = rawget(row, "id")
+            if keep[key] or id == nil then
+                rawset(row, key, value)
+            else
+                SetDerived(category, id, key, value, true)
+            end
+        end,
+    }
+end
+
+---Move non-persisted fields of every row into RAM and attach the lazy row metatable.
+---Rows already carrying the metatable are slim (its __newindex keeps them so) and are skipped.
+---@param category string
+---@param map table|nil id -> row
+function RT.SlimCollectionStoreRows(category, map)
+    local keep = STORE_PERSIST_FIELDS[category]
+    local meta = storeRowMeta[category]
+    if not keep or type(map) ~= "table" then return end
+    for id, row in pairs(map) do
+        if type(row) == "table" and getmetatable(row) ~= meta then
+            if rawget(row, "id") == nil then rawset(row, "id", id) end
+            local rowID = rawget(row, "id")
+            for k, v in pairs(row) do
+                if not keep[k] then
+                    SetDerived(category, rowID, k, v, true)
+                    rawset(row, k, nil)
+                end
+            end
+            setmetatable(row, meta)
+        end
+    end
+end
+
 function RT.ScheduleDeferredCollectionStoreSave()
     if getDeferredTimer() then return end
     setDeferredTimer(C_Timer.NewTimer(2, function()
@@ -45,6 +148,9 @@ function WarbandNexus:SaveCollectionStore()
         if v and v.id then
             toySave[id] = { id = v.id, name = (type(v.name) == "string" and v.name ~= "") and v.name or tostring(v.id) }
         end
+    end
+    for category in pairs(STORE_PERSIST_FIELDS) do
+        RT.SlimCollectionStoreRows(category, RT.collectionStore[category])
     end
     self.db.global.collectionStore = {
         version = RT.collectionStore.version,
