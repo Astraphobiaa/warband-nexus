@@ -588,16 +588,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end
         end)
 
-        local completeName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE) or "WN_COLLECTION_SCAN_COMPLETE"
-        WarbandNexus.RegisterMessage(CUIListeners, completeName, function()
-            CancelScanProgressRedrawTimer()
-            InvalidateAllCollectionCaches()
-            local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-            if mf and mf:IsShown() and mf.currentTab == "collections" then
-                RedrawActiveCollectionSubTab()
-            end
-        end)
-
         -- One new collectible fires both COLLECTION_UPDATED and COLLECTIBLE_OBTAINED (often
         -- PLANS_UPDATED too); share one trailing timer so the sub-tab rebuilds once.
         local collectionRedrawPending = false
@@ -611,6 +601,29 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 RedrawActiveCollectionSubTab()
             end)
         end
+
+        -- Scan category -> the sub-tab that renders it. Categories absent here (title, illusion)
+        -- have no Collections sub-tab caches; "all" / nil means the whole pipeline finished.
+        local SCAN_CATEGORY_SUBTAB = { mount = "mounts", pet = "pets", toy = "toys", achievement = "achievements" }
+
+        local completeName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE) or "WN_COLLECTION_SCAN_COMPLETE"
+        WarbandNexus.RegisterMessage(CUIListeners, completeName, function(_, payload)
+            CancelScanProgressRedrawTimer()
+            -- 2026-10-22: per-category scans used to wipe every sub-tab cache and redraw synchronously;
+            -- an achievement scan then redrew again 0.05 s later off COLLECTION_UPDATED("achievement").
+            local category = type(payload) == "table" and payload.category or nil
+            local subTab = category and SCAN_CATEGORY_SUBTAB[category]
+            if category == nil or category == "all" then
+                InvalidateAllCollectionCaches()
+            elseif not subTab then
+                return
+            elseif not payload.failed and not payload.retryableEmptyScan then
+                -- failed / retryableEmptyScan changed no rows; only the loading state needs a repaint.
+                InvalidateCollectionCachesForType(category)
+            end
+            if subTab and M.state.currentSubTab ~= subTab then return end
+            ScheduleCoalescedCollectionRedraw()
+        end)
 
         local updatedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED) or "WN_COLLECTION_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, updatedName, function(_, updatedType)

@@ -1155,6 +1155,11 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     end
 
     local idx = 1
+    -- 2026-10-22: per-run generation so an older run's 60 s safety timeout cannot force-clear a newer
+    -- run; the timeout also drops this run's achievement-step listener (it outlived the run before).
+    local runGen = (ns.CollectionLoadingState.ensureRunGen or 0) + 1
+    ns.CollectionLoadingState.ensureRunGen = runGen
+    local achievementStepWaiting = false
     local function RunNext()
         -- Defer entire pipeline step while in combat (PetJournal / mount APIs may skip or error mid-phase).
         if InCombatLockdown and InCombatLockdown() then
@@ -1191,10 +1196,12 @@ function WarbandNexus:EnsureCollectionData(onComplete)
             handler = function(_, data)
                 if data and data.category == "achievement" then
                     self:UnregisterMessage(msgName)
+                    achievementStepWaiting = false
                     ns.CollectionLoadingState.loadingProgress = math.min(99, (idx - 1) / #queue * 100)
                     C_Timer.After(0.2, RunNext)
                 end
             end
+            achievementStepWaiting = true
             self:RegisterMessage(msgName, handler)
             self:ScanAchievementsAsync()
             return
@@ -1212,7 +1219,13 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     -- Safety timeout: if the pipeline hasn't completed within 60s, force-clear loading state
     -- to prevent the UI from being permanently stuck on the loading overlay
     C_Timer.After(60, function()
+        if ns.CollectionLoadingState.ensureRunGen ~= runGen then return end
         if ns.CollectionLoadingState.isLoading then
+            -- A later achievement scan must not resume this run's title/illusion/save chain.
+            if achievementStepWaiting then
+                achievementStepWaiting = false
+                WarbandNexus:UnregisterMessage(E.COLLECTION_SCAN_COMPLETE)
+            end
             stopEnsureProf()
             ns.CollectionLoadingState.isLoading = false
             ns.CollectionLoadingState.loadingProgress = 100

@@ -449,6 +449,27 @@ function Scan.InstallBagScanListener()
     bagScanFrame:RegisterEvent("BAG_UPDATE_DELAYED")
     bagScanFrame:RegisterEvent("CHAT_MSG_LOOT")
 
+    -- 2026-10-22: the baseline is built on PLAYER_ENTERING_WORLD only while the module is on. Re-enabling
+    -- left BAG_UPDATE_DELAYED / CHAT_MSG_LOOT off until the next loading screen, and the old snapshot
+    -- would later report a collectible picked up while disabled as new. Re-baseline on enable.
+    Scan._moduleToggleSink = Scan._moduleToggleSink or {}
+    WarbandNexus.RegisterMessage(Scan._moduleToggleSink, E.MODULE_TOGGLED, function(_, moduleName, enabled)
+        if moduleName ~= "collections" or enabled ~= true then return end
+        if not IsCollectionsModuleEnabled() then return end
+        if bagScanTimer then bagScanTimer:Cancel(); bagScanTimer = nil end
+        if chatLootScanTimer then chatLootScanTimer:Cancel(); chatLootScanTimer = nil end
+        wipe(changedBagIDs)
+        wipe(Scan.pendingRetryItems)
+        Scan.previousBagContents = {}
+        Scan.previousBagNums = {}
+        Scan.isInitialized = false
+        Scan.lastCollectibleScanTime = 0
+        baselineInitialized = true
+        WarbandNexus:OnBagUpdateForCollectibles()
+        suppressUntil = GetTime() + 2.0
+        DebugPrint("|cff9370DB[WN CollectionService]|r Bag scan baseline rebuilt (Collections module enabled)")
+    end)
+
     bagScanFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         if not IsCollectionsModuleEnabled() then return end
         if event == "PLAYER_ENTERING_WORLD" then

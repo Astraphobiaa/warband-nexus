@@ -165,7 +165,9 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     -- InvalidateCollectionCache would clear RT.collectionCache.owned.mounts={}, undoing
     -- the owned cache set we just did. WN_COLLECTION_UPDATED triggers the UI to
     -- invalidate its own display caches and refresh.
-    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+    -- 2026-10-22: only when deduped; the WN_COLLECTIBLE_OBTAINED handler below already re-emits it,
+    -- and a second COLLECTION_UPDATED wiped the counts cache it had just adjusted in place.
+    if skipNotification and Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "mount")
     end
 
@@ -291,7 +293,8 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
 
     -- Fire data-update event so UI refreshes (even when notification is deduped).
     -- NOTE: Do NOT call InvalidateCollectionCache here — incremental updates are sufficient.
-    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+    -- 2026-10-22: only when deduped; otherwise the WN_COLLECTIBLE_OBTAINED handler re-emits it.
+    if skipNotification and Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "pet")
     end
 
@@ -368,7 +371,8 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     -- fallback cache kept serving a source index that lacked the new toy.
     if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
     ns._toyGroupedFromMapValid = false
-    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+    -- 2026-10-22: only when deduped; otherwise the WN_COLLECTIBLE_OBTAINED handler re-emits it.
+    if skipNotification and Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "toy")
     end
 
@@ -570,9 +574,14 @@ end
 -- Invalidate API counts cache so Statistics and Collections show same numbers after any collection change.
 -- COLLECTION_UPDATED sends (message, collectionType string). COLLECTIBLE_OBTAINED passes payload table { type = ... }.
 -- Must be declared before WN_COLLECTIBLE_OBTAINED RegisterMessage below: Lua 5.1 local function scope starts after this `end`.
+-- Type whose COLLECTION_UPDATED the OBTAINED handler below is re-broadcasting (SendMessage is synchronous).
+local obtainRebroadcastType = nil
 local function InvalidateCollectionCountsCache(_, arg)
     -- Table arg = COLLECTIBLE_OBTAINED payload (a confirmed +1); string arg =
     -- COLLECTION_UPDATED (journal refresh, counts may not have changed) → full wipe.
+    -- 2026-10-22: the OBTAINED handler's own re-broadcast is not a journal refresh; the payload
+    -- call just did every wipe below, a full wipe here would undo the in-place +1.
+    if arg ~= nil and arg == obtainRebroadcastType then return end
     local ctype = arg
     local isObtain = false
     if type(arg) == "table" then
@@ -617,7 +626,9 @@ if E and E.COLLECTIBLE_OBTAINED then
         InvalidateCollectionCountsCache(_, data)
         WarbandNexus:AppendCollectionsRecentObtained(data)
         if id and (t == "mount" or t == "pet" or t == "toy") and E.COLLECTION_UPDATED then
+            obtainRebroadcastType = t
             WarbandNexus:SendMessage(E.COLLECTION_UPDATED, t)
+            obtainRebroadcastType = nil
         end
     end)
 end
