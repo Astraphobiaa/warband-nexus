@@ -347,7 +347,7 @@ function WarbandNexus:DrawCharacterList(parent)
         local last = _wnCharsTabLastSeenBump[sessionTableKey] or 0
         if (now - last) >= WN_CHARS_TAB_LAST_SEEN_INTERVAL then
             _wnCharsTabLastSeenBump[sessionTableKey] = now
-            self.db.global.characters[sessionTableKey].lastSeen = time()
+            self:TouchCharacterLastSeen(sessionTableKey)
         end
     end
     

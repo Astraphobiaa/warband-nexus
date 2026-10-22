@@ -183,6 +183,18 @@ function WarbandNexus:InvalidateGetAllCharactersCache()
     InvalidateGetAllCharactersCache()
 end
 
+--- Stamp a roster row's lastSeen with the current time (View delegate: Characters tab open / reorder used
+--- to write it inline, 2026-10-22). No message: the roster signature reads lastSeen on the next GetAllCharacters.
+---@param tableKey string db.global.characters key
+---@return boolean true when the row exists and was stamped
+function WarbandNexus:TouchCharacterLastSeen(tableKey)
+    local chars = tableKey and self.db and self.db.global and self.db.global.characters
+    local row = chars and chars[tableKey]
+    if type(row) ~= "table" then return false end
+    row.lastSeen = time()
+    return true
+end
+
 --- Trustworthy age since last roster row update; nil when lastSeen is missing or invalid (never treat as infinitely stale).
 function WarbandNexus:GetCharacterLastSeenAge(char, currentTime)
     if type(char) ~= "table" then return nil end

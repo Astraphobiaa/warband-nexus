@@ -1462,6 +1462,130 @@ function WarbandNexus:UpdatePlanNotes(planID, notes)
     return false
 end
 
+-- Plan fields that feed RefreshPlanCache's id indexes (planCache.*IDs, _plansByCollectibleKey).
+local BACKFILL_INDEXED_ID_FIELDS = { mountID = true, speciesID = true }
+
+--[[
+    Write one field a draw path resolved from the API onto a stored plan row (View delegate).
+    Indexed ids (mountID / speciesID) are written only while the stored id is missing (nil or <= 0)
+    and then rebuild the plan indexes, so IsMountPlanned / completion lookups see the new id at once
+    instead of after the next full rebuild. Other fields (source) are written as given: the caller
+    decides when its stored text is a placeholder. No PLANS_UPDATED: callers run inside a draw and
+    the row they draw already shows the value; a message here would repaint in a loop (2026-10-22).
+    @param plan table - Row from db.global.plans / customPlans
+    @param field string
+    @param value any - nil or secret values are ignored
+    @return boolean - True when the row changed
+]]
+function WarbandNexus:BackfillPlanField(plan, field, value)
+    if issecretvalue and issecretvalue(value) then return false end
+    if type(plan) ~= "table" or type(field) ~= "string" or value == nil then return false end
+    if BACKFILL_INDEXED_ID_FIELDS[field] then
+        if type(value) ~= "number" or value <= 0 then return false end
+        local current = plan[field]
+        if type(current) == "number" and current > 0 then return false end
+        plan[field] = value
+        self:RefreshPlanCache()
+        return true
+    end
+    if plan[field] == value then return false end
+    plan[field] = value
+    return true
+end
+
+-- CUSTOM PLAN STORAGE (moved from Modules/UI/PlansUI_Dialogs.lua 2026-10-22: the View no longer
+-- writes db.global.customPlans; removal goes through RemovePlan, which also covers custom rows)
+
+function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount, infiniteRepeat)
+    if not self.db.global.customPlans then
+        self.db.global.customPlans = {}
+    end
+
+    local wantInfinite = infiniteRepeat and resetType and resetType ~= "none"
+    local finiteCount = (not wantInfinite and cycleCount) or nil
+    if not wantInfinite and (not finiteCount or finiteCount < 1) then
+        finiteCount = 1
+    end
+
+    local customPlan = {
+        id = "custom_" .. time() .. "_" .. math.random(1000, 9999),
+        type = "custom",
+        name = title,
+        source = description or ((ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan"),
+        icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
+        iconIsAtlas = true,  -- Mark as atlas
+        isCustom = true,
+        completed = false,
+        resetCycle = (resetType and resetType ~= "none") and {
+            enabled = true,
+            resetType = resetType,
+            lastResetTime = time(),
+            infiniteRepeat = wantInfinite or false,
+            totalCycles = wantInfinite and nil or finiteCount,
+            remainingCycles = wantInfinite and nil or finiteCount,
+        } or nil,
+    }
+
+    table.insert(self.db.global.customPlans, customPlan)
+
+    -- Resolve display data immediately so My Plans renders complete info
+    if self._ResolveSinglePlan then
+        self:_ResolveSinglePlan(customPlan, time())
+    end
+    self:SendMessage(E.PLANS_UPDATED, {
+        action = "custom_created",
+        planID = customPlan.id,
+    })
+end
+
+function WarbandNexus:GetCustomPlans()
+    return self.db.global.customPlans or {}
+end
+
+function WarbandNexus:CompleteCustomPlan(planId)
+    if not self.db.global.customPlans then return false end
+
+    -- FormatHelpers / theme load after this file: resolve the chat formatters at call time.
+    local formatTextNumbers = ns.UI_FormatTextNumbers or tostring
+    local customPlansList = self.db.global.customPlans
+    for pi = 1, #customPlansList do
+        local plan = customPlansList[pi]
+        if plan.id == planId then
+            if plan.completed then return true end -- Already completed
+
+            plan.completed = true
+            local P = ns.PLAN_UI_COLORS
+            local greenHex = (P and P.completed) or (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff44ff44"
+            self:Print(string.format((ns.L and ns.L["CUSTOM_PLAN_COMPLETED"]) or "Custom plan '%s' %scompleted|r", formatTextNumbers(plan.name), greenHex))
+
+            -- Track completion time for recurring reset
+            if plan.resetCycle and plan.resetCycle.enabled then
+                plan.resetCycle.completedAt = time()
+            end
+
+            -- Fire event immediately so UI refreshes instantly
+            self:SendMessage(E.PLANS_UPDATED, {
+                action = "completed",
+                planID = plan.id,
+            })
+
+            -- Notification deferred slightly so UI refresh completes first
+            if self.Notify then
+                local planName = formatTextNumbers(plan.name)
+                local planIcon = plan.icon
+                C_Timer.After(0.1, function()
+                    if WarbandNexus and WarbandNexus.Notify then
+                        WarbandNexus:Notify("plan", planName, planIcon)
+                    end
+                end)
+            end
+
+            return true
+        end
+    end
+    return false
+end
+
 --[[
     Check if item is already in plans
     @param planType string - Type of plan

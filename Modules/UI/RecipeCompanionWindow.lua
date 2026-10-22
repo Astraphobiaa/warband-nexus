@@ -121,19 +121,20 @@ local craftersSectionCollapsed = false  -- Collapse state for "Crafters" section
 
 -- FLOATING WINDOW POSITION (db.global.recipeCompanion)
 
+-- Created / written through WindowManager (no View writes into db.global; 2026-10-22).
+local COMPANION_DB_DEFAULTS = {
+    point = "CENTER",
+    relativePoint = "CENTER",
+    x = 0,
+    y = 0,
+    width = DEFAULT_WIDTH,
+    height = DEFAULT_HEIGHT,
+}
+
 local function GetDB()
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return nil end
-    if not WarbandNexus.db.global.recipeCompanion then
-        WarbandNexus.db.global.recipeCompanion = {
-            point = "CENTER",
-            relativePoint = "CENTER",
-            x = 0,
-            y = 0,
-            width = DEFAULT_WIDTH,
-            height = DEFAULT_HEIGHT,
-        }
-    end
-    return WarbandNexus.db.global.recipeCompanion
+    local WM = ns.WindowManager
+    if not WM or not WM.GetFloatingWindowState then return nil end
+    return WM:GetFloatingWindowState("recipeCompanion", COMPANION_DB_DEFAULTS)
 end
 
 local function SavePosition(frame)
@@ -141,13 +142,7 @@ local function SavePosition(frame)
     local db = GetDB()
     if not db then return end
     if frame:GetNumPoints() < 1 then return end
-    local point, _, relativePoint, x, y = frame:GetPoint(1)
-    db.point = point
-    db.relativePoint = relativePoint
-    db.x = x
-    db.y = y
-    db.width = frame:GetWidth()
-    db.height = frame:GetHeight()
+    ns.WindowManager:SaveFloatingWindowGeometry("recipeCompanion", frame, true)
 end
 
 local function RestorePosition(frame)

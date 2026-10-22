@@ -372,6 +372,55 @@ function WarbandNexus:GetDefaultReagentCategories()
     return DEFAULT_CATEGORIES
 end
 
+-- PER-CHARACTER SETTINGS (View delegates, 2026-10-22: the Reagent Deposit / Gold Manager popups used to
+-- create and flag their db.char tables themselves). Switching back to the profile only clears
+-- perCharacter, so the character's own values survive for the next switch.
+
+---@param perCharacter boolean
+---@param seed table|nil settings deep-copied on the first per-character switch (profile settings or defaults)
+---@return table|nil settings table the popup edits from now on
+function WarbandNexus:SetReagentDepositPerCharacter(perCharacter, seed)
+    local db = self.db
+    if not db or not db.char then return nil end
+    if perCharacter then
+        if not db.char.reagentDeposit then
+            db.char.reagentDeposit = CopyTable(seed or {})
+        end
+        db.char.reagentDeposit.perCharacter = true
+        return db.char.reagentDeposit
+    end
+    if db.char.reagentDeposit then
+        db.char.reagentDeposit.perCharacter = false
+    end
+    return db.profile and db.profile.reagentDeposit
+end
+
+---@param perCharacter boolean
+---@param seed table|nil settings whose enabled / mode / targetAmount start the per-character copy
+---@return table|nil settings table the popup edits from now on
+function WarbandNexus:SetGoldManagementPerCharacter(perCharacter, seed)
+    local db = self.db
+    if not db or not db.char then return nil end
+    if perCharacter then
+        if not db.char.goldManagement then
+            seed = seed or {}
+            db.char.goldManagement = {
+                perCharacter = true,
+                enabled = seed.enabled,
+                mode = seed.mode,
+                targetAmount = seed.targetAmount,
+            }
+        else
+            db.char.goldManagement.perCharacter = true
+        end
+        return db.char.goldManagement
+    end
+    if db.char.goldManagement then
+        db.char.goldManagement.perCharacter = false
+    end
+    return db.profile and db.profile.goldManagement
+end
+
 function WarbandNexus:WN_REAGENT_DEPOSIT_CHANGED()
     lastActionTime = 0
     if WarbandNexus.bankIsOpen then

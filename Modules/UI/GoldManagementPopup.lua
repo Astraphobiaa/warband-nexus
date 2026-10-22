@@ -145,29 +145,17 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     perCharCB:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
     -- Per-char toggle: switch which settings table the UI edits
+    -- db.char writes live in WarbandBankDepositService (2026-10-22).
     local function SwitchToPerChar()
         isPerChar = true
-        if not self.db.char.goldManagement then
-            -- First time: copy profile as starting point
-            self.db.char.goldManagement = {
-                perCharacter = true,
-                enabled = settings.enabled,
-                mode = settings.mode,
-                targetAmount = settings.targetAmount,
-            }
-        else
-            self.db.char.goldManagement.perCharacter = true
-        end
-        settings = self.db.char.goldManagement
+        -- First time: the service copies the current (profile) settings as the starting point
+        settings = self:SetGoldManagementPerCharacter(true, settings) or settings
     end
     
     local function SwitchToProfile()
         isPerChar = false
         -- Preserve char settings (just deactivate, don't destroy)
-        if self.db.char.goldManagement then
-            self.db.char.goldManagement.perCharacter = false
-        end
-        settings = self.db.profile.goldManagement
+        settings = self:SetGoldManagementPerCharacter(false) or self.db.profile.goldManagement
     end
     
     local syncUIToSettings  -- forward-declared, assigned after inputBox + radios exist

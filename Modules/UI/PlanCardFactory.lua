@@ -836,7 +836,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(plan.source) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
         local resolved = WarbandNexus:GetPlanDisplaySource(plan)
         if resolved and resolved ~= "" then
-            plan.source = resolved
+            -- Stored-row write goes through PlansManager (no View writes into db.global.plans; 2026-10-22).
+            WarbandNexus:BackfillPlanField(plan, "source", resolved)
         end
     end
     -- For toys: if stored source is generic/unreliable, resolve from metadata so Plans shows correct source only.
@@ -850,7 +851,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         if not reliable(plan.source) then
             local meta = WarbandNexus:ResolveCollectionMetadata("toy", plan.itemID)
             if meta and reliable(meta.source) then
-                plan.source = meta.source
+                WarbandNexus:BackfillPlanField(plan, "source", meta.source)
             end
         end
     end

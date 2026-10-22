@@ -168,6 +168,7 @@ jobs:
             lua5.1 .github/scripts/test_reagent_name_load_request.lua
             lua5.1 .github/scripts/test_profiler_and_rules_guards.lua
             lua5.1 .github/scripts/test_user_visible_strings_localized.lua
+            lua5.1 .github/scripts/test_ui_service_delegates.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

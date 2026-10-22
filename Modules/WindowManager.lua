@@ -424,6 +424,78 @@ function WindowManager:RestorePosition(frame, key)
     return true
 end
 
+-- FLOATING WINDOW STATE (db.global.<key>)
+--
+-- Floating companions (Plans Tracker = plansTracker, Recipe Companion = recipeCompanion,
+-- Profession Info = professionInfo) keep geometry + view flags account-wide in their own
+-- db.global table. The windows used to create and assign those tables themselves; they now
+-- read through GetFloatingWindowState and write through the two setters below (2026-10-22).
+
+local function GetFloatingWindowStore(key)
+    local W = rawget(_G, "WarbandNexus")
+    local g = W and W.db and W.db.global
+    if not g or not key then return nil end
+    return g
+end
+
+--[[
+    Persisted state table of a floating window, created from `defaults` (shallow copy) on first use.
+    @param key        string  - db.global field (plansTracker / recipeCompanion / professionInfo)
+    @param defaults   table   - Initial fields for a new table
+    @param backfill   table|nil - Fields set on an existing table only where its value is nil
+    @return table|nil
+]]
+function WindowManager:GetFloatingWindowState(key, defaults, backfill)
+    local g = GetFloatingWindowStore(key)
+    if not g then return nil end
+    local state = g[key]
+    if not state then
+        state = {}
+        if defaults then
+            for k, v in pairs(defaults) do state[k] = v end
+        end
+        g[key] = state
+    end
+    if backfill then
+        for k, v in pairs(backfill) do
+            if state[k] == nil then state[k] = v end
+        end
+    end
+    return state
+end
+
+--[[
+    Store a floating window's first anchor (and optionally its size) into its db.global state.
+    @param key         string - db.global field
+    @param frame       Frame
+    @param includeSize boolean - Also store GetWidth / GetHeight
+]]
+function WindowManager:SaveFloatingWindowGeometry(key, frame, includeSize)
+    local g = GetFloatingWindowStore(key)
+    local state = g and g[key]
+    if not state or not frame then return end
+    local point, _, relativePoint, x, y = frame:GetPoint(1)
+    state.point = point
+    state.relativePoint = relativePoint
+    state.x = x
+    state.y = y
+    if includeSize then
+        state.width = frame:GetWidth()
+        state.height = frame:GetHeight()
+    end
+end
+
+--[[
+    Set one field (collapsed, opacity, width, ...) on a floating window's db.global state.
+    No-op until GetFloatingWindowState created the table.
+]]
+function WindowManager:SetFloatingWindowField(key, field, value)
+    local g = GetFloatingWindowStore(key)
+    local state = g and g[key]
+    if not state or not field then return end
+    state[field] = value
+end
+
 -- ESC BINDING (ToggleGameMenu) — works without frame keyboard focus
 --
 -- NEVER assign _G.ToggleGameMenu = function() ... prev() end from addon code: that taints the

@@ -11,7 +11,6 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
-local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
 local issecretvalue = issecretvalue
 
@@ -25,21 +24,18 @@ local CreateIcon = ns.UI_CreateIcon
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local FormatNumber = ns.UI_FormatNumber
-local FormatTextNumbers = ns.UI_FormatTextNumbers
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 local format = string.format
 
 -- Bound from PlansUI.lua via Dialogs.Install (file-local helpers there).
 local SafePlayerName
 local SafeRealmName
-local PlanGreenHex
 local ControlChromeBackdrop
 local ApplyPlansChrome
 
 function Dialogs.Install(addon, deps)
     SafePlayerName = deps.SafePlayerName
     SafeRealmName = deps.SafeRealmName
-    PlanGreenHex = deps.PlanGreenHex
     ControlChromeBackdrop = deps.ControlChromeBackdrop
     ApplyPlansChrome = deps.ApplyPlansChrome
 end
@@ -707,105 +703,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     titleInput:SetFocus()
 end
 
--- CUSTOM PLAN STORAGE
-
-function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount, infiniteRepeat)
-    if not self.db.global.customPlans then
-        self.db.global.customPlans = {}
-    end
-
-    local wantInfinite = infiniteRepeat and resetType and resetType ~= "none"
-    local finiteCount = (not wantInfinite and cycleCount) or nil
-    if not wantInfinite and (not finiteCount or finiteCount < 1) then
-        finiteCount = 1
-    end
-    
-    local customPlan = {
-        id = "custom_" .. time() .. "_" .. math.random(1000, 9999),
-        type = "custom",
-        name = title,
-        source = description or ((ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan"),
-        icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
-        iconIsAtlas = true,  -- Mark as atlas
-        isCustom = true,
-        completed = false,
-        resetCycle = (resetType and resetType ~= "none") and {
-            enabled = true,
-            resetType = resetType,
-            lastResetTime = time(),
-            infiniteRepeat = wantInfinite or false,
-            totalCycles = wantInfinite and nil or finiteCount,
-            remainingCycles = wantInfinite and nil or finiteCount,
-        } or nil,
-    }
-    
-    table.insert(self.db.global.customPlans, customPlan)
-
-    -- Resolve display data immediately so My Plans renders complete info
-    if self._ResolveSinglePlan then
-        self:_ResolveSinglePlan(customPlan, time())
-    end
-    self:SendMessage(E.PLANS_UPDATED, {
-        action = "custom_created",
-        planID = customPlan.id,
-    })
-end
-
-function WarbandNexus:GetCustomPlans()
-    return self.db.global.customPlans or {}
-end
-
-function WarbandNexus:CompleteCustomPlan(planId)
-    if not self.db.global.customPlans then return false end
-
-    local customPlansList = self.db.global.customPlans
-    for pi = 1, #customPlansList do
-        local plan = customPlansList[pi]
-        if plan.id == planId then
-            if plan.completed then return true end -- Already completed
-            
-            plan.completed = true
-            self:Print(format((ns.L and ns.L["CUSTOM_PLAN_COMPLETED"]) or "Custom plan '%s' %scompleted|r", FormatTextNumbers(plan.name), PlanGreenHex()))
-
-            -- Track completion time for recurring reset
-            if plan.resetCycle and plan.resetCycle.enabled then
-                plan.resetCycle.completedAt = time()
-            end
-
-            -- Fire event immediately so UI refreshes instantly
-            self:SendMessage(E.PLANS_UPDATED, {
-                action = "completed",
-                planID = plan.id,
-            })
-
-            -- Notification deferred slightly so UI refresh completes first
-            if self.Notify then
-                local planName = FormatTextNumbers(plan.name)
-                local planIcon = plan.icon
-                C_Timer.After(0.1, function()
-                    if WarbandNexus and WarbandNexus.Notify then
-                        WarbandNexus:Notify("plan", planName, planIcon)
-                    end
-                end)
-            end
-
-            return true
-        end
-    end
-    return false
-end
-
-function WarbandNexus:RemoveCustomPlan(planId)
-    if not self.db.global.customPlans then return end
-    
-    for i = 1, #self.db.global.customPlans do
-        local plan = self.db.global.customPlans[i]
-        if plan.id == planId then
-            table.remove(self.db.global.customPlans, i)
-            break
-        end
-    end
-end
+-- CUSTOM PLAN STORAGE: SaveCustomPlan / GetCustomPlans / CompleteCustomPlan live in
+-- Modules/PlansManager.lua (2026-10-22: the View no longer writes db.global.customPlans).
 
 -- WEEKLY VAULT PLAN DIALOG
 

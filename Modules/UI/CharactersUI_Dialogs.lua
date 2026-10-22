@@ -163,8 +163,8 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     self.db.profile.characterOrder[listKey] = customOrder
     
     local tk = ResolveSessionCharactersTableKey() or currentPlayerKey
-    if self.db.global.characters and tk and self.db.global.characters[tk] then
-        self.db.global.characters[tk].lastSeen = time()
+    if tk then
+        self:TouchCharacterLastSeen(tk)
     end
     
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })

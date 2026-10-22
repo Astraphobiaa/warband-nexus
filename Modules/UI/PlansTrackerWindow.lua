@@ -331,30 +331,23 @@ local function DestroyStaleTrackerFrame()
     _G.WarbandNexus_PlansTracker = nil
 end
 
+-- db.global.plansTracker is created / written through WindowManager (no View writes into db.global; 2026-10-22).
+local TRACKER_DB = {
+    defaults = { point = "CENTER", x = 0, y = 0, width = 380, height = 420, collapsed = false, opacity = 1.0 },
+    backfill = { opacity = 1.0 },
+}
+
 local function GetDB()
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return nil end
-    if not WarbandNexus.db.global.plansTracker then
-        WarbandNexus.db.global.plansTracker = { point = "CENTER", x = 0, y = 0, width = 380, height = 420, collapsed = false, opacity = 1.0 }
-    end
-    if WarbandNexus.db.global.plansTracker.opacity == nil then
-        WarbandNexus.db.global.plansTracker.opacity = 1.0
-    end
-    return WarbandNexus.db.global.plansTracker
+    local WM = ns.WindowManager
+    if not WM or not WM.GetFloatingWindowState then return nil end
+    return WM:GetFloatingWindowState("plansTracker", TRACKER_DB.defaults, TRACKER_DB.backfill)
 end
 
 local function SavePosition(frame)
     if not frame or not frame:IsShown() then return end
     local db = GetDB()
     if not db then return end
-    local point, _, relativePoint, x, y = frame:GetPoint(1)
-    db.point = point
-    db.relativePoint = relativePoint
-    db.x = x
-    db.y = y
-    if not db.collapsed then
-        db.width = frame:GetWidth()
-        db.height = frame:GetHeight()
-    end
+    ns.WindowManager:SaveFloatingWindowGeometry("plansTracker", frame, not db.collapsed)
 end
 
 local function RestorePosition(frame)
@@ -634,7 +627,7 @@ local function GetPlanDescription(plan)
     if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(planSource) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
         local resolved = WarbandNexus:GetPlanDisplaySource(plan)
         if IsNonSecretNonEmptyString(resolved) then
-            plan.source = resolved
+            WarbandNexus:BackfillPlanField(plan, "source", resolved)
             planSource = resolved
         end
     end
@@ -700,27 +693,20 @@ local function GetAchievementDescriptionForRow(plan)
 end
 
 --- Resolve mount/pet ids from journal APIs when plan rows only stored item/species placeholders.
+--- Writes go through PlansManager's BackfillPlanField, which also rebuilds the plan id indexes (2026-10-22).
 local function EnsureTrackerPlanIdentity(plan)
-    if not plan or not WarbandNexus then return end
+    if not plan or not WarbandNexus or not WarbandNexus.BackfillPlanField then return end
     if plan.type == "mount" and (not plan.mountID or plan.mountID <= 0) then
         if plan.itemID and C_MountJournal and C_MountJournal.GetMountFromItem then
             local ok, mid = pcall(C_MountJournal.GetMountFromItem, plan.itemID)
-            if ok and type(mid) == "number" and mid > 0
-                and not (issecretvalue and issecretvalue(mid)) then
-                plan.mountID = mid
+            if ok and not (issecretvalue and issecretvalue(mid))
+                and type(mid) == "number" and mid > 0 then
+                WarbandNexus:BackfillPlanField(plan, "mountID", mid)
             end
         end
-        if (not plan.mountID or plan.mountID <= 0) and WarbandNexus.GetPlanCollectibleID then
-            local mid = WarbandNexus:GetPlanCollectibleID(plan)
-            if type(mid) == "number" and mid > 0 then
-                plan.mountID = mid
-            end
-        end
-    elseif plan.type == "pet" and (not plan.speciesID or plan.speciesID <= 0) and WarbandNexus.GetPlanCollectibleID then
-        local sid = WarbandNexus:GetPlanCollectibleID(plan)
-        if type(sid) == "number" and sid > 0 then
-            plan.speciesID = sid
-        end
+        -- No GetPlanCollectibleID fallback (2026-10-22): when GetMountFromItem fails it returns the
+        -- itemID, and for pets the petID, which then landed in mountID / speciesID and in the plan
+        -- cache's planned-id sets. Only a real journal resolution is written.
     end
 end
 
@@ -771,7 +757,7 @@ local function ResolveTrackerPlanDisplaySource(plan)
         and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
         local resolved = WarbandNexus:GetPlanDisplaySource(plan)
         if IsNonSecretNonEmptyString(resolved) then
-            plan.source = resolved
+            WarbandNexus:BackfillPlanField(plan, "source", resolved)
             return resolved
         end
     end
@@ -781,7 +767,7 @@ local function ResolveTrackerPlanDisplaySource(plan)
     if WarbandNexus and WarbandNexus.GetPlanDisplaySource then
         local resolved = WarbandNexus:GetPlanDisplaySource(plan)
         if IsNonSecretNonEmptyString(resolved) then
-            plan.source = resolved
+            WarbandNexus:BackfillPlanField(plan, "source", resolved)
             return resolved
         end
     end
@@ -807,7 +793,7 @@ local function ResolveTrackerPlanSources(plan)
         if not reliable(planSource) then
             local meta = WarbandNexus:ResolveCollectionMetadata("toy", plan.itemID)
             if meta and reliable(meta.source) then
-                plan.source = meta.source
+                WarbandNexus:BackfillPlanField(plan, "source", meta.source)
                 planSource = meta.source
             end
         end
@@ -2428,12 +2414,13 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end
 
     local function ApplyCollapsedState(isCollapsed)
+        -- Writes via WindowManager; the frame builder is at the 60-upvalue ceiling, so reach it through ns.
         local tdb = GetDB()
-        if tdb then tdb.collapsed = isCollapsed end
+        if tdb then ns.WindowManager:SetFloatingWindowField("plansTracker", "collapsed", isCollapsed) end
         local collapsedH = chromeBandH + (frameInset * 2)
         if isCollapsed then
             if tdb and frame:GetWidth() and frame:GetWidth() > TRACKER_COLLAPSED_MIN_WIDTH then
-                tdb.width = frame:GetWidth()
+                ns.WindowManager:SetFloatingWindowField("plansTracker", "width", frame:GetWidth())
             end
             SetCollapseChevron(true)
             frame.contentArea:Hide()
@@ -2542,8 +2529,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
                 v = math.max(0.2, math.min(1.0, v))
                 FormatLabel(v)
                 frame:SetAlpha(v)
-                local d = GetDB()
-                if d then d.opacity = v end
+                if GetDB() then ns.WindowManager:SetFloatingWindowField("plansTracker", "opacity", v) end
             end,
         })
         slider:SetPoint("TOPLEFT", 10, -28)

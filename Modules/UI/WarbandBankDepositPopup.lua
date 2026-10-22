@@ -384,17 +384,11 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     perCharCB:SetScript("OnClick", function(self)
         local checked = self:GetChecked() and true or false
         if self.checkTexture then self.checkTexture:SetShown(checked) end
+        -- db.char writes live in WarbandBankDepositService (2026-10-22).
         if checked then
-            if not WarbandNexus.db.char.reagentDeposit then
-                WarbandNexus.db.char.reagentDeposit = CopyTable(WarbandNexus.db.profile.reagentDeposit or profileDefaults)
-            end
-            WarbandNexus.db.char.reagentDeposit.perCharacter = true
-            settings = WarbandNexus.db.char.reagentDeposit
+            settings = WarbandNexus:SetReagentDepositPerCharacter(true, WarbandNexus.db.profile.reagentDeposit or profileDefaults) or settings
         else
-            if WarbandNexus.db.char.reagentDeposit then
-                WarbandNexus.db.char.reagentDeposit.perCharacter = false
-            end
-            settings = WarbandNexus.db.profile.reagentDeposit
+            settings = WarbandNexus:SetReagentDepositPerCharacter(false) or WarbandNexus.db.profile.reagentDeposit
         end
         -- Refresh UI
         enabledCB:SetChecked(settings.enabled)

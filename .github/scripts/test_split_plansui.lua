@@ -113,33 +113,15 @@ for i = 1, #files do
     check(ok, "loads " .. files[i] .. (ok and "" or (" -- " .. tostring(err))))
 end
 
+-- Custom plan storage moved on to Modules/PlansManager.lua (2026-10-22; test_ui_service_delegates.lua).
 local moved = {
-    "DrawDailyTasksView", "ShowCustomPlanDialog", "SaveCustomPlan", "GetCustomPlans", "CompleteCustomPlan",
-    "RemoveCustomPlan", "ShowWeeklyPlanDialog", "CloseAllPlanDialogs",
+    "DrawDailyTasksView", "ShowCustomPlanDialog", "ShowWeeklyPlanDialog", "CloseAllPlanDialogs",
 }
 for i = 1, #moved do
     check(type(WarbandNexus[moved[i]]) == "function", "WarbandNexus:" .. moved[i] .. " reachable")
 end
 check(type(WarbandNexus.DrawPlansTab) == "function" and type(WarbandNexus.DrawActivePlans) == "function",
     "PlansUI.lua keeps DrawPlansTab / DrawActivePlans")
-
--- Custom plan storage round trip through the moved code (uses E + the Install-bound PlanGreenHex).
-if type(WarbandNexus.SaveCustomPlan) == "function" and type(WarbandNexus.CompleteCustomPlan) == "function" then
-    local ok, err = pcall(function()
-        WarbandNexus:SaveCustomPlan("Goal", "desc", "none", 1, false)
-        local list = WarbandNexus.db.global.customPlans
-        local id = list and list[1] and list[1].id
-        check(id ~= nil and sent[#sent] and sent[#sent][1] == "WN_PLANS_UPDATED", "SaveCustomPlan stores the plan and emits WN_PLANS_UPDATED")
-        check(WarbandNexus:CompleteCustomPlan(id) == true, "CompleteCustomPlan finds the stored plan")
-        check(printed[#printed] and printed[#printed]:find("|cTESTGRN", 1, true) ~= nil,
-            "CompleteCustomPlan reaches PlansUI.lua's PlanGreenHex through Install")
-        WarbandNexus:RemoveCustomPlan(id)
-        check(#WarbandNexus:GetCustomPlans() == 0, "RemoveCustomPlan / GetCustomPlans round trip")
-    end)
-    check(ok, "custom plan storage runs" .. (ok and "" or (" -- " .. tostring(err))))
-else
-    check(false, "custom plan storage methods present")
-end
 
 print(string.format("\nTotal: %d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
