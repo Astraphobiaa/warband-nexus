@@ -5032,6 +5032,7 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
 
     if not loadingCard then
         loadingCard = CreateCard(parent, CARD_H)
+        loadingCard._wnReadoptable = true   -- cached + re-adopted: never registry garbage (SectionPool)
         ApplyStandardCardElevatedChrome(loadingCard)
         
         -- Animated spinner (AnimationGroup rotation; replays on card OnShow).

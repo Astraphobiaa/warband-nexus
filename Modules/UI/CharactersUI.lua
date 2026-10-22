@@ -1122,6 +1122,11 @@ function WarbandNexus:DrawCharacterList(parent)
     local function DrawCharactersIntoSection(contentFrame, list, isFavorite, listKey, emptyMessage)
         contentFrame._wnVirtualContentHeight = nil
         if contentFrame._wnEmptyText then contentFrame._wnEmptyText:Hide() end
+        -- Pooled content frame: release last paint's virtual rows before an empty / non-virtual paint
+        -- (SetupVirtualList does this itself on the virtual path).
+        if ns.VirtualListModule and ns.VirtualListModule.ReleaseVisibleRows then
+            ns.VirtualListModule.ReleaseVisibleRows(contentFrame)
+        end
         local sectionYOffset = 0
         if #list > 0 then
             local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame

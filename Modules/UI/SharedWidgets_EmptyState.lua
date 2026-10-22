@@ -467,6 +467,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     card:SetPoint("TOPLEFT", sideInset, -yOffset)
     card:SetPoint("TOPRIGHT", -sideInset, -yOffset)
     card:SetHeight(cardHeight)
+    card._wnReadoptable = true   -- cached + re-adopted: never registry garbage (SectionPool)
     parent[cacheKey] = card
     if fillParent then
         card._wnExcludedFromStorageExtent = true

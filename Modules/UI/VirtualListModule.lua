@@ -814,6 +814,8 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                             if not frame then
                                 local ok, result = pcall(createRowFn, container, it, i)
                                 if ok then frame = result end
+                                -- Pool-owned row (rowPool / releaseRowFn): SectionPool never treats it as garbage.
+                                if frame then frame._wnVlmRow = true end
                             end
                         end
 

@@ -1562,6 +1562,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     else
         resetBar = CreateCard(parent, resetBarH)
         parent._wnPlansResetBar = resetBar
+        resetBar._wnReadoptable = true   -- re-adopted every paint: never registry garbage (SectionPool)
 
         local resetIcon = resetBar:CreateTexture(nil, "ARTWORK")
         resetIcon:SetSize(16, 16)

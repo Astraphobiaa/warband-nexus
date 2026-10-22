@@ -158,6 +158,44 @@ do
     assert_eq(SP.Get(host).frames["hdr:Z"], fresh, "new header pooled")
 end
 
+print("Phase 4d: Re-adopted, cached and pool-owned frames keep their registry entries")
+do
+    local cachedCard = NewFrame(host)                            -- e.g. Plans reset bar re-adopted every paint
+    local fsCard = NewFrame(cachedCard)
+    SP.Discard(cachedCard)
+    assert_eq(SP.IsDiscardedRegion(fsCard), true, "parked discarded frame: dead")
+    cachedCard:SetParent(host)                                   -- owner re-adopts it
+    assert_eq(SP.IsDiscardedRegion(fsCard), false, "re-adopted frame is live again")
+
+    local emptyCard = NewFrame(host); emptyCard._wnReadoptable = true
+    SP.Discard(emptyCard)
+    assert_eq(emptyCard._wnDiscarded, nil, "re-adoptable cached card is never marked")
+
+    local protectedChild = NewFrame(host)
+    ns.UI_IsProtectedResultsEmptyChild = function(child, owner) return child == protectedChild and owner == host end
+    SP.Discard(protectedChild)
+    assert_eq(protectedChild._wnDiscarded, nil, "protected results child is never marked")
+    ns.UI_IsProtectedResultsEmptyChild = nil
+
+    local extraBody = NewFrame(host)
+    local vlmRow = NewFrame(extraBody); vlmRow._wnVlmRow = true
+    local fsRow = NewFrame(vlmRow)
+    SP.Discard(extraBody)
+    assert_eq(SP.IsDiscardedRegion(fsRow), false, "virtual-list pooled row under discarded chrome survives")
+end
+
+print("Phase 4e: A re-acquired body drops last pass's virtual-list state")
+do
+    pass({ "V" })
+    local body = SP.Get(host).frames["body:V"]
+    body._vlm_flatList = {}
+    body._virtualUpdater = function() end
+    body._vlm_headerSig = "x"
+    pass({ "V" })
+    assert_eq(body._vlm_flatList == nil and body._virtualUpdater == nil and body._vlm_headerSig == nil, true,
+        "stale _vlm_flatList / _virtualUpdater / _vlm_headerSig cleared")
+end
+
 print("Phase 5: The three registries prune discarded entries (static)")
 do
     local function has(rel, pat)

@@ -27,8 +27,12 @@ local SectionPool = {}
 ns.UI_SectionPool = SectionPool
 
 -- Transient layout fields the section builders stamp on wraps / bodies; cleared on re-acquire.
+-- The _vlm_* / _virtualUpdater fields: a re-used body that is not set up as a virtual list this pass
+-- (e.g. a section turned empty) must not be found by relayout helpers with last pass's flat list.
+-- ClearVirtualScroll already dropped the updater from the main frame on this paint.
 SectionPool.STATE_FIELDS = {
     "_wnSectionFullH", "_wnVirtualContentHeight", "_wnSectionBodyBuilt", "_wnRowsContainer",
+    "_vlm_flatList", "_virtualUpdater", "_vlm_headerSig",
 }
 
 local MAX_ANCESTOR_WALK = 16
@@ -65,7 +69,12 @@ function SectionPool.Discard(frame)
     if not frame then return end
     frame:Hide()
     frame:ClearAllPoints()
-    if not (frame._wnSectionPooled or frame._wnStorPooled or frame.isPooled or frame._wnKeepOnTabSwitch) then
+    -- Cached chrome an owner re-adopts later (empty-state / loading cards, Plans reset bar, protected
+    -- results children) is never garbage either: a pruned registry entry does not come back.
+    local owner = frame:GetParent()
+    local protected = ns.UI_IsProtectedResultsEmptyChild and owner and ns.UI_IsProtectedResultsEmptyChild(frame, owner)
+    if not (frame._wnSectionPooled or frame._wnStorPooled or frame.isPooled or frame._wnKeepOnTabSwitch
+        or frame._wnReadoptable or protected) then
         frame._wnDiscarded = true
     end
     frame:SetParent(ns.UI_RecycleBin or UIParent)
@@ -166,9 +175,10 @@ function SectionPool.IsDiscardedRegion(region)
     local node = region
     for _ = 1, MAX_ANCESTOR_WALK do
         if not node then return false end
-        if node._wnDiscarded then return true end
+        -- Only while still parked: a frame re-adopted by its owner since then is live again.
+        if node._wnDiscarded then return node:GetParent() == ns.UI_RecycleBin end
         if node.isPooled or node._wnSectionPooled or node._wnStorPooled or node._wnKeepOnTabSwitch
-            or node._wnInFramePool then
+            or node._wnInFramePool or node._wnVlmRow or node._wnReadoptable then
             return false
         end
         if not node.GetParent then return false end
