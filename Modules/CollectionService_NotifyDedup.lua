@@ -104,7 +104,7 @@ local recentNotifications = CreateRingBuffer(64)
 
 local function CollectiblePayloadObtainedBy()
     local name = UnitName("player")
-    if not name or name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    if not name or (issecretvalue and issecretvalue(name)) or name == "" then return nil end
     return name
 end
 

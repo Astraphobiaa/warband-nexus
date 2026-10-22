@@ -192,7 +192,7 @@ ns.MidnightQuestCatalog = {
     end,
 
     ResolveByTitlePattern = function(questTitle)
-        if not questTitle or questTitle == "" or (issecretvalue and issecretvalue(questTitle)) then
+        if not questTitle or (issecretvalue and issecretvalue(questTitle)) or questTitle == "" then
             return nil
         end
         local lower = questTitle:lower()

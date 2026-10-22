@@ -53,7 +53,7 @@ local function MeasureIdentityNameWidth(measureFs, rosterRows)
         if issecretvalue and issecretvalue(nameStr) then nameStr = "?" end
         local realmStr = (ns.Utilities and ns.Utilities.FormatRealmName)
             and ns.Utilities:FormatRealmName(r.realm) or (r.realm or "")
-        if realmStr ~= "" and issecretvalue and issecretvalue(realmStr) then realmStr = "" end
+        if issecretvalue and issecretvalue(realmStr) then realmStr = "" end
         if ns.PvE_MeasureStackedNameColumnWidth then
             maxW = math.max(maxW, ns.PvE_MeasureStackedNameColumnWidth(measureFs, nameStr, realmStr))
         else

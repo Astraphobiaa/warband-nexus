@@ -800,13 +800,13 @@ function PD.ResolveGearSpellName(spellID)
     if not spellID or spellID <= 0 then return nil end
     if C_Spell and C_Spell.GetSpellName then
         local ok, name = pcall(C_Spell.GetSpellName, spellID)
-        if ok and name and type(name) == "string" and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+        if ok and name and type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= "" then
             return name
         end
     end
     if GetSpellInfo then
         local ok, name = pcall(GetSpellInfo, spellID)
-        if ok and name and type(name) == "string" and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+        if ok and name and type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= "" then
             return name
         end
     end
@@ -916,12 +916,12 @@ function PD.GetItemGemForSocket(itemLink, socketIndex)
     if ok then
         gemName, gemLink = a, b
     end
-    if gemLink and type(gemLink) == "string" and gemLink ~= "" and not (issecretvalue and issecretvalue(gemLink)) then
+    if gemLink and type(gemLink) == "string" and not (issecretvalue and issecretvalue(gemLink)) and gemLink ~= "" then
         return gemLink
     end
     if GetItemGem then
         ok, a, b = pcall(GetItemGem, itemLink, socketIndex)
-        if ok and b and type(b) == "string" and b ~= "" and not (issecretvalue and issecretvalue(b)) then
+        if ok and b and type(b) == "string" and not (issecretvalue and issecretvalue(b)) and b ~= "" then
             return b
         end
     end

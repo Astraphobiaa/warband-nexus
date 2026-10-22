@@ -763,7 +763,7 @@ local function buildApiRowsForSection(sectionIndex)
             -- Stray cross-branch links (wrong continent / shared world layer before apiRoots).
         else
         local ok, info = pcall(C_Map.GetMapInfo, mid)
-        if ok and info and info.name and info.name ~= "" and not (issecretvalue and issecretvalue(info.name)) then
+        if ok and info and info.name and not (issecretvalue and issecretvalue(info.name)) and info.name ~= "" then
             if UIMapType and info.mapType == UIMapType.Zone then
                 zoneTypeInSubtree[mid] = true
             end

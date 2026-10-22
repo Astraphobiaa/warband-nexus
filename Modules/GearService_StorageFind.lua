@@ -92,7 +92,7 @@ end
 local function IsCosmeticGearCandidate(itemID, itemLink)
     if not itemID or not C_Item or not C_Item.IsCosmeticItem then return false end
     local ok, isCosmetic = pcall(function()
-        if itemLink and type(itemLink) == "string" and itemLink ~= "" and not (issecretvalue and issecretvalue(itemLink)) then
+        if itemLink and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) and itemLink ~= "" then
             return C_Item.IsCosmeticItem(itemLink)
         end
         return C_Item.IsCosmeticItem(itemID)
@@ -175,7 +175,7 @@ local function ResolveEquippedIlvlForComparison(charKey, slotID, equippedMap)
     -- Logged-in player: live inventory wins over stale db.global.gearData (unequip-to-bag must clear slot).
     if IsViewingLivePlayerGear(charKey) and GetInventoryItemLink then
         local link = GetInventoryItemLink("player", slotID)
-        if not link or link == "" or (issecretvalue and issecretvalue(link)) then
+        if not link or (issecretvalue and issecretvalue(link)) or link == "" then
             return 0
         end
         local liveIl = GetEffectiveIlvl(link) or 0
@@ -411,7 +411,7 @@ local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageT
         end
         local label = "Guild Bank"
         local tnm = item.tabName
-        if type(tnm) == "string" and tnm ~= "" and not (issecretvalue and issecretvalue(tnm)) then
+        if type(tnm) == "string" and not (issecretvalue and issecretvalue(tnm)) and tnm ~= "" then
             label = "Guild Bank (" .. tnm .. ")"
         end
         return label, gCat

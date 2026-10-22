@@ -2480,7 +2480,7 @@ local function ResolveApiEntryRosterKey(fullCharacterName, characterName)
     local candidates = { fullCharacterName, characterName }
     for i = 1, #candidates do
         local raw = candidates[i]
-        if raw and raw ~= "" and not (issecretvalue and issecretvalue(raw)) then
+        if raw and not (issecretvalue and issecretvalue(raw)) and raw ~= "" then
             local n, r = U:SplitCharacterKey(raw)
             if n and r then
                 local key = U:GetCharacterKey(n, r)

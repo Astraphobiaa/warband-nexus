@@ -994,7 +994,7 @@ function WarbandNexus:BuildAchievementPlanPayload(achievementID)
         local okc, catID = pcall(GetAchievementCategory, achievementID)
         if okc and type(catID) == "number" and catID > 0 and GetCategoryInfo then
             local oki, catTitle = pcall(GetCategoryInfo, catID)
-            if oki and type(catTitle) == "string" and catTitle ~= "" and not (issecretvalue and issecretvalue(catTitle)) then
+            if oki and type(catTitle) == "string" and not (issecretvalue and issecretvalue(catTitle)) and catTitle ~= "" then
                 sourceText = catTitle
             end
         end
@@ -1008,7 +1008,7 @@ function WarbandNexus:BuildAchievementPlanPayload(achievementID)
         end
     end
     if not rewardLine or rewardLine == "" then
-        rewardLine = (type(rewardText) == "string" and rewardText ~= "" and not (issecretvalue and issecretvalue(rewardText))) and rewardText or nil
+        rewardLine = (type(rewardText) == "string" and not (issecretvalue and issecretvalue(rewardText)) and rewardText ~= "") and rewardText or nil
     end
 
     return {

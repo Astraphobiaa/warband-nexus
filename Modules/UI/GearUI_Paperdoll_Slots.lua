@@ -308,7 +308,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                     if cid and cid > 0 then
                         if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
                             local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
-                            if ok and info and info.name and info.name ~= "" and not (issecretvalue and issecretvalue(info.name)) then
+                            if ok and info and info.name and not (issecretvalue and issecretvalue(info.name)) and info.name ~= "" then
                                 return info.name
                             end
                         end
@@ -529,7 +529,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         local prevLink = prev and prev.itemLink
         local newLink = slotData and slotData.itemLink
         local function linkEmpty(l)
-            return not l or l == "" or (issecretvalue and issecretvalue(l))
+            return not l or (issecretvalue and issecretvalue(l)) or l == ""
         end
         local linkUnchanged = linkEmpty(newLink) == linkEmpty(prevLink)
             and (linkEmpty(newLink) or newLink == prevLink)

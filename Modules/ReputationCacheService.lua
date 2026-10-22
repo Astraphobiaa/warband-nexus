@@ -657,7 +657,7 @@ function ReputationCache:Initialize()
             local numFID = tonumber(fid) or fid
             local entry = db.factionInfo[numFID] or db.factionInfo[tostring(numFID)]
             local pn = type(entry) == "table" and entry.pn
-            if entry and (not pn or pn == "" or (type(pn) == "string" and not (issecretvalue and issecretvalue(pn)) and pn:find("Classic"))) then
+            if entry and (not pn or (not (issecretvalue and issecretvalue(pn)) and (pn == "" or (type(pn) == "string" and pn:find("Classic"))))) then
                 if type(entry) == "table" then
                     entry.pn = wodName
                     entry.pid = nil

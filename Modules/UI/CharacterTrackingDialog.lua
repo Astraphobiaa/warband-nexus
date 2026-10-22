@@ -155,10 +155,10 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     if type(row) == "table" then
         local n = row.name
         local r = row.realm
-        if type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+        if type(n) == "string" and not (issecretvalue and issecretvalue(n)) and n ~= "" then
             charName = n
         end
-        if type(r) == "string" and r ~= "" and not (issecretvalue and issecretvalue(r)) then
+        if type(r) == "string" and not (issecretvalue and issecretvalue(r)) and r ~= "" then
             charRealmRaw = r
         end
     end
@@ -176,7 +176,7 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     end
     if not charRealmRaw or charRealmRaw == "" then
         local norm = GetNormalizedRealmName and GetNormalizedRealmName()
-        if type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm)) then
+        if type(norm) == "string" and not (issecretvalue and issecretvalue(norm)) and norm ~= "" then
             charRealmRaw = norm
         elseif GetRealmName then
             charRealmRaw = GetRealmName() or ""

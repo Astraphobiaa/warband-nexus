@@ -246,7 +246,7 @@ function WarbandNexus:IsCharacterRowStructurallyInvalid(charKey, charData)
     end
     local hasNameRealm = name and name ~= "" and realm and realm ~= ""
     local g = charData.guid
-    local hasGuid = type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g))
+    local hasGuid = type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= ""
     if not hasNameRealm and not hasGuid then return true end
     local cls, clsFile = charData.class, charData.classFile
     if issecretvalue then
@@ -817,7 +817,7 @@ function WarbandNexus:SaveMinimalCharacterData()
         -- fresh capture happens when the user enables tracking (CharacterService:ConfirmCharacterTracking).
         guid = (function()
             local g = existingEntry and existingEntry.guid
-            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
                 return g
             end
             return nil
@@ -1295,7 +1295,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         -- GUID: persist stable value; only call SafeGuid when row has no usable guid yet (post-tracking first save).
         guid                 = (function()
             local g = existingEntry and existingEntry.guid
-            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
                 return g
             end
             if ns.Utilities and ns.Utilities.SafeGuid then

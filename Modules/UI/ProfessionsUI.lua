@@ -1612,7 +1612,7 @@ function PUI.BuildProfessionOpenTooltip(isCurrent, prof)
     end
     local base = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open this profession's recipe list"
     local nm = prof.name
-    if nm and nm ~= "" and not (issecretvalue and issecretvalue(nm)) then
+    if nm and not (issecretvalue and issecretvalue(nm)) and nm ~= "" then
         return nm .. " - " .. base
     end
     return base

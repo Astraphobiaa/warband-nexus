@@ -1368,7 +1368,7 @@ function MigrationService:MigrateGlobalCharactersToGuidStorageKeys(db)
     for charKey, charData in pairs(chars) do
         if type(charData) == "table" then
             local g = charData.guid
-            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
                 local lst = byGuid[g]
                 if not lst then
                     lst = {}
@@ -1827,7 +1827,7 @@ end
 local function CollectSubsidiaryKeys(db, into)
     if type(into) ~= "table" then return end
     local function note(k)
-        if k and k ~= "" and not (issecretvalue and issecretvalue(k)) then into[k] = true end
+        if k and not (issecretvalue and issecretvalue(k)) and k ~= "" then into[k] = true end
     end
     local g = db.global
     local cd = g.currencyData
@@ -1874,7 +1874,7 @@ function BuildSubsidiaryOrphanRenames(db)
             end
             noteRename(charKey, target)
             local guid = charData.guid
-            if type(guid) == "string" and guid ~= "" and not (issecretvalue and issecretvalue(guid)) then
+            if type(guid) == "string" and not (issecretvalue and issecretvalue(guid)) and guid ~= "" then
                 noteRename(guid, target)
             end
             if charData.name and charData.realm and Utilities and Utilities.GetCharacterKey then

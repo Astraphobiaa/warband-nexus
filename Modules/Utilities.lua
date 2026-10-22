@@ -120,7 +120,7 @@ end
 function Utilities:ResolveCharacterRowKey(charData)
     if type(charData) ~= "table" then return nil end
     local g = charData.guid
-    if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+    if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
         return g
     end
     return self:GetCharacterKey(charData.name, charData.realm)
@@ -159,7 +159,7 @@ local function GetRosterIndex(self, chars)
             local rowKey = self:ResolveCharacterRowKey(row)
             if rowKey then
                 local g = row.guid
-                if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
                     if byGuid[g] == nil then byGuid[g] = rowKey end
                 end
                 local rn, rr = row.name, row.realm
@@ -261,18 +261,18 @@ end
 ---@return string|nil "Name — Realm" style, or name-only, or nil if unavailable / secret
 function Utilities:GetCurrentCharacterDisplayLabel()
     local name = UnitName("player")
-    if not name or name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    if not name or (issecretvalue and issecretvalue(name)) or name == "" then return nil end
     local realm
     if GetNormalizedRealmName then
         local norm = GetNormalizedRealmName()
-        if type(norm) == "string" and norm ~= "" and not (issecretvalue and issecretvalue(norm)) then
+        if type(norm) == "string" and not (issecretvalue and issecretvalue(norm)) and norm ~= "" then
             realm = norm
         end
     end
     if not realm or realm == "" then
         if GetRealmName then
             local r = GetRealmName()
-            if type(r) == "string" and r ~= "" and not (issecretvalue and issecretvalue(r)) then
+            if type(r) == "string" and not (issecretvalue and issecretvalue(r)) and r ~= "" then
                 realm = r
             end
         end
@@ -1077,7 +1077,7 @@ function Utilities:ResolveKeystoneDungeonName(keystone, fallback)
             end
         end
     end
-    if cached and cached ~= "" and not (issecretvalue and issecretvalue(cached)) then
+    if cached and not (issecretvalue and issecretvalue(cached)) and cached ~= "" then
         return cached
     end
     return fallback

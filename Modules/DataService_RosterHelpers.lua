@@ -81,13 +81,13 @@ local function BuildGuidByNameRealmIndex(charsTbl)
             local name, realm = EnsureCharNameRealm(data, key)
             if name and realm and U and U.GetCharacterKey then
                 local g = data.guid
-                if type(g) ~= "string" or g == "" or (issecretvalue and issecretvalue(g)) then
+                if type(g) ~= "string" or (issecretvalue and issecretvalue(g)) or g == "" then
                     if type(key) == "string" and not (issecretvalue and issecretvalue(key))
                         and key:sub(1, 7) == "Player-" then
                         g = key
                     end
                 end
-                if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
                     local normalizedKey = U:GetCharacterKey(name, realm)
                     if normalizedKey then
                         guidByNameRealm[normalizedKey] = g
@@ -108,7 +108,7 @@ local function BuildGuidByNameRealmIndex(charsTbl)
                             local n2, r2 = EnsureCharNameRealm(d2, k2)
                             if n2 == name and r2 == realm then
                                 local g2 = d2.guid
-                                if (type(g2) ~= "string" or g2 == "" or (issecretvalue and issecretvalue(g2)))
+                                if (type(g2) ~= "string" or (issecretvalue and issecretvalue(g2)) or g2 == "")
                                     and type(k2) == "string" and not (issecretvalue and issecretvalue(k2))
                                     and k2:sub(1, 7) == "Player-" then
                                     g2 = k2
@@ -133,7 +133,7 @@ local function ComputeCharacterMergeKey(data, key, guidByNameRealm)
     if type(data) ~= "table" then return nil end
     local U = ns.Utilities
     local g = data.guid
-    if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+    if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
         return MERGE_GUID_PREFIX .. g
     end
     if type(key) == "string" and not (issecretvalue and issecretvalue(key))

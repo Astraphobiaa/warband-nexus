@@ -2192,7 +2192,7 @@ end
 local function ResolveAchievementAlertCriteria(a1, a2, ...)
     if type(a1) == "table" then
         local s = a1.criteriaString or a1.description or a1.text or a1.name
-        if type(s) == "string" and s ~= "" and not (issecretvalue and issecretvalue(s)) then
+        if type(s) == "string" and not (issecretvalue and issecretvalue(s)) and s ~= "" then
             return s
         end
         local idx = a1.criteriaIndex or a1.index
@@ -2205,7 +2205,7 @@ local function ResolveAchievementAlertCriteria(a1, a2, ...)
     if type(a2) == "number" then return a2 end
     if type(a2) == "table" then
         local s = a2.criteriaString or a2.description or a2.text or a2.name
-        if type(s) == "string" and s ~= "" and not (issecretvalue and issecretvalue(s)) then
+        if type(s) == "string" and not (issecretvalue and issecretvalue(s)) and s ~= "" then
             return s
         end
         local idx = a2.criteriaIndex or a2.index
@@ -2214,7 +2214,7 @@ local function ResolveAchievementAlertCriteria(a1, a2, ...)
     local n = select("#", ...)
     for i = 1, n do
         local v = select(i, ...)
-        if type(v) == "string" and v ~= "" and not (issecretvalue and issecretvalue(v)) then
+        if type(v) == "string" and not (issecretvalue and issecretvalue(v)) and v ~= "" then
             return v
         end
     end
@@ -3503,7 +3503,7 @@ function WarbandNexus:ShowExpiringMailReminder()
     end
     -- Name the owner so an alt's inbox is actionable from the toast alone.
     local title = (L and L["MAIL_REMINDER_TITLE"]) or "Mail Expiring Soon!"
-    if soonestName and soonestName ~= "" and not (issecretvalue and issecretvalue(soonestName)) then
+    if soonestName and not (issecretvalue and issecretvalue(soonestName)) and soonestName ~= "" then
         title = title .. " - " .. soonestName
     end
 
@@ -3682,7 +3682,7 @@ function WarbandNexus:TestLootNotification(type, id, step)
             local titleName = "the Patient"
             if GetTitleName then
                 local rawTitle = GetTitleName(62)
-                if rawTitle and rawTitle ~= "" and not (issecretvalue and issecretvalue(rawTitle)) then
+                if rawTitle and not (issecretvalue and issecretvalue(rawTitle)) and rawTitle ~= "" then
                     titleName = rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
                 end
             end

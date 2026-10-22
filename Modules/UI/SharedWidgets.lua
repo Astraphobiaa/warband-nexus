@@ -3319,7 +3319,7 @@ ns.UI_GetCharKey = function(char)
         if ck then return ck end
     end
     local g = char.guid
-    if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+    if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
         return g
     end
     local n, r = char.name, char.realm
@@ -4279,7 +4279,7 @@ ns.UI_GetClassColorHexForSurface = GetClassColorHexForSurface
 ---@param classFile string|nil
 ---@return string
 function ns.UI_FormatClassColoredName(name, classFile)
-    if not name or name == "" or (issecretvalue and issecretvalue(name)) then
+    if not name or (issecretvalue and issecretvalue(name)) or name == "" then
         local muted = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
         return muted .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
     end
@@ -4320,7 +4320,7 @@ end
 --- `|cffrrggbb` prefix for `displayName` using `db.global.characters` (case-insensitive name; `classFile`, `classID`, or localized `class`).
 ---@return string
 function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
-    if not displayName or displayName == "" or (issecretvalue and issecretvalue(displayName)) then
+    if not displayName or (issecretvalue and issecretvalue(displayName)) or displayName == "" then
         return "|cffaaaaaa"
     end
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global

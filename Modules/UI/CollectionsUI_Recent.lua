@@ -221,7 +221,7 @@ function M.PopulateCollectionsRecentTooltip(tt, ctx)
     end
 
     local character = ctx.character
-    if character and character ~= "" and issecretvalue and issecretvalue(character) then
+    if issecretvalue and issecretvalue(character) then
         character = nil
     end
 

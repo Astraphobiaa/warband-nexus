@@ -8,22 +8,41 @@
     ProfessionService's central SafeAPIString helper (`value ~= ""` ran before its secret check) and
     three ProfessionService sites that stored / compared raw API names.
 
-    Static scan:
-      - every file in Modules/: the exact pattern `X ~= nil and [issecretvalue and] issecretvalue(X)` /
+    Static scan (Modules/**/*.lua and Core.lua):
+      - the exact pattern `X ~= nil and [issecretvalue and] issecretvalue(X)` /
         `X ~= nil and not (issecretvalue and issecretvalue(X))` (13 sites fixed, none may come back);
       - Modules/ProfessionService.lua: no comparison of X with nil or "" before issecretvalue(X) on
-        the same line, and SafeAPIString checks issecretvalue first.
+        the same line, and SafeAPIString checks issecretvalue first;
+      - every file (enforced 2026-10-22, 99 sites fixed): on a line that calls issecretvalue(X), nothing
+        before that call may compare X with nil or "" (either operand order), or pass X to tonumber /
+        tostring, call a method on X, or take #X. Rewrites keep the result for non-secret values, e.g.
+        `x ~= "" and not (issecretvalue and issecretvalue(x))` -> `not (issecretvalue and
+        issecretvalue(x)) and x ~= ""`, `x == "" or (issecretvalue and issecretvalue(x))` ->
+        `(issecretvalue and issecretvalue(x)) or x == ""`. Truthiness (`x and`, `not x`) and type(x)
+        are not flagged.
     Plus pinned sites (PINNED below) where the whole block is checked, not one line.
-    The broader rule (any nil / "" comparison before the secret check) still has ~97 pre-existing
-    hits elsewhere; whether such a comparison errors on a secret in-game is unverified, so they are
-    reported, not enforced, until that is confirmed.
 ]]
 
 local ROOT = os.getenv("WN_ROOT") or "."
 local p = io.popen('find "' .. ROOT .. '/Modules" -name "*.lua" 2>/dev/null')
-local files = {}
+local files = { ROOT .. "/Core.lua" }
 for line in p:lines() do files[#files + 1] = line end
 p:close()
+
+-- Uses of `esc` (an escaped variable name) that must not come before its secret check.
+local function FirstUnsafeUse(pre, esc)
+    local v = "%f[%w_%.]" .. esc .. "%f[^%w_%.]"
+    local at
+    local patterns = {
+        v .. "%s*[~=]=%s*nil%f[^%w_]", v .. '%s*[~=]=%s*""', "%f[%w_]nil%s*[~=]=%s*" .. v, '""%s*[~=]=%s*' .. v,
+        "tonumber%(%s*" .. v, "tostring%(%s*" .. v, v .. "%s*:%s*[%a_]", "#%s*" .. v,
+    }
+    for i = 1, #patterns do
+        local hit = pre:find(patterns[i])
+        if hit and (not at or hit < at) then at = hit end
+    end
+    return at
+end
 
 local checked, failures = 0, {}
 for _, path in ipairs(files) do
@@ -47,6 +66,9 @@ for _, path in ipairs(files) do
             end
             if cmpAt and secretAt and cmpAt < secretAt then
                 failures[#failures + 1] = string.format("%s:%d  `%s` is compared before issecretvalue(%s)",
+                    path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", ""), ln, var, var)
+            elseif secretAt and FirstUnsafeUse(code:sub(1, secretAt - 1), esc) then
+                failures[#failures + 1] = string.format("%s:%d  `%s` is compared / converted before issecretvalue(%s)",
                     path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", ""), ln, var, var)
             end
         end

@@ -351,7 +351,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         if not userInput then return end
         
         local text = self:GetText()
-        if text == nil or (issecretvalue and issecretvalue(text)) then return end
+        if (issecretvalue and issecretvalue(text)) or text == nil then return end
         if type(text) ~= "string" then return end
         local cursor = self:GetCursorPosition()
         
@@ -525,7 +525,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     -- Hook input box to update summary on save
     inputBox:SetScript("OnEditFocusLost", function(self)
         local raw = self:GetText()
-        if raw == nil or (issecretvalue and issecretvalue(raw)) then return end
+        if (issecretvalue and issecretvalue(raw)) or raw == nil then return end
         if type(raw) ~= "string" then return end
         local value = GoldStringToCopper(raw)
         local maxCopper = MAX_GOLD * 10000

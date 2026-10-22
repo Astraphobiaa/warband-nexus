@@ -1300,7 +1300,7 @@ local function LivePlayerHasAnyEquippedItem()
     for i = 1, #GEAR_SLOTS do
         local sid = GEAR_SLOTS[i].id
         local link = GetInventoryItemLink("player", sid)
-        if link and link ~= "" and not (issecretvalue and issecretvalue(link)) then
+        if link and not (issecretvalue and issecretvalue(link)) and link ~= "" then
             return true
         end
     end

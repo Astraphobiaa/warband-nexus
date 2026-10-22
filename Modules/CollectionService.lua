@@ -2276,9 +2276,9 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
                         if type(item) == "number" and not (issecretvalue and issecretvalue(item)) then
                             rewardItemID = item
                         end
-                        if type(title) == "string" and title ~= "" and not (issecretvalue and issecretvalue(title)) then
+                        if type(title) == "string" and not (issecretvalue and issecretvalue(title)) and title ~= "" then
                             rewardTitle = title
-                        elseif type(item) == "string" and item ~= "" and not (issecretvalue and issecretvalue(item)) then
+                        elseif type(item) == "string" and not (issecretvalue and issecretvalue(item)) and item ~= "" then
                             rewardTitle = item
                         end
                     end
@@ -3270,7 +3270,7 @@ COLLECTION_CONFIGS = {
         extract = function(titleMaskID)
             -- Get title info
             local titleString, playerTitle = GetTitleName(titleMaskID)
-            if not titleString or titleString == "" or (issecretvalue and issecretvalue(titleString)) then return nil end
+            if not titleString or (issecretvalue and issecretvalue(titleString)) or titleString == "" then return nil end
             
             -- Check if player knows this title
             local isKnown = IsTitleKnown(titleMaskID)
@@ -4661,13 +4661,13 @@ function WarbandNexus:ScanAchievementsAsync()
                         local rewardSuccess, item, title = pcall(GetAchievementReward, id)
                         if rewardSuccess then
                             if type(item) == "number" then rewardItemID = item end
-                            if type(title) == "string" and title ~= "" and not (issecretvalue and issecretvalue(title)) then
+                            if type(title) == "string" and not (issecretvalue and issecretvalue(title)) and title ~= "" then
                                 rewardTitle = title
-                            elseif type(item) == "string" and item ~= "" and not (issecretvalue and issecretvalue(item)) then
+                            elseif type(item) == "string" and not (issecretvalue and issecretvalue(item)) and item ~= "" then
                                 rewardTitle = item
                             end
                         end
-                        if not rewardTitle and achRewardText and achRewardText ~= "" and not (issecretvalue and issecretvalue(achRewardText)) then
+                        if not rewardTitle and achRewardText and not (issecretvalue and issecretvalue(achRewardText)) and achRewardText ~= "" then
                             rewardTitle = achRewardText
                         end
 
@@ -5121,7 +5121,7 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
     end
     
     -- Title reward
-    if rewardTitle and rewardTitle ~= "" and not (issecretvalue and issecretvalue(rewardTitle)) then
+    if rewardTitle and not (issecretvalue and issecretvalue(rewardTitle)) and rewardTitle ~= "" then
         local _, name, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
         local safeName = (name and not (issecretvalue and issecretvalue(name))) and name or nil
         return {

@@ -40,7 +40,7 @@ end
 local function SafeCategoryParent(categoryID)
     if not categoryID or not GetCategoryInfo then return nil end
     local _, parent = GetCategoryInfo(categoryID)
-    if parent == nil or (issecretvalue and issecretvalue(parent)) then return nil end
+    if (issecretvalue and issecretvalue(parent)) or parent == nil then return nil end
     return parent
 end
 

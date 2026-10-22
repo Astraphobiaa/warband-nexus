@@ -559,7 +559,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 if disp.iconFileID then
                     crestIcon = disp.iconFileID
                 end
-                if disp.name and disp.name ~= "" and not (L.issecretvalue and L.issecretvalue(disp.name)) then
+                if disp.name and not (L.issecretvalue and L.issecretvalue(disp.name)) and disp.name ~= "" then
                     crestLabel = disp.name
                 end
             end
@@ -1101,7 +1101,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     nameStr = "Unknown"
                 end
                 local realmStr = L.ns.Utilities and L.ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
-                if realmStr ~= "" and L.issecretvalue and L.issecretvalue(realmStr) then
+                if L.issecretvalue and L.issecretvalue(realmStr) then
                     realmStr = ""
                 end
                 local w = measureNameW(tempMeasure, nameStr, realmStr)

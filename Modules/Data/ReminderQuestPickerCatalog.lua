@@ -30,7 +30,7 @@ local sectionCache = nil
 local rowCache = {}
 
 local function SafeSortKey(s)
-    if not s or s == "" or (issecretvalue and issecretvalue(s)) then return "" end
+    if not s or (issecretvalue and issecretvalue(s)) or s == "" then return "" end
     return s:lower()
 end
 
@@ -44,7 +44,7 @@ end
 local function ResolveTitle(entry)
     if not entry then return "?" end
     local title = entry.title
-    if title and title ~= "" and not (issecretvalue and issecretvalue(title)) then
+    if title and not (issecretvalue and issecretvalue(title)) and title ~= "" then
         return title
     end
     if entry.questID and RQC and RQC.ResolveQuestTitle then

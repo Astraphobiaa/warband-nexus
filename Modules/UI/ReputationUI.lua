@@ -1370,7 +1370,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         if not success then
             if IsDebugModeEnabled and IsDebugModeEnabled() then
                 local errMsg = "(error)"
-                if type(err) == "string" and err ~= "" and not (issecretvalue and issecretvalue(err)) then
+                if type(err) == "string" and not (issecretvalue and issecretvalue(err)) and err ~= "" then
                     errMsg = err
                 end
                 DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)
@@ -1443,7 +1443,7 @@ local function RepRowOnEnter(self)
     if not success then
         if IsDebugModeEnabled and IsDebugModeEnabled() then
             local errMsg = "(error)"
-            if type(err) == "string" and err ~= "" and not (issecretvalue and issecretvalue(err)) then
+            if type(err) == "string" and not (issecretvalue and issecretvalue(err)) and err ~= "" then
                 errMsg = err
             end
             DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)

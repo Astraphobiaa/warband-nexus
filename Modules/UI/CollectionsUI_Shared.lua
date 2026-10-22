@@ -1255,7 +1255,7 @@ function M.TryShowCollectionsListEmpty(scrollChild, subTabKey)
     if not scrollChild then return false end
     M.HideCollectionsListEmptyCards(scrollChild)
     local q = M.state and M.state.searchText or ""
-    if q ~= "" and not (issecretvalue and issecretvalue(q)) then
+    if not (issecretvalue and issecretvalue(q)) and q ~= "" then
         if M.TryShowCollectionsListSearchEmpty(scrollChild) then
             SyncCollectionsListEmptyScrollHeight(scrollChild)
             return true

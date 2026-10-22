@@ -433,7 +433,7 @@ local function ParentHopCount(fromMapID, rootMapID)
         local ok, info = pcall(C_Map.GetMapInfo, cur)
         if not ok or not info then break end
         local p = info.parentMapID
-        if p == nil or p == 0 or (issecretvalue and issecretvalue(p)) then break end
+        if (issecretvalue and issecretvalue(p)) or p == nil or p == 0 then break end
         cur = tonumber(p)
     end
     return depth

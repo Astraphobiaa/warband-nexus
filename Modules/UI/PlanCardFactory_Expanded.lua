@@ -297,7 +297,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
             local row = achSummary.criteria[ci]
             if row.hasName and row.name then
                 local progressText = formatRowSuffix and formatRowSuffix(row, achSummary) or ""
-                if progressText ~= "" and not (issecretvalue and issecretvalue(progressText)) then
+                if not (issecretvalue and issecretvalue(progressText)) and progressText ~= "" then
                     local trimmed = progressText:match("^%s*(.*)")
                     if trimmed and not (issecretvalue and issecretvalue(trimmed)) then
                         progressText = " " .. PCol("body") .. trimmed .. "|r"

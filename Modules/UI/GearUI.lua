@@ -1198,7 +1198,7 @@ local function GetGearStorageItemDisplayName(itemLink, itemID)
         local ok, n = pcall(function()
             return (C_Item.GetItemInfo(itemLink))
         end)
-        if ok and type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+        if ok and type(n) == "string" and not (issecretvalue and issecretvalue(n)) and n ~= "" then
             nm = n
         end
     end
@@ -1206,7 +1206,7 @@ local function GetGearStorageItemDisplayName(itemLink, itemID)
         local ok, n = pcall(function()
             return (C_Item.GetItemInfo(itemID))
         end)
-        if ok and type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+        if ok and type(n) == "string" and not (issecretvalue and issecretvalue(n)) and n ~= "" then
             nm = n
         end
     end
@@ -1225,7 +1225,7 @@ local function GetStorageRecRowItemQuality(rowData)
     local q = tonumber(rowData.quality)
     if q and q >= 0 and q <= 8 then return q end
     local link = rowData.itemLink
-    if link and type(link) == "string" and link ~= "" and not (issecretvalue and issecretvalue(link)) then
+    if link and type(link) == "string" and not (issecretvalue and issecretvalue(link)) and link ~= "" then
         if C_Item and C_Item.GetItemQuality then
             local ok, qq = pcall(C_Item.GetItemQuality, link)
             if ok and type(qq) == "number" and qq >= 0 then return qq end

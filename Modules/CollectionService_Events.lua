@@ -130,7 +130,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
                         local itemLink
                         if GetItemInfo then
                             local _, link = GetItemInfo(mountItemID)
-                            if link and link ~= "" and not (issecretvalue and issecretvalue(link)) then itemLink = link end
+                            if link and not (issecretvalue and issecretvalue(link)) and link ~= "" then itemLink = link end
                         end
                         if not itemLink then
                             itemLink = (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. "[" .. (name or "Mount") .. "]|r"
@@ -248,7 +248,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     local notifyPetName = name
     if speciesID and C_PetJournal.GetPetInfoBySpeciesID then
         local sName = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-        if sName and sName ~= "" and not (issecretvalue and issecretvalue(sName)) then
+        if sName and not (issecretvalue and issecretvalue(sName)) and sName ~= "" then
             notifyPetName = sName
         end
     end

@@ -201,7 +201,7 @@ end
 
 local function ParseDescriptionProgressTarget(achievementID)
     local achDesc = GetAchievementDescription(achievementID)
-    if not achDesc or achDesc == "" or (issecretvalue and issecretvalue(achDesc)) then
+    if not achDesc or (issecretvalue and issecretvalue(achDesc)) or achDesc == "" then
         return nil
     end
     local target = achDesc:match("Harvest%s+(%d+)")
@@ -518,7 +518,7 @@ local function NormalizeUiLabel(key, fallback)
 end
 
 local function SanitizeAchievementText(text, maxLen)
-    if not text or text == "" or (issecretvalue and issecretvalue(text)) then
+    if not text or (issecretvalue and issecretvalue(text)) or text == "" then
         return nil
     end
     text = text:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")

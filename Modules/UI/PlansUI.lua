@@ -24,7 +24,7 @@ local function SafeLower(s)
 end
 
 local function IsSafeDisplayString(s)
-    return type(s) == "string" and s ~= "" and not (issecretvalue and issecretvalue(s))
+    return type(s) == "string" and not (issecretvalue and issecretvalue(s)) and s ~= ""
 end
 
 --- Display-safe player name / realm (Midnight: never concatenate secret API strings).

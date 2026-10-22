@@ -194,7 +194,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     if isTracked then
         if ns.Utilities and ns.Utilities.SafeGuid then
             local g = ns.Utilities:SafeGuid("player")
-            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+            if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
                 entry.guid = g
             end
         end
@@ -556,7 +556,7 @@ function CharacterService:ResolveCharactersTableKey(addon)
             for k, v in pairs(chars) do
                 if type(v) == "table" then
                     local g = v.guid
-                    if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) and g == pg then
+                    if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" and g == pg then
                         local seen = (type(v.lastSeen) == "number") and v.lastSeen or 0
                         if seen > bestSeen then
                             bestSeen = seen
@@ -645,7 +645,7 @@ function CharacterService:RemoveCharacterProfileAliases(addon, charKey)
     local row = chars[charKey]
     if type(row) == "table" then
         local guid = row.guid
-        if type(guid) == "string" and guid ~= "" and not (issecretvalue and issecretvalue(guid)) then
+        if type(guid) == "string" and not (issecretvalue and issecretvalue(guid)) and guid ~= "" then
             aliases[guid] = true
         end
         if row.name and row.realm and U and U.GetCharacterKey then
@@ -664,7 +664,7 @@ function CharacterService:RemoveCharacterProfileAliases(addon, charKey)
         end
     end
     local function isAlias(k)
-        if type(k) ~= "string" or k == "" or (issecretvalue and issecretvalue(k)) then return false end
+        if type(k) ~= "string" or (issecretvalue and issecretvalue(k)) or k == "" then return false end
         if aliases[k] then return true end
         return CanonCharKey(k) == charKey
     end
@@ -815,7 +815,7 @@ end
 --- @param charKey string|nil Row key from the UI (GUID or Name-Realm)
 --- @return string|nil
 function CharacterService:ResolveOtherCharacterRowKey(addon, charKey)
-    if not charKey or charKey == "" or (issecretvalue and issecretvalue(charKey)) then return nil end
+    if not charKey or (issecretvalue and issecretvalue(charKey)) or charKey == "" then return nil end
     local chars = addon and addon.db and addon.db.global and addon.db.global.characters
     if not chars then return nil end
     -- Self entry points (login dialog, badge, /wn track) pass ResolveCharactersTableKey() itself, which
@@ -850,7 +850,7 @@ function CharacterService:ResolveOtherCharacterRowKey(addon, charKey)
     local row = chars[rowKey]
     local playerGuid = U and U.SafeGuid and U:SafeGuid("player")
     local rowGuid = row.guid
-    if type(rowGuid) ~= "string" or rowGuid == "" or (issecretvalue and issecretvalue(rowGuid)) then
+    if type(rowGuid) ~= "string" or (issecretvalue and issecretvalue(rowGuid)) or rowGuid == "" then
         rowGuid = (type(rowKey) == "string" and rowKey:find("^Player%-")) and rowKey or nil
     end
     if playerGuid and rowGuid then
@@ -966,7 +966,7 @@ function CharacterService:FindProbableStaleCharacterCopies(addon)
         currentKey = U:GetCharacterStorageKey(addon)
     end
     local playerName = UnitName("player")
-    if not playerName or playerName == "" or (issecretvalue and issecretvalue(playerName)) then
+    if not playerName or (issecretvalue and issecretvalue(playerName)) or playerName == "" then
         return {}
     end
     local nameLower = playerName:lower()
@@ -975,7 +975,7 @@ function CharacterService:FindProbableStaleCharacterCopies(addon)
     for key, row in pairs(chars) do
         if key ~= currentKey and type(row) == "table" then
             local n = row.name
-            if type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+            if type(n) == "string" and not (issecretvalue and issecretvalue(n)) and n ~= "" then
                 if n:lower() == nameLower then
                     copies[#copies + 1] = {
                         key = key,
@@ -1651,11 +1651,11 @@ end
 function CharacterService:GetCharacterClassSortName(char)
     if not char then return "\255" end
     local cls = char.class
-    if cls and cls ~= "" and not (issecretvalue and issecretvalue(cls)) then
+    if cls and not (issecretvalue and issecretvalue(cls)) and cls ~= "" then
         return CharSortSafeLower(cls)
     end
     local classFile = char.classFile
-    if classFile and classFile ~= "" and not (issecretvalue and issecretvalue(classFile)) then
+    if classFile and not (issecretvalue and issecretvalue(classFile)) and classFile ~= "" then
         if LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[classFile] then
             return CharSortSafeLower(LOCALIZED_CLASS_NAMES_MALE[classFile])
         end

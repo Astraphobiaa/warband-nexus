@@ -386,7 +386,7 @@ function M.FormatKeystoneTooltipRight(charKey, charRow)
     local mapName = (ns.Utilities and ns.Utilities.ResolveKeystoneDungeonName)
         and ns.Utilities:ResolveKeystoneDungeonName(ks)
         or ks.dungeonName
-    if not mapName or mapName == "" or (issecretvalue and issecretvalue(mapName)) then
+    if not mapName or (issecretvalue and issecretvalue(mapName)) or mapName == "" then
         mapName = EAL("KEYSTONE", "Keystone")
     end
     return "|cff00ff00" .. EAL("EA_TOOLTIP_KEYSTONE_FORMAT", "+%d %s", level, mapName) .. "|r"

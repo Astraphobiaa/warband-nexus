@@ -88,7 +88,7 @@ function M.ClearRowCache()
 end
 
 local function SafeSortKey(s)
-    if not s or s == "" or (issecretvalue and issecretvalue(s)) then return "" end
+    if not s or (issecretvalue and issecretvalue(s)) or s == "" then return "" end
     return s:lower()
 end
 

@@ -1741,7 +1741,7 @@ function PlanCardFactory:CreateAchievementSimpleCard(card, plan, progress, nameT
         local ri = WarbandNexus:GetAchievementRewardInfo(achievementID)
         if ri then displayReward = ri.title or ri.itemName end
     end
-    if displayReward and displayReward ~= "" and not (issecretvalue and issecretvalue(displayReward)) then
+    if displayReward and not (issecretvalue and issecretvalue(displayReward)) and displayReward ~= "" then
         local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
         if lastElement then
             rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -4)

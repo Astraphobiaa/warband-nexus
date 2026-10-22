@@ -886,12 +886,12 @@ local function CollectGildedStashWidgetTexts(widget)
         }
         for i = 1, #fields do
             local v = fields[i]
-            if v and v ~= "" and not (issecretvalue and issecretvalue(v)) then
+            if v and not (issecretvalue and issecretvalue(v)) and v ~= "" then
                 out[#out + 1] = v
             end
         end
     end
-    if widget.text and widget.text ~= "" and not (issecretvalue and issecretvalue(widget.text)) then
+    if widget.text and not (issecretvalue and issecretvalue(widget.text)) and widget.text ~= "" then
         out[#out + 1] = widget.text
     end
     return out
@@ -2188,7 +2188,7 @@ function WarbandNexus:SyncTormentedSoulCastWatcher()
         self._tormentedSoulCastFrame = frame
         frame:SetScript("OnEvent", function(_, _, _, _, spellID)
             -- spellID can be secret while unit spellcasts are restricted; never compare a secret.
-            if spellID == nil or (issecretvalue and issecretvalue(spellID)) then return end
+            if (issecretvalue and issecretvalue(spellID)) or spellID == nil then return end
             if spellID ~= Constants.PVE_TORMENTED_SOUL_SPELL_ID then return end
             if not (ns.Utilities and ns.Utilities:IsModuleEnabled("pve")) then return end
             if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end

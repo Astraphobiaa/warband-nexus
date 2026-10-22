@@ -696,13 +696,13 @@ local function ResolveLiveCharacterLabel(liveChar)
     end
     if UnitName then
         local name = UnitName("player")
-        if name and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+        if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
             return name
         end
     end
     if Utilities and Utilities.GetCurrentCharacterDisplayLabel then
         local label = Utilities:GetCurrentCharacterDisplayLabel()
-        if label and label ~= "" and not (issecretvalue and issecretvalue(label)) then
+        if label and not (issecretvalue and issecretvalue(label)) and label ~= "" then
             return label
         end
     end

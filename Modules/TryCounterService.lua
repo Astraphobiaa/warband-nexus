@@ -2678,12 +2678,12 @@ function Fns.HandleNewCollectibleAdded(tcType, collectibleID)
     local linkLabel = "|cffa335ee[#" .. tostring(collectibleID) .. "]|r"
     if tcType == "mount" and C_MountJournal and C_MountJournal.GetMountInfoByID then
         local ok, name = pcall(C_MountJournal.GetMountInfoByID, collectibleID)
-        if ok and type(name) == "string" and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+        if ok and type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= "" then
             linkLabel = "|cffa335ee[" .. name .. "]|r"
         end
     elseif tcType == "pet" and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
         local ok, name = pcall(C_PetJournal.GetPetInfoBySpeciesID, collectibleID)
-        if ok and type(name) == "string" and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+        if ok and type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= "" then
             linkLabel = "|cffa335ee[" .. name .. "]|r"
         end
     end

@@ -36,7 +36,7 @@ local function SendTryCounterCollectibleObtained(self, payload, sourceItemID)
     if not self or not self.SendMessage or not payload then return end
     if not payload.obtainedBy then
         local name = UnitName("player")
-        if name and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+        if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
             payload.obtainedBy = name
         end
     end

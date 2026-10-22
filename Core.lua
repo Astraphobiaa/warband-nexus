@@ -1888,7 +1888,7 @@ function WarbandNexus:OnPetListChanged()
     
     -- Get current pet count (second return); guard Midnight secret values before compare
     local _, currentPetCountRaw = C_PetJournal.GetNumPets()
-    if currentPetCountRaw == nil or (issecretvalue and issecretvalue(currentPetCountRaw)) then
+    if (issecretvalue and issecretvalue(currentPetCountRaw)) or currentPetCountRaw == nil then
         return
     end
     local currentPetCount = tonumber(currentPetCountRaw)
