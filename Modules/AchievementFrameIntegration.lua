@@ -647,13 +647,22 @@ InstallAchievementJournalHooks = function()
 end
 
 local loader = CreateFrame("Frame")
-local function ScheduleAchievementJournalWarmup()
-    LoadAchievementUIWhenReady(function()
-        if ns.UI_InvalidateAchievementCategoryCaches then
-            ns.UI_InvalidateAchievementCategoryCaches()
-        end
-        RefreshAllWNJournalIcons()
-    end)
+-- Login warmup no longer force-loads Blizzard_AchievementUI (2026-10-22): journal hooks attach
+-- through ADDON_LOADED / ContinueOnAddOnLoaded when the player first opens it. Only WN's own
+-- category caches still need the "category list ready" signal at login.
+local function ScheduleAchievementJournalWarmup(attempt)
+    attempt = attempt or 1
+    local list = GetCategoryList and GetCategoryList() or {}
+    if #list < WN_CATEGORY_LIST_MIN_IDS and attempt < 24 then
+        C_Timer.After(0.25, function()
+            ScheduleAchievementJournalWarmup(attempt + 1)
+        end)
+        return
+    end
+    if ns.UI_InvalidateAchievementCategoryCaches then
+        ns.UI_InvalidateAchievementCategoryCaches()
+    end
+    RefreshAllWNJournalIcons()
 end
 
 loader:RegisterEvent("ADDON_LOADED")
@@ -699,6 +708,8 @@ if EventUtil and EventUtil.ContinueOnAddOnLoaded then
             EnsureCategoryRebuildHooks()
             InstallAchievementJournalHooks()
             C_Timer.After(0.1, RefreshAllWNJournalIcons)
+            -- First open now loads the UI: rows were bound before the Init hook existed.
+            C_Timer.After(0.15, RefreshVisibleAchievementRows)
         end)
     end)
 end

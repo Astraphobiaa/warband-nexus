@@ -122,6 +122,7 @@ jobs:
             lua5.1 .github/scripts/test_tab_refresh_routing.lua
             lua5.1 .github/scripts/test_pve_draw_pool.lua
             lua5.1 .github/scripts/test_pve_cell_refresh.lua
+            lua5.1 .github/scripts/test_lod_addon_loading.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

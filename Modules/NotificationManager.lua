@@ -1970,14 +1970,13 @@ local function ScheduleAlertSuppressionRetries(addon)
     end
 end
 
---- Blizzard addons that may define ProgressAlertSystem / alert frames (load order varies by patch).
+--- Watched (never loaded) on ADDON_LOADED to re-apply suppression. Achievement / Criteria /
+--- MonthlyActivity alert systems all live in always-loaded Blizzard_FrameXML/Mainline/
+--- AlertFrameSystems.lua, so no load-on-demand addon is needed to suppress them. The former
+--- SharedXML (always loaded), AdventureGuide, MonthlyActivities, PerksActivities and TradingPostUI
+--- entries are gone: the last four do not exist as addons in 12.1.5 (wow-ui-source live 70448, 2026-10-22).
 local ALERT_SOURCE_ADDONS = {
-    "Blizzard_SharedXML",
     "Blizzard_AchievementUI",
-    "Blizzard_AdventureGuide",
-    "Blizzard_MonthlyActivities",
-    "Blizzard_PerksActivities",
-    "Blizzard_TradingPostUI",
 }
 
 local function IsAlertSourceAddOn(loadedAddon)
@@ -2569,16 +2568,9 @@ local function ScanAlertFrameForProgressAlerts()
     end
 end
 
-local function LoadAlertSourceAddOns()
-    if Utilities and Utilities.SafeLoadAddOn then
-        for i = 1, #ALERT_SOURCE_ADDONS do
-            Utilities:SafeLoadAddOn(ALERT_SOURCE_ADDONS[i])
-        end
-    end
-end
-
+-- No load-on-demand addon is force-loaded here any more (2026-10-22): every system captured below
+-- is defined by base-UI FrameXML, so login no longer pulls in Blizzard_AchievementUI.
 local function CaptureBlizzardAddAlertHandlers(addon)
-    LoadAlertSourceAddOns()
     if AchievementAlertSystem and type(AchievementAlertSystem.AddAlert) == "function" then
         local fn = AchievementAlertSystem.AddAlert
         if not IsWnAddAlertWrapper(fn) then
@@ -2937,11 +2929,8 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
     end
 end
 
----Ensure achievement UI + current presentation toggle is applied (test + live share one AddAlert path).
+---Ensure the current presentation toggle is applied (test + live share one AddAlert path).
 TestLootEnsureAchievementAlertUI = function(addon)
-    if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
-        LoadAlertSourceAddOns()
-    end
     if addon and addon.ApplyBlizzardAchievementAlertSuppression then
         addon:ApplyBlizzardAchievementAlertSuppression()
     end
@@ -2976,9 +2965,6 @@ end
 
 TestLootFireProgressAddAlert = function(addon, payload)
     TestLootEnsureAchievementAlertUI(addon)
-    if Utilities and Utilities.SafeLoadAddOn then
-        LoadAlertSourceAddOns()
-    end
     if addon and addon.ApplyBlizzardAchievementAlertSuppression then
         addon:ApplyBlizzardAchievementAlertSuppression()
     end
