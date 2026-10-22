@@ -6,7 +6,8 @@
     walking each stored character's bags + bank array and the warband bank array, on every hover:
     with 20 characters that is ~10-15k rows per tooltip. Each array is now indexed once (itemID ->
     stacks) and reused until it is replaced or its length / generation changes, so a second hover
-    reads no rows. Counts must stay identical, and a warband save must be picked up.
+    reads no rows. Counts must stay identical, and a warband save must be picked up. A background
+    warm-up after login indexes the alts so the first hover does not unpack them all in one frame.
 
     Loads the shipped Modules/ItemsCacheService.lua under wow_stub.lua (uncompressed storage).
 ]]
@@ -143,6 +144,20 @@ do
     WarbandNexus:SaveWarbandBankCompressed({ { itemID = 100, stackCount = 60 }, { itemID = 200, stackCount = 7 } })
     local r = WarbandNexus:GetDetailedItemCountsFast(100)
     assert_eq(r and r.warbandBank, 60, "new warband count after invalidation")
+end
+
+print("Phase 4: The background warm-up indexes the alts before the first hover")
+do
+    local store = WarbandNexus.db.global.itemStorage
+    store[ALT1].bags.data = counted({ { itemID = 100, stackCount = 9 } })
+    store[ALT1].bank.data = counted({})
+    ns.ItemsCacheStressHooks.ClearSessionDecompressedCache()   -- fresh session (as after login)
+    WarbandNexus:WarmItemCountIndex()
+    stub.Advance(1)
+    reads = 0
+    local r = WarbandNexus:GetDetailedItemCountsFast(100)
+    assert_eq(rowFor(r, "Alt") and rowFor(r, "Alt").bagCount, 9, "warmed index has the stored count")
+    assert_eq(reads, 0, "first hover after the warm-up walks no arrays")
 end
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")

@@ -651,6 +651,10 @@ function WarbandNexus:OnInitialize()
             L[key] = value
         end
     end
+    -- Nothing reads the registry after this merge (a language switch reloads), so release the other
+    -- locales: 12 languages x ~2.4k keys otherwise stayed in memory all session (2026-10-22).
+    -- L (the enUS base table, now holding the chosen language) stays referenced as ns.L.
+    ns.LOCALES = nil
 
     -- Restore profiler measurement flags before session decompress so DB path can be timed.
     if ns.Profiler and ns.Profiler.ApplyPersistedSettings then

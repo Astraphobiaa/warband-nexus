@@ -3164,6 +3164,38 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
     return result
 end
 
+--- Decompress + index every alt's stored bags / bank in the background, a few ms per frame, so the
+--- first item tooltip of the session does not unpack all of them in one frame (2026-10-22). The
+--- decompressed arrays are what that first hover would have kept in the session cache anyway.
+function WarbandNexus:WarmItemCountIndex()
+    local profile = self.db and self.db.profile
+    if profile and profile.showItemCount == false then return end
+    local chars = self.db and self.db.global and self.db.global.characters
+    if type(chars) ~= "table" then return end
+    local liveKey = ResolveCurrentItemStorageKey()
+    local queue = {}
+    for charKey in pairs(chars) do
+        local storageKey = ResolveCharacterStorageKeyForCount(self, charKey)
+        if storageKey and storageKey ~= liveKey then
+            queue[#queue + 1] = storageKey
+        end
+    end
+    local idx = 1
+    local function step()
+        local t0 = debugprofilestop()
+        while idx <= #queue do
+            local storageKey = queue[idx]
+            idx = idx + 1
+            CountCharacterItemFromStorage(self, storageKey, 0)
+            if debugprofilestop() - t0 >= SUMMARY_BUILD_BUDGET_MS then break end
+        end
+        if idx <= #queue then
+            C_Timer.After(0, step)
+        end
+    end
+    step()
+end
+
 ---Invalidate item summary for a character (call when bags/bank change).
 ---The summary will be rebuilt lazily on next tooltip access.
 function WarbandNexus:InvalidateItemSummary(charKey)
@@ -3264,6 +3296,11 @@ function WarbandNexus:InitializeItemsCache()
 
         -- Notify UI that initial scan is done (fixes stuck loading state)
         self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = CanonicalItemsMessageKey(charKey)})
+
+        -- Item-count tooltip index for the alts, after the login burst.
+        C_Timer.After(10, function()
+            if self.WarmItemCountIndex then self:WarmItemCountIndex() end
+        end)
     end)
 end
 
