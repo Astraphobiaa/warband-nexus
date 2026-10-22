@@ -751,22 +751,16 @@ local function IsReputationHigher(rep1, rep2)
     return value1 > value2
 end
 
----Aggregate reputations across all characters (find highest for each faction)
----v2.0.0: Reads from NEW ReputationCacheService with normalized data
----@param characters table List of character data
----@param factionMetadata table Faction metadata (DEPRECATED, for icons only)
----@param reputationSearchText string Search filter
----@return table List of {headerName, factions={factionID, data, characterKey, characterName, characterClass, isAccountWide}}
-local function AggregateReputations(characters, factionMetadata, reputationSearchText)
+---Per-faction half of AggregateReputations: best character + allCharData for each faction.
+---onlyFactionIDs (set) limits it to those factions -- the row patch path re-runs it for the factions
+---a scan changed (2026-10-22).
+---@param cachedFactions table Hydrated rows (GetAllReputations / GetReputationsForFactions)
+---@param characters table Tracked characters
+---@param onlyFactionIDs table|nil [factionID] = true
+---@return table factionMap [factionID] = {data, characterKey, characterName, characterClass, allCharData, ...}
+local function BuildReputationFactionMap(cachedFactions, characters, onlyFactionIDs)
     -- Collect all unique faction IDs and their best reputation
     local factionMap = {} -- [factionID] = {data, characterKey, characterName, characterClass, allCharData}
-    
-    -- v2.0.0: Read from NEW ReputationCacheService (normalized data)
-    local cachedFactions = WarbandNexus:GetAllReputations() or {}
-    
-    if #cachedFactions == 0 then
-        return {}
-    end
     
     -- Build character lookup table (SavedVariables row key = guid or Name-Realm; matches currency/cache writes).
     local charLookup = charLookupScratch
@@ -852,7 +846,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         local factionID = cachedData.factionID
         
         -- Only process factions with rep (skip pure organizational headers)
-        if not (cachedData.isHeader and not cachedData.isHeaderWithRep) then
+        if not (cachedData.isHeader and not cachedData.isHeaderWithRep)
+            and (not onlyFactionIDs or onlyFactionIDs[factionID]) then
             
             if cachedData.isAccountWide then
                 local reputation = BuildReputationObject(cachedData)
@@ -956,6 +951,25 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             }
         end
     end
+
+    return factionMap
+end
+
+---Aggregate reputations across all characters (find highest for each faction)
+---v2.0.0: Reads from NEW ReputationCacheService with normalized data
+---@param characters table List of character data
+---@param factionMetadata table Faction metadata (DEPRECATED, for icons only)
+---@param reputationSearchText string Search filter
+---@return table List of {headerName, factions={factionID, data, characterKey, characterName, characterClass, isAccountWide}}
+local function AggregateReputations(characters, factionMetadata, reputationSearchText)
+    -- v2.0.0: Read from NEW ReputationCacheService (normalized data)
+    local cachedFactions = WarbandNexus:GetAllReputations() or {}
+    
+    if #cachedFactions == 0 then
+        return {}
+    end
+
+    local factionMap = BuildReputationFactionMap(cachedFactions, characters)
     
     -- v2.0.0: build parent-child relationships before header groups
     local childCount = 0
@@ -1615,10 +1629,155 @@ local function PopulateReputationRow(row, entry)
     row:SetScript("OnLeave", RepRowOnLeave)
 end
 
+-- ROW PATCH (2026-10-22): a value-only WN_REPUTATION_UPDATED re-aggregates just the changed factions
+-- and repaints their rows in place instead of rebuilding the whole list. The last full paint records
+-- its VLM bodies + flat lists here; a list rebuilt since (or any doubt) falls back to the full redraw.
+local repPaint = { container = nil, searchActive = false, bodies = {}, flatLists = {} }
+local repPatchFound = {}
+
+local function ForgetReputationPaint()
+    repPaint.container = nil
+    repPaint.searchActive = false
+    local bodies, flatLists = repPaint.bodies, repPaint.flatLists
+    for i = #bodies, 1, -1 do
+        bodies[i] = nil
+        flatLists[i] = nil
+    end
+end
+
+---The painted list for `container` is still the one recorded by the last DrawReputationList.
+local function HasReputationPaint(container)
+    if not container or repPaint.container ~= container then return false end
+    if container.IsShown and not container:IsShown() then return false end
+    local bodies, flatLists = repPaint.bodies, repPaint.flatLists
+    for i = 1, #bodies do
+        if bodies[i]._vlm_flatList ~= flatLists[i] then return false end
+    end
+    return true
+end
+
+---Tracked characters (the roster the Reputation list aggregates over).
+local function CollectTrackedCharacters()
+    local allCharacters = WarbandNexus:GetAllCharacters()
+    local characters = {}
+    if allCharacters then
+        for ai = 1, #allCharacters do
+            local char = allCharacters[ai]
+            if char.isTracked ~= false then  -- Only tracked characters
+                table.insert(characters, char)
+            end
+        end
+    end
+    return characters
+end
+
+local function PatchEntryFactionID(pe)
+    return pe.factionID or (pe.data and pe.data.factionID)
+end
+
+---Re-aggregate the changed factions and repaint their rows. Every changed faction must still sit in
+---the painted list (a collapsed sub-faction counts: nothing of it is painted) with the same scope.
+---@param container Frame resultsContainer
+---@param changedFactionIDs table [factionID] = true
+---@return boolean patched false = caller redraws in full
+local function TryPatchReputationRows(container, changedFactionIDs)
+    if type(changedFactionIDs) ~= "table" or repPaint.searchActive or not HasReputationPaint(container) then
+        return false
+    end
+    if ns.ReputationLoadingState and ns.ReputationLoadingState.isLoading then return false end
+    local query = SearchStateManager and SearchStateManager:GetQuery("reputation")
+    if query and ((issecretvalue and issecretvalue(query)) or query ~= "") then return false end
+    if next(changedFactionIDs) == nil then return true end   -- the scan changed no stored row
+    if not WarbandNexus.GetReputationsForFactions then return false end
+
+    local fresh = WarbandNexus:GetReputationsForFactions(changedFactionIDs)
+    local factionMap = BuildReputationFactionMap(fresh or {}, CollectTrackedCharacters(), changedFactionIDs)
+    local bodies, flatLists = repPaint.bodies, repPaint.flatLists
+    for k in pairs(repPatchFound) do repPatchFound[k] = nil end
+
+    -- Pass 1: verify (no partial patch).
+    for bi = 1, #bodies do
+        local fl = flatLists[bi]
+        for i = 1, #fl do
+            local pe = fl[i].type == "row" and fl[i].populateEntry
+            if pe then
+                local fid = PatchEntryFactionID(pe)
+                if fid and changedFactionIDs[fid] then
+                    local fm = factionMap[fid]
+                    local ci = pe.characterInfo
+                    if not fm or (fm.isAccountWide == true) ~= (ci and ci.isAccountWide == true) then
+                        return false
+                    end
+                    repPatchFound[fid] = true
+                end
+                local subs = pe.subfactions
+                if subs then
+                    for si = 1, #subs do
+                        local sid = subs[si].data and subs[si].data.factionID
+                        if sid and changedFactionIDs[sid] then repPatchFound[sid] = true end
+                    end
+                end
+            end
+        end
+    end
+    for fid in pairs(changedFactionIDs) do
+        if not repPatchFound[fid] then return false end
+    end
+
+    -- Pass 2: swap the fresh aggregate into the flat-list entries (off-screen rows read them on scroll;
+    -- this VLM repopulates every row it paints -- no incrementalRowReuse).
+    for bi = 1, #bodies do
+        local fl = flatLists[bi]
+        for i = 1, #fl do
+            local pe = fl[i].type == "row" and fl[i].populateEntry
+            local fid = pe and PatchEntryFactionID(pe)
+            local fm = fid and changedFactionIDs[fid] and factionMap[fid]
+            if fm then
+                pe.data = fm.data
+                local ci = pe.characterInfo
+                if ci then
+                    ci.name = fm.characterName
+                    ci.class = fm.characterClass
+                    ci.level = fm.characterLevel
+                    ci.realm = fm.characterRealm
+                    ci.allCharData = fm.allCharData or {}
+                    ci.sessionReputation = fm.sessionReputation
+                    ci.bestReputation = fm.bestReputation or fm.data
+                    ci.repProgressSplit = fm.repProgressSplit
+                end
+            end
+        end
+    end
+    -- The aggregate snapshot no longer matches the DB: the next full draw (expand / search) rebuilds it.
+    InvalidateRepDrawCaches()
+
+    -- Repaint the changed rows that are on screen.
+    for bi = 1, #bodies do
+        local fl = flatLists[bi]
+        local vis = bodies[bi]._virtualVisibleFrames
+        if vis then
+            for j = 1, #vis do
+                local v = vis[j]
+                local it = v and not v.isHeader and v.index and fl[v.index]
+                local pe = it and it.populateEntry
+                local fid = pe and PatchEntryFactionID(pe)
+                if fid and changedFactionIDs[fid] and v.frame then
+                    local ok, err = pcall(PopulateReputationRow, v.frame, pe)
+                    if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
+                        DebugPrint("|cffff0000[RepUI patch]|r " .. tostring(err))
+                    end
+                end
+            end
+        end
+    end
+    return true
+end
+
 -- MAIN DRAW FUNCTION
 
 function WarbandNexus:DrawReputationList(container, width)
     if not container then return 0 end
+    ForgetReputationPaint()
     
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(container, "reputation")
@@ -1685,16 +1844,7 @@ function WarbandNexus:DrawReputationList(container, width)
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
     -- Get all characters (filter tracked only)
-    local allCharacters = self:GetAllCharacters()
-    local characters = {}
-    if allCharacters then
-        for ai = 1, #allCharacters do
-            local char = allCharacters[ai]
-            if char.isTracked ~= false then  -- Only tracked characters
-                table.insert(characters, char)
-            end
-        end
-    end
+    local characters = CollectTrackedCharacters()
     
     if not characters or #characters == 0 then
         local height = SearchResultsRenderer:RenderEmptyState(self, parent, "", "reputation")
@@ -2118,6 +2268,9 @@ function WarbandNexus:DrawReputationList(container, width)
             end,
             releaseRowFn = ReleaseReputationRow,
         })
+        -- Row patch registry (TryPatchReputationRows).
+        repPaint.bodies[#repPaint.bodies + 1] = body
+        repPaint.flatLists[#repPaint.flatLists + 1] = flatList
 
         body._wnVirtualContentHeight = totalHeight
         body:SetHeight(math.max(0.1, totalHeight or rowY))
@@ -2315,6 +2468,8 @@ function WarbandNexus:DrawReputationList(container, width)
     SyncScrollMetrics()
     local finalHeight = MeasureChildrenHeight(parent) + (GetLayout().minBottomSpacing or 0)
     parent:SetHeight(math.max(1, finalHeight))
+    repPaint.container = container
+    repPaint.searchActive = repSearchActive and true or false
     return finalHeight
 end
 
@@ -2425,15 +2580,36 @@ function WarbandNexus:DrawReputationTab(parent)
 
         -- REPUTATION_CACHE_READY + REPUTATION_UPDATED are sent back-to-back by ReputationCacheService;
         -- coalesce the burst into one next-frame data refresh instead of two synchronous redraws.
+        -- The burst repaints only the changed rows when every UPDATED in it carried a value-only payload
+        -- ({ changedFactionIDs, structural = false }); anything else redraws in full (2026-10-22).
         local repRefreshPending = false
-        local function ScheduleCoalescedReputationRefresh()
+        local repBurstSawUpdate, repBurstFull = false, false
+        local repBurstChanged = {}
+        local function ScheduleCoalescedReputationRefresh(payload, isUpdate)
+            if isUpdate then
+                repBurstSawUpdate = true
+                local changed = type(payload) == "table" and payload.structural == false and payload.changedFactionIDs
+                if type(changed) == "table" then
+                    for fid in pairs(changed) do repBurstChanged[fid] = true end
+                else
+                    repBurstFull = true
+                end
+            end
             if repRefreshPending then return end
             repRefreshPending = true
             C_Timer.After(0, function()
                 repRefreshPending = false
+                local patchable = repBurstSawUpdate and not repBurstFull
+                repBurstSawUpdate, repBurstFull = false, false
                 if parent and IsReputationTabActive() then
-                    RefreshReputationTabData(parent, false)
+                    if not (patchable and TryPatchReputationRows(parent.resultsContainer, repBurstChanged)) then
+                        RefreshReputationTabData(parent, false)
+                    end
+                else
+                    -- Missed while off the tab: the next refresh must not patch on top of it.
+                    ForgetReputationPaint()
                 end
+                for k in pairs(repBurstChanged) do repBurstChanged[k] = nil end
             end)
         end
         
@@ -2441,6 +2617,9 @@ function WarbandNexus:DrawReputationTab(parent)
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_LOADING_STARTED, function()
             InvalidateRepDrawCaches()
             if parent and IsReputationTabActive() then
+                -- Background rescan under a painted list: keep the rows up; the scan's WN_REPUTATION_UPDATED
+                -- patches or redraws them (was a loading-card repaint per rep gain, 2026-10-22).
+                if HasReputationPaint(parent.resultsContainer) then return end
                 self:DrawReputationTab(parent)
             end
         end)
@@ -2448,6 +2627,7 @@ function WarbandNexus:DrawReputationTab(parent)
         -- v2.0.0: Cache cleared - loading UI only when tab active
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_CACHE_CLEARED, function()
             InvalidateRepDrawCaches()
+            ForgetReputationPaint()
             if IsReputationTabActive() then
                 if parent._loadingPanel then
                     parent._loadingPanel:ShowLoading(
@@ -2477,11 +2657,13 @@ function WarbandNexus:DrawReputationTab(parent)
             ScheduleCoalescedReputationRefresh()
         end)
         
-        -- Real-time update event (single faction changed)
-        WarbandNexus.RegisterMessage(ReputationUIEvents, Constants.EVENTS.REPUTATION_UPDATED, function(event, factionID)
-            ScheduleCoalescedReputationRefresh()
+        -- Real-time update event (payload: { changedFactionIDs, structural } from ReputationCacheService)
+        WarbandNexus.RegisterMessage(ReputationUIEvents, Constants.EVENTS.REPUTATION_UPDATED, function(_, payload)
+            ScheduleCoalescedReputationRefresh(payload, true)
         end)
     end
+    -- Any tab draw (loading card or a list repaint) replaces what the patch registry points at.
+    ForgetReputationPaint()
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then

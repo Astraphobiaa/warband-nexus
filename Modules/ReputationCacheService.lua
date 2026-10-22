@@ -127,13 +127,93 @@ ns.ReputationLoadingState = ns.ReputationLoadingState or {
     currentStage = (ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing...",
 }
 
+-- WN_REPUTATION_UPDATED payload (2026-10-22): { changedFactionIDs = { [factionID] = true }, structural = bool }.
+-- structural = true when list membership / order / sections may have moved (new or removed faction,
+-- account-wide flip, standing / renown / friendship level, paragon flip, header or scan order); the
+-- Reputation tab then redraws in full. Value-only changes let it repaint just those factions' rows.
+local function NewRepUpdatePayload(structural)
+    return { changedFactionIDs = {}, structural = structural == true }
+end
+
+---Secret-safe field equality: a secret on either side counts as "different" (never compared).
+local function RepFieldSame(a, b)
+    if issecretvalue and (issecretvalue(a) or issecretvalue(b)) then return false end
+    return a == b
+end
+
+---nil = same, "value" = differs, "structural" = a secret on either side (never compared).
+local function RepFieldDiff(a, b)
+    if issecretvalue and (issecretvalue(a) or issecretvalue(b)) then return "structural" end
+    if a ~= b then return "value" end
+    return nil
+end
+
+-- Compact row fields (CompactFactionData) whose change can move the row or its section.
+local REP_STRUCTURAL_FIELDS = { "reaction", "hasParagon", "_scanIndex", "_name", "_type",
+    "_isAccountWide", "_isHeader", "_isHeaderWithRep" }
+local REP_VALUE_FIELDS = { "currentValue", "maxValue" }
+-- Sub-tables: [key] = { value fields, structural fields }.
+local REP_SUB_FIELDS = {
+    paragon = { { "current", "max", "completedCycles" }, { "hasRewardPending" } },
+    renown = { { "current", "max" }, { "level" } },
+    friendship = { { "current", "max" }, { "level", "maxLevel", "reactionText" } },
+}
+
+---Classify one faction's stored row change.
+---@return string|nil nil = unchanged, "value" = progress numbers only, "structural" = anything else
+local function ClassifyRepRowChange(old, new)
+    if type(old) ~= "table" or type(new) ~= "table" then return "structural" end
+    for i = 1, #REP_STRUCTURAL_FIELDS do
+        local k = REP_STRUCTURAL_FIELDS[i]
+        if RepFieldDiff(old[k], new[k]) then return "structural" end
+    end
+    local kind = nil
+    for i = 1, #REP_VALUE_FIELDS do
+        local k = REP_VALUE_FIELDS[i]
+        local d = RepFieldDiff(old[k], new[k])
+        if d == "structural" then return d end
+        kind = kind or d
+    end
+    for subKey, fields in pairs(REP_SUB_FIELDS) do
+        local o, n = old[subKey], new[subKey]
+        if (o == nil) ~= (n == nil) then return "structural" end
+        if o and n then
+            local structFields = fields[2]
+            for i = 1, #structFields do
+                if RepFieldDiff(o[structFields[i]], n[structFields[i]]) then return "structural" end
+            end
+            local valueFields = fields[1]
+            for i = 1, #valueFields do
+                local d = RepFieldDiff(o[valueFields[i]], n[valueFields[i]])
+                if d == "structural" then return d end
+                kind = kind or d
+            end
+        end
+    end
+    return kind
+end
+
+---Header placement (factionInfo pn / pid) moved: the faction may change header.
+local function RepFactionInfoMoved(oldFi, newFi)
+    if oldFi == newFi then return false end
+    if type(oldFi) ~= "table" or type(newFi) ~= "table" then return true end
+    return not (RepFieldSame(oldFi.pn, newFi.pn) and RepFieldSame(oldFi.pid, newFi.pid))
+end
+
+local function NoteRepChange(payload, factionID, kind)
+    if not payload or not kind then return end
+    payload.changedFactionIDs[tonumber(factionID) or factionID] = true
+    if kind == "structural" then payload.structural = true end
+end
+
 -- Fire UI refresh events (with optional debounce)
 local function ScheduleUIRefresh(immediate)
     if immediate then
         -- Fire immediately (for resetrep, cache clear, etc.)
+        ReputationCache._pendingUIPayload = nil
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage(E.REPUTATION_CACHE_READY)
-            WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
+            WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED, NewRepUpdatePayload(true))
         end
         return
     end
@@ -149,8 +229,11 @@ local function ScheduleUIRefresh(immediate)
     -- Schedule new refresh (0.5 seconds after last update - for rapid rep gains)
     ReputationCache.uiRefreshTimer = C_Timer.NewTimer(0.5, function()
         if ReputationCache.pendingUIRefresh and WarbandNexus.SendMessage then
+            -- Changes accumulated by UpdateFaction over the debounce window (none recorded = full redraw).
+            local payload = ReputationCache._pendingUIPayload or NewRepUpdatePayload(true)
+            ReputationCache._pendingUIPayload = nil
             WarbandNexus:SendMessage(E.REPUTATION_CACHE_READY)
-            WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
+            WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED, payload)
             ReputationCache.pendingUIRefresh = false
         end
     end)
@@ -1800,8 +1883,12 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
     
     -- Store compact (progress-only) data in SV
     local compact = CompactFactionData(normalizedData)
+    -- UI patch payload: what this write changes for the row (2026-10-22).
+    local changeKind
+    local oldFactionInfo = db.factionInfo and (db.factionInfo[tonumber(factionID) or factionID] or db.factionInfo[factionID])
     
     if normalizedData.isAccountWide then
+        changeKind = ClassifyRepRowChange(db.accountWide[factionID], compact)
         db.accountWide[factionID] = compact
         -- Purge this faction from ALL character buckets (it's account-wide now)
         -- KEY TYPE SAFETY: check both number and string variants
@@ -1809,22 +1896,25 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
         for charKey, charFactions in pairs(db.characters) do
             if charFactions[factionID] then
                 charFactions[factionID] = nil
+                changeKind = "structural"
             end
             -- Also purge string/number variant
             if numFid then
-                if charFactions[numFid] then charFactions[numFid] = nil end
-                if charFactions[tostring(numFid)] then charFactions[tostring(numFid)] = nil end
+                if charFactions[numFid] then charFactions[numFid] = nil; changeKind = "structural" end
+                if charFactions[tostring(numFid)] then charFactions[tostring(numFid)] = nil; changeKind = "structural" end
             end
         end
     else
         if not db.characters[currentCharKey] then
             db.characters[currentCharKey] = {}
         end
+        changeKind = ClassifyRepRowChange(db.characters[currentCharKey][factionID], compact)
         db.characters[currentCharKey][factionID] = compact
         -- See UpdateAll: an account-wide row is demoted only after a second per-character read.
         local numAw = tonumber(factionID)
         local aw = db.accountWide[factionID] or (numAw and (db.accountWide[numAw] or db.accountWide[tostring(numAw)]))
         if type(aw) == "table" then
+            changeKind = "structural"
             if aw._demoteSeen then
                 db.accountWide[factionID] = nil
                 if numAw then db.accountWide[numAw] = nil; db.accountWide[tostring(numAw)] = nil end
@@ -1849,9 +1939,14 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
         }
     end
     
+    if RepFactionInfoMoved(oldFactionInfo, db.factionInfo[numFid] or db.factionInfo[factionID]) then
+        changeKind = "structural"
+    end
     self.lastUpdate = time()
     
-    -- Schedule UI refresh (debounced)
+    -- Schedule UI refresh (debounced); the payload accumulates over the debounce window.
+    self._pendingUIPayload = self._pendingUIPayload or NewRepUpdatePayload(false)
+    NoteRepChange(self._pendingUIPayload, factionID, changeKind)
     ScheduleUIRefresh()
     
     return true
@@ -1880,6 +1975,8 @@ function ReputationCache:UpdateAll(normalizedDataArray)
         for fid, row in pairs(db.characters[currentCharKey]) do previousCharFactions[fid] = row end
         wipe(db.characters[currentCharKey])
     end
+    -- WN_REPUTATION_UPDATED payload for PerformFullScan: which stored rows this scan changed (2026-10-22).
+    local payload = NewRepUpdatePayload(false)
     
     -- Ensure factionInfo table exists (stores parentFactionName once per factionID)
     db.factionInfo = db.factionInfo or {}
@@ -1894,11 +1991,16 @@ function ReputationCache:UpdateAll(normalizedDataArray)
         if data.factionID then
             local numFactionID = tonumber(data.factionID) or data.factionID  -- Normalize to number
             local compact = CompactFactionData(data)
+            local oldFactionInfo = db.factionInfo[numFactionID]
             
             if data.isAccountWide then
+                NoteRepChange(payload, numFactionID, ClassifyRepRowChange(
+                    db.accountWide[numFactionID] or db.accountWide[tostring(numFactionID)], compact))
                 db.accountWide[numFactionID] = compact
                 awCount = awCount + 1
             else
+                NoteRepChange(payload, numFactionID, ClassifyRepRowChange(
+                    previousCharFactions[numFactionID] or previousCharFactions[tostring(numFactionID)], compact))
                 db.characters[currentCharKey][numFactionID] = compact
                 charCount = charCount + 1
                 -- A faction stored account-wide that now reads per-character: demote it on the SECOND
@@ -1906,6 +2008,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
                 -- first read flags the row; the purge below then spares this character's fresh row.
                 local aw = db.accountWide[numFactionID] or db.accountWide[tostring(numFactionID)]
                 if type(aw) == "table" then
+                    NoteRepChange(payload, numFactionID, "structural")
                     if aw._demoteSeen then
                         db.accountWide[numFactionID] = nil
                         db.accountWide[tostring(numFactionID)] = nil
@@ -1927,6 +2030,9 @@ function ReputationCache:UpdateAll(normalizedDataArray)
                     pid = tonumber(data.parentFactionID) or data.parentFactionID,
                 }
             end
+            if RepFactionInfoMoved(oldFactionInfo, db.factionInfo[numFactionID]) then
+                NoteRepChange(payload, numFactionID, "structural")
+            end
         end
     end
     
@@ -1944,9 +2050,12 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     -- guild faction after leaving, or one removed in a patch, ages out instead of living forever).
     local carryNow = time()
     for fid, row in pairs(previousCharFactions) do
-        if not seenThisScan[fid] and db.characters[currentCharKey][fid] == nil
-            and type(row) == "table" and (carryNow - (tonumber(row._scanTime) or 0)) < 7 * 86400 then
-            db.characters[currentCharKey][fid] = row
+        if not seenThisScan[fid] and db.characters[currentCharKey][fid] == nil then
+            if type(row) == "table" and (carryNow - (tonumber(row._scanTime) or 0)) < 7 * 86400 then
+                db.characters[currentCharKey][fid] = row
+            else
+                NoteRepChange(payload, fid, "structural")   -- aged out: the row leaves the list
+            end
         end
     end
     if db.pendingRescanKey == currentCharKey then db.pendingRescanKey = nil end
@@ -1980,6 +2089,9 @@ function ReputationCache:UpdateAll(normalizedDataArray)
         end
     end
     
+    if purged > 0 then payload.structural = true end
+    self._lastScanPayload = payload
+
     -- Update metadata
     self.lastFullScan = time()
     self.lastUpdate = time()
@@ -2410,8 +2522,10 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                 ns._fullScanInProgress = false
                 
                 if WarbandNexus.SendMessage then
+                    local payload = self._lastScanPayload or NewRepUpdatePayload(true)
+                    self._lastScanPayload = nil
                     WarbandNexus:SendMessage(E.REPUTATION_CACHE_READY)
-                    WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED)
+                    WarbandNexus:SendMessage(Constants.EVENTS.REPUTATION_UPDATED, payload)
                 end
                 
                 -- Diff BEFORE rebuilding snapshot
@@ -2680,18 +2794,10 @@ function WarbandNexus:GetFactionByID(factionID)
     return ResolveFactionData(factionID)
 end
 
----Get all normalized reputation data (ALL characters).
----Hydrates compact SV data with on-demand API metadata.
----@return table Array of hydrated faction data with _characterKey metadata
-function WarbandNexus:GetAllReputations()
-    local db = GetDB()
-    if not db then return {} end
-
-    local cacheKey = GetAllReputationsCacheKey(db)
-    if _getAllReputationsCacheKey == cacheKey and _getAllReputationsCacheResult then
-        return _getAllReputationsCacheResult
-    end
-
+---Hydrate stored rows (ALL characters) into the GetAllReputations shape.
+---onlyFactionIDs (set) limits the output to those factions (row patch path, 2026-10-22).
+---@return table
+local function CollectHydratedReputations(db, onlyFactionIDs)
     local result = {}
     
     -- Build account-wide lookup (NORMALIZED to number keys)
@@ -2708,7 +2814,7 @@ function WarbandNexus:GetAllReputations()
     for factionID, compact in pairs(db.accountWide) do
         local numID = tonumber(factionID) or factionID
         local dedupKey = numID .. "|AW"
-        if not emittedFactionCharPairs[dedupKey] then
+        if (not onlyFactionIDs or onlyFactionIDs[numID]) and not emittedFactionCharPairs[dedupKey] then
             emittedFactionCharPairs[dedupKey] = true
                     local entry = HydrateFactionData(numID, compact, true)
             entry.factionID = numID  -- Ensure normalized
@@ -2747,7 +2853,7 @@ function WarbandNexus:GetAllReputations()
         for factionID, compact in pairs(charFactions) do
             local numID = tonumber(factionID) or factionID
             -- DEDUP: Skip if in accountWide OR already emitted for this character
-            if not accountWideFactionIDs[numID] then
+            if not accountWideFactionIDs[numID] and (not onlyFactionIDs or onlyFactionIDs[numID]) then
                 local dedupKey = numID .. "|" .. charKey
                 if not emittedFactionCharPairs[dedupKey] then
                     emittedFactionCharPairs[dedupKey] = true
@@ -2762,9 +2868,34 @@ function WarbandNexus:GetAllReputations()
         end
     end
     
+    return result
+end
+
+---Get all normalized reputation data (ALL characters).
+---Hydrates compact SV data with on-demand API metadata.
+---@return table Array of hydrated faction data with _characterKey metadata
+function WarbandNexus:GetAllReputations()
+    local db = GetDB()
+    if not db then return {} end
+
+    local cacheKey = GetAllReputationsCacheKey(db)
+    if _getAllReputationsCacheKey == cacheKey and _getAllReputationsCacheResult then
+        return _getAllReputationsCacheResult
+    end
+
+    local result = CollectHydratedReputations(db, nil)
     _getAllReputationsCacheKey = cacheKey
     _getAllReputationsCacheResult = result
     return result
+end
+
+---GetAllReputations rows for just these factions (uncached; WN_REPUTATION_UPDATED row patch, 2026-10-22).
+---@param factionIDs table [factionID] = true
+---@return table
+function WarbandNexus:GetReputationsForFactions(factionIDs)
+    local db = GetDB()
+    if not db or type(factionIDs) ~= "table" then return {} end
+    return CollectHydratedReputations(db, factionIDs)
 end
 
 ---Get reputation headers (for hierarchical display)
