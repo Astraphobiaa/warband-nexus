@@ -2051,6 +2051,25 @@ FlushPendingCompressWrites = function(syncAll)
             count = count + 1
         end
         wipe(sessionDirtyBuckets)
+        -- Buckets an earlier session left uncompressed (any character; see the skip in
+        -- SaveItemsCompressedImmediate) are packed here, behind the loading screen, once.
+        local storage = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.itemStorage
+        if type(storage) == "table" then
+            for _, buckets in pairs(storage) do
+                if type(buckets) == "table" and buckets.compressed == nil then
+                    for _, bucket in pairs(buckets) do
+                        if type(bucket) == "table" and bucket.compressed == false and type(bucket.data) == "table" then
+                            local packed = CompressItemData(bucket.data)
+                            if packed then
+                                bucket.data = packed
+                                bucket.compressed = true
+                                count = count + 1
+                            end
+                        end
+                    end
+                end
+            end
+        end
         local BP = ns.ItemsCacheBagPerf
         if BP and BP.NoteCompressFlush and count > 0 then
             BP.NoteCompressFlush(debugprofilestop() - t0, count, true)
@@ -2114,7 +2133,9 @@ function WarbandNexus:SaveItemsCompressedImmediate(charKey, dataType, items)
     local newSig = ComputeBucketContentSig(items)
     local saveKey = CompressSaveKey(charKey, dataType)
     local existing = self.db.global.itemStorage[charKey][dataType]
-    if existing and existing.contentSig and existing.contentSig == newSig then
+    -- Same content is a no-op only when it is already compressed: the fast path writes the same
+    -- signature uncompressed, and skipping here left those buckets uncompressed for good (2026-10-22).
+    if existing and existing.compressed == true and existing.contentSig and existing.contentSig == newSig then
         TouchDecompressedItemCache(charKey, dataType, items, existing.lastUpdate or time())
         TouchDecompressedSessionGen(charKey, dataType)
         ClearSessionDirtyKey(saveKey)
