@@ -70,7 +70,7 @@ end
 -- Plans: teardown keeps pooled frames in place and discards the rest; the daily-tasks (Weekly
 -- Progress) view builds its chrome through SectionPool ("pln:" keys) with a quest-row pool.
 do
-    local src = ReadFile("Modules/UI/PlansUI.lua")
+    local src = ReadFile("Modules/UI/PlansUI.lua") .. ReadFile("Modules/UI/PlansUI_WeeklyProgress.lua")
     check(src:find("ns.UI_SectionPool.Discard(child)", 1, true) ~= nil, "Plans teardown discards through SectionPool")
     check(src:find('"pln:wrap:"', 1, true) ~= nil and src:find("SP.BeginPass(parent)", 1, true) ~= nil,
         "Plans daily-tasks view pools its section chrome")

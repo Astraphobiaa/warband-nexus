@@ -692,7 +692,7 @@ do
         "a 'not earned' achievement meta result expires after a few seconds")
     check(src("Modules/Utilities.lua"):find("local PET_NAME_RETRY_SEC = 1", 1, true) ~= nil,
         "a failed caged-pet name lookup is retried within a second")
-    check(src("Modules/UI/PlansUI.lua"):find("SetVertexColor(0.27, 1, 0.27, 1)", 1, true) ~= nil,
+    check(src("Modules/UI/PlansUI_WeeklyProgress.lua"):find("SetVertexColor(0.27, 1, 0.27, 1)", 1, true) ~= nil,
         "the pooled completed-quest status icon sets its alpha explicitly")
 end
 

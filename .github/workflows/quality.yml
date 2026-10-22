@@ -129,6 +129,7 @@ jobs:
             lua5.1 .github/scripts/test_reputation_row_patch.lua
             lua5.1 .github/scripts/test_trycounter_init_split.lua
             lua5.1 .github/scripts/test_split_notificationmanager.lua
+            lua5.1 .github/scripts/test_split_plansui.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

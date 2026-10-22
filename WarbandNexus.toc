@@ -233,6 +233,8 @@ Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI_SourceParser.lua
 Modules\UI\PlansUI_Browse.lua
 Modules\UI\PlansUI_WeeklyPlanner.lua
+Modules\UI\PlansUI_WeeklyProgress.lua
+Modules\UI\PlansUI_Dialogs.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua

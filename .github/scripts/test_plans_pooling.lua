@@ -227,6 +227,8 @@ end
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/UI/SectionPool.lua")
 LoadFile("Modules/UI/PlansUI_Browse.lua")
+LoadFile("Modules/UI/PlansUI_WeeklyProgress.lua")
+LoadFile("Modules/UI/PlansUI_Dialogs.lua")
 LoadFile("Modules/UI/PlansUI.lua")
 
 -- ---------- Weekly Progress driver ----------
