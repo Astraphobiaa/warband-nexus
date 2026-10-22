@@ -143,6 +143,7 @@ jobs:
             lua5.1 .github/scripts/test_core_migrations_maintenance.lua
             lua5.1 .github/scripts/test_collection_event_flow.lua
             lua5.1 .github/scripts/test_gear_scan_and_storage_find.lua
+            lua5.1 .github/scripts/test_reputation_incremental_chat.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

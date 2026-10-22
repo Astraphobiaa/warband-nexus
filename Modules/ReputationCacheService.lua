@@ -151,6 +151,8 @@ end
 -- Compact row fields (CompactFactionData) whose change can move the row or its section.
 local REP_STRUCTURAL_FIELDS = { "reaction", "hasParagon", "_scanIndex", "_name", "_type",
     "_isAccountWide", "_isHeader", "_isHeaderWithRep" }
+-- Flags CompactFactionData stores only when true (2026-10-22): nil and false read the same.
+local REP_FLAG_FIELDS = { hasParagon = true, _isAccountWide = true, _isHeader = true, _isHeaderWithRep = true }
 local REP_VALUE_FIELDS = { "currentValue", "maxValue" }
 -- Sub-tables: [key] = { value fields, structural fields }.
 local REP_SUB_FIELDS = {
@@ -165,7 +167,12 @@ local function ClassifyRepRowChange(old, new)
     if type(old) ~= "table" or type(new) ~= "table" then return "structural" end
     for i = 1, #REP_STRUCTURAL_FIELDS do
         local k = REP_STRUCTURAL_FIELDS[i]
-        if RepFieldDiff(old[k], new[k]) then return "structural" end
+        local a, b = old[k], new[k]
+        if REP_FLAG_FIELDS[k] then
+            if a == nil then a = false end
+            if b == nil then b = false end
+        end
+        if RepFieldDiff(a, b) then return "structural" end
     end
     local kind = nil
     for i = 1, #REP_VALUE_FIELDS do
@@ -420,14 +427,16 @@ local function CompactFactionData(normalized)
         reaction = normalized.reaction,
         _scanIndex = normalized._scanIndex,
         _scanTime = normalized._scanTime or time(),
-        hasParagon = normalized.hasParagon or false,
+        -- Flags are stored only when true (2026-10-22): every reader treats nil as false, and the
+        -- constant false values were ~4 keys on each of hundreds of per-character rows.
+        hasParagon = normalized.hasParagon or nil,
         
         -- Essential metadata (persisted to avoid API dependency at render time)
         _name = normalized.name,
         _type = normalized.type,
-        _isAccountWide = normalized.isAccountWide or false,
-        _isHeader = normalized.isHeader or false,
-        _isHeaderWithRep = normalized.isHeaderWithRep or false,
+        _isAccountWide = normalized.isAccountWide or nil,
+        _isHeader = normalized.isHeader or nil,
+        _isHeaderWithRep = normalized.isHeaderWithRep or nil,
     }
     
     -- Paragon progress (character-specific, API only for current char)
@@ -892,6 +901,20 @@ function ReputationCache:_ProcessSnapshotFaction(index, targetSnapshot, targetNa
         targetNameToID[safeName] = fid
     end
     
+    self:_FillSnapshotEntry(fid, data, targetSnapshot)
+end
+
+---Re-read one faction's snapshot entry by ID (chat-attributed refresh, 2026-10-22). The name map is
+---left alone: GetFactionDataByID names can differ from the index walk's (guild faction).
+function ReputationCache:_RefreshSnapshotFaction(factionID)
+    if not C_Reputation or not C_Reputation.GetFactionDataByID then return end
+    local okData, data = pcall(C_Reputation.GetFactionDataByID, factionID)
+    if not okData or not data then return end
+    self:_FillSnapshotEntry(factionID, data, self._snapshot)
+end
+
+---Snapshot entry for one faction from its FactionData (shared by the index walk and the by-ID refresh).
+function ReputationCache:_FillSnapshotEntry(fid, data, targetSnapshot)
     targetSnapshot[fid] = {
         barValue = data.currentStanding or 0,
         barMin = data.currentReactionThreshold or 0,
@@ -967,7 +990,8 @@ end
 ---Cost: ~187 GetFactionDataByID calls, each is a C-side table lookup → <1ms total.
 ---PERF: Debounced — skips if another diff ran within the last 100ms (prevents duplicate
 ---      processing when UPDATE_FACTION and CHAT_MSG_COMBAT_FACTION_CHANGE both fire).
-function ReputationCache:PerformSnapshotDiff()
+---@param onlyFactionIDs table|nil [factionID] = true: diff just these (chat-attributed refresh, 2026-10-22)
+function ReputationCache:PerformSnapshotDiff(onlyFactionIDs)
     local now = GetTime()
     if self._lastDiffTime and (now - self._lastDiffTime) < 0.1 then
         DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotDiff SKIPPED (debounce)")
@@ -982,7 +1006,7 @@ function ReputationCache:PerformSnapshotDiff()
     local snapshot = self._snapshot
     
     for factionID, old in pairs(snapshot) do
-        local data = C_Reputation.GetFactionDataByID(factionID)
+        local data = (not onlyFactionIDs or onlyFactionIDs[factionID]) and C_Reputation.GetFactionDataByID(factionID) or nil
         if data then
             local newBarValue = data.currentStanding or 0
             local newReaction = data.reaction or 0
@@ -1559,7 +1583,19 @@ function ReputationCache:RegisterEventListeners()
     ---values), so space them: at most one per CHAT_FULLSCAN_MIN_INTERVAL. Kills a second apart now
     ---share one trailing scan instead of each paying a ~200-faction rebuild + UI redraw.
     local CHAT_FULLSCAN_MIN_INTERVAL = 1.5
-    local function ScheduleFullScanForChat(fromRegen)
+    local function ScheduleFullScanForChat(fromRegen, factionID)
+        -- Attribution (2026-10-22): a source that names its faction lets the timer refresh just
+        -- that row (PerformChatScan); one that cannot (unparsed line, unknown name, loot seed)
+        -- forces the full scan. Accumulates until the timer actually runs (combat deferral too).
+        if not fromRegen then
+            if factionID then
+                local ids = ReputationCache._chatScanFactionIDs or {}
+                ids[factionID] = true
+                ReputationCache._chatScanFactionIDs = ids
+            else
+                ReputationCache._chatScanNeedsFull = true
+            end
+        end
         -- Combat: defer like UPDATE_FACTION below — one bypass scan after PLAYER_REGEN_ENABLED;
         -- queued notifications wait for it (2026-10-22). fromRegen skips this check because
         -- lockdown can still read true while PLAYER_REGEN_ENABLED is dispatched.
@@ -1594,7 +1630,7 @@ function ReputationCache:RegisterEventListeners()
                 return
             end
             ReputationCache._lastChatFullScanAt = GetTime()
-            ReputationCache:PerformFullScan(true)  -- bypass throttle: pending notifications need processing
+            ReputationCache:PerformChatScan()  -- attributed rows only, else FullScan(true) (bypass throttle)
         end)
     end
     
@@ -1645,8 +1681,12 @@ function ReputationCache:RegisterEventListeners()
                 end)
             end
             
-            -- Schedule FullScan → DB update → chat notification processing
-            ScheduleFullScanForChat()
+            -- Schedule FullScan → DB update → chat notification processing. The parsed name is
+            -- plain text here (NormalizeReputationMessage drops secrets); a map miss = full scan.
+            local alias = DELVE_COMPANION_ALIASES[factionName]
+            local attributedID = ReputationCache._nameToID[factionName]
+                or (alias and ReputationCache._nameToID[alias]) or nil
+            ScheduleFullScanForChat(nil, attributedID)
             return
         end
         
@@ -1719,7 +1759,9 @@ function ReputationCache:RegisterEventListeners()
             DebugPrint("|cff9370DB[ReputationCache]|r [Renown] Queued level-up: " .. factionName .. " → level " .. newRenownLevel)
             
             -- Schedule FullScan → DB update → chat notification processing
-            ScheduleFullScanForChat()
+            local renownID = nil
+            if not (issecretvalue and issecretvalue(majorFactionID)) then renownID = tonumber(majorFactionID) end
+            ScheduleFullScanForChat(nil, renownID)
             return
         end
 
@@ -1943,6 +1985,8 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
         changeKind = "structural"
     end
     self.lastUpdate = time()
+    -- GetAllReputations cache key: lastUpdate has 1 s resolution (2026-10-22).
+    self._writeGen = (self._writeGen or 0) + 1
     
     -- Schedule UI refresh (debounced); the payload accumulates over the debounce window.
     self._pendingUIPayload = self._pendingUIPayload or NewRepUpdatePayload(false)
@@ -2091,6 +2135,8 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     
     if purged > 0 then payload.structural = true end
     self._lastScanPayload = payload
+    self._sessionScanDone = true   -- PerformIncrementalUpdate trusts _scanIndex / header flags after this
+    self._writeGen = (self._writeGen or 0) + 1
 
     -- Update metadata
     self.lastFullScan = time()
@@ -2556,6 +2602,78 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     end)
 end
 
+---Chat-attributed refresh (2026-10-22): re-read only the factions a rep chat line / renown event
+---named and write them through UpdateFaction, instead of a ~250-faction FullScan + snapshot rebuild
+---per chat line. Writes the same row the full path writes for that faction. Returns false with
+---nothing written when any faction cannot be refreshed that way (new faction, bucket flip, read
+---failure, a queued notification outside the set); the caller then runs the FullScan.
+---@param factionIDs table [factionID] = true
+---@return boolean handled
+function ReputationCache:PerformIncrementalUpdate(factionIDs)
+    if not Scanner or not Processor or not self._sessionScanDone or self.isScanning then return false end
+    if type(factionIDs) ~= "table" or not next(factionIDs) then return false end
+    local db = GetDB()
+    if not db then return false end
+    -- Every queued notification must be covered, or it would wait for an unrelated later scan.
+    for _, entry in pairs(self._pendingChatNotifications) do
+        if not (entry.factionID and factionIDs[entry.factionID]) then return false end
+    end
+    local charKey = CurrentReputationSubsidiaryKey()
+    local charRows = charKey and db.characters[charKey]
+    local updateIDs, updates = {}, {}
+    for factionID in pairs(factionIDs) do
+        local fid = tonumber(factionID)
+        if not fid or fid <= 0 then return false end
+        local strKey = tostring(fid)
+        -- String-keyed leftovers: the full path normalizes them.
+        if db.accountWide[strKey] or (charRows and charRows[strKey]) then return false end
+        local stored = db.accountWide[fid]
+        local storedAccountWide = stored ~= nil
+        if not storedAccountWide then stored = charRows and charRows[fid] end
+        -- Not stored yet (new faction) or flagged for demotion: list membership may move.
+        if type(stored) ~= "table" or stored._demoteSeen then return false end
+        local raw = Scanner:FetchFaction(fid)
+        if not raw then return false end
+        -- Scan order and header flags come from the index walk on the full path: keep the last walk's.
+        raw._scanIndex = stored._scanIndex
+        raw.isHeader = stored._isHeader == true
+        raw.isHeaderWithRep = stored._isHeaderWithRep == true
+        -- The index walk can only add account-wide; a per-character row now reading account-wide moves.
+        if storedAccountWide then raw.isAccountWide = true end
+        if (raw.isAccountWide == true) ~= storedAccountWide then return false end
+        local ok, normalized = pcall(Processor.Process, Processor, raw)
+        if not ok or not normalized then return false end
+        updateIDs[#updateIDs + 1] = fid
+        updates[#updates + 1] = normalized
+    end
+
+    for i = 1, #updates do
+        self:UpdateFaction(updateIDs[i], updates[i])
+    end
+    -- Snapshot: diff (keeps the Valeera fallback) and re-read just these factions.
+    if self._snapshotReady then
+        self:PerformSnapshotDiff(factionIDs)
+        for factionID in pairs(factionIDs) do
+            self:_RefreshSnapshotFaction(factionID)
+        end
+    end
+    self:ProcessPendingChatNotifications()
+    return true
+end
+
+---Chat-scan timer body: the attributed refresh when every source named its faction, else FullScan.
+function ReputationCache:PerformChatScan()
+    local ids = self._chatScanFactionIDs
+    local needsFull = self._chatScanNeedsFull
+    self._chatScanFactionIDs = nil
+    self._chatScanNeedsFull = nil
+    if not needsFull and ids and self:PerformIncrementalUpdate(ids) then
+        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] Chat scan: attributed rows only")
+        return
+    end
+    self:PerformFullScan(true)
+end
+
 -- PENDING CHAT NOTIFICATIONS (DB-first architecture)
 -- Reads PROCESSED DB data (from ReputationProcessor) and fires WN_REPUTATION_GAINED.
 -- Zero type-specific logic — the Processor already handled renown/friendship/paragon/classic.
@@ -2781,6 +2899,7 @@ local function GetAllReputationsCacheKey(db)
         tostring(db.version or 0),
         tostring(ReputationCache.lastFullScan or 0),
         tostring(ReputationCache.lastUpdate or 0),
+        tostring(ReputationCache._writeGen or 0),
         tostring(nMeta),
     }, "\031")
 end
