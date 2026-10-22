@@ -42,7 +42,7 @@ function Frame.new(parent)
 end
 function Frame:GetParent() return self._parent end
 function Frame:SetParent(p) self._parent = p end
-function Frame:IsVisible() return true end
+function Frame:IsVisible() return not self._hidden end
 function Frame:IsShown() return self._shown end
 function Frame:Show() self._shown = true end
 function Frame:Hide() self._shown = false end
@@ -126,6 +126,22 @@ do
     populates = 0
     mainFrame._virtualScrollUpdate()                 -- direct (non-scroll) updater call
     assert_eq(populates > 0, true, "a direct updater call outside scrolling repopulates")
+end
+
+print("Phase 2b: A list swapped while the container was hidden repopulates on the next scroll")
+do
+    mainFrame._virtualScrollUpdate()                 -- settle
+    local swapped = {}
+    for i = 1, #flatList do
+        swapped[i] = { type = "row", yOffset = flatList[i].yOffset, height = 30, data = { id = 500 + i },
+            rowReuseSig = flatList[i].rowReuseSig }  -- same sigs: the reuse path would match
+    end
+    container._hidden = true
+    VLM.RefreshVirtualListFlatList(mainFrame, container, swapped)
+    container._hidden = nil
+    populates = 0
+    scrollPaint()
+    assert_eq(populates > 0, true, "rows repopulate for the swapped list")
 end
 
 print("Phase 3: The main shell marks scroll paints and always clears the mark (static)")

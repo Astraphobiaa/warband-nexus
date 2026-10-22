@@ -1442,9 +1442,20 @@ function WarbandNexus:OnDailyQuestUpdate()
         local currentKey = ns.Utilities:GetCharacterKey()
         local dailyList = GetDailyQuestPlansForCharKey(currentKey)
         if not dailyList or #dailyList == 0 then
-            -- No daily-quest plan on this character: nothing for CheckPlansForCompletion (the only
-            -- listener) to learn from a log update. Turn-ins still send via QUEST_TURNED_IN.
-            -- QUEST_LOG_UPDATE fires about once a second while questing (2026-10-22).
+            -- No daily-quest plan on this character. CheckPlansForCompletion (the only listener)
+            -- still doubles as a fallback for other plan types, so keep it for incomplete To-Do
+            -- plans, but at most every 5s instead of on every ~1s QUEST_LOG_UPDATE wave; with no
+            -- incomplete plan there is nothing to check. Turn-ins still send via QUEST_TURNED_IN.
+            -- (2026-10-22)
+            local inc = self._incompleteTodoPlansList
+            local now = GetTime()
+            if not inc or #inc == 0 or (now - (self._questLogPlanCheckAt or 0)) < 5 then
+                return
+            end
+            self._questLogPlanCheckAt = now
+            if self.SendMessage then
+                self:SendMessage(E.QUEST_PROGRESS_UPDATED, { reason = "QUEST_LOG_UPDATE" })
+            end
             return
         end
         for i = 1, #dailyList do

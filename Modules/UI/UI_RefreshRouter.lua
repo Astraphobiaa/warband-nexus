@@ -200,12 +200,18 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     
     -- REMOVED: WARBAND_CURRENCIES_UPDATED — no SendMessage exists for this string; dead handler.
 
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_UPDATED, function(_, currencyID)
         if HiddenOrMissing() then return end
-        -- Same routing as refreshCurrency below (2026-10-22): every currency drain (any loot / crest
-        -- tick) rebuilt the whole Gear tab and the Characters tab without the 800ms cooldown.
+        -- 2026-10-22: every currency drain (any loot tick) rebuilt the whole Gear tab and the
+        -- Characters tab without the 800ms cooldown. A crest or a batch (nil) still repaints the Gear
+        -- tab fully: its bottom crest / gold panel is only drawn by a full paint. Any other single
+        -- currency only needs the in-place upgrade economy refresh.
         if f.currentTab == "gear" then
-            if WarbandNexus.TryRefreshGearUpgradeEconomy and WarbandNexus:TryRefreshGearUpgradeEconomy() then
+            local GT = ns.GearUpgradeTracks
+            local crestSet = GT and GT.UPGRADE_CURRENCY_ID_SET_EARLY
+            local isCrestOrBatch = type(currencyID) ~= "number" or not crestSet or crestSet[currencyID]
+            if not isCrestOrBatch and WarbandNexus.TryRefreshGearUpgradeEconomy
+                and WarbandNexus:TryRefreshGearUpgradeEconomy() then
                 return
             end
             SchedulePopulateContent(true)

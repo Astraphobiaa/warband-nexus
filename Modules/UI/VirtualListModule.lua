@@ -406,6 +406,7 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
     if not mainFrame or not mainFrame.scroll or not container or not flatList then return 0 end
     container._vlm_flatList = flatList
     container._vlm_headerSig = FlatListHeaderSignature(flatList)
+    container._vlm_contentGen = (container._vlm_contentGen or 0) + 1
     opts = opts or {}
     local createRowFn = opts.createRowFn
     local populateRowFn = opts.populateRowFn
@@ -625,6 +626,13 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
     end
 
     local function UpdateVisible()
+        -- Content generation (see the row reuse below): bumped by every paint that is not a pure
+        -- scroll, before the hidden-container early return, so a list swapped while hidden can
+        -- never be served from rows populated for the old one.
+        local scrollPaint = mainFrame and mainFrame._vlmScrollPaint == true
+        if not scrollPaint then
+            container._vlm_contentGen = (container._vlm_contentGen or 0) + 1
+        end
         if not container:IsVisible() then return end
         local resizing = mainFrame and ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mainFrame)
         local flEarly = container._vlm_flatList or flatList
@@ -672,14 +680,10 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
 
         local incrementalReuse = container._vlm_incrementalRowReuse == true
         local oldVis = container._virtualVisibleFrames
-        -- Content generation: every paint that is not a pure scroll (setup, refresh, in-place refill
-        -- + repaint, resize) starts a new one, so rows always repopulate after a data change. On a
-        -- scroll paint a reused row already populated for the same index in this generation shows
+        -- Every paint that is not a pure scroll (setup, refresh, in-place refill + repaint, resize)
+        -- started a new content generation above, so rows always repopulate after a data change. On
+        -- a scroll paint a reused row already populated for the same index in this generation shows
         -- the same data and is only re-anchored (2026-10-22: every wheel step repopulated all rows).
-        local scrollPaint = mainFrame and mainFrame._vlmScrollPaint == true
-        if not scrollPaint then
-            container._vlm_contentGen = (container._vlm_contentGen or 0) + 1
-        end
         local contentGen = container._vlm_contentGen or 0
 
         if incrementalReuse then
@@ -940,6 +944,7 @@ local function RefreshVirtualListFlatList(mainFrame, container, flatList)
         return nil, true
     end
     container._vlm_flatList = flatList
+    container._vlm_contentGen = (container._vlm_contentGen or 0) + 1
     local totalHeight = 1
     if #flatList > 0 then
         local last = flatList[#flatList]

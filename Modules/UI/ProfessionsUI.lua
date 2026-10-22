@@ -2092,11 +2092,10 @@ function PUI.DebounceProfessionRowGradientRefresh(mf)
     if not mf or mf.currentTab ~= "professions" then return end
     local sc = mf.scrollChild
     if not sc then return end
-    if sc._wnProfGradScrollTimer then
-        sc._wnProfGradScrollTimer:Cancel()
-    end
-    -- NewTimer: C_Timer.After returns no handle, so the Cancel above never ran and every scroll
-    -- event queued its own full row relayout (2026-10-22).
+    -- 50ms throttle: one pending relayout at a time. C_Timer.After returned no handle, so the old
+    -- cancel never ran and every scroll event queued its own full row relayout (2026-10-22); a
+    -- cancel-and-restart debounce would instead leave rows unlaid out during a long drag.
+    if sc._wnProfGradScrollTimer then return end
     if C_Timer and C_Timer.NewTimer then
         sc._wnProfGradScrollTimer = C_Timer.NewTimer(0.05, function()
             sc._wnProfGradScrollTimer = nil

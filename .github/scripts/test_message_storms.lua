@@ -148,11 +148,13 @@ end
 print("Phase 4: routing decisions (static)")
 do
     local router = ReadFile("Modules/UI/UI_RefreshRouter.lua")
-    local cur = router:match("EVENTS%.CURRENCY_UPDATED, function%(%)(.-)\n    end%)")
+    local cur = router:match("EVENTS%.CURRENCY_UPDATED, function%(_, currencyID%)(.-)\n    end%)")
     assert_eq(cur ~= nil, true, "router CURRENCY_UPDATED handler found")
     local gear = cur and cur:match('currentTab == "gear" then(.-)elseif')
     assert_eq(gear and gear:find("TryRefreshGearUpgradeEconomy", 1, true) ~= nil, true,
         "A1: gear tab tries the narrow economy refresh first")
+    assert_eq(gear and gear:find("isCrestOrBatch", 1, true) ~= nil and gear:find("not isCrestOrBatch and", 1, true) ~= nil, true,
+        "A1: a crest or batch update still repaints the Gear tab fully (bottom crest / gold panel)")
     local chars = cur and cur:match('currentTab == "chars" then(.-)elseif')
     assert_eq(chars and chars:find("SchedulePopulateContent%(%)") ~= nil and chars:find("SchedulePopulateContent%(true%)") == nil, true,
         "A2: characters tab keeps the populate cooldown")
@@ -162,7 +164,10 @@ do
     local gateAt = body and body:find("if not dailyList or #dailyList == 0 then", 1, true)
     local sendAt = body and body:find('reason = "QUEST_LOG_UPDATE"', 1, true)
     assert_eq(gateAt ~= nil and sendAt ~= nil and gateAt < sendAt, true,
-        "B1: QUEST_LOG_UPDATE sends plan checks only with a daily-quest plan")
+        "B1: QUEST_LOG_UPDATE without a daily-quest plan takes the gated path")
+    local gate = body and body:match("if not dailyList or #dailyList == 0 then(.-)\n        end\n        for i")
+    assert_eq(gate and gate:find("_incompleteTodoPlansList", 1, true) ~= nil and gate:find("< 5", 1, true) ~= nil, true,
+        "B1: that path keeps a 5s-throttled fallback check for incomplete plans")
 
     local gs = ReadFile("Modules/GearService.lua")
     local l = gs:match("EVENTS%.CURRENCY_UPDATED, function%(_, currencyID%)(.-)\nend%)")
