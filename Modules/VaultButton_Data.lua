@@ -652,6 +652,9 @@ function M.FormatVaultSlotPart(slot, category, showIlvl)
 end
 
 function M.GetVaultColumnNextProgress(slots)
+    -- Were env fields: the previous call's (another character's) threshold leaked into this one
+    -- and could hide this character's next slot (2026-10-22).
+    local nextProg, nextThresh
     for i = 1, 3 do
         local slot = slots[i]
         if slot and not slot.complete then

@@ -538,7 +538,7 @@ function M.AppendNotificationsPanel(ctx)
     
     -- ---- Notification position ----
     notifGridYOffset = notifGridYOffset - GetHeaderToolbarGap()
-    notifGridYOffset, _ = AppendSettingsSubSectionHeader(notifSection.content,
+    notifGridYOffset = AppendSettingsSubSectionHeader(notifSection.content,
         (ns.L and ns.L["SETTINGS_SECTION_NOTIF_POSITION"]) or "Popup position",
         notifInnerW, notifGridYOffset, { skipGapAfter = true })
     notifGridYOffset = notifGridYOffset - math.floor(GetHeaderToolbarGap() * 0.5 + 0.5)

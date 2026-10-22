@@ -3273,6 +3273,13 @@ do
     c.profEquipResolveCache = profEquipResolveCache
 end
 
+--- DrawTab runs in a setfenv environment: a bare `cachedRowWidth = x` there wrote into that env
+--- table, never this file's local, so the first paint's column scale ignored the body width until a
+--- viewport relayout (2026-10-22). DrawTab sets it through here.
+function ProfUI.SetCachedRowWidth(w)
+    cachedRowWidth = w
+end
+
 function ProfUI.AbortChunkedRowPaint()
     ProfUI._drawGen = (ProfUI._drawGen or 0) + 1
 end

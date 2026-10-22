@@ -349,6 +349,7 @@ function M.ResolveVaultTooltipFlags(charKey, entry)
 end
 
 function M.AppendVaultStatusLine(lines, isReady, isPending, slotsEarned)
+    local right  -- was missing: wrote a shared env field (2026-10-22)
     if isReady then
         right = "|cff44ff44" .. EAL("EA_TOOLTIP_SUMMARY_CHAR_READY", "Ready to claim") .. "|r"
     elseif slotsEarned and slotsEarned > 0 then
@@ -453,6 +454,7 @@ function M.AppendCharacterVaultTooltipLines(lines, charKey, entry)
 
     if ShowEasyAccessDisplay("tooltipGildedStash") and gildedStash then
         local maxClaims = gildedStash.max or 4
+        local right  -- was missing: wrote a shared env field (2026-10-22)
         if gildedStash.unknown then
             right = EAL("EA_TOOLTIP_STASH_UNKNOWN", "?/%d", maxClaims)
         else

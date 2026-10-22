@@ -68,6 +68,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
         ApplyVisuals(badge, {diffInfo.color[1] * 0.5, diffInfo.color[2] * 0.5, diffInfo.color[3] * 0.5, 1},
             {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
     end
+    local badgeFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         badgeFS = FontManager:CreateFontString(badge, "small", "OVERLAY")
     else
@@ -77,6 +78,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     badgeFS:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. diffInfo.short .. "|r")
 
     -- Instance name
+    local nameFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         nameFS = FontManager:CreateFontString(header, "body", "OVERLAY")
     else
@@ -106,6 +108,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     UpdateChevron()
     header._savedUpdateChevron = UpdateChevron
 
+    local progressFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         progressFS = FontManager:CreateFontString(header, "small", "OVERLAY")
     else
@@ -120,6 +123,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
         or ((ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffd4af37")
     progressFS:SetText(string.format("%s%2d/%-2d|r", progColor, cleared, total))
 
+    local countLabelFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         countLabelFS = FontManager:CreateFontString(header, "small", "OVERLAY")
     else
@@ -132,6 +136,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     countLabelFS:SetPoint("RIGHT", progressFS, "LEFT", -10, 0)
     countLabelFS:SetText(#group.characters == 1 and "character" or "characters")
 
+    local countNumFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         countNumFS = FontManager:CreateFontString(header, "small", "OVERLAY")
     else
@@ -426,6 +431,7 @@ local RefreshSavedInstances = function()
 
     if #filtered == 0 then
         local FontManager = ns.FontManager
+        local msg  -- was missing: wrote a shared env field (2026-10-22)
         if FontManager and FontManager.CreateFontString then
             msg = FontManager:CreateFontString(content, "body", "OVERLAY")
         else

@@ -347,6 +347,7 @@ function M.BuildMenu()
     end
 
     local FontManager = ns.FontManager
+    local titleFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         titleFS = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else

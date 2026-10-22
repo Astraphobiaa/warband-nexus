@@ -274,6 +274,7 @@ function M.BuildSavedInstancesFrame()
     titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Bell_01")
 
     local FontManager = ns.FontManager
+    local title  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else
@@ -342,6 +343,7 @@ function M.BuildSavedInstancesFrame()
         if ApplyVisuals then
             ApplyVisuals(b, {di.color[1] * 0.35, di.color[2] * 0.35, di.color[3] * 0.35, 1}, {di.color[1], di.color[2], di.color[3], 0.85})
         end
+        local lbl  -- was missing: wrote a shared env field (2026-10-22)
         if FontManager and FontManager.CreateFontString then
             lbl = FontManager:CreateFontString(b, "small", "OVERLAY")
         else
@@ -369,6 +371,7 @@ function M.BuildSavedInstancesFrame()
     end
 
     -- Char count summary on the right of filter row (matches addon side margin)
+    local summary  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         summary = FontManager:CreateFontString(filterRow, "small", "OVERLAY")
     else
@@ -499,6 +502,7 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
     local dotsW = math.max(40, dotsRight - dotsX)
 
     -- Character name
+    local nameFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         nameFS = FontManager:CreateFontString(row, "body", "OVERLAY")
     else
@@ -537,6 +541,7 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
     end
 
     -- Progress text
+    local progFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         progFS = FontManager:CreateFontString(row, "small", "OVERLAY")
     else
@@ -550,6 +555,7 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
     progFS:SetText(string.format("%s%2d/%-2d|r", progColor, k, t))
 
     -- Reset countdown
+    local resetFS  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         resetFS = FontManager:CreateFontString(row, "small", "OVERLAY")
     else

@@ -19,6 +19,7 @@ end
 setfenv(1, VB__setfenv())
 -- Main button
 function M.CreateMenuCheckbox(parent, labelText, y, getValue, setValue, tooltipText)
+    local cb  -- was missing: wrote a shared env field (2026-10-22)
     if ns.UI_CreateThemedCheckbox then
         cb = ns.UI_CreateThemedCheckbox(parent, getValue() == true)
     else
@@ -29,6 +30,7 @@ function M.CreateMenuCheckbox(parent, labelText, y, getValue, setValue, tooltipT
     cb:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
 
     local FontManager = ns.FontManager
+    local label  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString then
         label = FontManager:CreateFontString(parent, "body", "OVERLAY")
     else
@@ -114,6 +116,7 @@ function M.BuildOptionsFrame()
     if not titleIcon:GetTexture() then titleIcon:SetTexture(ICON_FALLBACK) end
 
     local FontManager = ns.FontManager
+    local title  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else

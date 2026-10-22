@@ -132,7 +132,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
         or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
         or math.max(200, ((mf and mf.scroll and mf.scroll:GetWidth()) or 600) - contentSide * 2)
-    cachedRowWidth = stackWidth
+    ProfUI.SetCachedRowWidth(stackWidth)
     parent._wnProfBodyWidth = stackWidth
     parent._wnProfContentSide = contentSide
 

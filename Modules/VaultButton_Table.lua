@@ -54,6 +54,8 @@ local HideTable, RefreshTable
 
 local RebuildTableFrame = function()
     local wasShown = S.tableFrame and S.tableFrame:IsShown()
+    -- Were env fields: a rebuild while hidden re-saved the position captured by an earlier rebuild.
+    local savedPoint, _, savedRelativePoint, savedX, savedY
     if wasShown and S.tableFrame then
         savedPoint, _, savedRelativePoint, savedX, savedY = S.tableFrame:GetPoint()
     end
@@ -244,6 +246,7 @@ function M.BuildTableFrame()
     if not titleIcon:GetTexture() then titleIcon:SetTexture(ICON_FALLBACK) end
 
     local FontManager = ns.FontManager
+    local title  -- was missing: wrote a shared env field (2026-10-22)
     if FontManager and FontManager.CreateFontString and FontManager.GetFontRole then
         title = FontManager:CreateFontString(chrome, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     else

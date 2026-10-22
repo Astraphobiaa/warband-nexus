@@ -1012,6 +1012,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 local charScanBackfill = StorageScanAllowLazyBackfill(embedItemsWarband, expanded, expandAllActive)
                     or charCategoryExpanded
                     or expandAllActive
+                local _  -- discard slot; a bare `_` here wrote the global _ (2026-10-22)
                 bagN, _, bagLast = self:GetItemStorageOccupiedSlotTally(charKey, "bags", charScanBackfill)
                 bankN, _, bankLast = self:GetItemStorageOccupiedSlotTally(charKey, "bank", charScanBackfill)
             end
