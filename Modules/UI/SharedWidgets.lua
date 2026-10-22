@@ -831,7 +831,8 @@ local function RefreshColors()
     for i = #ns.BORDER_REGISTRY, 1, -1 do
         local frame = ns.BORDER_REGISTRY[i]
         
-        if not frame then
+        -- Discarded section chrome (SectionPool) can never show again: drop it (2026-10-22).
+        if not frame or (ns.UI_IsDiscardedRegion and ns.UI_IsDiscardedRegion(frame)) then
             table.remove(ns.BORDER_REGISTRY, i)
         elseif frame._wnBlizzardChrome and IsClassicModeEnabled() then
             if frame._wnClassicThinBorder and frame.SetBackdropColor and frame._wnThinBorderBg then

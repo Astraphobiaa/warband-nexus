@@ -969,7 +969,8 @@ end
 function ThemeAPI.RefreshRoleTextColors()
     for i = #TEXT_COLOR_REGISTRY, 1, -1 do
         local fs = TEXT_COLOR_REGISTRY[i]
-        if not fs or not fs.SetTextColor then
+        if not fs or not fs.SetTextColor
+            or (ns.UI_IsDiscardedRegion and ns.UI_IsDiscardedRegion(fs)) then
             table.remove(TEXT_COLOR_REGISTRY, i)
         elseif fs._wnTextRole then
             ns.UI_SetTextColorRole(fs, fs._wnTextRole, fs._wnTextRoleAlpha)

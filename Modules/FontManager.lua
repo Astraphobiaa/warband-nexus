@@ -1037,7 +1037,9 @@ local function ApplyToAllRegistered()
     local updated, removed = 0, 0
     for i = #FONT_REGISTRY, 1, -1 do
         local fs = FONT_REGISTRY[i]
-        if not fs or not fs.SetFont or not fs.GetText then
+        -- Discarded section chrome (SectionPool) can never show again: drop it (2026-10-22).
+        if not fs or not fs.SetFont or not fs.GetText
+            or (ns.UI_IsDiscardedRegion and ns.UI_IsDiscardedRegion(fs)) then
             table.remove(FONT_REGISTRY, i)
             removed = removed + 1
         else
@@ -1113,8 +1115,9 @@ function FontManager:RefreshAccentColors()
     for i = #FONT_REGISTRY, 1, -1 do
         local fs = FONT_REGISTRY[i]
         
-        -- Check if FontString still exists
-        if not fs or not fs.SetTextColor then
+        -- Check if FontString still exists (or sits under discarded section chrome)
+        if not fs or not fs.SetTextColor
+            or (ns.UI_IsDiscardedRegion and ns.UI_IsDiscardedRegion(fs)) then
             table.remove(FONT_REGISTRY, i)
         elseif fs._colorType == "accent" then
             local r, g, b, a
