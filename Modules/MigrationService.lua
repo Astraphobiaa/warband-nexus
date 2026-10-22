@@ -300,7 +300,82 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 6
+local MIGRATION_FAST_PATH_REVISION = 7
+
+--- Every step RunMigrations runs on the full path, in order. Each step is a MigrationService method
+--- taking (db) and guards itself (flag, stamp or version compare), so re-running one is a no-op.
+local MIGRATION_STEPS = {
+    "MigrateThemeColors",
+    "MigrateThemeMode",
+    "MigrateUiThemeSplit",
+    "MigrateReputationMetadata",
+    "MigrateReputationToV2",
+    "MigrateGenderField",
+    "MigrateTrackingField",
+    "MigrateTrackingConfirmed",
+    "MigrateGoldFormat",
+    "MigrateRealmSuffixRepairFromCharKey",
+    "MigrateCharacterKeyNormalize",
+    "MigrateGlobalCharactersToGuidStorageKeys",
+    "DeduplicateCharacterRoster",
+    "MigrateSubsidiaryOrphanKeys",
+    "MigrateSubsidiaryAliasBucketsV1",
+    "MigrateRestedDataReset",
+    "MigrateRarityMountSyncReseed",
+    "MigrateReminderToastAnchors",
+    "MigrateNotificationToastLaneDefaults",
+    "MigrateCustomSectionChangelogLog",
+    "MigrateReminderQuestCatalog",
+    "PruneStaleReminderQuestRows",
+    "MigrateFontScalePreset",
+    "MigrateRemoveTransmogV1",
+    "MigrateRemoveHeroSpecV1",
+    "DropStaleLegacyGlobalCurrencies",
+    "DropStaleLegacyGlobalReputations",
+    "MigrateKnowledgeSpecTabsSlimV1",
+    "MigratePruneCacheBackupsV1",
+    "MigrateSlimCacheBackupsV2",
+    "MigratePruneOrphanSvKeysV1",
+    "MigratePruneOrphanSvKeysV2",
+    "MigrateDropLegacyCollectionDataV1",
+    "MigratePruneRedundantCollectionCacheV1",
+    "MigrateSlimCollectionStoreV1",
+    "MigratePruneAceCharLegacyBagItemsV1",
+    "MigrateNormalizeCharacterKeyPrefsV1",
+    "FinalizeGuidOnlySubsidiaryV1",
+}
+
+--- Cheap steps that also run on the fast path (2026-10-22). The first two compare a stored stamp with a
+--- code constant (CATALOG_VERSION, RARITY_MOUNT_SYNC_RESEED_REVISION): skipping them on the fast path
+--- meant bumping that constant alone never reached existing installs.
+local EVERY_LOGIN_STEPS = {
+    "MigrateRarityMountSyncReseed",
+    "MigrateReminderQuestCatalog",
+    "PruneStaleReminderQuestRows",
+}
+
+--- Run steps in order, each isolated (2026-10-22): one failing step used to abort OnInitialize and the
+--- next login hit the same error again. A failure is reported and the remaining steps still run.
+---@return boolean allOk
+local function RunMigrationSteps(service, db, steps)
+    local allOk = true
+    for i = 1, #steps do
+        local name = steps[i]
+        local fn = service[name]
+        if fn then
+            local ok, err = pcall(fn, service, db)
+            if not ok then
+                allOk = false
+                local msg = "Migration " .. name .. " failed: " .. tostring(err)
+                DebugPrint("|cff9370DB[WN Migration]|r " .. msg)
+                if geterrorhandler then
+                    geterrorhandler()(msg)
+                end
+            end
+        end
+    end
+    return allOk
+end
 
 ---Run all database migrations. Returns true if a full schema reset was performed.
 ---@param db table AceDB instance
@@ -318,46 +393,13 @@ function MigrationService:RunMigrations(db)
     if db.global
         and db.global._wnMigrationFastPathRev == MIGRATION_FAST_PATH_REVISION
         and (db.global._schemaVersion or 0) >= CURRENT_SCHEMA_VERSION then
+        RunMigrationSteps(self, db, EVERY_LOGIN_STEPS)
         return false
     end
 
-    self:MigrateThemeColors(db)
-    self:MigrateThemeMode(db)
-    self:MigrateUiThemeSplit(db)
-    self:MigrateReputationMetadata(db)
-    self:MigrateReputationToV2(db)
-    self:MigrateGenderField(db)
-    self:MigrateTrackingField(db)
-    self:MigrateTrackingConfirmed(db)
-    self:MigrateGoldFormat(db)
-    self:MigrateRealmSuffixRepairFromCharKey(db)
-    self:MigrateCharacterKeyNormalize(db)
-    self:MigrateGlobalCharactersToGuidStorageKeys(db)
-    self:DeduplicateCharacterRoster(db)
-    self:MigrateSubsidiaryOrphanKeys(db)
-    self:MigrateSubsidiaryAliasBucketsV1(db)
-    self:MigrateRestedDataReset(db)
-    self:MigrateRarityMountSyncReseed(db)
-    self:MigrateReminderToastAnchors(db)
-    self:MigrateNotificationToastLaneDefaults(db)
-    self:MigrateCustomSectionChangelogLog(db)
-    self:MigrateReminderQuestCatalog(db)
-    self:MigrateFontScalePreset(db)
-    self:MigrateRemoveTransmogV1(db)
-    self:MigrateRemoveHeroSpecV1(db)
-    self:DropStaleLegacyGlobalCurrencies(db)
-    self:DropStaleLegacyGlobalReputations(db)
-    self:MigrateKnowledgeSpecTabsSlimV1(db)
-    self:MigratePruneCacheBackupsV1(db)
-    self:MigrateSlimCacheBackupsV2(db)
-    self:MigratePruneOrphanSvKeysV1(db)
-    self:MigrateDropLegacyCollectionDataV1(db)
-    self:MigratePruneRedundantCollectionCacheV1(db)
-    self:MigrateSlimCollectionStoreV1(db)
-    self:MigratePruneAceCharLegacyBagItemsV1(db)
-    self:MigrateNormalizeCharacterKeyPrefsV1(db)
-    self:FinalizeGuidOnlySubsidiaryV1(db)
-    if db.global then
+    -- A failed step leaves the fast-path stamp unset so the next login retries it.
+    local allOk = RunMigrationSteps(self, db, MIGRATION_STEPS)
+    if db.global and allOk then
         db.global._wnMigrationFastPathRev = MIGRATION_FAST_PATH_REVISION
     end
     return false
@@ -552,6 +594,25 @@ function MigrationService:MigrateReminderQuestCatalog(db)
     WQC.SeedStaticIntoDatabase()
     if ns.DebugPrint then
         ns.DebugPrint("|cff9370DB[Migration]|r Reminder quest catalog seeded (v" .. tostring(ver) .. ")")
+    end
+end
+
+--- Drop saved world-quest rows not seen for 90 days (2026-10-22: lastSeen / updatedAt were written but
+--- nothing ever removed a row). Runs every login; the catalogs own the age rule.
+function MigrationService:PruneStaleReminderQuestRows(db)
+    if not db or not db.global then return end
+    local now = time()
+    local removed = 0
+    local WQC = ns.ReminderWorldQuestCatalog
+    if WQC and WQC.PruneStaleSavedRows then
+        removed = removed + WQC.PruneStaleSavedRows(db.global, now)
+    end
+    local RQC = ns.ReminderQuestCatalog
+    if RQC and RQC.PruneStaleDiscovery then
+        removed = removed + RQC.PruneStaleDiscovery(db.global, now)
+    end
+    if removed > 0 then
+        DebugPrint("|cff9370DB[Migration]|r Pruned " .. tostring(removed) .. " stale world quest row(s)")
     end
 end
 
@@ -2061,6 +2122,18 @@ function MigrationService:MigratePruneOrphanSvKeysV1(db)
         end
     end
     db.global.pruneOrphanSvKeysV1 = true
+end
+
+--- Remove db.global.debugPixelProbe: a dev pixel-probe dump (~129 KB in a real SV) that no shipped code
+--- reads or writes (grep + git log -S, 2026-10-22). V1 is already stamped on those installs, hence V2.
+---@param db table AceDB root
+function MigrationService:MigratePruneOrphanSvKeysV2(db)
+    if not db or not db.global or db.global.pruneOrphanSvKeysV2 then return end
+    if db.global.debugPixelProbe ~= nil then
+        db.global.debugPixelProbe = nil
+        DebugPrint("|cff9370DB[Migration]|r pruneOrphanSvKeysV2: removed debugPixelProbe")
+    end
+    db.global.pruneOrphanSvKeysV2 = true
 end
 
 local function CollectionStoreIsAuthoritative(global)

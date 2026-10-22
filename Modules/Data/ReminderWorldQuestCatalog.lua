@@ -72,6 +72,40 @@ local function GetDbCatalog()
     return db.global.reminderQuestCatalog
 end
 
+--- Saved rows whose updatedAt is older than this are dropped at login (2026-10-22: nothing removed rows).
+M.SAVED_ROW_MAX_AGE = 90 * 24 * 60 * 60
+
+--- Drop saved rows not refreshed by a scan for SAVED_ROW_MAX_AGE. Shipped ENTRIES / emissary rows stay:
+--- they are only re-seeded on a CATALOG_VERSION bump. Rows without updatedAt are kept (age unknown).
+---@param global table db.global
+---@param now number time()
+---@return number removed
+function M.PruneStaleSavedRows(global, now)
+    local cat = type(global) == "table" and global.reminderQuestCatalog
+    if type(cat) ~= "table" or type(cat.worldQuests) ~= "table" or not now then return 0 end
+    local shipped = {}
+    for i = 1, #M.ENTRIES do
+        local e = M.ENTRIES[i]
+        if e and e.questID then shipped[e.questID] = true end
+    end
+    local EMD = ns.ReminderMidnightFactionEmissaryData
+    if EMD and EMD.ENTRIES then
+        for i = 1, #EMD.ENTRIES do
+            local e = EMD.ENTRIES[i]
+            if e and e.questID then shipped[e.questID] = true end
+        end
+    end
+    local removed = 0
+    for qid, meta in pairs(cat.worldQuests) do
+        local ts = type(meta) == "table" and tonumber(meta.updatedAt)
+        if ts and now - ts > M.SAVED_ROW_MAX_AGE and not shipped[tonumber(qid) or qid] then
+            cat.worldQuests[qid] = nil
+            removed = removed + 1
+        end
+    end
+    return removed
+end
+
 function M.GetCatalogVersion()
     local cat = GetDbCatalog()
     return cat and tonumber(cat.version) or 0

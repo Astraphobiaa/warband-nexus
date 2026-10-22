@@ -606,9 +606,11 @@ function WarbandNexus:InitializeDatabaseOptimizer()
     -- Check if currency data needs rebuild (v2.0: Check version)
     local needsCurrRebuild = false
     if addon.db.global.currencyData then
+        -- 2026-10-22: compare with the real schema constant; the hard-coded "1.0.0" never matched the
+        -- stored "2.0.0", so this queued a full currency rebuild on every login.
         local dbVersion = addon.db.global.currencyData.version or "1.0.0"
-        local currentVersion = "1.0.0"
-        if dbVersion ~= currentVersion then
+        local currentVersion = ns.Constants and ns.Constants.CURRENCY_CACHE_VERSION
+        if currentVersion and dbVersion ~= currentVersion then
             needsCurrRebuild = true
         end
     end

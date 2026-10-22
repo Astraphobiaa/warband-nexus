@@ -51,6 +51,27 @@ function M.RecordDiscoveredWorldQuests(questRows)
     end
 end
 
+--- Discovered rows whose lastSeen is older than this are dropped at login (2026-10-22: nothing removed rows).
+M.DISCOVERY_MAX_AGE = 90 * 24 * 60 * 60
+
+---@param global table db.global
+---@param now number time()
+---@return number removed
+function M.PruneStaleDiscovery(global, now)
+    local disc = type(global) == "table" and global.reminderQuestDiscovery
+    if type(disc) ~= "table" or type(disc.worldQuests) ~= "table" or not now then return 0 end
+    local removed = 0
+    for qid, meta in pairs(disc.worldQuests) do
+        local ts = type(meta) == "table" and tonumber(meta.lastSeen)
+        if ts and now - ts > M.DISCOVERY_MAX_AGE then
+            disc.worldQuests[qid] = nil
+            removed = removed + 1
+        end
+    end
+    if removed > 0 then rowCache = {} end
+    return removed
+end
+
 local function ImportWorldQuestRows(questRows)
     if type(questRows) ~= "table" or #questRows == 0 then return end
     M.RecordDiscoveredWorldQuests(questRows)

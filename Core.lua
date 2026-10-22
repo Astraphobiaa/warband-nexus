@@ -665,6 +665,9 @@ function WarbandNexus:OnInitialize()
     self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileReset", "OnProfileChanged")
+    -- Logout flush (2026-10-22): AceDB's own PLAYER_LOGOUT frame runs first and strips defaults right
+    -- after firing OnDatabaseShutdown, so flush here; PLAYER_LOGOUT below stays as the fallback.
+    self.db.RegisterCallback(self, "OnDatabaseShutdown", "OnPlayerLogout")
     
     -- Single-roof version check (addon / game build / per-cache schema). Cache
     -- invalidation is selective and non-destructive — see MigrationService:CheckVersions.
@@ -1248,6 +1251,9 @@ end
     Handle PLAYER_LOGOUT: flush pending service writes, then profiler/NPC cache saves.
 ]]
 function WarbandNexus:OnPlayerLogout()
+    -- Reached from OnDatabaseShutdown and PLAYER_LOGOUT; flush once per session.
+    if self._logoutFlushed then return end
+    self._logoutFlushed = true
     if self.FlushCurrencyCacheOnLogout then self:FlushCurrencyCacheOnLogout() end
     if self.FlushItemsCacheOnLogout then self:FlushItemsCacheOnLogout() end
     if self.FlushReputationCacheOnLogout then self:FlushReputationCacheOnLogout() end
@@ -1878,14 +1884,8 @@ end
     Smart tracking: Only update when pet count actually changes
 ]]
 function WarbandNexus:OnPetListChanged()
-    -- Only process if UI is open on stats tab
-    if not self.UI or not self.UI.mainFrame then return end
-    
-    local mainFrame = self.UI.mainFrame
-    if not mainFrame:IsShown() or mainFrame.currentTab ~= "stats" then
-        return -- Skip if UI not visible or wrong tab
-    end
-    
+    -- 2026-10-22: no UI gate. A service handler must not depend on which tab is open; cages and
+    -- releases done with the window closed (or on another tab) left the pet cache stale.
     -- Get current pet count (second return); guard Midnight secret values before compare
     local _, currentPetCountRaw = C_PetJournal.GetNumPets()
     if (issecretvalue and issecretvalue(currentPetCountRaw)) or currentPetCountRaw == nil then
@@ -1928,12 +1928,9 @@ function WarbandNexus:OnPetListChanged()
                 WarbandNexus:InvalidateCollectionCache()
             end
             
-            local msgKey = charKey
-            if ns.Utilities.GetCanonicalCharacterKey then
-                msgKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-            end
-            -- Fire event for UI refresh (instead of direct call)
-            WarbandNexus:SendMessage(ns.Constants.EVENTS.COLLECTION_UPDATED, msgKey)
+            -- Fire event for UI refresh (instead of direct call). Payload is the collection type
+            -- listeners filter on (CollectionsUI ignores anything but mount/pet/toy/achievement).
+            WarbandNexus:SendMessage(ns.Constants.EVENTS.COLLECTION_UPDATED, "pet")
         end
     end)
 end
