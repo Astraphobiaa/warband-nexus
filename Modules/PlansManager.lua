@@ -1044,14 +1044,14 @@ function WarbandNexus:AddPlan(planData)
     
     -- Validate input
     if not planData or type(planData) ~= "table" then
-        self:Print("|cffff6600Error: Invalid plan data|r")
+        self:Print("|cffff6600" .. ((ns.L and ns.L["PLAN_ERROR_INVALID_DATA"]) or "Error: Invalid plan data") .. "|r")
         return nil
     end
     
     -- Extract type (required)
     local planType = planData.type
     if not planType then
-        self:Print("|cffff6600Error: Plan type is required|r")
+        self:Print("|cffff6600" .. ((ns.L and ns.L["PLAN_ERROR_TYPE_REQUIRED"]) or "Error: Plan type is required") .. "|r")
         return nil
     end
     
@@ -1122,7 +1122,7 @@ function WarbandNexus:AddPlan(planData)
     })
     
     -- Notify (use resolved name for proper localization)
-    self:Print("|cff00ff00Added plan:|r " .. self:GetPlanDisplayName(plan))
+    self:Print("|cff00ff00" .. ((ns.L and ns.L["PLAN_ADDED_PREFIX"]) or "Added plan:") .. "|r " .. self:GetPlanDisplayName(plan))
     
     return planID
 end
@@ -1137,7 +1137,7 @@ function WarbandNexus:RemovePlan(planID)
     -- planned, and only an obtain resets them. (Removal used to zero them, which wiped e.g. 150 boss
     -- kills when a mount was un-planned from a Collections list; 2026-10-22, user decision.)
     -- Helper: search and remove from a plan list
-    local function removeFromList(list, id, label)
+    local function removeFromList(list, id, labelKey, labelFallback)
         if not list then return false end
         for i = 1, #list do
             if list[i].id == id then
@@ -1151,15 +1151,15 @@ function WarbandNexus:RemovePlan(planID)
                     planID = id,
                     planType = planType,
                 })
-                self:Print("|cffff6600Removed " .. label .. ":|r " .. name)
+                self:Print("|cffff6600" .. ((ns.L and ns.L[labelKey]) or labelFallback) .. "|r " .. name)
                 return true
             end
         end
         return false
     end
     
-    return removeFromList(self.db.global.plans, planID, "plan")
-        or removeFromList(self.db.global.customPlans, planID, "custom plan")
+    return removeFromList(self.db.global.plans, planID, "PLAN_REMOVED_PREFIX", "Removed plan:")
+        or removeFromList(self.db.global.customPlans, planID, "CUSTOM_PLAN_REMOVED_PREFIX", "Removed custom plan:")
 end
 
 --- Character-bound plan types: they carry characterName / characterRealm and track one character.

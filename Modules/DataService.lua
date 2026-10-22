@@ -884,7 +884,7 @@ function WarbandNexus:ScheduleDeferredCharacterSave(wantFull)
             pendingFullCharacterSave = false
             WarbandNexus._characterFullSavePending = nil
         elseif WarbandNexus and WarbandNexus.Print then
-            WarbandNexus:Print("Error saving character: " .. tostring(err))
+            WarbandNexus:Print(string.format((ns.L and ns.L["CHARACTER_SAVE_ERROR_FORMAT"]) or "Error saving character: %s", tostring(err)))
         end
     end)
 end
@@ -904,7 +904,7 @@ function WarbandNexus:FlushDeferredCharacterSave(atLogout)
     if ok then
         self._characterFullSavePending = nil
     elseif self.Print then
-        self:Print("Error saving character: " .. tostring(err))
+        self:Print(string.format((ns.L and ns.L["CHARACTER_SAVE_ERROR_FORMAT"]) or "Error saving character: %s", tostring(err)))
     end
 end
 

@@ -123,7 +123,7 @@ function M.BuildOptionsFrame()
         title = VBFontString(chrome, "body")
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
-    title:SetText("Vault Tracker")
+    title:SetText(EAL("VAULT_BUTTON_MENU_TRACKER", "Vault Tracker"))
     ns.UI_SetTextColorRole(title, "Bright")
     f.title = title
 
@@ -151,35 +151,35 @@ function M.BuildOptionsFrame()
         end)
     end
 
-    CreateMenuCheckbox(f, "Show Realm Names", -52,
+    CreateMenuCheckbox(f, EAL("CONFIG_VAULT_OPT_REALM", "Show Realm Names"), -52,
         function() return GetSettings().showRealmName == true end,
         function(value)
             GetSettings().showRealmName = value
             if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
         end)
-    CreateMenuCheckbox(f, "Show Reward iLvl", -78,
+    CreateMenuCheckbox(f, EAL("CONFIG_VAULT_OPT_REWARD_ILVL", "Show Reward iLvl"), -78,
         function() return GetSettings().showRewardItemLevel == true end,
         function(value)
             GetSettings().showRewardItemLevel = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Show Reward Progress", -104,
+    CreateMenuCheckbox(f, EAL("EA_OPT_REWARD_PROGRESS", "Show Reward Progress"), -104,
         function() return GetSettings().showRewardProgress == true end,
         function(value)
             GetSettings().showRewardProgress = value
             RebuildTableFrame()
         end,
-        "Show current progress toward the next vault reward threshold.")
-    CreateMenuCheckbox(f, "Include Delver's Bounty", -130,
+        EAL("EA_OPT_REWARD_PROGRESS_DESC", "Show current progress toward the next vault reward threshold."))
+    CreateMenuCheckbox(f, EAL("EA_OPT_INCLUDE_BOUNTY", "Include Delver's Bounty"), -130,
         function() return GetSettings().includeBountyOnly == true end,
         function(value)
             GetSettings().includeBountyOnly = value
             RebuildTableFrame()
         end,
-        "Also show characters that have only looted a Delver's Bounty.")
+        EAL("EA_OPT_INCLUDE_BOUNTY_DESC", "Also show characters that have only looted a Delver's Bounty."))
     local columnLabel = VBFontString(f, "small")
     columnLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -168)
-    columnLabel:SetText("Columns")
+    columnLabel:SetText(EAL("COLUMNS_BUTTON", "Columns"))
     if ns.UI_SetInkColor then
         ns.UI_SetInkColor(columnLabel, accent[1], accent[2], accent[3], 1)
     else
@@ -187,37 +187,37 @@ function M.BuildOptionsFrame()
     end
     f.columnLabel = columnLabel
 
-    CreateMenuCheckbox(f, "Raid", -188,
+    CreateMenuCheckbox(f, EAL("EA_TOOLTIP_CAT_RAID", "Raid"), -188,
         function() return GetSettings().columns.raids ~= false end,
         function(value)
             GetSettings().columns.raids = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Dungeon", -214,
+    CreateMenuCheckbox(f, EAL("EA_TOOLTIP_CAT_DUNGEON", "Dungeon"), -214,
         function() return GetSettings().columns.mythicPlus ~= false end,
         function(value)
             GetSettings().columns.mythicPlus = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "World", -240,
+    CreateMenuCheckbox(f, EAL("EA_TOOLTIP_CAT_WORLD", "World"), -240,
         function() return GetSettings().columns.world ~= false end,
         function(value)
             GetSettings().columns.world = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Trovehunter's Bounty", -266,
+    CreateMenuCheckbox(f, EAL("EA_TOOLTIP_BOUNTY_LABEL", "Trovehunter's Bounty"), -266,
         function() return GetSettings().columns.bounty ~= false end,
         function(value)
             GetSettings().columns.bounty = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Gilded Stashes", -292,
+    CreateMenuCheckbox(f, EAL("EA_TOOLTIP_STASH_LABEL", "Gilded Stashes"), -292,
         function() return GetSettings().columns.gildedStash == true end,
         function(value)
             GetSettings().columns.gildedStash = value
             RebuildTableFrame()
         end)
-    CreateMenuCheckbox(f, "Nebulous Voidcore", -318,
+    CreateMenuCheckbox(f, EAL("EA_TOOLTIP_VOIDCORE_LABEL", "Nebulous Voidcore"), -318,
         function() return GetSettings().columns.voidcore ~= false end,
         function(value)
             GetSettings().columns.voidcore = value

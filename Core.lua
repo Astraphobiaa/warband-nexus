@@ -884,7 +884,7 @@ function WarbandNexus:ApplyToggleKeybind()
             -- Safety migration: ESC is reserved for game menu / close flows.
             self.db.profile.toggleKeybind = nil
             if self.Print then
-                self:Print("|cffff6600Invalid toggle keybind ESC removed. Please pick a different key.|r")
+                self:Print("|cffff6600" .. ((ns.L and ns.L["KEYBIND_ESC_REMOVED"]) or "Invalid toggle keybind ESC removed. Please pick a different key.") .. "|r")
             end
             return
         end
@@ -1180,7 +1180,7 @@ function WarbandNexus:SaveCharacter()
                 self:ScheduleDeferredCharacterSave(true)
             end
         else
-            self:Print("Error saving character: " .. tostring(err))
+            self:Print(string.format((ns.L and ns.L["CHARACTER_SAVE_ERROR_FORMAT"]) or "Error saving character: %s", tostring(err)))
         end
         return
     end
@@ -1193,7 +1193,7 @@ function WarbandNexus:SaveCharacter()
         self.characterSaved = true
         self._characterFullSavePending = nil
     else
-        self:Print("Error saving character: " .. tostring(err))
+        self:Print(string.format((ns.L and ns.L["CHARACTER_SAVE_ERROR_FORMAT"]) or "Error saving character: %s", tostring(err)))
     end
 end
 
@@ -1483,7 +1483,8 @@ function WarbandNexus:OnGuildBankOpened()
             if WarbandNexus and WarbandNexus.ScanGuildBank then
                 local success, errCode = WarbandNexus:ScanGuildBank()
                 if not success and errCode ~= "no_viewable_tabs" then
-                    WarbandNexus:Print("|cffff6600[Guild Bank]|r Scan failed (not tracked or no guild access).|r")
+                    WarbandNexus:Print("|cffff6600[" .. ((ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank") .. "]|r "
+                        .. ((ns.L and ns.L["GUILD_BANK_SCAN_FAILED"]) or "Scan failed (not tracked or no guild access)."))
                 end
             end
         end)
@@ -1503,7 +1504,8 @@ function WarbandNexus:ThrottledGuildBankScan()
     if self.ScanGuildBank then
         self:ScanGuildBank()
     else
-        self:Print("|cffff0000[Guild Bank]|r ERROR: ScanGuildBank not available.|r")
+        self:Print("|cffff0000[" .. ((ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank") .. "]|r "
+            .. ((ns.L and ns.L["GUILD_BANK_SCAN_UNAVAILABLE"]) or "Guild bank scanning is not available."))
     end
 end
 
@@ -1618,7 +1620,7 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                         end
                     end)
                 elseif self.Print then
-                    self:Print("Error saving character: " .. tostring(err))
+                    self:Print(string.format((ns.L and ns.L["CHARACTER_SAVE_ERROR_FORMAT"]) or "Error saving character: %s", tostring(err)))
                 end
             elseif not (isInitialLogin and ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)) then
                 -- Untracked characters: keep level/gold/class fresh for the Characters tab.

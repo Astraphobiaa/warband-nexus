@@ -31,10 +31,10 @@ end
 local function PrintSlashHelp(addon)
     addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
     addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
-    addon:Print("  |cff00ccff/wn saved|r — Saved Instances")
+    addon:Print("  |cff00ccff/wn saved|r — " .. ((ns.L and ns.L["SAVED_INSTANCES_TITLE"]) or "Saved Instances"))
     addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "To-Do Tracker"))
     addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
-    addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
+    addon:Print("  |cff00ccff/wn keys|r — " .. ((ns.L and ns.L["CMD_KEYS"]) or "Announce alt keystones (party)"))
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
 end
@@ -213,11 +213,15 @@ function CommandService:HandleSlashCommand(addon, input)
             if ns.ReminderQuestCatalog and ns.ReminderQuestCatalog.ClearRowCache then
                 ns.ReminderQuestCatalog.ClearRowCache()
             end
-            addon:Print(string.format("|cff00ccff[WN]|r Saved %d world quests to reminder catalog (account-wide). Reopen Set Alert to refresh.", n))
+            addon:Print("|cff00ccff[WN]|r " .. string.format((ns.L and ns.L["REMINDER_SYNCWQ_SAVED_FORMAT"])
+                or "Saved %d world quests to reminder catalog (account-wide). Reopen Set Alert to refresh.", n))
         else
-            addon:Print("|cff00ccff/wn reminder status|r — Show every enabled alert and whether it would fire right now.")
-            addon:Print("|cff00ccff/wn reminder test|r — Force every enabled daily/weekly reset alert to toast once (verify without waiting for reset).")
-            addon:Print("|cff00ccff/wn reminder syncwq|r — Scan Midnight maps and save all seen world quests to the maintained catalog.")
+            addon:Print("|cff00ccff/wn reminder status|r — " .. ((ns.L and ns.L["CMD_REMINDER_STATUS"])
+                or "Show every enabled alert and whether it would fire right now."))
+            addon:Print("|cff00ccff/wn reminder test|r — " .. ((ns.L and ns.L["CMD_REMINDER_TEST"])
+                or "Force every enabled daily/weekly reset alert to toast once (verify without waiting for reset)."))
+            addon:Print("|cff00ccff/wn reminder syncwq|r — " .. ((ns.L and ns.L["CMD_REMINDER_SYNCWQ"])
+                or "Scan Midnight maps and save all seen world quests to the maintained catalog."))
         end
         return
 
@@ -280,7 +284,7 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         
         if keysFound == 0 then
-            addon:Print("|cffff6600[WN] No keystones found across your characters.|r")
+            addon:Print("|cffff6600[WN] " .. ((ns.L and ns.L["KEYS_NONE_FOUND"]) or "No keystones found across your characters.") .. "|r")
         else
             -- C_ChatInfo.SendChatMessage is the documented API (12.1.5); the global SendChatMessage is a
             -- deprecation shim since 11.2.0 and is gone when loadDeprecationFallbacks is off.
@@ -321,7 +325,7 @@ function CommandService:HandleSlashCommand(addon, input)
                     end)
                 end
             else
-                addon:Print("|cff00ccff[WN] Keystones (Not in a party, printing to self):|r")
+                addon:Print("|cff00ccff[WN] " .. ((ns.L and ns.L["KEYS_LOCAL_HEADER"]) or "Keystones (Not in a party, printing to self):") .. "|r")
                 for i = 1, #reportLinesLocal do
                     addon:Print("  " .. reportLinesLocal[i])
                 end

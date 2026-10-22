@@ -818,13 +818,16 @@ function M.GetEnabledCategoryDefs()
         or ns.ResolveVaultTrackerColumnWidth(settings.showRewardProgress, settings.showRewardItemLevel)
     local defs = {}
     if columns.raids ~= false then
-        table.insert(defs, { key="raids", width=width or COL_RAID, label="Raid", icon=TRACK_ICONS.raids, tooltip="Raid" })
+        local raidLabel = EAL("EA_TOOLTIP_CAT_RAID", "Raid")
+        table.insert(defs, { key="raids", width=width or COL_RAID, label=raidLabel, icon=TRACK_ICONS.raids, tooltip=raidLabel })
     end
     if columns.mythicPlus ~= false then
-        table.insert(defs, { key="mythicPlus", width=width or COL_DUNGEON, label="Dungeon", icon=TRACK_ICONS.mythicPlus, tooltip="Dungeon" })
+        local dungeonLabel = EAL("EA_TOOLTIP_CAT_DUNGEON", "Dungeon")
+        table.insert(defs, { key="mythicPlus", width=width or COL_DUNGEON, label=dungeonLabel, icon=TRACK_ICONS.mythicPlus, tooltip=dungeonLabel })
     end
     if columns.world ~= false then
-        table.insert(defs, { key="world", width=width or COL_WORLD, label="World", icon=TRACK_ICONS.world, tooltip="World" })
+        local worldLabel = EAL("EA_TOOLTIP_CAT_WORLD", "World")
+        table.insert(defs, { key="world", width=width or COL_WORLD, label=worldLabel, icon=TRACK_ICONS.world, tooltip=worldLabel })
     end
     return defs
 end

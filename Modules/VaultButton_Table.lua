@@ -253,7 +253,7 @@ function M.BuildTableFrame()
         title = VBFontString(chrome, "body")
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
-    title:SetText("Vault Tracker")
+    title:SetText(EAL("VAULT_BUTTON_MENU_TRACKER", "Vault Tracker"))
     ns.UI_SetTextColorRole(title, "Bright")
     S.title = title
 
