@@ -975,18 +975,19 @@ local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, c
         wipe(state[cfg.kWindow])
     end
 
-    -- Clear existing children (section wraps from previous run); unparent to avoid accumulating on re-populate.
-    -- KNOWN COST: section wraps/headers are rebuilt per populate (search keystroke after
-    -- debounce, filter toggle). Reusing them needs an update mode on the
-    -- CreateCollapsibleHeader factory (label/count text, expanded state, re-chaining)
-    -- plus closure-lifetime review — a planned refactor, not a drop-in change here.
+    -- Section wraps / headers / bodies are pooled on the list scroll child (SectionPool,
+    -- "col:<subtab>:" keys) and re-bound by section key below; every populate (search keystroke,
+    -- filter toggle) used to rebuild them and park the old ones in the recycle bin (2026-10-22).
+    -- Rows were released above (ReleaseVisibleRows); anything else is real garbage.
+    local SP = ns.UI_SectionPool
+    SP.BeginPass(scrollChild)
+    local poolPrefix = "col:" .. tostring(cfg.subTab) .. ":"
     local nch = PackVariadicInto(_sectionedChildScratch, scrollChild:GetChildren())
     for i = 1, nch do
         local c = _sectionedChildScratch[i]
-        c:Hide()
-        c:ClearAllPoints()
-        local bin = ns.UI_RecycleBin
-        if bin then c:SetParent(bin) else c:SetParent(nil) end
+        if not c._wnSectionPooled then
+            SP.Discard(c)
+        end
     end
     wipe(_sectionedChildScratch)
     local nrg = PackVariadicInto(_sectionedRegionScratch, scrollChild:GetRegions())
@@ -1110,7 +1111,7 @@ local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, c
             local key = it.key
             local gap = collHdrChainTail and SECTION_SPACING or nil
 
-            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1, false)
+            local sectionWrap = SP.Acquire(scrollChild, poolPrefix .. "wrap:" .. tostring(key), scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1)
             sectionWrap:ClearAllPoints()
             if sectionWrap.SetClipsChildren then
                 sectionWrap:SetClipsChildren(true)
@@ -1126,7 +1127,7 @@ local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, c
                 if isExpanded then
                     cfg.rebuildAndRefresh()
                 end
-            end, cfg.iconFn(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
+            end, cfg.iconFn(key), true, 0, nil, SP.HeaderOpts(scrollChild, poolPrefix .. "hdr:" .. tostring(key), ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
@@ -1144,7 +1145,8 @@ local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, c
                     end
                     cfg.rebuildAndRefresh()
                 end,
-            }))
+            })))
+            SP.Remember(scrollChild, poolPrefix .. "hdr:" .. tostring(key), header)
             if ns.UI_AnchorSectionHeaderInWrap then
                 ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)
             else
@@ -1154,7 +1156,7 @@ local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, c
             end
             header:SetHeight(it.height)
 
-            sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
+            sectionBody = SP.Acquire(scrollChild, poolPrefix .. "body:" .. tostring(key), sectionWrap, listWidth, 0.1)
             sectionBody:ClearAllPoints()
             sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
             sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
