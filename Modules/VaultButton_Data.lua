@@ -72,16 +72,26 @@ function M.LookupPveCacheSubtable(subtable, charKey)
     if not subtable or not charKey then return nil end
     local direct = subtable[charKey]
     if direct ~= nil and type(direct) ~= "table" then return direct end
-    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-        local ck = ns.Utilities:GetCanonicalCharacterKey(charKey)
+    local U = ns.Utilities
+    local ck
+    if U and U.GetCanonicalCharacterKey then
+        ck = U:GetCanonicalCharacterKey(charKey)
         if ck and subtable[ck] ~= nil then
             direct = subtable[ck]
             if type(direct) ~= "table" then return direct end
         end
     end
+    -- GUID-only reads (subsidiary aliases consolidated by MigrationService): no Name-Realm bridge
+    -- rows exist, so the canonical hit is the answer and the alias walk below is skipped, like the
+    -- currency side. GetPvEData does ~11 lookups per character, BuildCharList one per row (2026-10-22).
+    if U and U.IsGuidOnlySubsidiaryReads and U:IsGuidOnlySubsidiaryReads() then
+        return direct
+    end
     local best, bestUpdate, claimedEntry = direct, direct and (tonumber(direct.lastUpdate) or 0) or -1, nil
     for k, v in pairs(subtable) do
-        if type(v) == "table" and CharKeysMatch(k, charKey) then
+        -- Same test as CharKeysMatch(k, charKey) with charKey's canonical form resolved once.
+        if type(v) == "table" and (k == charKey
+            or (ck and U:GetCanonicalCharacterKey(k) == ck)) then
             local lu = tonumber(v.lastUpdate) or 0
             local ca = tonumber(v.claimedAt) or 0
             if v.hasAvailableRewards == false and ca > 0 then
@@ -1025,8 +1035,16 @@ local function CurrentVaultWeekId()
     if not (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) then return 0 end
     local ok, secs = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
     if not ok or type(secs) ~= "number" then return 0 end
-    -- Epoch of the upcoming reset, floored to the minute so clock jitter does not churn it.
-    return math.floor(((GetServerTime() or 0) + secs) / 60)
+    -- Epoch of the upcoming reset. Flooring to the minute still flipped when the sample read
+    -- ...:59:59 one call and ...:00:00 the next (reset lands on the hour), so every read could
+    -- rebuild the snapshot; round to the nearest minute like ResetService (2026-10-22).
+    local epoch = (GetServerTime() or 0) + secs
+    if ns.NormalizeResetEpoch then
+        epoch = ns.NormalizeResetEpoch(epoch) or epoch
+    else
+        epoch = math.floor((epoch + 30) / 60) * 60
+    end
+    return math.floor(epoch / 60)
 end
 
 --- Drop the memoized snapshot. Call this after ANY write that can change vault state (cache

@@ -547,8 +547,15 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
             return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
         end
         if key == "slot1" or key == "slot2" or key == "slot3" then
-            local pve = addon.GetPvEData and addon:GetPvEData(charKey) or {}
-            local acts = pve.vaultActivities or {}
+            -- Vault-only accessor: width measurement ran the full GetPvEData per row (2026-10-22).
+            local acts
+            if addon.GetPvEVaultActivities then
+                acts = addon:GetPvEVaultActivities(charKey)
+            else
+                local pve = addon.GetPvEData and addon:GetPvEData(charKey)
+                acts = pve and pve.vaultActivities
+            end
+            acts = acts or {}
             local claim = false
             local vs = PvE_GetVaultStatusCached(addon, charKey)
             claim = vs and vs.isReady == true

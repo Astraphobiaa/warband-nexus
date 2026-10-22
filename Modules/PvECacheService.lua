@@ -1580,6 +1580,47 @@ end
 
 -- PUBLIC API (FOR UI AND DATASERVICE)
 
+---Stored keystone row -> display row (dungeon name resolved); rows without a level pass through.
+local function HydratePvEKeystoneRow(rawKeystone)
+    if rawKeystone and tonumber(rawKeystone.level) and tonumber(rawKeystone.level) > 0 then
+        local dungeonName = Utilities and Utilities.ResolveKeystoneDungeonName
+            and Utilities:ResolveKeystoneDungeonName(rawKeystone)
+        return {
+            mapID = rawKeystone.mapID,
+            level = rawKeystone.level,
+            lastUpdate = rawKeystone.lastUpdate,
+            dungeonName = dungeonName,
+            name = dungeonName,
+        }
+    end
+    return rawKeystone
+end
+
+---One per-character pveCache subtable, same key resolution as GetPvEData.
+local function LookupPvECharSub(sub, charKey)
+    if not sub or not charKey then return nil end
+    charKey = CanonicalizePvEKey(charKey)
+    if not charKey then return nil end
+    local Lookup = ns.LookupPvECacheSubtable
+    if Lookup then return Lookup(sub, charKey) end
+    return sub[charKey]
+end
+
+---GetPvEData(charKey).keystone without hydrating the rest of the PvE snapshot.
+---Keystone tooltip and /wn keys read this for every roster character (2026-10-22).
+---@return table|nil
+function WarbandNexus:GetPvEKeystone(charKey)
+    local mp = self.db and self.db.global and self.db.global.pveCache and self.db.global.pveCache.mythicPlus
+    return HydratePvEKeystoneRow(LookupPvECharSub(mp and mp.keystones, charKey))
+end
+
+---GetPvEData(charKey).vaultActivities without hydrating the rest of the PvE snapshot.
+---@return table|nil
+function WarbandNexus:GetPvEVaultActivities(charKey)
+    local gv = self.db and self.db.global and self.db.global.pveCache and self.db.global.pveCache.greatVault
+    return LookupPvECharSub(gv and gv.activities, charKey)
+end
+
 ---Get PvE data for a specific character or all characters
 ---@return table PvE data
 function WarbandNexus:GetPvEData(charKey)
@@ -1658,19 +1699,7 @@ function WarbandNexus:GetPvEData(charKey)
 
         -- Return data for specific character
         local vaultActivities = PveSub(dbCache.greatVault and dbCache.greatVault.activities)
-        local rawKeystone = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.keystones)
-        local keystoneData = rawKeystone
-        if rawKeystone and tonumber(rawKeystone.level) and tonumber(rawKeystone.level) > 0 then
-            local dungeonName = Utilities and Utilities.ResolveKeystoneDungeonName
-                and Utilities:ResolveKeystoneDungeonName(rawKeystone)
-            keystoneData = {
-                mapID = rawKeystone.mapID,
-                level = rawKeystone.level,
-                lastUpdate = rawKeystone.lastUpdate,
-                dungeonName = dungeonName,
-                name = dungeonName,
-            }
-        end
+        local keystoneData = HydratePvEKeystoneRow(PveSub(dbCache.mythicPlus and dbCache.mythicPlus.keystones))
         local worldBosses = PveSub(dbCache.lockouts and dbCache.lockouts.worldBosses)
         local rawDelveCharacter = PveSub(dbCache.delves and dbCache.delves.characters) or {}
         local rawRunHistory = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.runHistory) or {}
@@ -2188,8 +2217,12 @@ function WarbandNexus:RegisterPvECacheEvents()
     end)
 
     -- Deferred vault iLvl / keystone backfill after API warmup (no PvE tab required).
+    -- Same warm gate as Core's T+5.5s call: with a persisted row the RequestMapInfo /
+    -- RequestRaidInfo answers (CHALLENGE_MODE_MAPS_UPDATE, UPDATE_INSTANCE_INFO) already drive
+    -- the throttled refresh, so an unconditional run here was a second full collect (2026-10-22).
     C_Timer.After(3, function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+        if WarbandNexus.IsPvERowPersistedWarm and WarbandNexus:IsPvERowPersistedWarm() then return end
         if WarbandNexus.UpdatePvEData then
             WarbandNexus:UpdatePvEData()
         end

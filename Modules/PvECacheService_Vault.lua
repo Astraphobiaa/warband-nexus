@@ -856,24 +856,10 @@ function WarbandNexus:OnVaultDataReceived()
     return WarbandNexus:_OnVaultDataReceivedBody(self)
 end
 
-function WarbandNexus:_OnVaultDataReceivedBody()
-    ns._pveVaultHandlerActive = true
-    local function releaseVaultBagDefer()
-        ns._pveVaultHandlerActive = nil
-        local pendingBags = ns._pendingBagUpdateAfterVault
-        ns._pendingBagUpdateAfterVault = nil
-        if pendingBags and self.OnBagUpdate then
-            C_Timer.After(0, function()
-                if self and self.OnBagUpdate then
-                    self:OnBagUpdate(pendingBags)
-                end
-            end)
-        end
-    end
-
+---WEEKLY_REWARDS_UPDATE work proper; _OnVaultDataReceivedBody wraps it so the bag defer is always released.
+local function ApplyVaultDataReceived(self)
     local charKey = GetSessionCanonicalPvEKey()
     if not charKey then
-        releaseVaultBagDefer()
         return
     end
     local wasClaimable = SessionVaultWasClaimable(self, charKey)
@@ -906,7 +892,27 @@ function WarbandNexus:_OnVaultDataReceivedBody()
         self:SendMessage(Constants.EVENTS.PVE_UPDATED)
     end
     EmitVaultReadyToastIfNewlyClaimable(self, charKey, wasClaimable, claimableNow)
-    releaseVaultBagDefer()
+end
+
+function WarbandNexus:_OnVaultDataReceivedBody()
+    ns._pveVaultHandlerActive = true
+    -- pcall: the flag used to be cleared only on a normal return, so one error in the body left
+    -- OnBagUpdate deferring every bag batch for the rest of the session. Rethrown below (2026-10-22).
+    local ok, err = pcall(ApplyVaultDataReceived, self)
+    ns._pveVaultHandlerActive = nil
+    local pendingBags = ns._pendingBagUpdateAfterVault
+    ns._pendingBagUpdateAfterVault = nil
+    if pendingBags and self.OnBagUpdate then
+        C_Timer.After(0, function()
+            if self and self.OnBagUpdate then
+                self:OnBagUpdate(pendingBags)
+            end
+        end)
+    end
+    if not ok then
+        local handler = geterrorhandler and geterrorhandler()
+        if handler then handler(err) else error(err, 0) end
+    end
 end
 
 ---Sync vault data from VaultScanner to PvECacheService

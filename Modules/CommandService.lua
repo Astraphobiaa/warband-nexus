@@ -240,8 +240,11 @@ function CommandService:HandleSlashCommand(addon, input)
             if canon and not seenCanon[canon] then
                 seenCanon[canon] = true
                 local keystone = nil
-                if addon.GetPvEData then
-                    -- GetAllCharacters rows carry the table key as _key (no .key field).
+                -- GetAllCharacters rows carry the table key as _key (no .key field).
+                -- Keystone-only accessor instead of hydrating the full PvE snapshot (2026-10-22).
+                if addon.GetPvEKeystone then
+                    keystone = addon:GetPvEKeystone(char._key)
+                elseif addon.GetPvEData then
                     local pve = addon:GetPvEData(char._key)
                     keystone = pve and pve.keystone
                 end

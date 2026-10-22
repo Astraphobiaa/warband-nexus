@@ -1606,7 +1606,15 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     end
 
     if ns._pveVaultHandlerActive then
-        ns._pendingBagUpdateAfterVault = bagIDs
+        -- Copy: AceBucket wipes its `received` table right after this callback returns, so a kept
+        -- reference reached the deferred replay empty (2026-10-22).
+        if type(bagIDs) == "table" then
+            local pending = ns._pendingBagUpdateAfterVault or {}
+            for bagID, v in pairs(bagIDs) do
+                pending[bagID] = v
+            end
+            ns._pendingBagUpdateAfterVault = pending
+        end
         return
     end
     
@@ -1625,7 +1633,11 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     end
 
     -- Module gate AFTER the keystone refresh above (keystone is always-on; bag scan is not).
-    if not IsItemScanConsumerEnabled() then return end
+    -- Remember the skip: re-enabling a consumer module rescans (see InitializeItemsCache).
+    if not IsItemScanConsumerEnabled() then
+        ns._itemScanSkippedWhileGated = true
+        return
+    end
 
     -- Process each bag that was updated, track if any actually changed
     local changedBags = {}
@@ -3276,6 +3288,22 @@ function WarbandNexus:InitializeItemsCache()
     WarbandNexus:RegisterEvent("BAG_UPDATE_DELAYED", "OnInventoryBagsChanged")
     WarbandNexus:RegisterEvent("PLAYER_LEAVING_WORLD", "FlushItemsCacheOnLeavingWorld")
     ArmSessionIdleFlushTimer()
+
+    -- Bag batches that arrived while every item-scan consumer was off were dropped before the
+    -- hash check, so those bags stayed stale after the module came back until their own next
+    -- BAG_UPDATE. Rescan once when a consumer is re-enabled after such a skip (2026-10-22).
+    ns._itemsModuleToggleSink = ns._itemsModuleToggleSink or {}
+    WarbandNexus.RegisterMessage(ns._itemsModuleToggleSink, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)
+        if not enabled or not ns._itemScanSkippedWhileGated then return end
+        if moduleName ~= "items" and moduleName ~= "storage" and moduleName ~= "gear"
+            and moduleName ~= "plans" and moduleName ~= "professions" then
+            return
+        end
+        if not IsItemScanConsumerEnabled() then return end
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+        ns._itemScanSkippedWhileGated = nil
+        WarbandNexus:RefreshAllBags()
+    end)
     
     -- Set loading state (initial scan in progress)
     ns.ItemsLoadingState.isLoading = true

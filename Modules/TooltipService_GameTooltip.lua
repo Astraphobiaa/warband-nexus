@@ -1070,7 +1070,11 @@ local function AppendWNKeystoneLines(tooltip, hyperlink)
         if canon and not seenCanon[canon] then
             seenCanon[canon] = true
             local keystone = nil
-            if WarbandNexus.GetPvEData then
+            -- Keystone-only accessor: GetPvEData hydrated the whole PvE snapshot per roster row on
+            -- every keystone tooltip show (2026-10-22).
+            if WarbandNexus.GetPvEKeystone then
+                keystone = WarbandNexus:GetPvEKeystone(charKey)
+            elseif WarbandNexus.GetPvEData then
                 local pve = WarbandNexus:GetPvEData(charKey)
                 keystone = pve and pve.keystone
             end

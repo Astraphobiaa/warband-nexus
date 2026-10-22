@@ -777,7 +777,20 @@ function M.HookWNMessages()
         WarbandNexus.RegisterMessage(VBListeners, E.VAULT_SLOT_COMPLETED, OnDataChanged)
     end
     if E.CURRENCY_UPDATED then
-        WarbandNexus.RegisterMessage(VBListeners, E.CURRENCY_UPDATED, OnDataChanged)
+        -- Only the Voidcore / Manaflux columns read currency; badge and vault state do not.
+        -- A single other currency is ignored; otherwise drop the snapshot lazily (next reader
+        -- rebuilds it) and run the full refresh only while the tracker table is on screen (2026-10-22).
+        WarbandNexus.RegisterMessage(VBListeners, E.CURRENCY_UPDATED, function(_, currencyID)
+            if type(currencyID) == "number" and currencyID ~= M.VOIDCORE_ID
+                and currencyID ~= ((M.GetManafluxID and M.GetManafluxID()) or M.MANAFLUX_ID) then
+                return
+            end
+            if S.tableFrame and S.tableFrame:IsShown() then
+                OnDataChanged()
+            elseif M.InvalidateVaultSnapshot then
+                M.InvalidateVaultSnapshot()
+            end
+        end)
     end
 end
 
