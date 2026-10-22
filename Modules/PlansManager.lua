@@ -1153,6 +1153,33 @@ function WarbandNexus:RemovePlan(planID)
         or removeFromList(self.db.global.customPlans, planID, "custom plan")
 end
 
+--- Character-bound plan types: they carry characterName / characterRealm and track one character.
+local CHARACTER_BOUND_PLAN_TYPES = { weekly_vault = true, daily_quests = true }
+
+---Drop the weekly vault / daily quest plans of a character whose roster row is being removed.
+---Without this they stayed as cards for a character the addon no longer knows (2026-10-22).
+---@param characterName string
+---@param characterRealm string
+---@return number removed
+function WarbandNexus:RemovePlansForCharacter(characterName, characterRealm)
+    local list = self.db and self.db.global and self.db.global.plans
+    if type(list) ~= "table" or not characterName or not characterRealm then return 0 end
+    local removed = 0
+    for i = #list, 1, -1 do
+        local plan = list[i]
+        if type(plan) == "table" and CHARACTER_BOUND_PLAN_TYPES[plan.type]
+            and plan.characterName == characterName and plan.characterRealm == characterRealm then
+            table.remove(list, i)
+            removed = removed + 1
+        end
+    end
+    if removed > 0 then
+        self:RefreshPlanCache()
+        self:SendMessage(E.PLANS_UPDATED, { action = "removed" })
+    end
+    return removed
+end
+
 --[[
     Remove all completed plans
     @return number - Count of removed plans

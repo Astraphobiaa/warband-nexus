@@ -710,7 +710,64 @@ function CharacterService:RemoveCharacterProfileAliases(addon, charKey)
     return removed
 end
 
---- Drop per-character subsidiary storage when a roster row is deleted or pruned by limit enforcement.
+--- Every db.global table keyed by roster row key. Delete, limit prune, stale prune and the orphan
+--- sweep all walk this one list; each kept its own copy before and the copies drifted (PvP, weekly
+--- currency / M+ stamps and statistic seed stamps orphaned after a stale prune; 2026-10-22).
+---@param addon table WarbandNexus
+---@return table[] tables
+function CharacterService:GetCharacterKeyedTables(addon)
+    local out = {}
+    local g = addon and addon.db and addon.db.global
+    if not g then return out end
+    local function add(t)
+        if type(t) == "table" then out[#out + 1] = t end
+    end
+    local cd = g.currencyData
+    if type(cd) == "table" then
+        add(cd.currencies)
+        add(cd.totalEarned)
+        add(cd.currencyProgressWeek)
+        add(cd.weeklyEarnedThisWeek)
+    end
+    add(g.gearData)
+    add(g.pveProgress)
+    add(g.statisticSnapshots)
+    add(g.personalBanks)
+    add(g.itemStorage)
+    add(g.pvpProgress)
+    add(g.pvpMatches)
+    add(g.tryCounterStatSeedAt)
+    local pc = g.pveCache
+    if type(pc) == "table" then
+        local mp = pc.mythicPlus
+        if type(mp) == "table" then
+            add(mp.keystones)
+            add(mp.bestRuns)
+            add(mp.dungeonScores)
+            add(mp.runHistory)
+            add(mp.runHistoryWeek)
+        end
+        local gv = pc.greatVault
+        if type(gv) == "table" then
+            add(gv.activities)
+            add(gv.rewards)
+        end
+        local lo = pc.lockouts
+        if type(lo) == "table" then
+            add(lo.raids)
+            add(lo.dungeons)
+            add(lo.worldBosses)
+        end
+        if type(pc.delves) == "table" then add(pc.delves.characters) end
+    end
+    for _, repData in pairs(g.reputations or {}) do
+        if type(repData) == "table" then add(repData.chars) end
+    end
+    if type(g.reputationData) == "table" then add(g.reputationData.characters) end
+    return out
+end
+
+--- Drop per-character subsidiary storage when a roster row is deleted or pruned.
 ---@param addon table WarbandNexus
 ---@param charKey string
 ---@return number removed Key buckets cleared
@@ -718,68 +775,49 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
     if not addon or not addon.db or not addon.db.global or not charKey or charKey == "" then
         return 0
     end
-    local g = addon.db.global
     local removed = 0
-
-    local cd = g.currencyData
-    if cd then
-        if cd.currencies then removed = removed + PurgeCharKeyedEntries(cd.currencies, charKey) end
-        if cd.totalEarned then removed = removed + PurgeCharKeyedEntries(cd.totalEarned, charKey) end
-        if cd.currencyProgressWeek then removed = removed + PurgeCharKeyedEntries(cd.currencyProgressWeek, charKey) end
-        if cd.weeklyEarnedThisWeek then removed = removed + PurgeCharKeyedEntries(cd.weeklyEarnedThisWeek, charKey) end
-    end
-
-    removed = removed + PurgeCharKeyedEntries(g.gearData, charKey)
-    removed = removed + PurgeCharKeyedEntries(g.pveProgress, charKey)
-    removed = removed + PurgeCharKeyedEntries(g.statisticSnapshots, charKey)
-    removed = removed + PurgeCharKeyedEntries(g.personalBanks, charKey)
-    removed = removed + PurgeCharKeyedEntries(g.itemStorage, charKey)
-    -- PvP stores are per-character keyed like the buckets above; without these they orphaned in
-    -- SavedVariables forever after a character was deleted.
-    removed = removed + PurgeCharKeyedEntries(g.pvpProgress, charKey)
-    removed = removed + PurgeCharKeyedEntries(g.pvpMatches, charKey)
-
-    local pc = g.pveCache
-    if type(pc) == "table" then
-        local mp = pc.mythicPlus
-        if mp then
-            removed = removed + PurgeCharKeyedEntries(mp.keystones, charKey)
-            removed = removed + PurgeCharKeyedEntries(mp.bestRuns, charKey)
-            removed = removed + PurgeCharKeyedEntries(mp.dungeonScores, charKey)
-            removed = removed + PurgeCharKeyedEntries(mp.runHistory, charKey)
-            removed = removed + PurgeCharKeyedEntries(mp.runHistoryWeek, charKey)
-        end
-        local gv = pc.greatVault
-        if gv then
-            removed = removed + PurgeCharKeyedEntries(gv.activities, charKey)
-            removed = removed + PurgeCharKeyedEntries(gv.rewards, charKey)
-        end
-        local lo = pc.lockouts
-        if lo then
-            removed = removed + PurgeCharKeyedEntries(lo.raids, charKey)
-            removed = removed + PurgeCharKeyedEntries(lo.dungeons, charKey)
-            removed = removed + PurgeCharKeyedEntries(lo.worldBosses, charKey)
-        end
-        if pc.delves and pc.delves.characters then
-            removed = removed + PurgeCharKeyedEntries(pc.delves.characters, charKey)
-        end
-    end
-
-    for _, repData in pairs(g.reputations or {}) do
-        if type(repData) == "table" and repData.chars then
-            removed = removed + PurgeCharKeyedEntries(repData.chars, charKey)
-        end
-    end
-
-    local rd = g.reputationData
-    if rd and rd.characters then
-        removed = removed + PurgeCharKeyedEntries(rd.characters, charKey)
+    local tables = self:GetCharacterKeyedTables(addon)
+    for i = 1, #tables do
+        removed = removed + PurgeCharKeyedEntries(tables[i], charKey)
     end
 
     if removed > 0 and DebugPrint then
         DebugPrint(string.format("|cffff8000[WN Char]|r Subsidiary purge %s: %d bucket(s)", tostring(charKey), removed))
     end
     return removed
+end
+
+--- Remove one roster row and everything that belongs only to it: profile aliases, subsidiary
+--- tables, character-bound plans (weekly vault / daily quests) and the guild bank cache when no
+--- other row is in that guild. Shared by DeleteCharacter, EnforceCharacterLimit and
+--- CleanupStaleCharacters; the caller sends its own CHARACTER_UPDATED.
+---@param addon table WarbandNexus
+---@param charKey string Exact roster row key
+---@return boolean removed
+function CharacterService:PurgeCharacterRow(addon, charKey)
+    local chars = addon and addon.db and addon.db.global and addon.db.global.characters
+    if type(chars) ~= "table" or not charKey or chars[charKey] == nil then return false end
+    local row = chars[charKey]
+    local guildName = type(row) == "table" and row.guildName or nil
+    -- Aliases and plans resolve through the row: both run before it is removed.
+    self:RemoveCharacterProfileAliases(addon, charKey)
+    if type(row) == "table" and addon.RemovePlansForCharacter and row.name and row.realm then
+        local shared = false
+        for key, other in pairs(chars) do
+            if key ~= charKey and type(other) == "table" and other.name == row.name and other.realm == row.realm then
+                shared = true
+                break
+            end
+        end
+        -- A same-name copy owns the Name-Realm plans too.
+        if not shared then addon:RemovePlansForCharacter(row.name, row.realm) end
+    end
+    self:RemoveCharacterSubsidiaryKeys(addon, charKey)
+    chars[charKey] = nil
+    if type(guildName) == "string" and guildName ~= "" and addon.MaybeRemoveGuildBankCache then
+        addon:MaybeRemoveGuildBankCache(guildName, charKey)
+    end
+    return true
 end
 
 --- Canonical key for subsidiary globals (`db.global.currencies`, etc.) — same namespace rules as `characters`.

@@ -2574,11 +2574,23 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
         return 0
     end
     
+    -- Collect first: PurgeCharacterRow walks the roster for aliases while removing a row.
+    local stale = {}
     for key, char in pairs(self.db.global.characters) do
         if self:IsCharacterEligibleForStaleRemoval(char, threshold, currentTime) then
-            self.db.global.characters[key] = nil
-            removed = removed + 1
+            stale[#stale + 1] = key
         end
+    end
+    local CS = ns.CharacterService
+    for i = 1, #stale do
+        -- Full purge (subsidiary tables, aliases, plans, guild bank); dropping only the row left
+        -- its PvP / weekly stamps / plans behind for good (2026-10-22).
+        if CS and CS.PurgeCharacterRow then
+            CS:PurgeCharacterRow(self, stale[i])
+        else
+            self.db.global.characters[stale[i]] = nil
+        end
+        removed = removed + 1
     end
 
     if removed > 0 then

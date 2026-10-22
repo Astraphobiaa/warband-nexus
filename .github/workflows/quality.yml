@@ -138,6 +138,7 @@ jobs:
             lua5.1 .github/scripts/test_no_global_writes.lua
             lua5.1 .github/scripts/test_profession_row_width.lua
             lua5.1 .github/scripts/test_items_bucket_compression.lua
+            lua5.1 .github/scripts/test_character_purge_paths.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

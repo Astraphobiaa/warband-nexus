@@ -281,19 +281,13 @@ function WarbandNexus:DeleteCharacter(characterKey)
     local charData = self.db.global.characters[characterKey]
     local charName = charData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     
+    -- Aliases, subsidiary tables, character-bound plans, row, then the guild bank cache.
     local CS = ns.CharacterService
-    -- Favorites, section assignments / locks and order lists under every alias of this row (exact,
-    -- GUID, Name-Realm); before the row is removed so the aliases still resolve.
-    if CS and CS.RemoveCharacterProfileAliases then
-        CS:RemoveCharacterProfileAliases(self, characterKey)
+    if CS and CS.PurgeCharacterRow then
+        CS:PurgeCharacterRow(self, characterKey)
+    else
+        self.db.global.characters[characterKey] = nil
     end
-    
-    if CS and CS.RemoveCharacterSubsidiaryKeys then
-        CS:RemoveCharacterSubsidiaryKeys(self, characterKey)
-    end
-    
-    -- Delete character data
-    self.db.global.characters[characterKey] = nil
     
     -- Fire event for UI refresh (DB-First pattern)
     local Constants = ns.Constants
@@ -486,25 +480,13 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         local charKey = entry.key
         local charName = entry.name
         
-        if CS and CS.RemoveCharacterSubsidiaryKeys then
-            CS:RemoveCharacterSubsidiaryKeys(self, charKey)
+        -- Same purge as DeleteCharacter: order lists, group assignments / locks under every alias,
+        -- subsidiary tables, plans and guild bank (only exact order entries were dropped before).
+        if CS and CS.PurgeCharacterRow then
+            CS:PurgeCharacterRow(self, charKey)
+        else
+            characters[charKey] = nil
         end
-        
-        -- Remove from character order lists (all buckets including custom group_* keys)
-        if self.db.profile.characterOrder then
-            for orderKey, ordList in pairs(self.db.profile.characterOrder) do
-                if type(ordList) == "table" then
-                    for j = #ordList, 1, -1 do
-                        if ordList[j] == charKey then
-                            table.remove(ordList, j)
-                        end
-                    end
-                end
-            end
-        end
-        
-        -- Remove character
-        characters[charKey] = nil
         removed = removed + 1
         count = count - 1
         
@@ -563,55 +545,11 @@ function WarbandNexus:CleanupOrphanedData()
         end
     end
 
-    -- Clean currencies (v2.0: Direct DB architecture)
-    if self.db.global.currencyData then
-        if self.db.global.currencyData.currencies then
-            purgeOrphans(self.db.global.currencyData.currencies)
-        end
-        if self.db.global.currencyData.totalEarned then
-            purgeOrphans(self.db.global.currencyData.totalEarned)
-        end
-    end
-
-    -- Clean reputations (legacy v1 per-faction chars)
-    for factionID, repData in pairs(self.db.global.reputations or {}) do
-        if repData.chars then
-            purgeOrphans(repData.chars)
-        end
-    end
-
-    if self.db.global.reputationData and self.db.global.reputationData.characters then
-        purgeOrphans(self.db.global.reputationData.characters)
-    end
-
-    purgeOrphans(self.db.global.gearData)
-    purgeOrphans(self.db.global.pveProgress)
-    purgeOrphans(self.db.global.statisticSnapshots)
-    purgeOrphans(self.db.global.personalBanks)
-    purgeOrphans(self.db.global.itemStorage)
-
-    local pc = self.db.global.pveCache
-    if type(pc) == "table" then
-        local mp = pc.mythicPlus
-        if mp then
-            purgeOrphans(mp.keystones)
-            purgeOrphans(mp.bestRuns)
-            purgeOrphans(mp.dungeonScores)
-            purgeOrphans(mp.runHistory)
-        end
-        local gv = pc.greatVault
-        if gv then
-            purgeOrphans(gv.activities)
-            purgeOrphans(gv.rewards)
-        end
-        local lo = pc.lockouts
-        if lo then
-            purgeOrphans(lo.raids)
-            purgeOrphans(lo.dungeons)
-            purgeOrphans(lo.worldBosses)
-        end
-        if pc.delves and pc.delves.characters then
-            purgeOrphans(pc.delves.characters)
+    -- Same table list as the delete / prune paths (CharacterService:GetCharacterKeyedTables).
+    if CS and CS.GetCharacterKeyedTables then
+        local tables = CS:GetCharacterKeyedTables(self)
+        for i = 1, #tables do
+            purgeOrphans(tables[i])
         end
     end
 
