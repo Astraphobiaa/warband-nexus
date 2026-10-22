@@ -1201,6 +1201,12 @@ local function BuildQuestLogSignature()
                     end
                 end
             end
+            -- Objective-less quests turn ready-for-turn-in without any objective changing.
+            if C_QuestLog.IsComplete then
+                local okC, complete = pcall(C_QuestLog.IsComplete, qid)
+                if okC and issecretvalue and issecretvalue(complete) then return nil end
+                parts[#parts + 1] = (okC and complete) and "c" or "o"
+            end
             parts[#parts + 1] = ";"
         end
     end
@@ -1208,16 +1214,20 @@ local function BuildQuestLogSignature()
 end
 
 --- True when the QUEST_LOG_UPDATE wave needs a full rescan (log changed, unreadable, or last scan too old).
+--- The second return is the fingerprint; the caller stores it with MarkQuestLogScanned once the scan
+--- finished, so a scan that errors does not mark the log as seen.
 local function QuestLogNeedsRescan()
-    local now = GetTime()
     local sig = BuildQuestLogSignature()
     if sig and sig == questLogGate.sig and questLogGate.scannedAt
-        and (now - questLogGate.scannedAt) < QUEST_LOG_RESCAN_MAX_AGE then
-        return false
+        and (GetTime() - questLogGate.scannedAt) < QUEST_LOG_RESCAN_MAX_AGE then
+        return false, sig
     end
+    return true, sig
+end
+
+local function MarkQuestLogScanned(sig)
     questLogGate.sig = sig
-    questLogGate.scannedAt = now
-    return true
+    questLogGate.scannedAt = GetTime()
 end
 
 -- Order-independent fingerprint of plan.quests, used to drop no-op daily_plan_updated messages.
@@ -1550,8 +1560,11 @@ function WarbandNexus:OnDailyQuestUpdate()
         local currentKey = ns.Utilities:GetCharacterKey()
         local dailyList = GetDailyQuestPlansForCharKey(currentKey)
         -- Unchanged quest log since the last full scan: take the light path below (2026-10-22).
-        if dailyList and #dailyList > 0 and not QuestLogNeedsRescan() then
-            dailyList = nil
+        local logSig
+        if dailyList and #dailyList > 0 then
+            local needsScan
+            needsScan, logSig = QuestLogNeedsRescan()
+            if not needsScan then dailyList = nil end
         end
         if not dailyList or #dailyList == 0 then
             -- No daily-quest plan on this character (or nothing in the log changed). CheckPlansForCompletion (the only listener)
@@ -1573,6 +1586,7 @@ function WarbandNexus:OnDailyQuestUpdate()
         for i = 1, #dailyList do
             self:UpdateDailyPlanProgress(dailyList[i], true, true)
         end
+        MarkQuestLogScanned(logSig)
 
         if self.SendMessage then
             self:SendMessage(E.QUEST_PROGRESS_UPDATED, {

@@ -131,6 +131,7 @@ do
         { questID = 91001, title = "Eversong errand", isDaily = true },
     }
     local mapCalls = 0
+    local completeIDs = {}
     C_Map = C_Map or {}
     C_Map.GetMapInfo = function(mapID) return { mapID = mapID, name = (mapID == EVERSONG) and "Eversong Woods" or ("Map " .. mapID), parentMapID = 2537 } end
     C_QuestLog = {
@@ -146,7 +147,11 @@ do
         IsQuestFlaggedCompleted = function() return false end,
         IsWorldQuest = function() return false end,
         GetQuestObjectives = function(id) return objectives[id] or {} end,
-        GetQuestsOnMap = function() mapCalls = mapCalls + 1; return {} end,
+        IsComplete = function(id) return completeIDs[id] == true end,
+        GetQuestsOnMap = function()
+            mapCalls = mapCalls + 1
+            return {}
+        end,
     }
     C_TaskQuest = { GetQuestZoneID = function() return nil end }
 
@@ -206,6 +211,24 @@ do
     Wave()
     assert_eq(mapCalls > before2, true, "secret value keeps forcing the scan path")
     stub.ClearSecrets()
+
+    -- Objective-less quest turns ready-for-turn-in: no objective changed, the log state did.
+    Wave()
+    before = mapCalls
+    completeIDs[91001] = true
+    Wave()
+    assert_eq(mapCalls > before, true, "quest became complete without objective change: rescan")
+
+    -- A scan that errors must not mark the log as seen: the next wave retries.
+    objectives[91001][1].numFulfilled = 3
+    local realUpdate = WN.UpdateDailyPlanProgress
+    WN.UpdateDailyPlanProgress = function() error("scan failed") end
+    Wave()
+    WN.UpdateDailyPlanProgress = realUpdate
+    stub.Reset()   -- the deliberate error above is not a test failure
+    before = mapCalls
+    Wave()
+    assert_eq(mapCalls > before, true, "failed scan left the fingerprint unstored: next wave rescans")
 
     local sentBefore = plansMsgs
     WN:UpdateDailyPlanProgress(plan, true)

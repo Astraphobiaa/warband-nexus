@@ -1177,12 +1177,18 @@ local CHARACTER_BOUND_PLAN_TYPES = { weekly_vault = true, daily_quests = true }
 ---@return number removed
 function WarbandNexus:RemovePlansForCharacter(characterName, characterRealm)
     local list = self.db and self.db.global and self.db.global.plans
-    if type(list) ~= "table" or not characterName or not characterRealm then return 0 end
+    local U = ns.Utilities
+    if type(list) ~= "table" or not characterName or not characterRealm or not (U and U.GetCharacterKey) then return 0 end
+    -- Plans store GetRealmName() ("Twisting Nether"), roster rows the normalized realm
+    -- ("TwistingNether"): compare the space-free character keys.
+    local wantKey = U:GetCharacterKey(characterName, characterRealm)
+    if not wantKey then return 0 end
     local removed = 0
     for i = #list, 1, -1 do
         local plan = list[i]
         if type(plan) == "table" and CHARACTER_BOUND_PLAN_TYPES[plan.type]
-            and plan.characterName == characterName and plan.characterRealm == characterRealm then
+            and plan.characterName and plan.characterRealm
+            and U:GetCharacterKey(plan.characterName, plan.characterRealm) == wantKey then
             table.remove(list, i)
             removed = removed + 1
         end

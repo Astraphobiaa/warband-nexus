@@ -57,7 +57,10 @@ ns.IsDebugModeEnabled = function() return false end
 ns.Profiler = { enabled = false, CAT = {}, Start = function() end, Stop = function() end, SliceLabel = function() return "" end }
 local chars
 ns.Utilities = {
-    GetCharacterKey = function(_, name, realm) return (name or "Alpha") .. "-" .. (realm or "Kazzak") end,
+    -- Mirrors Utilities:GetCharacterKey: spaces stripped ("Twisting Nether" -> "TwistingNether").
+    GetCharacterKey = function(_, name, realm)
+        return ((name or "Alpha"):gsub("%s+", "")) .. "-" .. ((realm or "Kazzak"):gsub("%s+", ""))
+    end,
     GetCharacterStorageKey = function() return LIVE end,
     GetCanonicalCharacterKey = function(_, k)
         for key, row in pairs(chars or {}) do
@@ -207,6 +210,16 @@ Seed(OldRow())
 G.characters["Bravo-Kazzak"] = { name = "Bravo", realm = "Kazzak", isTracked = true }
 WarbandNexus:DeleteCharacter(OLD)
 assert_eq(#G.plans, 4, "plans of a Name-Realm another row still owns are kept")
+
+print("Phase 6: plan realm from GetRealmName (with spaces) matches the normalized roster realm")
+Seed(OldRow({ realm = "TwistingNether" }))
+G.plans = {
+    { id = 7, type = "weekly_vault", characterName = "Bravo", characterRealm = "Twisting Nether" },
+    { id = 8, type = "weekly_vault", characterName = "Alpha", characterRealm = "Kazzak" },
+}
+WarbandNexus:DeleteCharacter(OLD)
+assert_eq(#G.plans, 1, "multi-word realm plan of the deleted character removed")
+assert_eq(G.plans[1] and G.plans[1].id, 8, "other character's plan kept")
 
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))
 if failed > 0 then
