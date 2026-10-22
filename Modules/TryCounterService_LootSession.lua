@@ -296,8 +296,8 @@ end
 function Fns.SafeIsFishingLoot()
     if not IsFishingLoot then return false end
     local ok, v = pcall(IsFishingLoot)
-    if not ok or v == nil then return false end
     if issecretvalue and issecretvalue(v) then return false end
+    if not ok or v == nil then return false end
     return not not v
 end
 

@@ -32,8 +32,8 @@ local WN_ATTACH_MAX_ATTEMPTS = 4
 local WN_FRAME_OPEN_HOOK_DEFER_SEC = 0.12
 
 local function AchievementCompletedSafe(completed)
-    if completed == nil then return false end
     if issecretvalue and issecretvalue(completed) then return false end
+    if completed == nil then return false end
     return completed and true or false
 end
 
@@ -55,8 +55,8 @@ local function SafeAchievementID(v)
     if type(v) ~= "number" or v <= 0 then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
     local ok, retId = pcall(GetAchievementInfo, v)
-    if not ok or retId == nil then return nil end
     if issecretvalue and issecretvalue(retId) then return nil end
+    if not ok or retId == nil then return nil end
     if retId == v then return v end
     return nil
 end

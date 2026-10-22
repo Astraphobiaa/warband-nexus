@@ -2289,7 +2289,7 @@ end
 local function ItemMergeDedupeKey(item)
     if not item or not item.itemID then return nil end
     local link = item.itemLink or item.link
-    if link and type(link) == "string" and link ~= "" then
+    if link and type(link) == "string" and ((issecretvalue and issecretvalue(link)) or link ~= "") then
         if issecretvalue and issecretvalue(link) then
             return "I:" .. tostring(item.itemID)
         end
@@ -2919,8 +2919,8 @@ local function SafeGetItemCount(itemID, includeBank)
     else
         ok, count = pcall(GetItemCount, itemID)
     end
-    if not ok or count == nil then return 0 end
     if issecretvalue and issecretvalue(count) then return 0 end
+    if not ok or count == nil then return 0 end
     return tonumber(count) or 0
 end
 
@@ -3108,8 +3108,8 @@ end
 
 function CountRows.CharacterName(charKey, charData)
     if charData.name then return charData.name end
-    if type(charKey) ~= "string" or charKey == "" then return nil end
     if issecretvalue and issecretvalue(charKey) then return nil end
+    if type(charKey) ~= "string" or charKey == "" then return nil end
     return charKey:match("^([^-]+)")
 end
 

@@ -60,7 +60,7 @@ end
 local scanCtx = {}
 
 local function ContainerValueIsSecret(value)
-    if value == nil or not issecretvalue then return false end
+    if not issecretvalue then return false end
     return issecretvalue(value) and true or false
 end
 

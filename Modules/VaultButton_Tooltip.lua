@@ -156,8 +156,8 @@ end
 
 local NormalizeColonLabel = ns.UI_NormalizeColonLabelSpacing
     or function(label)
-        if not label or label == "" then return "" end
         if issecretvalue and issecretvalue(label) then return "" end
+        if not label or label == "" then return "" end
         local trimmed = label:match("^%s*(.-)%s*$") or label
         trimmed = trimmed:gsub("%s*:%s*$", "")
         return trimmed .. " : "
@@ -296,10 +296,10 @@ function M.GetActiveTodoCountForChar(charName, charRealm)
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
         return 0
     end
-    if not charName or charName == "" then
+    if charName and issecretvalue and issecretvalue(charName) then
         return 0
     end
-    if charName and issecretvalue and issecretvalue(charName) then
+    if not charName or charName == "" then
         return 0
     end
     if charRealm and issecretvalue and issecretvalue(charRealm) then

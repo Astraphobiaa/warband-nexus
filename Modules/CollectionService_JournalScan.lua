@@ -337,8 +337,8 @@ COLLECTION_CONFIGS = {
                 -- Try C_Item fallback for name
                 if C_Item and C_Item.GetItemInfo then
                     local itemName = C_Item.GetItemInfo(itemID)
-                    if itemName and type(itemName) == "string" and itemName ~= "" then
-                        if not (issecretvalue and issecretvalue(itemName)) then
+                    if itemName and type(itemName) == "string" then
+                        if not (issecretvalue and issecretvalue(itemName)) and itemName ~= "" then
                             toyName = itemName
                         end
                     end

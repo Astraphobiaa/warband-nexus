@@ -421,8 +421,8 @@ local HIERARCHY_TEST_STEP_SEC = 0.65
 local function TestHierarchyAchievementName(achievementID)
     if not achievementID then return nil end
     local ok, _, name = pcall(GetAchievementInfo, achievementID) -- 1st return is the id
-    if not ok or not name or name == "" then return nil end
     if issecretvalue and issecretvalue(name) then return nil end
+    if not ok or not name or name == "" then return nil end
     return name
 end
 
@@ -435,8 +435,8 @@ local function TestHierarchyFirstPlainCriteriaHint(achievementID)
         if ok then
             local ct = tonumber(criteriaType)
             if ct ~= AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED then
-                if criteriaName and criteriaName ~= ""
-                    and not (issecretvalue and issecretvalue(criteriaName)) then
+                if criteriaName and not (issecretvalue and issecretvalue(criteriaName))
+                    and criteriaName ~= "" then
                     return criteriaName, i
                 end
                 return i, i
@@ -460,8 +460,8 @@ local function TestHierarchyLinkedSubCriteriaHint(metaID, subID)
         if ok and tonumber(criteriaType) == AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED then
             local linked = tonumber(assetID)
             if linked and linked == subID then
-                if criteriaName and criteriaName ~= ""
-                    and not (issecretvalue and issecretvalue(criteriaName)) then
+                if criteriaName and not (issecretvalue and issecretvalue(criteriaName))
+                    and criteriaName ~= "" then
                     return criteriaName
                 end
                 return TestHierarchyAchievementName(subID) or "Have a Heart"

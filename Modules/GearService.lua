@@ -218,8 +218,8 @@ local gearPrimaryStatProbeCacheSize = 0
 local GEAR_PRIMARY_STAT_PROBE_CACHE_CAP = 768
 
 local function CacheGearCraftedProbeResult(link, isCrafted)
-    if not link or link == "" then return end
     if issecretvalue and issecretvalue(link) then return end
+    if not link or link == "" then return end
     if gearCraftedProbeCache[link] == nil then
         gearCraftedProbeCacheSize = gearCraftedProbeCacheSize + 1
     end
@@ -233,8 +233,8 @@ local function CacheGearCraftedProbeResult(link, isCrafted)
 end
 
 local function GearLinkIsCrafted(link)
-    if not link or link == "" then return nil end
     if issecretvalue and issecretvalue(link) then return nil end
+    if not link or link == "" then return nil end
     local cached = gearCraftedProbeCache[link]
     if cached ~= nil then return cached end
     if not (C_TradeSkillUI and C_TradeSkillUI.GetItemCraftedQualityByItemInfo) then return nil end
@@ -659,8 +659,8 @@ local function GetItemMinLevelFromItemInfo(itemInfo)
     -- C_Item.GetItemInfo returns name, link, quality, itemLevel, itemMinLevel, ... (12.1.5 API doc):
     -- the min level is the 5th value, not the 4th (that read the item level, e.g. 250, as the level req).
     local ok, _, _, _, _, minLvl = pcall(C_Item.GetItemInfo, itemInfo)
-    if not ok or minLvl == nil then return nil end
     if issecretvalue and issecretvalue(minLvl) then return nil end
+    if not ok or minLvl == nil then return nil end
     if type(minLvl) ~= "number" or minLvl <= 0 then return nil end
     return minLvl
 end
@@ -734,8 +734,8 @@ local UPGRADE_CURRENCY_ID_SET_EARLY = GT.UPGRADE_CURRENCY_ID_SET_EARLY
 local CURRENCY_ID_TO_TRACK = GT.CURRENCY_ID_TO_TRACK
 
 local function NormalizeUpgradeTrackName(raw)
-    if not raw or raw == "" then return nil end
     if issecretvalue and issecretvalue(raw) then return nil end
+    if not raw or raw == "" then return nil end
     if type(raw) ~= "string" then return nil end
     if TRACK_ILVLS[raw] then return raw end
     local firstWord = raw:match("^([%a]+)")
@@ -950,8 +950,8 @@ local function ResolveTrackFromPersistedCosts(slot)
 end
 
 local function ParseUpgradeLabelString(raw)
-    if not raw or raw == "" then return nil, nil, nil end
     if issecretvalue and issecretvalue(raw) then return nil, nil, nil end
+    if not raw or raw == "" then return nil, nil, nil end
     if type(raw) ~= "string" then return nil, nil, nil end
     local trackPart, curS, maxS = raw:match("^([%a]+)%s+(%d+)/(%d+)")
     if trackPart then
@@ -1211,8 +1211,8 @@ end
 local function ResolveGearRosterRow(charKey)
     local g = WarbandNexus.db and WarbandNexus.db.global
     local chars = g and g.characters
-    if not chars or not charKey or charKey == "" then return nil, nil end
     if issecretvalue and issecretvalue(charKey) then return nil, nil end
+    if not chars or not charKey or charKey == "" then return nil, nil end
     local U = ns.Utilities
     local canon = (U and U.GetCanonicalCharacterKey) and (U:GetCanonicalCharacterKey(charKey) or charKey) or charKey
     if chars[canon] then return chars[canon], canon end
@@ -1229,8 +1229,8 @@ local function ResolveGearRosterRow(charKey)
         for rosterKey, row in pairs(chars) do
             if type(row) == "table" then
                 local g = row.guid
-                if type(g) == "string" and g ~= "" and g == canon
-                    and not (issecretvalue and issecretvalue(g)) then
+                if type(g) == "string" and not (issecretvalue and issecretvalue(g))
+                    and g ~= "" and g == canon then
                     return row, rosterKey
                 end
             end
@@ -1760,8 +1760,8 @@ local function ScanSlotUpgradeData(slotEntry, slotID, skipTooltip)
             return
         end
 
-        if info.customUpgradeString and info.customUpgradeString ~= ""
-            and not (issecretvalue and issecretvalue(info.customUpgradeString)) then
+        if info.customUpgradeString and not (issecretvalue and issecretvalue(info.customUpgradeString))
+            and info.customUpgradeString ~= "" then
             slotEntry.customUpgradeString = info.customUpgradeString
         end
 
@@ -2395,8 +2395,8 @@ function WarbandNexus:GetEquippedGear(charKey)
             for _, v in pairs(gchars) do
                 if type(v) == "table" then
                     local g = v.guid
-                    if type(g) == "string" and g ~= "" and g == charKey
-                        and not (issecretvalue and issecretvalue(g)) then
+                    if type(g) == "string" and not (issecretvalue and issecretvalue(g))
+                        and g ~= "" and g == charKey then
                         row = v
                         break
                     end
@@ -2972,8 +2972,8 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
         end
     end
     local function norm(k)
-        if not k or k == "" then return "" end
         if issecretvalue and issecretvalue(k) then return "" end
+        if not k or k == "" then return "" end
         return (tostring(k):gsub("%s+", ""))
     end
 

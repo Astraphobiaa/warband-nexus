@@ -517,8 +517,8 @@ local function collapseDuplicateNamesToSingleMainRow(entries, apiRoots)
                 end
             else
                 local okp, pinfo = pcall(C_Map.GetMapInfo, mainId)
-                if okp and pinfo and pinfo.name and pinfo.name ~= ""
-                    and not (issecretvalue and issecretvalue(pinfo.name)) then
+                if okp and pinfo and pinfo.name and not (issecretvalue and issecretvalue(pinfo.name))
+                    and pinfo.name ~= "" then
                     out[#out + 1] = {
                         id = mainId,
                         name = grp[1].name,
@@ -650,8 +650,8 @@ local function appendPickerGroupRows(rows, apiRoots, headerKey, kindTag, ids)
         if mid and mid > 0 then
             if #apiRoots == 0 or uiMapStructuredUnderRoots(mid, apiRoots) then
                 local ok, info = pcall(C_Map.GetMapInfo, mid)
-                if ok and info and info.name and info.name ~= ""
-                    and not (issecretvalue and issecretvalue(info.name)) then
+                if ok and info and info.name and not (issecretvalue and issecretvalue(info.name))
+                    and info.name ~= "" then
                     local base = info.name
                     local disp = base
                     if hint and hint ~= "" then
@@ -806,8 +806,8 @@ local function buildApiRowsForSection(sectionIndex)
                     -- Curated ID not under this expansion's roots (outdated / wrong list entry).
                 else
                 local ok2, info2 = pcall(C_Map.GetMapInfo, sid)
-                if ok2 and info2 and info2.name and info2.name ~= ""
-                    and not (issecretvalue and issecretvalue(info2.name)) then
+                if ok2 and info2 and info2.name and not (issecretvalue and issecretvalue(info2.name))
+                    and info2.name ~= "" then
                     local kind = UICK.Resolve(sid, info2)
                     if kind ~= "cosmic" and kind ~= "world" then
                         if depthById[sid] == nil then
@@ -857,8 +857,8 @@ function catalog.GetDisplayRowsForSectionStatic(sectionIndex)
         if #roots > 0 and not uiMapStructuredUnderRoots(mid, roots) then return end
         seen[mid] = true
         local ok, info = pcall(C_Map.GetMapInfo, mid)
-        if not ok or not info or not info.name or info.name == ""
-            or (issecretvalue and issecretvalue(info.name)) then return end
+        if not ok or not info or not info.name or (issecretvalue and issecretvalue(info.name))
+            or info.name == "" then return end
         local kind = UICK.Resolve(mid, info)
         if kind == "cosmic" or kind == "world" then return end
         depthById[mid] = (#roots > 0) and treeDepthToNearestRoot(mid, roots) or 0

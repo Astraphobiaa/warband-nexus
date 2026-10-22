@@ -206,8 +206,8 @@ end
 
 --- Safe tonumber for C_CurrencyInfo fields (Midnight may return secret values).
 local function SafeCurrencyNumber(v)
-    if v == nil then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
+    if v == nil then return nil end
     return tonumber(v)
 end
 

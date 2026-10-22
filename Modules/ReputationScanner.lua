@@ -77,8 +77,8 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
         return nil
     end
     local factionName = factionData.name
-    if factionName == nil then return nil end
     if issecretvalue and issecretvalue(factionName) then return nil end
+    if factionName == nil then return nil end
     if factionName == "" then return nil end
 
     -- Use the longer description between GetFactionDataByID and the pre-fetched index description
@@ -317,8 +317,8 @@ function ReputationScanner.RestoreCollapsedHeaders(collapsed)
 end
 
 local function IsRootExpansionHeader(name)
-    if not name or type(name) ~= "string" or name == "" then return false end
     if issecretvalue and issecretvalue(name) then return false end
+    if not name or type(name) ~= "string" or name == "" then return false end
     
     for expID = 11, 0, -1 do
         local globalName = _G["EXPANSION_NAME" .. expID]

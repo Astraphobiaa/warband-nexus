@@ -28,9 +28,9 @@ end
 
 --- Plans/collection browse search: never call :lower() on secret API strings (Midnight 12.0+).
 local function NormalizeCollectionSearchText(searchText)
+    if issecretvalue and issecretvalue(searchText) then return "" end
     if searchText == nil then return "" end
     if type(searchText) ~= "string" then return "" end
-    if issecretvalue and issecretvalue(searchText) then return "" end
     return searchText:lower()
 end
 
@@ -95,7 +95,7 @@ end
 
 local function SafeAchievementDisplayName(id, name)
     if not id or (issecretvalue and issecretvalue(id)) then return nil end
-    if name and name ~= "" then
+    if name and ((issecretvalue and issecretvalue(name)) or name ~= "") then
         if issecretvalue and issecretvalue(name) then
             return "ID:" .. tostring(id)
         end
@@ -105,8 +105,8 @@ local function SafeAchievementDisplayName(id, name)
 end
 
 local function IsAchievementEarnedByMe(wasEarnedByMe)
-    if wasEarnedByMe == nil then return false end
     if issecretvalue and issecretvalue(wasEarnedByMe) then return false end
+    if wasEarnedByMe == nil then return false end
     return wasEarnedByMe == true
 end
 
@@ -1458,8 +1458,8 @@ local MOUNT_SOURCE_FILTER_MAX = 24
 
 ---@return boolean|nil
 local function SafeJournalBool(val)
-    if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
+    if val == nil then return nil end
     if val == true then return true end
     if val == false then return false end
     return nil
@@ -1646,8 +1646,9 @@ function WarbandNexus:GetToysDataGroupedBySourceType()
                 end
                 if (not name or name == "") and C_Item and C_Item.GetItemInfo then
                     local itemName = C_Item.GetItemInfo(itemID)
-                    if itemName and type(itemName) == "string" and itemName ~= "" then
-                        if not _issecretvalue or not _issecretvalue(itemName) then name = itemName end
+                    if itemName and type(itemName) == "string" and not (_issecretvalue and _issecretvalue(itemName))
+                        and itemName ~= "" then
+                        name = itemName
                     end
                 end
                 if not name or name == "" then name = tostring(itemID) end

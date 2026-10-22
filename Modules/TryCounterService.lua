@@ -2721,8 +2721,8 @@ function WarbandNexus:OnTryCounterNewMountAdded(mountID)
 end
 
 function WarbandNexus:OnTryCounterNewPetAdded(petGUID)
-    if not petGUID or type(petGUID) ~= "string" or petGUID == "" then return end
     if issecretvalue and issecretvalue(petGUID) then return end
+    if not petGUID or type(petGUID) ~= "string" or petGUID == "" then return end
     if not C_PetJournal or not C_PetJournal.GetPetInfoByPetID then return end
     local ok, speciesID = pcall(C_PetJournal.GetPetInfoByPetID, petGUID)
     if not ok or type(speciesID) ~= "number" or speciesID <= 0 then return end

@@ -506,8 +506,8 @@ function WarbandNexus:TryCounterDebugReport()
     local WN = self
     local function msg(s) Fns.TryChat("|cff9370DB[WN-TryDebug]|r " .. s) end
     local function safeStr(v)
-        if v == nil then return "nil" end
         if issecretvalue and issecretvalue(v) then return "(secret)" end
+        if v == nil then return "nil" end
         return tostring(v)
     end
 
@@ -621,8 +621,8 @@ function WarbandNexus:CheckTargetDrops()
         Fns.PrintTryCounterDisabledHint(self)
     end
     local function safeStr(val)
-        if val == nil then return "nil" end
         if issecretvalue and issecretvalue(val) then return "(secret)" end
+        if val == nil then return "nil" end
         return tostring(val)
     end
 

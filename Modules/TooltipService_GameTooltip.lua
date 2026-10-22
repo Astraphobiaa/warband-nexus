@@ -476,8 +476,8 @@ function GT.PreCacheCollectibleItems(service)
 end
 
 local function SafeTooltipNumber(val)
-    if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
+    if val == nil then return nil end
     return tonumber(val)
 end
 
@@ -690,8 +690,8 @@ local function ResolveInfoLabelRGB()
 end
 
 local function ResolveLiveCharacterLabel(liveChar)
-    if liveChar and liveChar.charName and liveChar.charName ~= ""
-        and not (issecretvalue and issecretvalue(liveChar.charName)) then
+    if liveChar and liveChar.charName and not (issecretvalue and issecretvalue(liveChar.charName))
+        and liveChar.charName ~= "" then
         return liveChar.charName
     end
     if UnitName then

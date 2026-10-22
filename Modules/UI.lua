@@ -2351,8 +2351,8 @@ function WarbandNexus:UpdateStatus()
     local trackingDialogKey = charKey
 
     local function BadgeOneLine(s)
-        if not s or s == "" then return s end
         if issecretvalue and issecretvalue(s) then return "" end
+        if not s or s == "" then return s end
         return (s:gsub("\n+", " "))
     end
 

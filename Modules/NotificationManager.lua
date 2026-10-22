@@ -636,8 +636,8 @@ assert(AS, "NotificationManager: load NotificationManager_AlertStack.lua first")
 local TRAVELERS_LOG_PROGRESS_ICON_ATLAS = "activities-toast-icon"
 
 local function NM_IsTravelersLogProgressTitle(title)
-    if type(title) ~= "string" or title == "" then return false end
     if issecretvalue and issecretvalue(title) then return false end
+    if type(title) ~= "string" or title == "" then return false end
     local monthlyTitle = _G.MONTHLY_ACTIVITIES_PROGRESSED
     if type(monthlyTitle) == "string" and monthlyTitle ~= ""
         and not (issecretvalue and issecretvalue(monthlyTitle)) and title == monthlyTitle then
@@ -654,8 +654,8 @@ local function NM_IsTravelersLogProgressTitle(title)
 end
 
 local function NM_FormatToastBadgeLabel(label)
-    if type(label) ~= "string" or label == "" then return label end
     if issecretvalue and issecretvalue(label) then return label end
+    if type(label) ~= "string" or label == "" then return label end
     if NM_IsTravelersLogProgressTitle(label) then
         return (ns.L and ns.L["TOAST_BADGE_TRAVELERS_LOG"]) or "Traveler's Log"
     end
@@ -1790,8 +1790,8 @@ end
 
 ---Shorten Blizzard's long criteria description to a display name (e.g. "Player Has Opened all X" -> "X").
 local function ShortenCriteriaDisplayName(criteriaString)
-    if not criteriaString or criteriaString == "" then return (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
     if issecretvalue and issecretvalue(criteriaString) then return (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
+    if not criteriaString or criteriaString == "" then return (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
     local s = criteriaString:gsub("^%s+", ""):gsub("%s+$", "")
     local prefixes = {
         "player has opened all ", "player has opened ", "player has open ", "player has collected all ", "player has collected ",
@@ -1875,7 +1875,7 @@ local function ResolveAchievementAlertCriteria(a1, a2, ...)
         local idx = a1.criteriaIndex or a1.index
         if type(idx) == "number" then return idx end
     end
-    if type(a2) == "string" and a2 ~= "" then
+    if type(a2) == "string" and ((issecretvalue and issecretvalue(a2)) or a2 ~= "") then
         if issecretvalue and issecretvalue(a2) then return nil end
         return a2
     end
@@ -1901,8 +1901,8 @@ end
 ---ProgressAlertSystem payloads (Traveler's Log, etc.) — no achievementID required.
 local function ResolveProgressAlertPayload(a1, a2, ...)
     local function safeStr(v)
-        if type(v) ~= "string" or v == "" then return nil end
         if issecretvalue and issecretvalue(v) then return nil end
+        if type(v) ~= "string" or v == "" then return nil end
         return v
     end
 
@@ -2011,7 +2011,7 @@ local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
     local criteriaIndex = nil
     if type(criteriaHint) == "number" then
         criteriaIndex = criteriaHint
-    elseif type(criteriaHint) == "string" and criteriaHint ~= "" then
+    elseif type(criteriaHint) == "string" and ((issecretvalue and issecretvalue(criteriaHint)) or criteriaHint ~= "") then
         if issecretvalue and issecretvalue(criteriaHint) then return nil end
         for i = 1, numCriteria do
             local name = GetAchievementCriteriaInfo(achievementID, i)
@@ -2031,9 +2031,10 @@ local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
 
     local linkedID = nil
     local ct = tonumber(criteriaType)
-    if ct == AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED and assetID then
+    if ct == AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED and assetID
+        and not (issecretvalue and issecretvalue(assetID)) then
         local n = tonumber(assetID)
-        if n and n > 0 and not (issecretvalue and issecretvalue(assetID)) then
+        if n and n > 0 then
             linkedID = n
         end
     end
@@ -2148,8 +2149,8 @@ local PROGRESS_ALERT_SYSTEM_GLOBALS = {
 local function SafeAlertFrameText(region)
     if not region or not region.GetText then return nil end
     local ok, text = pcall(region.GetText, region)
-    if not ok or type(text) ~= "string" or text == "" then return nil end
     if issecretvalue and issecretvalue(text) then return nil end
+    if not ok or type(text) ~= "string" or text == "" then return nil end
     return text
 end
 

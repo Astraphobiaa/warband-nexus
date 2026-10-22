@@ -353,8 +353,8 @@ local function ResolveFactionMetadata(factionID)
     -- This means the data isn't loaded yet — return nil so HydrateFactionData
     -- uses the stored compact name instead. Next call will retry the API.
     local metaName = fData.name
-    if metaName == nil then return nil end
     if issecretvalue and issecretvalue(metaName) then return nil end
+    if metaName == nil then return nil end
     if metaName == "" then return nil end
     
     -- Determine type
@@ -1194,8 +1194,8 @@ function ReputationCache:RegisterEventListeners()
     ---Extract integer amount from a localized amount token.
     ---@return number
     local function ParseLocalizedAmount(amountText)
-        if amountText == nil then return 0 end
         if issecretvalue and issecretvalue(amountText) then return 0 end
+        if amountText == nil then return 0 end
         local raw = tostring(amountText)
         local digits = raw:gsub("%D", "")
         return tonumber(digits) or 0
@@ -2172,8 +2172,8 @@ local EXPANSION_ORDER_RANKS = {
 }
 
 local function GetHeaderExpansionSortRank(headerName)
-    if not headerName or type(headerName) ~= "string" or headerName == "" then return 99 end
     if issecretvalue and issecretvalue(headerName) then return 99 end
+    if not headerName or type(headerName) ~= "string" or headerName == "" then return 99 end
     
     -- Check exact match with EXPANSION_NAME globals
     for expID = 11, 0, -1 do

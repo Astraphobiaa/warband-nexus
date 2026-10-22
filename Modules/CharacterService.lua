@@ -580,8 +580,8 @@ end
 --- @param subsidiaryKey string Storage key from currencyData / pveCache / etc.
 --- @return boolean
 function CharacterService:CharacterOwnsSubsidiaryKey(addon, subsidiaryKey)
-    if not subsidiaryKey or subsidiaryKey == "" then return false end
     if issecretvalue and issecretvalue(subsidiaryKey) then return false end
+    if not subsidiaryKey or subsidiaryKey == "" then return false end
     if not addon or not addon.db or not addon.db.global then return false end
     local chars = addon.db.global.characters
     if type(chars) ~= "table" then return false end
@@ -1666,8 +1666,8 @@ CharacterService.VALID_CHARACTER_SORT_KEYS = {
 }
 
 local function CharSortSafeLower(s)
-    if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
+    if not s or s == "" then return "" end
     return string.lower(tostring(s))
 end
 

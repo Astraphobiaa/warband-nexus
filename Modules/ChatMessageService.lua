@@ -11,8 +11,8 @@ local issecretvalue = issecretvalue
 ---@param v any
 ---@return number|nil
 local function SafeCurrencyNum(v)
-    if v == nil then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
+    if v == nil then return nil end
     return tonumber(v)
 end
 

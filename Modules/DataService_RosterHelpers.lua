@@ -113,8 +113,8 @@ local function BuildGuidByNameRealmIndex(charsTbl)
                                     and k2:sub(1, 7) == "Player-" then
                                     g2 = k2
                                 end
-                                if type(g2) == "string" and g2 ~= ""
-                                    and not (issecretvalue and issecretvalue(g2)) then
+                                if type(g2) == "string" and not (issecretvalue and issecretvalue(g2))
+                                    and g2 ~= "" then
                                     guidByNameRealm[normalizedKey] = g2
                                     break
                                 end
@@ -292,8 +292,8 @@ local function ApplyCharacterRosterDeduplication(db, migrationService)
             for field, value in pairs(loserData) do
                 local vt = type(value)
                 if field ~= "guid" and field ~= "_key" and field ~= "isTracked" and field ~= "trackingConfirmed"
-                    and ((vt == "number" and value ~= 0) or (vt == "string" and value ~= "") or vt == "boolean")
-                    and not (issecretvalue and issecretvalue(value)) then
+                    and not (issecretvalue and issecretvalue(value))
+                    and ((vt == "number" and value ~= 0) or (vt == "string" and value ~= "") or vt == "boolean") then
                     survivorData[field] = value
                 end
             end

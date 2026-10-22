@@ -47,8 +47,8 @@ local MAIL_TOOLTIP_ICON_SIZE = 14
 local MAIL_ITEM_INDENT = "    "
 
 local function SafeMailString(val)
-    if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
+    if val == nil then return nil end
     if type(val) == "string" then
         if val == "" then return nil end
         return val
@@ -60,8 +60,8 @@ local function SafeMailString(val)
 end
 
 local function SafeMailNumber(val)
-    if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
+    if val == nil then return nil end
     local n = tonumber(val)
     if not n then return nil end
     return n
@@ -87,8 +87,8 @@ local function ResolveMessageKey(tableKey)
 end
 
 local function TruncateMailText(text, maxLen)
-    if not text or text == "" then return text end
     if issecretvalue and issecretvalue(text) then return nil end
+    if not text or text == "" then return text end
     if not maxLen or maxLen < 4 or #text <= maxLen then return text end
     return text:sub(1, maxLen - 3) .. "..."
 end
@@ -1066,8 +1066,8 @@ local lastCapturedTime = 0
 local lastCapturedRecipient = nil
 
 local function FindAccountCharacterByRecipient(recipient)
-    if not recipient or recipient == "" then return nil, nil end
     if issecretvalue and issecretvalue(recipient) then return nil, nil end
+    if not recipient or recipient == "" then return nil, nil end
 
     local db = WarbandNexus and WarbandNexus.db
     local chars = db and db.global and db.global.characters
@@ -1120,8 +1120,8 @@ local function FindAccountCharacterByRecipient(recipient)
 end
 
 local function CaptureOutgoingMail(recipient, subject, body)
-    if not recipient or recipient == "" then return end
     if issecretvalue and issecretvalue(recipient) then return end
+    if not recipient or recipient == "" then return end
 
     local now = GetTime()
     if (now - lastCapturedTime) < 0.05 and lastCapturedRecipient == recipient then

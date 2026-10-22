@@ -63,8 +63,8 @@ end
 --- One SavedVariables bucket per logical character: normalize legacy/UI key spellings
 --- so imports, migration, and live API paths never split the same toon across multiple keys.
 local function CanonicalizePvEKey(charKey)
-    if charKey == nil or charKey == "" then return charKey end
     if issecretvalue and issecretvalue(charKey) then return nil end
+    if charKey == nil or charKey == "" then return charKey end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         local k = ns.Utilities:GetCanonicalCharacterKey(charKey)
         if k and k ~= "" then return k end
@@ -260,8 +260,8 @@ local function CmpNameSort(a, b)
 end
 
 local function SafeSavedInstanceNumber(value)
-    if value == nil then return nil end
     if issecretvalue and issecretvalue(value) then return nil end
+    if value == nil then return nil end
     return tonumber(value)
 end
 
@@ -457,8 +457,8 @@ local function ReadTormentedSoulAura()
     if type(aura) ~= "table" then return nil, nil end
     local appliedAt
     local exp, dur = aura.expirationTime, aura.duration
-    if exp ~= nil and dur ~= nil and GetTime
-        and not (issecretvalue and (issecretvalue(exp) or issecretvalue(dur)))
+    if GetTime and not (issecretvalue and (issecretvalue(exp) or issecretvalue(dur)))
+        and exp ~= nil and dur ~= nil
         and type(exp) == "number" and type(dur) == "number" and exp > 0 and dur > 0 then
         appliedAt = time() - (GetTime() - (exp - dur))
     end
@@ -795,8 +795,8 @@ local function SafeIsQuestFlaggedCompleted(questID)
     if not questID or type(questID) ~= "number" then return false end
     if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return false end
     local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, questID)
-    if not ok or done == nil then return false end
     if issecretvalue and issecretvalue(done) then return false end
+    if not ok or done == nil then return false end
     return done == true
 end
 
@@ -804,8 +804,8 @@ end
 ---@return number|nil current
 ---@return number|nil weeklyMax
 local function ParseGildedStashFraction(text)
-    if text == nil then return nil, nil end
     if issecretvalue and issecretvalue(text) then return nil, nil end
+    if text == nil then return nil, nil end
     if text == "" then return nil, nil end
     local cur, max = text:match("(%d+)%s*/%s*(%d+)")
     if not cur then return nil, nil end

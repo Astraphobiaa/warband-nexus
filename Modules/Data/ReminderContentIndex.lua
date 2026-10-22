@@ -610,8 +610,8 @@ local function safeParentUIMapID(mid)
     local ok, info = pcall(C_Map.GetMapInfo, mid)
     if not ok or not info then return nil end
     local p = info.parentMapID
-    if p == nil or p == 0 then return nil end
     if issecretvalue and issecretvalue(p) then return nil end
+    if p == nil or p == 0 then return nil end
     p = tonumber(p)
     if not p or p <= 0 then return nil end
     return p

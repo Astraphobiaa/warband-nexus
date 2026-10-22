@@ -87,38 +87,13 @@ end
 -- Fixing one lowers its count; a file may not go above its count and files not listed must stay at 0.
 -- Includes ProfessionService.lua (SafeAPIString caller ~64) and CurrencyCacheService.lua (~15, ~29).
 local TWO_LINE_ALLOW = {
-    ["Modules/AchievementFrameIntegration.lua"] = 2,
-    ["Modules/CharacterService.lua"] = 2,
-    ["Modules/ChatMessageService.lua"] = 1,
-    ["Modules/CollectionService.lua"] = 5,
-    ["Modules/CollectionService_JournalScan.lua"] = 1,
-    ["Modules/CollectionService_Scan.lua"] = 1,
-    ["Modules/Data/ReminderContentIndex.lua"] = 1,
-    ["Modules/Data/ReminderMidnightFactionEmissaryData.lua"] = 1,
-    ["Modules/Data/ReminderZoneCatalog.lua"] = 4,
-    ["Modules/DataService_RosterHelpers.lua"] = 2,
-    ["Modules/GearService.lua"] = 10,
-    ["Modules/ItemsCacheService.lua"] = 3,
-    ["Modules/MailSnapshotService.lua"] = 5,
-    ["Modules/MigrationService.lua"] = 8,
-    ["Modules/NotificationManager.lua"] = 9,
-    ["Modules/NotificationManager_Tests.lua"] = 3,
-    ["Modules/PvECacheService.lua"] = 6,
-    ["Modules/PvPService.lua"] = 3,
-    ["Modules/ReputationCacheService.lua"] = 3,
-    ["Modules/ReputationScanner.lua"] = 2,
-    ["Modules/TooltipService_GameTooltip.lua"] = 2,
-    ["Modules/TryCounterService.lua"] = 2,
-    ["Modules/TryCounterService_Debug.lua"] = 2,
-    ["Modules/TryCounterService_LootSession.lua"] = 1,
-    ["Modules/UI.lua"] = 1,
+    ["Modules/NotificationManager.lua"] = 1,  -- verified false positive (2026-10-22): monthlyTitle is the MONTHLY_ACTIVITIES_PROGRESSED GlobalString, not an API value
+    ["Modules/TryCounterService.lua"] = 1,  -- verified false positive (2026-10-22): n = nm, already secret-filtered two lines above; the later guard is for a fresh API return
     ["Modules/UI/CharacterTrackingDialog.lua"] = 1,  -- verified false positive (2026-10-22): guard is on the line above in the same and-chain
     ["Modules/UI/GearUI.lua"] = 1,  -- verified false positive (2026-10-22): guarded by the enclosing else branch of the secret check
     ["Modules/UI/GearUI_Chrome.lua"] = 1,  -- verified false positive (2026-10-22): guarded one line above
     ["Modules/UI/PlanCardFactory.lua"] = 1,  -- verified false positive (2026-10-22): rawText guarded at its source line
     ["Modules/UI/PlansUI_SourceParser.lua"] = 1,  -- verified false positive (2026-10-22): derived from a source string guarded earlier
-    ["Modules/VaultButton_Tooltip.lua"] = 2,
-    ["Modules/VaultScanner.lua"] = 1,
 }
 local twoLineHits = {}
 for _, path in ipairs(files) do

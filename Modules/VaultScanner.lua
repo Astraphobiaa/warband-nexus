@@ -33,10 +33,10 @@ local scannerFrame = CreateFrame("Frame")
 ---@param itemLink string Item hyperlink
 ---@return number Item level (0 if failed)
 local function GetItemLevelFromLink(itemLink)
-    if not itemLink or itemLink == "" then
+    if issecretvalue and issecretvalue(itemLink) then
         return 0
     end
-    if issecretvalue and issecretvalue(itemLink) then
+    if not itemLink or itemLink == "" then
         return 0
     end
     

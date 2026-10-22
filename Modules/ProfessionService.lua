@@ -1055,9 +1055,9 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
     local function isTitleRegion(r)
         if not (r and r.GetText and r.SetText) then return false end
         local t = r:GetText()
-        if t == nil then return false end
         -- Midnight: never tostring/compare secret region text
         if issecretvalue and issecretvalue(t) then return false end
+        if t == nil then return false end
         if t == "" then return false end
         local ts = stripColors(t)
         if ts == baseStrip or ts == desiredStrip then return true end

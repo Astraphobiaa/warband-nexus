@@ -1365,8 +1365,8 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
         winner.specIcon = winner.specIcon or loser.specIcon
     end
     if (not winner.guildName or winner.guildName == "")
-        and loser.guildName and loser.guildName ~= ""
-        and not (issecretvalue and issecretvalue(loser.guildName)) then
+        and loser.guildName and not (issecretvalue and issecretvalue(loser.guildName))
+        and loser.guildName ~= "" then
         winner.guildName = loser.guildName
     end
 end
@@ -1591,8 +1591,8 @@ function BuildSubsidiaryAliasRenames(db)
     if type(chars) ~= "table" then return renames end
 
     local function noteRename(oldKey, newKey)
-        if not oldKey or not newKey or oldKey == "" or newKey == "" or oldKey == newKey then return end
         if issecretvalue and (issecretvalue(oldKey) or issecretvalue(newKey)) then return end
+        if not oldKey or not newKey or oldKey == "" or newKey == "" or oldKey == newKey then return end
         renames[oldKey] = newKey
     end
 
@@ -1614,8 +1614,8 @@ function BuildSubsidiaryAliasRenames(db)
     end
 
     local function noteFromSubsidiaryKey(subKey)
-        if not subKey or subKey == "" then return end
         if issecretvalue and issecretvalue(subKey) then return end
+        if not subKey or subKey == "" then return end
         local canon = subKey
         if Utilities and Utilities.GetCanonicalCharacterKey then
             canon = Utilities:GetCanonicalCharacterKey(subKey) or subKey
@@ -1721,8 +1721,8 @@ end
 
 --- True when `key` has a non-empty payload in any character-keyed subsidiary global.
 local function SubsidiaryBucketHasData(db, key)
-    if not db or not db.global or not key or key == "" then return false end
     if issecretvalue and issecretvalue(key) then return false end
+    if not db or not db.global or not key or key == "" then return false end
 
     local function bucketNonempty(tbl)
         if type(tbl) ~= "table" then return false end
@@ -1875,8 +1875,8 @@ end
 local function FindRosterTargetForOrphanKey(db, orphanKey)
     local chars = db.global.characters
     local Utilities = ns.Utilities
-    if type(chars) ~= "table" or not orphanKey or orphanKey == "" then return nil end
     if issecretvalue and issecretvalue(orphanKey) then return nil end
+    if type(chars) ~= "table" or not orphanKey or orphanKey == "" then return nil end
 
     if chars[orphanKey] and Utilities and Utilities.ResolveCharacterRowKey then
         return Utilities:ResolveCharacterRowKey(chars[orphanKey]) or orphanKey
@@ -1947,8 +1947,8 @@ function BuildSubsidiaryOrphanRenames(db)
     if type(chars) ~= "table" then return renames end
 
     local function noteRename(oldKey, newKey)
-        if not oldKey or not newKey or oldKey == "" or newKey == "" or oldKey == newKey then return end
         if issecretvalue and (issecretvalue(oldKey) or issecretvalue(newKey)) then return end
+        if not oldKey or not newKey or oldKey == "" or newKey == "" or oldKey == newKey then return end
         renames[oldKey] = newKey
     end
 

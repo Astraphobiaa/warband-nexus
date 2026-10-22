@@ -42,23 +42,23 @@ local RECENT_MATCH_CAP = 30
 
 -- Secret-safe number: nil unless a plain, non-secret number(-like) value.
 local function SafeNum(v)
-    if v == nil then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
+    if v == nil then return nil end
     if type(v) == "number" then return v end
     if type(v) == "string" then return tonumber(v) end
     return nil
 end
 
 local function SafeBool(v)
-    if v == nil then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
+    if v == nil then return nil end
     return v and true or false
 end
 
 -- Secret-safe string: nil unless a plain, non-secret string.
 local function SafeStr(v)
-    if v == nil then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
+    if v == nil then return nil end
     if type(v) == "string" then return v end
     return nil
 end
