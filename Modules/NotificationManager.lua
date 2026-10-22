@@ -1003,6 +1003,49 @@ local function NM_EnsureTravelersLogProgressIcon(payload)
     return payload
 end
 
+---Open the Blizzard achievement journal on `achievementID` (statistics use their own entry point).
+---Blizzard_AchievementUI is load-on-demand and OpenAchievementFrameToAchievement no longer exists in
+---12.1.5 FrameXML; shared by toast clicks and the Collections achievement rows (2026-10-22).
+function ns.UI_OpenAchievementInJournal(achievementID)
+    if not achievementID or InCombatLockdown() then return end
+    if issecretvalue and issecretvalue(achievementID) then return end
+    if not Utilities:CheckAddOnLoaded("Blizzard_AchievementUI") then
+        Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+    end
+    local frame = _G.AchievementFrame
+    if not frame then
+        NotifyDebug("AchievementFrame missing after LoadAddOn")
+        return
+    end
+    -- Selecting alone does not raise the panel — Blizzard always shows it first.
+    if not frame:IsShown() then
+        if type(AchievementFrame_ToggleAchievementFrame) == "function" then
+            pcall(AchievementFrame_ToggleAchievementFrame)
+        elseif type(ShowUIPanel) == "function" then
+            pcall(ShowUIPanel, frame)
+        end
+    end
+    -- OpenAchievementFrameToAchievement no longer exists in FrameXML; mirror
+    -- AchievementFrame_SelectSearchItem (statistics use a different entry point).
+    local okInfo, isStatistic = pcall(function()
+        return select(15, GetAchievementInfo(achievementID))
+    end)
+    if not okInfo or (issecretvalue and issecretvalue(isStatistic)) then
+        isStatistic = nil
+    end
+    if isStatistic and type(AchievementFrame_ViewStatisticByAchievementID) == "function" then
+        local ok, err = pcall(AchievementFrame_ViewStatisticByAchievementID, achievementID)
+        if not ok then NotifyDebug("ViewStatisticByAchievementID failed: %s", tostring(err)) end
+    elseif type(AchievementFrame_SelectAchievement) == "function" then
+        local ok, err = pcall(AchievementFrame_SelectAchievement, achievementID, true)
+        if not ok then NotifyDebug("SelectAchievement failed: %s", tostring(err)) end
+    elseif type(OpenAchievementFrameToAchievement) == "function" then
+        pcall(OpenAchievementFrameToAchievement, achievementID)  -- legacy clients
+    else
+        NotifyDebug("no achievement open path available")
+    end
+end
+
 ---Left-click target for a toast: Blizzard achievement UI, or the Traveler's Log tab of the
 ---Adventure Guide. Both panels are load-on-demand, so the addon must be pulled in first —
 ---OpenAchievementFrameToAchievement / EncounterJournal simply do not exist until then.
@@ -1014,41 +1057,7 @@ local function NM_OpenToastTarget(toast)
 
     local achievementID = toast.achievementID
     if achievementID then
-        if not Utilities:CheckAddOnLoaded("Blizzard_AchievementUI") then
-            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-        end
-        local frame = _G.AchievementFrame
-        if not frame then
-            NotifyDebug("AchievementFrame missing after LoadAddOn")
-            return
-        end
-        -- Selecting alone does not raise the panel — Blizzard always shows it first.
-        if not frame:IsShown() then
-            if type(AchievementFrame_ToggleAchievementFrame) == "function" then
-                pcall(AchievementFrame_ToggleAchievementFrame)
-            elseif type(ShowUIPanel) == "function" then
-                pcall(ShowUIPanel, frame)
-            end
-        end
-        -- OpenAchievementFrameToAchievement no longer exists in FrameXML; mirror
-        -- AchievementFrame_SelectSearchItem (statistics use a different entry point).
-        local okInfo, isStatistic = pcall(function()
-            return select(15, GetAchievementInfo(achievementID))
-        end)
-        if not okInfo or (issecretvalue and issecretvalue(isStatistic)) then
-            isStatistic = nil
-        end
-        if isStatistic and type(AchievementFrame_ViewStatisticByAchievementID) == "function" then
-            local ok, err = pcall(AchievementFrame_ViewStatisticByAchievementID, achievementID)
-            if not ok then NotifyDebug("ViewStatisticByAchievementID failed: %s", tostring(err)) end
-        elseif type(AchievementFrame_SelectAchievement) == "function" then
-            local ok, err = pcall(AchievementFrame_SelectAchievement, achievementID, true)
-            if not ok then NotifyDebug("SelectAchievement failed: %s", tostring(err)) end
-        elseif type(OpenAchievementFrameToAchievement) == "function" then
-            pcall(OpenAchievementFrameToAchievement, achievementID)  -- legacy clients
-        else
-            NotifyDebug("no achievement open path available")
-        end
+        ns.UI_OpenAchievementInJournal(achievementID)
         return
     end
 

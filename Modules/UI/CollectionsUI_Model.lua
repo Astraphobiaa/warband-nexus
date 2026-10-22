@@ -1772,8 +1772,10 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
         nameFs:SetText((ach.name or "") .. ptsStr)
         row:SetScript("OnMouseDown", function()
             if onSelectAchievement then onSelectAchievement(ach) end
-            if ach.id and not InCombatLockdown() and OpenAchievementFrameToAchievement then
-                pcall(OpenAchievementFrameToAchievement, ach.id)
+            -- OpenAchievementFrameToAchievement does not exist in 12.1.5: this click did nothing
+            -- (2026-10-22). Shared opener loads the journal and selects the achievement.
+            if ach.id and ns.UI_OpenAchievementInJournal then
+                ns.UI_OpenAchievementInJournal(ach.id)
             end
         end)
         addDetailElement(row)
