@@ -1719,6 +1719,10 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
         if issecretvalue and (issecretvalue(frameLink) or issecretvalue(slotLink)) then return end
         local frameItem = frameLink:match("|H(item:[^|]+)|h") or frameLink
         local slotItem = slotLink:match("|H(item:[^|]+)|h") or slotLink
+        -- Two equipped copies with the same item string (same ring twice) both match. That is safe:
+        -- the string carries the bonus IDs that set the upgrade level, and every ItemUpgradeItemInfo
+        -- field follows from the item string plus character state, so both get the same, correct info.
+        -- (Reviewed 2026-10-22; no API exposes the frame item's location or GUID to tell them apart.)
         if frameItem ~= slotItem then return end
 
         local info = C_ItemUpgrade.GetItemUpgradeItemInfo()
