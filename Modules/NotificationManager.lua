@@ -2244,6 +2244,16 @@ local function ResolveProgressAlertPayload(a1, a2, ...)
     if type(a1) == "table" then
         return fromTable(a1)
     end
+    -- MonthlyActivityAlertSystem:AddAlert(perksActivityID): resolve the activity (12.1.5 API:
+    -- C_PerksActivities.GetPerksActivityInfo(id) -> PerksActivityInfo? with activityName).
+    if type(a1) == "number" and not (issecretvalue and issecretvalue(a1))
+        and C_PerksActivities and C_PerksActivities.GetPerksActivityInfo then
+        local ok, info = pcall(C_PerksActivities.GetPerksActivityInfo, a1)
+        if ok and type(info) == "table" then
+            return fromTable(info)
+        end
+        return nil
+    end
     local title = safeStr(a1)
     local text = safeStr(a2)
     if title or text then
@@ -2436,22 +2446,13 @@ local function IsWnAddAlertWrapper(fn)
     return type(fn) == "function" and wnAddAlertWrappers[fn] == true
 end
 
---- Midnight may omit _G.ProgressAlertSystem; try known globals after alert addons load.
+--- Traveler's Log alert systems re-routed to the WN criteria lane. 12.1.5 has only
+--- MonthlyActivityAlertSystem (Blizzard_FrameXML/Mainline/AlertFrameSystems.lua:1451, always loaded;
+--- AddAlert(perksActivityID)); the old ProgressAlertSystem / MonthlyActivitiesAlertSystem /
+--- PerksActivitiesAlertSystem names never existed there, so the lane never engaged (2026-10-22).
 local PROGRESS_ALERT_SYSTEM_GLOBALS = {
-    "ProgressAlertSystem",
-    "MonthlyActivitiesAlertSystem",
-    "PerksActivitiesAlertSystem",
+    "MonthlyActivityAlertSystem",
 }
-
-local function FindProgressAlertSystem()
-    for i = 1, #PROGRESS_ALERT_SYSTEM_GLOBALS do
-        local sys = _G[PROGRESS_ALERT_SYSTEM_GLOBALS[i]]
-        if sys and type(sys.AddAlert) == "function" then
-            return sys
-        end
-    end
-    return nil
-end
 
 local function SafeAlertFrameText(region)
     if not region or not region.GetText then return nil end
@@ -2968,10 +2969,9 @@ TestLootFireProgressAddAlert = function(addon, payload)
     if addon and addon.ApplyBlizzardAchievementAlertSuppression then
         addon:ApplyBlizzardAchievementAlertSuppression()
     end
-    local progressSys = FindProgressAlertSystem()
-    if progressSys and progressSys.AddAlert then
-        return pcall(progressSys.AddAlert, progressSys, payload)
-    end
+    -- None of ProgressAlertSystem / MonthlyActivitiesAlertSystem / PerksActivitiesAlertSystem exists
+    -- in 12.1.5 (Blizzard_FrameXML/Mainline/AlertFrameSystems.lua); the real MonthlyActivityAlertSystem
+    -- takes a perksActivityID, not this payload. The test goes straight to the WN toast (2026-10-22).
     if addon and addon.ShowGenericProgressNotification then
         local shown = addon:ShowGenericProgressNotification(payload)
         if shown then
