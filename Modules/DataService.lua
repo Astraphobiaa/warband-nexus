@@ -1064,8 +1064,11 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     local preserveMythicKey           = existingEntry and existingEntry.mythicKey
     
     -- Collect PvE data (Great Vault, Lockouts, M+)
+    -- With PvECacheService loaded, UpdatePvEDataV2(key, nil) below refreshes pveCache from the API.
+    -- CollectPvEData here ran that refresh, read it back via GetPvEData and re-imported the copy:
+    -- a write / read / write round trip each full save (2026-10-22).
     local pveData = nil
-    if not lightOnly then
+    if not lightOnly and not (self.UpdatePvEData and self.ImportLegacyPvEData) then
         pveData = self:CollectPvEData()
     end
     
@@ -2618,22 +2621,8 @@ end
 
 -- BANK ITEMS HELPERS FOR ITEMS TAB
 
---- True when a weekly reset occurred since lastScanTime (EU Wed 04:00 / US Tue 15:00 UTC fallback).
-function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
-    if ns.ResetService and ns.ResetService.HasWeeklyResetOccurred then
-        return ns.ResetService.HasWeeklyResetOccurred(lastScanTime)
-    end
-    if not lastScanTime then return true end
-    local weekSecs = 7 * 24 * 60 * 60
-    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
-        local secsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
-        if secsUntil ~= nil and secsUntil >= 0 then
-            local now = (GetServerTime and GetServerTime()) or time()
-            return lastScanTime < (now + secsUntil - weekSecs)
-        end
-    end
-    return false
-end
+-- WarbandNexus:HasWeeklyResetOccurred lives in ResetService.lua (loads earlier in the TOC). This file
+-- used to redefine it with its own fallback, overriding the single source (2026-10-22).
 
 --- Query current character's Mythic Keystone via C_MythicPlus API.
 function WarbandNexus:ScanMythicKeystone()

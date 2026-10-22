@@ -136,6 +136,7 @@ local Constants = {
         --- PvP progress / match history written (PvPService); listener in PvPUI.lua.
         PVP_UPDATED = "WN_PVP_UPDATED",
         CURRENCY_UPDATED = "WN_CURRENCY_UPDATED",
+        --- No emitter (2026-10-22): CurrencyCacheService / UI_RefreshRouter listen but nothing sends it.
         CURRENCIES_UPDATED = "WN_CURRENCIES_UPDATED",
         CURRENCY_LOADING_STARTED = "WN_CURRENCY_LOADING_STARTED",
         CURRENCY_CACHE_READY = "WN_CURRENCY_CACHE_READY",
@@ -174,31 +175,38 @@ local Constants = {
         VAULT_REWARD_AVAILABLE = "WN_VAULT_REWARD_AVAILABLE",
         
         -- Reminders (progress-based, shown on plan cards)
+        --- No listener (2026-10-22): ReminderService sends it.
         REMINDER_ACTIVATED = "WN_REMINDER_ACTIVATED",
         --- To-Do / plan reminder toast (distinct from achievement/criteria AlertFrame lane)
         SHOW_REMINDER_TOAST = "WN_SHOW_REMINDER_TOAST",
         --- Blizzard achievement progressive step → addon criteria toast (listener shows; hooks only emit)
+        --- No emitter (2026-10-22): NotificationManager listens but nothing sends it.
         SHOW_CRITERIA_PROGRESS = "WN_SHOW_CRITERIA_PROGRESS",
         
         -- Item metadata
         ITEM_METADATA_READY = "WN_ITEM_METADATA_READY",
         
         -- UI
+        --- SEARCH_*: no listener (2026-10-22): SearchStateManager sends them.
         SEARCH_STATE_CHANGED = "WN_SEARCH_STATE_CHANGED",
         SEARCH_QUERY_UPDATED = "WN_SEARCH_QUERY_UPDATED",
+        --- TOOLTIP_*: unused (2026-10-22): no sender and no listener; kept as message vocabulary.
         TOOLTIP_SHOW = "WN_TOOLTIP_SHOW",
         TOOLTIP_HIDE = "WN_TOOLTIP_HIDE",
         FONT_CHANGED = "WN_FONT_CHANGED",
+        --- No listener (2026-10-22): FontManager sends it.
         FONT_LIST_UPDATED = "WN_FONT_LIST_UPDATED",
         --- UI-initiated full main-window content rebuild (debounced via SchedulePopulateContent).
         --- Payload: { tab?, skipCooldown? (default true), instantPopulate? (skip debounce; immediate PopulateContent) }
         UI_MAIN_REFRESH_REQUESTED = "WN_UI_MAIN_REFRESH_REQUESTED",
         --- Main window shown/hidden (payload: { visible = boolean }). Canonical flag: ns._wnMainWindowVisible.
+        --- No listener (2026-10-22): UI.lua sends it; readers use the flag.
         MAIN_WINDOW_VISIBILITY_CHANGED = "WN_MAIN_WINDOW_VISIBILITY_CHANGED",
         LOADING_UPDATED = "WN_LOADING_UPDATED",
         LOADING_COMPLETE = "WN_LOADING_COMPLETE",
         
         -- Notifications
+        --- No emitter (2026-10-22): NotificationManager listens but nothing sends it.
         SHOW_NOTIFICATION = "WN_SHOW_NOTIFICATION",
         REPUTATION_GAINED = "WN_REPUTATION_GAINED",
         

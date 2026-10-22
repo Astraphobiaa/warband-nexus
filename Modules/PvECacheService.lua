@@ -2332,6 +2332,8 @@ function WarbandNexus:RegisterPvECacheEvents()
                 end
                 PruneAllPvEWeeklyData()
                 WarbandNexus:SavePvECache()
+                -- Weekly rows were just cleared: announce the data change (2026-10-22).
+                WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED)
             end
             if (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then
                 ThrottledPvEUpdate()

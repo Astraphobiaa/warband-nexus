@@ -11,7 +11,6 @@ local ADDON_NAME, ns = ...
 -- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
 local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
-local E = ns.Constants.EVENTS
 
 -- Midnight 12.0: Secret Values API (nil on pre-12.0 clients, backward-compatible)
 local issecretvalue = issecretvalue
@@ -34,10 +33,6 @@ local RETRIEVING_ITEM_INFO = _G.RETRIEVING_ITEM_INFO or "Retrieving item informa
 
 local CURRENCY_TOOLTIP_CHARS_DEFAULT = 10
 local CURRENCY_TOOLTIP_CHARS_SHIFT_MAX = 50
-
--- Event names (single source: Constants.EVENTS)
-local TOOLTIP_SHOW = E.TOOLTIP_SHOW
-local TOOLTIP_HIDE = E.TOOLTIP_HIDE
 
 local TooltipService = {}
 
@@ -167,11 +162,7 @@ function TooltipService:Show(anchorFrame, data)
     self:PositionTooltip(frame, anchorFrame, currentAnchorPref)
     frame:Show()
     isVisible = true
-    
-    -- Fire event (if AceEvent available)
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(TOOLTIP_SHOW, data)
-    end
+    -- WN_TOOLTIP_SHOW / WN_TOOLTIP_HIDE had no listener; dropped the per-tooltip sends (2026-10-22).
 end
 
 function TooltipService:Hide()
@@ -189,11 +180,6 @@ function TooltipService:Hide()
     activeDataInstanceID = nil
     activeShiftKeyDown = nil
     isVisible = false
-    
-    -- Fire event
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(TOOLTIP_HIDE)
-    end
 end
 
 -- ITEM LINK TOOLTIP CONTEXT (linkLevel + specializationID in payload)

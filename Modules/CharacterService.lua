@@ -962,12 +962,9 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     local ev = E and E.CHARACTER_TRACKING_DIALOG_REQUESTED
     if ev and addon and addon.SendMessage then
         addon:SendMessage(ev, { mode = "initial", charKey = charKey })
-        return
     end
-    local D = ns.CharacterTrackingDialog
-    if D and D.ShowInitial then
-        D.ShowInitial(addon, charKey)
-    end
+    -- No direct ns.CharacterTrackingDialog fallback: the dialog registers this message at file load and a
+    -- service must not call the view (2026-10-22).
 end
 
 ---Show tracking change confirmation (delegates to CharacterTrackingDialog view).
@@ -984,11 +981,6 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
             charName = charName,
             enableTracking = enableTracking == true,
         })
-        return
-    end
-    local D = ns.CharacterTrackingDialog
-    if D and D.ShowChange then
-        D.ShowChange(addon, charKey, charName, enableTracking)
     end
 end
 
