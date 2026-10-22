@@ -1420,13 +1420,6 @@ local function BuildRecoveredProfEntry(charData, profName)
         end
     end
 
-    if (not icon or icon == "") and skillLine and skillLine > 0 and C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
-        local ok, info = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLine)
-        if ok and type(info) == "table" then
-            icon = info.iconFileID or info.texture or icon
-        end
-    end
-
     return {
         name = profName,
         icon = icon or "Interface\\Icons\\Trade_Engineering",
@@ -1985,10 +1978,6 @@ function WarbandNexus:CollectPvEData()
                 if activity.rewards and #activity.rewards > 0 then
                     local reward = activity.rewards[1]
                     if reward then
-                        -- Check for itemLevel field
-                        if reward.itemLevel and reward.itemLevel > 0 then
-                            activityData.rewardItemLevel = reward.itemLevel
-                        end
                         -- Check for itemDBID to get hyperlink
                         if not activityData.rewardItemLevel and reward.itemDBID and C_WeeklyRewards.GetItemHyperlink then
                             local hyperlink = C_WeeklyRewards.GetItemHyperlink(reward.itemDBID)
@@ -2328,14 +2317,6 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
                         threshold = activity.threshold,
                         level = activity.level,
                     }
-                    
-                    -- Get reward item levels
-                    if activity.rewards and #activity.rewards > 0 then
-                        local reward = activity.rewards[1]
-                        if reward and reward.itemLevel and reward.itemLevel > 0 then
-                            activityData.rewardItemLevel = reward.itemLevel
-                        end
-                    end
                     
                     table.insert(pve.greatVault, activityData)
                 end

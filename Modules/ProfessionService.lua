@@ -536,9 +536,6 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
             local nOk, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
             if nOk and nodeInfo then
                 local maxRanks = nodeInfo.maxRanks
-                if (not maxRanks or maxRanks <= 0) and nodeInfo.activeEntry and type(nodeInfo.activeEntry.maxRanks) == "number" then
-                    maxRanks = nodeInfo.activeEntry.maxRanks
-                end
                 if (not maxRanks or maxRanks <= 0) and nodeInfo.entryIDs and C_Traits.GetEntryInfo then
                     local best = 0
                     for e = 1, #nodeInfo.entryIDs do
@@ -1191,7 +1188,7 @@ local function CollectExpansionFromOpenProfession()
             local skillLevel = info.skillLevel or 0
             local maxSkillLevel = info.maxSkillLevel or 0
             local expansionName = SafeAPIString(info.professionName) or ("Expansion " .. i)
-            local skillLineID = info.skillLineID or info.professionID
+            local skillLineID = info.professionID
 
             -- Get detailed skill info if skillLineID is available
             if skillLineID and C_TradeSkillUI.GetProfessionInfoBySkillLineID then

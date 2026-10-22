@@ -1638,11 +1638,13 @@ function PUI.IsSameProfessionWindowOpen(prof)
     if C_TradeSkillUI.GetProfessionInfoBySkillLineID then
         local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, openID)
         if piOk and profInfo then
-            local parentSL = profInfo.parentSkillLineID or profInfo.skillLineID
+            -- ProfessionInfo: professionID = this skill line, parentProfessionID = its parent
+            -- (no skillLineID / parentSkillLineID fields; Blizzard_ProfessionsFrame.lua, 12.1.5).
+            local parentSL = profInfo.parentProfessionID or profInfo.professionID
             if parentSL and parentSL == targetID then return true end
         end
         local tgtOk, tgtInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, targetID)
-        if tgtOk and tgtInfo and tgtInfo.skillLineID and tgtInfo.skillLineID == openID then
+        if tgtOk and tgtInfo and tgtInfo.professionID and tgtInfo.professionID == openID then
             return true
         end
     end

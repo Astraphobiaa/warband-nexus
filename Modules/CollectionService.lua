@@ -2742,8 +2742,8 @@ COLLECTION_CONFIGS = {
             return C_MountJournal.GetMountIDs() or {}
         end,
         extract = function(mountID)
-            -- 12.0.5: GetMountInfoByID returns 13 values (mountID at #12, isForDragonriding at #13)
-            local name, spellID, icon, _, _, sourceType, _, isFactionSpecific, faction, shouldHideOnChar, isCollected, _mountIDRet, isForDragonriding = C_MountJournal.GetMountInfoByID(mountID)
+            -- GetMountInfoByID returns 13 values (mountID at #12, isSteadyFlight at #13; APIDocumentation 12.1.5)
+            local name, spellID, icon, _, _, sourceType, _, isFactionSpecific, faction, shouldHideOnChar, isCollected, _mountIDRet, isSteadyFlight = C_MountJournal.GetMountInfoByID(mountID)
             if not name then return nil end
             -- Midnight 12.0: name or isCollected may be a secret value; guard against it
             if issecretvalue and name and issecretvalue(name) then return nil end
@@ -2788,7 +2788,7 @@ COLLECTION_CONFIGS = {
                 shouldHideOnChar = hideOnChar,
                 isFactionSpecific = isFactionSpecific,
                 faction = faction,
-                isForDragonriding = isForDragonriding,
+                isSteadyFlight = isSteadyFlight,
             }
         end,
         shouldInclude = function(data)

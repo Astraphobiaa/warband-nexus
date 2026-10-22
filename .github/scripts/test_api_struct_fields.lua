@@ -7,6 +7,9 @@
       - QuestInfo (C_QuestLog.GetInfo) has no mapID / zoneName: the quest-log scan never matched a map.
       - TransmogIllusionInfo has no name / spellID / sourceText: new-illusion toasts and illusion plans
         always fell back to "Illusion <id>".
+      - WeeklyRewardActivityRewardInfo has no itemLevel, TraitEntryRankInfo no maxRanks, ProfessionInfo
+        no iconFileID / texture / skillLineID / parentSkillLineID (2026-10-22): dead fallbacks that
+        never ran; the same-window check in ProfessionsUI never matched a parent/child skill line.
     This scans every shipped Lua file: a variable assigned from one of the APIs below (directly, via
     pcall, or as an element of a list API's result) must only have documented fields read from it.
     Field lists: Blizzard_APIDocumentationGenerated 12.1.5 (70448).
@@ -29,6 +32,22 @@ local STRUCTS = {
     ItemUpgradeItemInfo = { "iconID", "name", "itemUpgradeable", "displayQuality", "highWatermarkSlot",
         "currUpgrade", "maxUpgrade", "minItemLevel", "maxItemLevel", "upgradeLevelInfos", "customUpgradeString",
         "upgradeCostTypesForSeason" },
+    TraitEntryRankInfo = { "entryID", "rank" },
+    TraitNodeInfo = { "ID", "posX", "posY", "flags", "entryIDs", "entryIDsWithCommittedRanks", "canPurchaseRank",
+        "canRefundRank", "isAvailable", "isVisible", "isDisplayError", "ranksPurchased", "ranksIncreased",
+        "entryIDToRanksIncreased", "activeRank", "currentRank", "activeEntry", "nextEntry", "maxRanks", "totalMaxRanks",
+        "type", "visibleEdges", "meetsEdgeRequirements", "groupIDs", "conditionIDs", "isCascadeRepurchasable",
+        "cascadeRepurchaseEntryID", "subTreeID", "subTreeActive" },
+    ProfessionInfo = { "profession", "professionID", "sourceCounter", "professionName", "expansionName", "skillLevel",
+        "maxSkillLevel", "skillModifier", "isPrimaryProfession", "parentProfessionID", "parentProfessionName" },
+    WeeklyRewardActivityInfo = { "type", "index", "threshold", "progress", "id", "activityTierID", "level", "claimID",
+        "raidString", "rewards" },
+    WeeklyRewardActivityRewardInfo = { "type", "id", "quantity", "itemDBID" },
+}
+-- struct -> field -> { nested struct, isList }: `var.field.x` and `local e = var.field[...]` are checked too.
+local NESTED = {
+    TraitNodeInfo = { activeEntry = { "TraitEntryRankInfo" }, nextEntry = { "TraitEntryRankInfo" } },
+    WeeklyRewardActivityInfo = { rewards = { "WeeklyRewardActivityRewardInfo", true } },
 }
 -- api -> { struct, isList }
 local APIS = {
@@ -37,6 +56,13 @@ local APIS = {
     ["C_TransmogCollection.GetIllusions"] = { "TransmogIllusionInfo", true },
     ["C_CurrencyInfo.GetCurrencyInfo"] = { "CurrencyInfo" },
     ["C_ItemUpgrade.GetItemUpgradeItemInfo"] = { "ItemUpgradeItemInfo" },
+    ["C_Traits.GetNodeInfo"] = { "TraitNodeInfo" },
+    ["C_TradeSkillUI.GetProfessionInfoBySkillLineID"] = { "ProfessionInfo" },
+    ["C_TradeSkillUI.GetProfessionInfoByRecipeID"] = { "ProfessionInfo" },
+    ["C_TradeSkillUI.GetBaseProfessionInfo"] = { "ProfessionInfo" },
+    ["C_TradeSkillUI.GetChildProfessionInfo"] = { "ProfessionInfo" },
+    ["C_TradeSkillUI.GetChildProfessionInfos"] = { "ProfessionInfo", true },
+    ["C_WeeklyRewards.GetActivities"] = { "WeeklyRewardActivityInfo", true },
 }
 local SCAN_LINES = 60
 
@@ -67,12 +93,31 @@ for _, path in ipairs(listFiles()) do
     for l in (src .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = l end
     local relPath = path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", "")
 
-    local function scanReads(var, struct, fromLine, label)
+    local scanReads
+    function scanReads(var, struct, fromLine, label)
         local fields = FIELDSET[struct]
+        local nested = NESTED[struct]
         local varPat = var:gsub("%p", "%%%0")
         for ln = fromLine, math.min(#lines, fromLine + SCAN_LINES) do
             local l = lines[ln]
             if ln > fromLine and l:find("local%s+[%w_,%s]*%f[%w_]" .. varPat .. "%f[^%w_]") then break end
+            if nested then
+                for field, sub in pairs(nested) do
+                    local fieldPat = varPat .. "%." .. field
+                    if sub[2] then
+                        local elem = l:match("local%s+([%w_]+)%s*=%s*" .. fieldPat .. "%[")
+                        if elem then scanReads(elem, sub[1], ln, label .. "." .. field .. " element") end
+                    else
+                        for subField in l:gmatch("%f[%w_]" .. fieldPat .. "%.([%a_][%w_]*)") do
+                            checked = checked + 1
+                            if not FIELDSET[sub[1]][subField] then
+                                failures[#failures + 1] = string.format("%s:%d  %s.%s.%s — %s (%s.%s) has no field `%s`",
+                                    relPath, ln, var, field, subField, sub[1], label, field, subField)
+                            end
+                        end
+                    end
+                end
+            end
             for field in l:gmatch("%f[%w_]" .. varPat .. "%.([%a_][%w_]*)") do
                 checked = checked + 1
                 if not fields[field] then

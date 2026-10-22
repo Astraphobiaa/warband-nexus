@@ -5,6 +5,8 @@
     Several call sites skipped the wrong number of `_` placeholders, so `minLvl` held the item level,
     `level` held the quality, `classID` held the icon, `tex` held the equip slot and `specID` held the
     display ID. Lua raises nothing for that; the wrong value was persisted or used silently.
+    GetMountInfoByID #13 is isSteadyFlight, not "is for dragonriding" (the opposite meaning); it was
+    stored as isForDragonriding until 2026-10-22.
 
     This scans every shipped Lua file for `a, b, c = [pcall(]API(...)` destructuring of the APIs below
     and checks each meaningfully named variable against the documented return order.
@@ -23,6 +25,8 @@ local RETURNS = {
     ["C_Item.GetItemInfoInstant"] = { "itemID", "itemType", "itemSubType", "itemEquipLoc", "icon", "classID", "subClassID" },
     ["C_PetJournal.GetPetInfoByItemID"] = { "name", "icon", "petType", "creatureID", "sourceText", "description",
         "isWild", "canBattle", "isTradeable", "isUnique", "obtainable", "displayID", "speciesID" },
+    ["C_MountJournal.GetMountInfoByID"] = { "name", "spellID", "icon", "isActive", "isUsable", "sourceType",
+        "isFavorite", "isFactionSpecific", "faction", "shouldHideOnChar", "isCollected", "mountID", "isSteadyFlight" },
 }
 RETURNS["GetAchievementInfo"] = { "id", "name", "points", "completed", "month", "day", "year", "description",
     "flags", "icon", "rewardText", "isGuild", "wasEarnedByMe", "earnedBy", "isStatistic" }
@@ -37,6 +41,10 @@ RETURNS["GetItemInfoInstant"] = RETURNS["C_Item.GetItemInfoInstant"]
 
 -- Variable-name pattern (lowercased) -> documented return name. First match wins, so specific first.
 local CLASSIFY = {
+    -- Mount journal. "dragonriding" maps to a name no API returns, so any such variable fails.
+    { "dragonriding", "isForDragonriding" }, { "steadyflight", "isSteadyFlight" },
+    { "hideonchar", "shouldHideOnChar" }, { "factionspecific", "isFactionSpecific" }, { "^faction$", "faction" },
+    { "sourcetype", "sourceType" }, { "collected", "isCollected" }, { "favorite", "isFavorite" },
     { "wasearnedbyme", "wasEarnedByMe" }, { "earnedby", "earnedBy" }, { "isguild", "isGuild" },
     { "rewardtext", "rewardText" }, { "isstatistic", "isStatistic" }, { "assetid", "assetID" },
     { "criteriaid", "criteriaID" }, { "criteriatype", "criteriaType" }, { "reqquantity", "reqQuantity" },
