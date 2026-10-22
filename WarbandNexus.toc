@@ -164,6 +164,11 @@ Modules\UI\SharedWidgets_ClassicTheme.lua
 Modules\UI\SharedWidgets_Theme.lua
 Modules\UI\SharedWidgets_Layout.lua
 Modules\UI\SharedWidgets.lua
+Modules\UI\SharedWidgets_PlansLayout.lua
+Modules\UI\SharedWidgets_TabLayout.lua
+Modules\UI\SharedWidgets_TitleCard.lua
+Modules\UI\SharedWidgets_TryCountPopup.lua
+Modules\UI\SharedWidgets_StateCards.lua
 Modules\UI\SharedWidgets_Icons.lua
 Modules\UI\SharedWidgets_Collapsible.lua
 Modules\UI\SharedWidgets_Factory_Chrome.lua
