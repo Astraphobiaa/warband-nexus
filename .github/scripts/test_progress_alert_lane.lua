@@ -34,6 +34,20 @@ check(resolver and resolver:find("C_PerksActivities.GetPerksActivityInfo", 1, tr
 check(resolver and resolver:find('if type(a1) == "number" and not (issecretvalue and issecretvalue(a1))', 1, true) ~= nil,
     "activity id secret-checked before use")
 
+-- Behaviour: a perks activity id shows the activity name, not its description.
+if resolver then
+    local chunk = assert(loadstring("local function ResolveProgressAlertPayload(a1, a2, ...)" .. resolver
+        .. "\nend\nreturn ResolveProgressAlertPayload"))
+    setfenv(chunk, {
+        type = type, pcall = pcall, select = select, issecretvalue = function() return false end,
+        C_PerksActivities = { GetPerksActivityInfo = function(id)
+            return { ID = id, activityName = "Complete a delve", description = "Finish any delve on any tier." }
+        end },
+    })
+    local payload = chunk()(4242)
+    check(payload and payload.text == "Complete a delve", "perks payload text is activityName (got " .. tostring(payload and payload.text) .. ")")
+end
+
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))
 if failed > 0 then
     error("Progress alert lane suite failed with " .. failed .. " failure(s).")

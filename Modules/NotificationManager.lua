@@ -1936,7 +1936,12 @@ local function ResolveProgressAlertPayload(a1, a2, ...)
         and C_PerksActivities and C_PerksActivities.GetPerksActivityInfo then
         local ok, info = pcall(C_PerksActivities.GetPerksActivityInfo, a1)
         if ok and type(info) == "table" then
-            return fromTable(info)
+            -- PerksActivityInfo carries both activityName and description; the generic text
+            -- chain would pick description first, the toast shows the activity name.
+            local payload = fromTable(info)
+            local name = safeStr(info.activityName)
+            if payload and name then payload.text = name end
+            return payload
         end
         return nil
     end
