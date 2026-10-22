@@ -306,7 +306,8 @@ do
     stub.Advance(0.2)
     assert_eq(flagReads, 0, "single trigger waits for the settle delay")
     stub.Advance(1)
-    assert_eq(flagReads, perRun, "single trigger after a quiet period runs once")
+    -- One run: at most the first run's reads (a counter already at its cap is not re-read, 2026-10-22).
+    assert_eq(flagReads > 0 and flagReads <= perRun, true, "single trigger after a quiet period runs once")
     C_QuestLog.IsQuestFlaggedCompleted = realFlag
 end
 

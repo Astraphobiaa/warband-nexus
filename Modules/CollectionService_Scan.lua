@@ -37,6 +37,16 @@ Scan.isInitialized = Scan.isInitialized or false
 Scan.pendingRetryItems = Scan.pendingRetryItems or {}
 Scan.lastCollectibleScanTime = Scan.lastCollectibleScanTime or 0
 
+-- 2026-10-22: per-bag BAG_UPDATE counter. ItemsCache stamps its bag snapshot with the generation its slot
+-- data was read at, and the scan uses a snapshot only while that generation is still current. The old
+-- 0.65 s TTL let a snapshot from before the newest loot pass as fresh (the scan runs ~0.06 s after
+-- BAG_UPDATE_DELAYED, the snapshot only after the 0.5 s bucket): the new slot went into the baseline unseen.
+Scan.bagGeneration = Scan.bagGeneration or {}
+
+function Scan.GetBagGeneration(bagID)
+    return Scan.bagGeneration[bagID] or 0
+end
+
 local COLLECTIBLE_SCAN_THROTTLE = 0.08
 
 local function IsCollectionsModuleEnabled()
@@ -67,7 +77,7 @@ end
 local function FillBagSlotsFromItemsCache(bagID)
     local snaps = scanCtx.itemsCacheSnaps
     local snap = snaps and snaps[bagID]
-    if not snap or not snap.slots or (scanCtx.snapNow - (snap.at or 0)) > 0.65 then
+    if not snap or not snap.slots or snap.gen ~= Scan.GetBagGeneration(bagID) then
         return false
     end
     local current = scanCtx.currentBagContents
@@ -181,7 +191,7 @@ end
 local function DiffBagSlotsFromItemsCache(bagID)
     local snaps = scanCtx.itemsCacheSnaps
     local snap = snaps and snaps[bagID]
-    if not snap or not snap.slots or (scanCtx.snapNow - (snap.at or 0)) > 0.65 then
+    if not snap or not snap.slots or snap.gen ~= Scan.GetBagGeneration(bagID) then
         return false
     end
     local previous = scanCtx.previousBagContents
@@ -236,7 +246,6 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
     scanCtx.currentBagNums = currentBagNums
     scanCtx.newCollectibles = newCollectibles
     scanCtx.itemsCacheSnaps = itemsCacheSnaps
-    scanCtx.snapNow = GetTime()
     scanCtx.sawSecretSlots = false
 
     if not Scan.isInitialized then
@@ -471,6 +480,11 @@ function Scan.InstallBagScanListener()
     end)
 
     bagScanFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
+        -- Count before the module gate: a snapshot published while Collections is off must still be
+        -- judged against every bag change since (2026-10-22).
+        if event == "BAG_UPDATE" and arg1 and arg1 >= 0 and arg1 <= 4 then
+            Scan.bagGeneration[arg1] = (Scan.bagGeneration[arg1] or 0) + 1
+        end
         if not IsCollectionsModuleEnabled() then return end
         if event == "PLAYER_ENTERING_WORLD" then
             if not baselineInitialized then

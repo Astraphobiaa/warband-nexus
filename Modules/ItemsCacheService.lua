@@ -431,7 +431,9 @@ local function BagSignaturesEqual(a, b)
 end
 
 ---Share recent bag slot map with CollectionService_Scan (skip duplicate C_Container walks).
-local function PublishBagSnapshotForCollection(bagID, bagItems)
+---gen: CollectionScan bag generation the slot data was read at; the scan trusts the snapshot only
+---while it is still the current generation (2026-10-22).
+local function PublishBagSnapshotForCollection(bagID, bagItems, gen)
     if bagID == nil or bagID < 0 or bagID > 4 then return end
     local snaps = ns.ItemsCacheBagSnapshots
     if not snaps then
@@ -454,8 +456,9 @@ local function PublishBagSnapshotForCollection(bagID, bagItems)
     end
     if entry then
         entry.at = GetTime()
+        entry.gen = gen
     else
-        snaps[bagID] = { slots = slotMap, at = GetTime() }
+        snaps[bagID] = { slots = slotMap, at = GetTime(), gen = gen }
     end
 end
 
@@ -966,7 +969,9 @@ local function GenerateItemHash(bagID)
     local n = 0
     local hadSecretSlots = false
     local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
-    local slotCache = { numSlots = numSlots }
+    -- gen: bag generation at read time, carried to the collection snapshot (2026-10-22).
+    local CS = ns.CollectionScan
+    local slotCache = { numSlots = numSlots, gen = CS and CS.GetBagGeneration and CS.GetBagGeneration(bagID) or 0 }
     
     for slot = 1, numSlots do
         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
@@ -1099,6 +1104,7 @@ local function ScanBag(bagID, cacheOnly)
     local hadSecretSlots = false
     local slotCache = cachedSlotData[bagID]
     local numSlots
+    local snapGen  -- bag generation the returned rows were read at (collection snapshot freshness)
     
     local function appendReadableSlot(slot, itemInfo)
         if not itemInfo then return end
@@ -1136,6 +1142,7 @@ local function ScanBag(bagID, cacheOnly)
     if slotCache then
         -- Fast path: reuse cached data from GenerateItemHash (no API calls)
         numSlots = slotCache.numSlots or 0
+        snapGen = slotCache.gen
         for slot = 1, numSlots do
             appendReadableSlot(slot, slotCache[slot])
         end
@@ -1146,12 +1153,14 @@ local function ScanBag(bagID, cacheOnly)
         if cacheOnly then return nil, false end
         -- Fallback: no cached data (bank bags, deferred updates, etc.)
         numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        local CS = ns.CollectionScan
+        snapGen = CS and CS.GetBagGeneration and CS.GetBagGeneration(bagID) or 0
         for slot = 1, numSlots do
             appendReadableSlot(slot, C_Container.GetContainerItemInfo(bagID, slot))
         end
     end
     
-    return items, hadSecretSlots
+    return items, hadSecretSlots, snapGen
 end
 
 ---Replace one bag's rows in-place (keeps decompressedItemCache table reference).
@@ -1221,7 +1230,7 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID, cacheOnly)
     RecordStressPhase("acquire")
 
     local oldBagItems = {}
-    local newBagItems, hadSecretSlots = ScanBag(bagID, cacheOnly)
+    local newBagItems, hadSecretSlots, snapGen = ScanBag(bagID, cacheOnly)
     if perfCtx and BP.MarkPhase then
         BP.MarkPhase(perfCtx, "scan")
     end
@@ -1246,7 +1255,7 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID, cacheOnly)
     RecordStressPhase("merge")
 
     if dataType == "bags" and bagID >= 0 and bagID <= 4 then
-        PublishBagSnapshotForCollection(bagID, newBagItems)
+        PublishBagSnapshotForCollection(bagID, newBagItems, snapGen)
     end
     RecordStressPhase("snapshot")
 
@@ -1750,7 +1759,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
     end
 
     local function appendScannedBag(target, bagID, tabIndex)
-        local bagItems, hadSecretSlots = ScanBag(bagID)
+        local bagItems, hadSecretSlots, snapGen = ScanBag(bagID)
         if hadSecretSlots then
             return bagItems, true
         end
@@ -1761,7 +1770,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             end
             target[#target + 1] = item
         end
-        return bagItems, false
+        return bagItems, false, snapGen
     end
 
     local function commitStagedBankScan()
@@ -1834,14 +1843,14 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             return
         end
         local bagID = INVENTORY_BAGS[invIdx]
-        local bagItems, secret = appendScannedBag(stagedBags, bagID)
+        local bagItems, secret, snapGen = appendScannedBag(stagedBags, bagID)
         if secret then
             finishBankScan(true)
             return
         end
         totalInventorySlots = totalInventorySlots + (C_Container.GetContainerNumSlots(bagID) or 0)
         if bagID >= 0 and bagID <= 4 then
-            PublishBagSnapshotForCollection(bagID, bagItems)
+            PublishBagSnapshotForCollection(bagID, bagItems, snapGen)
         end
         invIdx = invIdx + 1
         C_Timer.After(0, runInv)

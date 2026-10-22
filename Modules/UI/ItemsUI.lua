@@ -665,7 +665,9 @@ local function RegisterItemsEvents(parent)
     
     -- Async item metadata resolution (items that were "Loading..." now have real names)
     -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
-    WarbandNexus.RegisterMessage(ItemsUIEvents, E.ITEM_METADATA_READY, function()
+    WarbandNexus.RegisterMessage(ItemsUIEvents, E.ITEM_METADATA_READY, function(_, achievementID)
+        -- An achievement reward item resolved (CollectionService_Achievements payload): not an Items batch (2026-10-22).
+        if achievementID ~= nil then return end
         if not IsItemsTabActive() then return end
         -- Warband aggregate tree: storage embed listener handles metadata (in-place or RedrawStorageResultsOnly).
         if ItemsUsesStorageTreeEmbed() then
@@ -914,7 +916,8 @@ local function RegisterStorageEvents(parent)
     local lastMetadataRefreshDraw = 0
     local METADATA_REFRESH_COOLDOWN = 0.12
 
-    WarbandNexus.RegisterMessage(ItemsStorageEmbedEvents, E.ITEM_METADATA_READY, function()
+    WarbandNexus.RegisterMessage(ItemsStorageEmbedEvents, E.ITEM_METADATA_READY, function(_, achievementID)
+        if achievementID ~= nil then return end  -- achievement reward item, not an Items batch (2026-10-22)
         if not IsItemsStorageTreeViewActive() then return end
         local rc = parent.resultsContainer
         if rc and TryRefreshStorageRowsMetadataInPlace(rc) then
@@ -994,7 +997,28 @@ function WarbandNexus:SyncStorageResultsLayoutFromTail(resultsContainer)
     end
 end
 
+-- 2026-10-22: search matching runs over every stored item (3-8k) on each redraw, and ITEM_METADATA_READY
+-- repeats it with the same text. Lowered names are kept for the session; a hyperlink is lowered only when
+-- the name misses, and its hit is kept until the search text changes. Same results as lowering both each time.
+local itemSearchMemo = { names = {}, nameCount = 0, linkHits = {}, linkQuery = nil }
+
+function itemSearchMemo.LowerName(s)
+    if not s then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    local low = itemSearchMemo.names[s]
+    if low then return low end
+    low = s:lower()
+    if itemSearchMemo.nameCount >= 20000 then  -- bound session memory; refills on the next search
+        wipe(itemSearchMemo.names)
+        itemSearchMemo.nameCount = 0
+    end
+    itemSearchMemo.names[s] = low
+    itemSearchMemo.nameCount = itemSearchMemo.nameCount + 1
+    return low
+end
+
 --- Partial update for Bank > Warband type leaf (avoid full DrawStorageResults on expand/collapse).
+--- Also the single item search matcher for the Storage tree and the Items flat list.
 function WarbandNexus:_StorageLeafItemMatchesSearch(item, storageSearchText)
     if not storageSearchText or storageSearchText == "" then
         return true
@@ -1002,10 +1026,21 @@ function WarbandNexus:_StorageLeafItemMatchesSearch(item, storageSearchText)
     if issecretvalue and issecretvalue(storageSearchText) then
         return true
     end
-    local itemName = SafeLower(item.name)
+    local hit = itemSearchMemo.LowerName(item.name):find(storageSearchText, 1, true)
+    if hit then return hit end
     local linkStr = item.itemLink or item.link
-    local itemLink = SafeLower(linkStr)
-    return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
+    if not linkStr or (issecretvalue and issecretvalue(linkStr)) then return nil end
+    local memo = itemSearchMemo
+    if memo.linkQuery ~= storageSearchText then
+        wipe(memo.linkHits)
+        memo.linkQuery = storageSearchText
+    end
+    local linkHit = memo.linkHits[linkStr]
+    if linkHit == nil then
+        linkHit = linkStr:lower():find(storageSearchText, 1, true) or false
+        memo.linkHits[linkStr] = linkHit
+    end
+    return linkHit or nil
 end
 
 function WarbandNexus:_CollectPersonalTypeItems(charKey, typeName)
@@ -1719,10 +1754,7 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
         local filtered = {}
         for i = 1, #items do
             local item = items[i]
-            local itemName = SafeLower(item.name)
-            local linkStr = item.itemLink or item.link
-            local itemLink = SafeLower(linkStr)
-            if itemName:find(itemsSearchText, 1, true) or itemLink:find(itemsSearchText, 1, true) then
+            if self:_StorageLeafItemMatchesSearch(item, itemsSearchText) then
                 table.insert(filtered, item)
             end
         end

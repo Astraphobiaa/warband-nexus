@@ -131,59 +131,36 @@ for slID, source in pairs(MIDNIGHT_WEEKLY_SOURCES) do
     end
 end
 
-local function CharacterHasMidnightSkillLine(charData, skillLineID)
-    if not charData or not skillLineID then return false end
-    if charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[skillLineID] then
-        return true
-    end
-    if charData.professionWeeklyKnowledge and charData.professionWeeklyKnowledge[skillLineID] then
-        return true
-    end
-    if (charData.recipes and charData.recipes[skillLineID])
-        or (charData.knowledgeData and charData.knowledgeData[skillLineID])
-        or (charData.concentration and charData.concentration[skillLineID]) then
-        return true
-    end
-    if charData.discoveredSkillLines then
-        for _, list in pairs(charData.discoveredSkillLines) do
-            if type(list) == "table" then
-                for i = 1, #list do
-                    if list[i] and list[i].id == skillLineID then return true end
-                end
-            end
-        end
-    end
-    if charData.professionExpansions then
-        for _, list in pairs(charData.professionExpansions) do
-            if type(list) == "table" then
-                for i = 1, #list do
-                    if list[i] and list[i].skillLineID == skillLineID then return true end
-                end
-            end
-        end
-    end
-    local parentSkillLine = MIDNIGHT_SKILLLINE_TO_PARENT[skillLineID]
-    if charData.professions and parentSkillLine then
+-- 2026-10-22: the knowledge refresh (every <= 3 s while questing) reads only the skill lines of
+-- professions the character has: the stored profession list plus the live primaries. Stale buckets,
+-- recipes or concentration of a dropped profession used to count as owned (its ~20 quest flags were
+-- re-read each time), and every unowned line called GetProfessions() again.
+local ownedParentSkillLines = {}
+
+local function CollectOwnedParentSkillLines(charData)
+    local owned = ownedParentSkillLines
+    wipe(owned)
+    if charData.professions then
         for _, prof in pairs(charData.professions) do
-            if type(prof) == "table" and prof.skillLine == parentSkillLine then
-                return true
+            if type(prof) == "table" and type(prof.skillLine) == "number" then
+                owned[prof.skillLine] = true
             end
         end
     end
-    if GetProfessions then
+    if GetProfessions and GetProfessionInfo then
         local p1, p2 = GetProfessions()
-        local pairsToCheck = { p1, p2 }
-        for i = 1, #pairsToCheck do
-            local idx = pairsToCheck[i]
+        local primaries = { p1, p2 }
+        for i = 1, 2 do
+            local idx = primaries[i]
             if idx then
-                local _, _, _, _, _, _, sl = GetProfessionInfo(idx)
-                if sl and sl == parentSkillLine then
-                    return true
+                local ok, _, _, _, _, _, _, sl = pcall(GetProfessionInfo, idx)
+                if ok and not (issecretvalue and issecretvalue(sl)) and type(sl) == "number" then
+                    owned[sl] = true
                 end
             end
         end
     end
-    return false
+    return owned
 end
 
 --- True if the quest counts as "done" for UI: flagged complete, in-log complete, or ready to turn in.
@@ -222,6 +199,19 @@ local function CountCompletedQuests(questIDs, limit)
         return (completed >= limit) and limit or completed, limit
     end
     return completed, #questIDs
+end
+
+--- Counter already at its cap with the same total: the no-drop clamp in the collector would keep it
+--- there whatever the quest flags read, so skip the reads (2026-10-22). canKeep = the clamp applies
+--- (always for uniques, same weekly period for the recurring keys).
+local function CountCompletedQuestsUnlessFull(prevEntry, canKeep, questIDs, limit)
+    if canKeep and type(prevEntry) == "table" and type(questIDs) == "table" and #questIDs > 0 then
+        local total = (limit and limit > 0) and limit or #questIDs
+        if (tonumber(prevEntry.total) or 0) == total and (tonumber(prevEntry.current) or 0) >= total then
+            return total, total
+        end
+    end
+    return CountCompletedQuests(questIDs, limit)
 end
 
 local function BuildProgressEntry(current, total, source)
@@ -338,11 +328,17 @@ local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineI
         firstCraftTotal = recipes.firstCraftCount
     end
 
-    local uniquesCur, uniquesTotal = CountCompletedQuests(source.uniques)
-    local treatiseCur, treatiseTotal = CountCompletedQuests(source.treatise)
-    local weeklyCur, weeklyTotal = CountCompletedQuests(source.weeklyQuest, source.weeklyQuestLimit or 1)
-    local treasureCur, treasureTotal = CountCompletedQuests(source.treasure)
-    local gatheringCur, gatheringTotal = CountCompletedQuests(source.gathering)
+    local prev = bucket.weeklyKnowledge
+        or (charData.professionWeeklyKnowledge and charData.professionWeeklyKnowledge[skillLineID])
+    if type(prev) ~= "table" then prev = nil end
+    local prevSameWeek = prev and not HasWeeklyResetOccurredForTimestamp(prev.lastUpdate or 0) or false
+
+    local uniquesCur, uniquesTotal = CountCompletedQuestsUnlessFull(prev and prev.uniques, true, source.uniques)
+    local treatiseCur, treatiseTotal = CountCompletedQuestsUnlessFull(prev and prev.treatise, prevSameWeek, source.treatise)
+    local weeklyCur, weeklyTotal = CountCompletedQuestsUnlessFull(prev and prev.weeklyQuest, prevSameWeek,
+        source.weeklyQuest, source.weeklyQuestLimit or 1)
+    local treasureCur, treasureTotal = CountCompletedQuestsUnlessFull(prev and prev.treasure, prevSameWeek, source.treasure)
+    local gatheringCur, gatheringTotal = CountCompletedQuestsUnlessFull(prev and prev.gathering, prevSameWeek, source.gathering)
 
     local catchUpCurrent, catchUpTotal = 0, 0
     if source.catchUpCurrencyID and source.catchUpCurrencyID > 0 and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
@@ -377,10 +373,7 @@ local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineI
     -- During PLAYER_LOGOUT teardown the client reports every quest as not completed, so the
     -- logout flush used to overwrite real progress with 0 for each character on its own logout.
     -- Same total required: a changed quest list is a new baseline, not a regression.
-    local prev = bucket.weeklyKnowledge
-        or (charData.professionWeeklyKnowledge and charData.professionWeeklyKnowledge[skillLineID])
-    if type(prev) == "table" then
-        local prevSameWeek = not HasWeeklyResetOccurredForTimestamp(prev.lastUpdate or 0)
+    if prev then
         for i = 0, #RECURRING_WEEKLY_PROGRESS_KEYS do
             local key = (i == 0) and "uniques" or RECURRING_WEEKLY_PROGRESS_KEYS[i]
             local old, new = prev[key], progress[key]
@@ -412,9 +405,10 @@ end
 
 local function RefreshAllMidnightKnowledgeProgressForCharacter(charData)
     if not charData then return 0 end
+    local owned = CollectOwnedParentSkillLines(charData)
     local refreshed = 0
     for skillLineID in pairs(MIDNIGHT_WEEKLY_SOURCES) do
-        if CharacterHasMidnightSkillLine(charData, skillLineID)
+        if (owned[MIDNIGHT_SKILLLINE_TO_PARENT[skillLineID]] or owned[skillLineID])
             and CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, nil, "Midnight") then
             refreshed = refreshed + 1
         end

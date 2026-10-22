@@ -681,7 +681,10 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Item metadata async warm-up: cross-character SV links are often cold on login.
     -- Gear tab storage recommendations rely on link-based ilvl (e.g. WuE 253 vs template 233);
     -- when the warm-up completes, re-scan so previously-skipped candidates surface.
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEM_METADATA_READY, function()
+    -- A payload means an achievement reward item resolved (CollectionService_Achievements), not the Items
+    -- metadata batch: the Gear tab has nothing to re-read (2026-10-22).
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEM_METADATA_READY, function(_, achievementID)
+        if achievementID ~= nil then return end
         if not HiddenOrMissing() and f.currentTab == "gear" then
             if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
                 WarbandNexus:TryRefreshAllGearEquipSlotIcons()
@@ -736,7 +739,14 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                     ns.UI_MarkPlansAchievementCardsDirty()
                 end
                 if not anyAchievementTodoVisible() then return end
-                WarbandNexus:SendMessage(Constants.EVENTS.PLANS_UPDATED, { action = "criteria_update" })
+                -- Repaint only: nothing was written, so no WN_PLANS_UPDATED (it also woke the daily-quest
+                -- index rebuild, reminder cache and Collections redraw ~1/s). Main tab + tracker (2026-10-22).
+                WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = false })
+                local tracker = _G.WarbandNexus_PlansTracker
+                local PTW = ns.PlansTrackerWindow
+                if tracker and tracker:IsShown() and PTW and PTW.SchedulePlansUpdatedRefresh then
+                    PTW.SchedulePlansUpdatedRefresh({ action = "criteria_update" })
+                end
             end)
         end
     end

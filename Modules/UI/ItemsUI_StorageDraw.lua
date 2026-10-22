@@ -52,7 +52,6 @@ local StorageChunkedPaintStillValid = B.StorageChunkedPaintStillValid
 local CompareCharNameLower = B.CompareCharNameLower
 local ShowItemsSearchEmptyState = B.ShowItemsSearchEmptyState
 local ShowItemsResultsEmptyState = B.ShowItemsResultsEmptyState
-local SafeLower = B.SafeLower
 local SearchStateManager = B.SearchStateManager
 local StorageSectionLayout = B.StorageSectionLayout
 local BuildCollapsibleSectionOpts = B.BuildCollapsibleSectionOpts
@@ -522,15 +521,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         return t
     end
 
-    -- Search filtering helper
+    -- Search filtering helper (shared memoized matcher in ItemsUI.lua, 2026-10-22)
     local function ItemMatchesSearch(item)
         if not storageSearchActive then
             return true
         end
-        local itemName = SafeLower(item.name)
-        local linkStr = item.itemLink or item.link
-        local itemLink = SafeLower(linkStr)
-        return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
+        return WarbandNexus:_StorageLeafItemMatchesSearch(item, storageSearchText)
     end
 
     --- Type-leaf item rows under a collapsible header (`rowsContainer`).
@@ -713,13 +709,19 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             if gb then
                 for guildName, guildData in pairs(gb) do
                     if guildName and not (issecretvalue and issecretvalue(guildName)) and guildData then
+                        -- Category keys built once per guild / type, not per matching item (2026-10-22).
+                        local guildCategoryKey = "guild_" .. guildName
+                        local guildTypeKeys = {}
                         for _, tabData in pairs(guildData.tabs or {}) do
                             for _, item in pairs(tabData.items or {}) do
                                 if item.itemID and ItemMatchesSearch(item) then
                                     local classID = ResolvedStorageClassID(item)
                                     local typeName = ResolvedStorageTypeName(item)
-                                    local guildCategoryKey = "guild_" .. guildName
-                                    local typeKey = guildCategoryKey .. "_" .. typeName
+                                    local typeKey = guildTypeKeys[typeName]
+                                    if not typeKey then
+                                        typeKey = guildCategoryKey .. "_" .. typeName
+                                        guildTypeKeys[typeName] = typeKey
+                                    end
                                     categoriesWithMatches[typeKey] = true
                                     categoriesWithMatches[guildCategoryKey] = true
                                     hasAnyMatches = true
@@ -735,12 +737,17 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local warbandData = self:GetWarbandBankData()
         if warbandData and warbandData.items then
             local wbItems = warbandData.items
+            local warbandTypeKeys = {}
             for ii = 1, #wbItems do
                 local item = wbItems[ii]
                 if item.itemID and ItemMatchesSearch(item) then
                     local classID = ResolvedStorageClassID(item)
                     local typeName = ResolvedStorageTypeName(item)
-                    local categoryKey = "warband_" .. typeName
+                    local categoryKey = warbandTypeKeys[typeName]
+                    if not categoryKey then
+                        categoryKey = "warband_" .. typeName
+                        warbandTypeKeys[typeName] = categoryKey
+                    end
                     categoriesWithMatches[categoryKey] = true
                     categoriesWithMatches["warband"] = true
                     hasAnyMatches = true
@@ -758,6 +765,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             local charKey = char._key
             local itemsData = self:GetItemsData(charKey)
             if itemsData then
+                -- Category keys built once per character / type, not per matching item (2026-10-22).
+                local charCategoryKey = "personal_" .. charKey
+                local charTypeKeys = {}
                 -- Scan bags
                 if itemsData.bags then
                     local bags = itemsData.bags
@@ -766,8 +776,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         if item.itemID and ItemMatchesSearch(item) then
                             local classID = ResolvedStorageClassID(item)
                             local typeName = ResolvedStorageTypeName(item)
-                            local charCategoryKey = "personal_" .. charKey
-                            local typeKey = charCategoryKey .. "_" .. typeName
+                            local typeKey = charTypeKeys[typeName]
+                            if not typeKey then
+                                typeKey = charCategoryKey .. "_" .. typeName
+                                charTypeKeys[typeName] = typeKey
+                            end
                             categoriesWithMatches[typeKey] = true
                             categoriesWithMatches[charCategoryKey] = true
                             categoriesWithMatches["personal"] = true
@@ -785,8 +798,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         if item.itemID and ItemMatchesSearch(item) then
                             local classID = ResolvedStorageClassID(item)
                             local typeName = ResolvedStorageTypeName(item)
-                            local charCategoryKey = "personal_" .. charKey
-                            local typeKey = charCategoryKey .. "_" .. typeName
+                            local typeKey = charTypeKeys[typeName]
+                            if not typeKey then
+                                typeKey = charCategoryKey .. "_" .. typeName
+                                charTypeKeys[typeName] = typeKey
+                            end
                             categoriesWithMatches[typeKey] = true
                             categoriesWithMatches[charCategoryKey] = true
                             categoriesWithMatches["personal"] = true

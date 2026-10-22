@@ -157,6 +157,10 @@ jobs:
             lua5.1 .github/scripts/test_message_layering.lua
             lua5.1 .github/scripts/test_profile_switch_module_gates.lua
             lua5.1 .github/scripts/test_light_mode_text_roles.lua
+            lua5.1 .github/scripts/test_bag_snapshot_generation.lua
+            lua5.1 .github/scripts/test_item_search_memo.lua
+            lua5.1 .github/scripts/test_metadata_payload_routing.lua
+            lua5.1 .github/scripts/test_profession_knowledge_refresh_cost.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua
