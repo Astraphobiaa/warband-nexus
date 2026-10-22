@@ -11,6 +11,9 @@
     has no getter; it arrives with CRAFTINGORDERS_UPDATE_ORDER_COUNT (orderType, numOrders), which
     Blizzard_ProfessionsCrafterOrderPage uses for its tab titles, and later collections keep it.
 
+    2026-10-22: an unread personal list (pcall error / no table) wrote 0 over the stored count, and the
+    logout flush re-read the counts during PLAYER_LOGOUT teardown. Both now keep the stored count.
+
     Loads the shipped ProfessionService.lua under wow_stub.lua. Skill line / enum values are illustrative.
 ]]
 
@@ -134,6 +137,25 @@ do
     openWindow()
     assert_eq(orders() and orders().personalCount, 1, "personal count refreshed on reopen")
     assert_eq(orders() and orders().guildCount, 4, "guild count kept across a rescan")
+end
+
+print("Phase 3: An unread personal-order list keeps the stored count")
+do
+    C_CraftingOrders.GetPersonalOrdersInfo = function() error("orders not loaded") end
+    WarbandNexus:OnTradeSkillClose()
+    openWindow()
+    assert_eq(orders() and orders().personalCount, 1, "failed read does not write 0")
+    C_CraftingOrders.GetPersonalOrdersInfo = function() return personalInfos end
+end
+
+print("Phase 4: The logout flush does not re-read order counts during teardown")
+do
+    WarbandNexus:OnTradeSkillListUpdate()          -- list refresh still owed at logout
+    C_CraftingOrders.GetPersonalOrdersInfo = function() return {} end
+    WarbandNexus:FlushProfessionOnLogout()
+    assert_eq(orders() and orders().personalCount, 1, "teardown read does not zero the personal count")
+    assert_eq(orders() and orders().guildCount, 4, "guild count kept")
+    C_CraftingOrders.GetPersonalOrdersInfo = function() return personalInfos end
 end
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")

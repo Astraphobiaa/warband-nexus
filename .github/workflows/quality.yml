@@ -104,6 +104,7 @@ jobs:
             lua5.1 .github/scripts/test_remove_hero_spec.lua
             lua5.1 .github/scripts/test_keystone_logout_save.lua
             lua5.1 .github/scripts/test_bank_scan_queue.lua
+            lua5.1 .github/scripts/test_logout_bag_flush.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

@@ -2402,7 +2402,8 @@ local function CollectCraftingOrdersData(guildCountFromEvent)
     end
 
     local prevOrders = charData.craftingOrders[skillLineID]
-    local personalCount = 0
+    -- An unread personal list (pcall error / no table) keeps the stored count instead of writing 0.
+    local personalCount = (prevOrders and prevOrders.personalCount) or 0
     local guildCount = guildCountFromEvent or (prevOrders and prevOrders.guildCount) or 0
     local publicCount = 0
 
@@ -2410,6 +2411,7 @@ local function CollectCraftingOrdersData(guildCountFromEvent)
     if baseProfEnum and C_CraftingOrders.GetPersonalOrdersInfo then
         local ok, infos = pcall(C_CraftingOrders.GetPersonalOrdersInfo)
         if ok and type(infos) == "table" then
+            personalCount = 0
             for i = 1, #infos do
                 local info = infos[i]
                 if type(info) == "table" and info.profession == baseProfEnum then
@@ -2517,7 +2519,7 @@ local function RunLightTradeSkillListCollectors()
     ScheduleThrottledRecipeSummaryScan(false)
 end
 
-local function RunAllProfessionCollectors(silentUiNotify)
+local function RunAllProfessionCollectors(silentUiNotify, atLogout)
     recipeSummaryScanPending = false
     recipeSummaryScanScheduled = false
     lastRecipeSummaryScanAt = GetTime()
@@ -2532,7 +2534,8 @@ local function RunAllProfessionCollectors(silentUiNotify)
     pcall(CollectAllExpansionProfessions, true)
     pcall(CollectRecipeSummaryData)
     pcall(CollectCooldownData)
-    pcall(CollectCraftingOrdersData)
+    -- Order counts are not re-read during PLAYER_LOGOUT teardown; the order events kept them current.
+    if not atLogout then pcall(CollectCraftingOrdersData) end
     pcall(CollectEquipmentDataForCurrentProfession)
     pcall(CollectEquipmentByDetection)
     -- Only WN_* when a collector marked dirty — never force PROFESSION_DATA_UPDATED every open.
@@ -4225,7 +4228,7 @@ function WarbandNexus:FlushProfessionOnLogout()
     -- Only flush work a debounce still owed. An open window alone is no reason to re-read every
     -- C_TradeSkillUI collector during PLAYER_LOGOUT teardown; live events already persisted it.
     if windowOpen and listPending then
-        RunAllProfessionCollectors()
+        RunAllProfessionCollectors(nil, true)
     end
 
     if knowledgePending then

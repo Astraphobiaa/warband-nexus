@@ -22,7 +22,7 @@ local function check(cond, msg)
     else failed = failed + 1; print("  FAIL " .. msg) end
 end
 
-local throttled = src:match("ThrottledBagUpdate = function%(bagID%)(.-)\nend\n")
+local throttled = src:match("ThrottledBagUpdate = function%(bagID[^%)]*%)(.-)\nend\n")
 check(throttled ~= nil, "ThrottledBagUpdate found")
 local guard = throttled and throttled:match("if bankScanInProgress then(.-)%f[%w]end%f[%W]")
 check(guard ~= nil, "bankScanInProgress guard found")

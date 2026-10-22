@@ -1090,7 +1090,7 @@ end
 ---Metadata (name, link, icon, classID) is resolved on-demand when reading.
 ---@return table items
 ---@return boolean hadSecretSlots true when at least one occupied slot was unreadable
-local function ScanBag(bagID)
+local function ScanBag(bagID, cacheOnly)
     local items = {}
     local n = 0  -- Manual count avoids #items overhead per insert
     local hadSecretSlots = false
@@ -1138,6 +1138,9 @@ local function ScanBag(bagID)
         end
         cachedSlotData[bagID] = nil  -- Consumed; free memory
     else
+        -- cacheOnly (logout flush): no live container read during teardown, where an unready read
+        -- would replace the stored bag with an empty one. The login scan re-reads it. (2026-10-22)
+        if cacheOnly then return nil, false end
         -- Fallback: no cached data (bank bags, deferred updates, etc.)
         numSlots = C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, numSlots do
@@ -1184,7 +1187,7 @@ end
 
 ---Scan all inventory bags for current character
 ---INCREMENTAL UPDATE: Update only specific bag (single bag scan)
-function WarbandNexus:UpdateSingleBag(charKey, bagID)
+function WarbandNexus:UpdateSingleBag(charKey, bagID, cacheOnly)
     -- GUARD: Only update bags if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -1215,7 +1218,7 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     RecordStressPhase("acquire")
 
     local oldBagItems = {}
-    local newBagItems, hadSecretSlots = ScanBag(bagID)
+    local newBagItems, hadSecretSlots = ScanBag(bagID, cacheOnly)
     if perfCtx and BP.MarkPhase then
         BP.MarkPhase(perfCtx, "scan")
     end
@@ -1223,7 +1226,8 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
 
     -- Defense in depth: HasBagChanged should already skip secret bags, but direct callers
     -- (manual refresh paths) must not replace a complete bag with a secret-blinded scan.
-    if hadSecretSlots then
+    -- No scan (cacheOnly without cached slot data): keep the stored bag as it is.
+    if hadSecretSlots or not newBagItems then
         if perfCtx then
             if BP.FinishBagUpdate then BP.FinishBagUpdate(perfCtx) end
             if BP.ClearActiveCtx then BP.ClearActiveCtx() end
@@ -1469,7 +1473,7 @@ end
 
 ---Throttled bag update (prevents BAG_UPDATE spam)
 ---Returns true if the update was processed (or scheduled), false if suppressed.
-ThrottledBagUpdate = function(bagID)
+ThrottledBagUpdate = function(bagID, cacheOnly)
     -- During the staged bank-open scan, queue the bag instead of dropping it: OnBagUpdate already
     -- stored the new hash, so a dropped change counted as handled and was never saved (items moved
     -- by the auto-deposit or the player mid-scan stayed stale). finishBankScan flushes the queue.
@@ -1497,11 +1501,11 @@ ThrottledBagUpdate = function(bagID)
     local bagType = BAG_TYPE_LOOKUP[bagID]
     
     if bagType == "inventory" then
-        WarbandNexus:UpdateSingleBag(charKey, bagID)
+        WarbandNexus:UpdateSingleBag(charKey, bagID, cacheOnly)
         return true  -- message sent by caller (batched)
     elseif bagType == "bank" then
         if isBankOpen then
-            WarbandNexus:UpdateSingleBag(charKey, bagID)
+            WarbandNexus:UpdateSingleBag(charKey, bagID, cacheOnly)
             return true
         end
         return false
@@ -1545,7 +1549,8 @@ function WarbandNexus:FlushItemsCacheOnLogout()
         sessionActivityPersistTimer = nil
     end
     BumpGearStorageScanGenerationImmediate()
-    self:ProcessPendingBagUpdates()
+    -- Pending bags are written from the slot data captured at their BAG_UPDATE only (cacheOnly):
+    -- a live C_Container read at PLAYER_LOGOUT is a teardown read. (2026-10-22)
     local bagIDs = {}
     for bagID, _ in pairs(pendingUpdates) do
         bagIDs[#bagIDs + 1] = bagID
@@ -1554,7 +1559,7 @@ function WarbandNexus:FlushItemsCacheOnLogout()
         local bagID = bagIDs[i]
         pendingUpdates[bagID] = nil
         lastUpdateTime[bagID] = 0
-        ThrottledBagUpdate(bagID)
+        ThrottledBagUpdate(bagID, true)
     end
     wipe(pendingUpdates)
     FlushPendingCompressWrites(true)
