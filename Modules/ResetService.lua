@@ -90,18 +90,33 @@ function ResetService.GetSecondsUntilWeeklyReset()
     return math.max(0, targetSec)
 end
 
+-- Period-start memo (2026-10-22): HasDaily/WeeklyResetOccurred run per character x skill line at login
+-- and per row in the UI, each a pcall + C_DateAndTime read. The start only moves at a reset, so reuse
+-- it while the server second is unchanged (window <= 1 s; a mocked/advanced clock refreshes it).
+local periodStartMemo = { dailyAt = nil, daily = nil, weeklyAt = nil, weekly = nil }
+
 ---Get epoch timestamp (server UTC seconds) when current daily reset cycle began.
 ---@return number
 function ResetService.GetCurrentDailyResetStartTime()
     local now = (GetServerTime and GetServerTime()) or time()
-    return ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilDailyReset() - DAY_SECONDS)
+    if periodStartMemo.dailyAt == now and periodStartMemo.daily then
+        return periodStartMemo.daily
+    end
+    local start = ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilDailyReset() - DAY_SECONDS)
+    periodStartMemo.dailyAt, periodStartMemo.daily = now, start
+    return start
 end
 
 ---Get epoch timestamp (server UTC seconds) when current weekly reset cycle began.
 ---@return number
 function ResetService.GetCurrentWeeklyResetStartTime()
     local now = (GetServerTime and GetServerTime()) or time()
-    return ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilWeeklyReset() - WEEK_SECONDS)
+    if periodStartMemo.weeklyAt == now and periodStartMemo.weekly then
+        return periodStartMemo.weekly
+    end
+    local start = ResetService.NormalizeResetEpoch(now + ResetService.GetSecondsUntilWeeklyReset() - WEEK_SECONDS)
+    periodStartMemo.weeklyAt, periodStartMemo.weekly = now, start
+    return start
 end
 
 ---Get epoch timestamp (server UTC seconds) of next daily reset.

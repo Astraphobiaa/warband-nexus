@@ -436,9 +436,10 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                     return
                 end
                 if addonInstance then
-                    if addonInstance.db and addonInstance.db.profile
-                        and addonInstance.db.profile.modulesEnabled
-                        and addonInstance.db.profile.modulesEnabled.pve then
+                    -- Same producer gate as Core.lua P2 / UpdatePvEData: Plans and the vault button read
+                    -- this data with the PvE tab off (was modulesEnabled.pve only, 2026-10-22).
+                    if ns.Utilities and ns.Utilities.IsPvEVaultConsumerEnabled
+                        and ns.Utilities:IsPvEVaultConsumerEnabled() then
                         if addonInstance.UpdatePvEData
                             and not (addonInstance.IsPvERowPersistedWarm and addonInstance:IsPvERowPersistedWarm()) then
                             addonInstance:UpdatePvEData()

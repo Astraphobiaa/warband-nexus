@@ -432,3 +432,21 @@ function WarbandNexus:CollectKnowledgeOnLogin(opts)
 
     collectNextSkillLine()
 end
+
+-- Professions re-enable (2026-10-22): every collector above returned early while the module was off,
+-- and the login / tracking-confirm timers that call them do not run again (SetProfessionModuleEnabled
+-- only restarts the recharge timer). Run them once, in login order; each keeps its own gates.
+local ProfessionLoginToggleSink = {}
+WarbandNexus.RegisterMessage(ProfessionLoginToggleSink, E.MODULE_TOGGLED, function(_, moduleName, enabled)
+    if moduleName ~= "professions" or enabled ~= true then return end
+    C_Timer.After(0.5, function()
+        local addon = WarbandNexus
+        if not addon or not (ns.Utilities and ns.Utilities:IsModuleEnabled("professions")) then return end
+        if not IsCurrentCharacterTracked() then return end
+        if addon.CollectConcentrationOnLogin then pcall(addon.CollectConcentrationOnLogin, addon) end
+        if addon.CollectEquipmentOnLogin then pcall(addon.CollectEquipmentOnLogin, addon) end
+        if addon.CollectMidnightKnowledgeOnLogin then pcall(addon.CollectMidnightKnowledgeOnLogin, addon) end
+        if addon.CollectExpansionProfessionsOnLogin then pcall(addon.CollectExpansionProfessionsOnLogin, addon) end
+        if addon.CollectKnowledgeOnLogin then pcall(addon.CollectKnowledgeOnLogin, addon) end
+    end)
+end)

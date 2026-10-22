@@ -146,6 +146,13 @@ jobs:
             lua5.1 .github/scripts/test_reputation_incremental_chat.lua
             lua5.1 .github/scripts/test_vault_reads_and_refresh.lua
             lua5.1 .github/scripts/test_vault_bag_defer.lua
+            lua5.1 .github/scripts/test_profession_reenable_collectors.lua
+            lua5.1 .github/scripts/test_played_time_display_guard.lua
+            lua5.1 .github/scripts/test_tracking_confirm_vault_gate.lua
+            lua5.1 .github/scripts/test_try_counter_module_gate.lua
+            lua5.1 .github/scripts/test_reset_period_memo.lua
+            lua5.1 .github/scripts/test_reputation_offtab_total.lua
+            lua5.1 .github/scripts/test_character_updated_roster_cache.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

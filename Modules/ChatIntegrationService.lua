@@ -602,6 +602,13 @@ end
 local playedTimeRewrapScheduled = false
 local playedTimeDisplayDepth = 0
 
+---An error inside Blizzard's played-time display must not leave the depth guard raised (that swallowed
+---every later /played line for the session). Report it the way an unprotected call would (2026-10-22).
+local function RaisePlayedTimeDisplayError(err)
+    local handler = geterrorhandler and geterrorhandler()
+    if handler then handler(err) end
+end
+
 ---Addons that may replace chat globals; rewrap restores our wrapper without re-chaining hooks.
 local PLAYED_TIME_REWRAP_ADDONS = {
     Blizzard_ChatFrameBase = true,
@@ -710,8 +717,9 @@ function WarbandNexus:RewrapChatFrameUtil_DisplayTimePlayed()
             local under = WarbandNexus._wnBlizzardDisplayTimePlayed
             if type(under) ~= "function" then return end
             playedTimeDisplayDepth = playedTimeDisplayDepth + 1
-            under(chatFrame, totalTime, levelTime)
+            local ok, err = pcall(under, chatFrame, totalTime, levelTime)
             playedTimeDisplayDepth = playedTimeDisplayDepth - 1
+            if not ok then RaisePlayedTimeDisplayError(err) end
         end
     end
     if cur ~= self._wnChatFrameUtilDisplayWrapper then
@@ -759,8 +767,9 @@ function WarbandNexus:RewrapChatFrame_DisplayTimePlayed()
             local under = WarbandNexus._wnBlizzardChatFrameDisplayTimePlayed
             if type(under) ~= "function" then return end
             playedTimeDisplayDepth = playedTimeDisplayDepth + 1
-            under(cfSelf, totalTime, levelTime)
+            local ok, err = pcall(under, cfSelf, totalTime, levelTime)
             playedTimeDisplayDepth = playedTimeDisplayDepth - 1
+            if not ok then RaisePlayedTimeDisplayError(err) end
         end
     end
     if cur ~= self._wnPlayedTimeWrapper then

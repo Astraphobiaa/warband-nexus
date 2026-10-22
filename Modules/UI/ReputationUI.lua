@@ -2608,6 +2608,9 @@ function WarbandNexus:DrawReputationTab(parent)
                 else
                     -- Missed while off the tab: the next refresh must not patch on top of it.
                     ForgetReputationPaint()
+                    -- A value-only gain leaves the aggregate key (lastScan / version / roster / headers)
+                    -- unchanged; drop the snapshot so the next tab draw re-aggregates (2026-10-22).
+                    InvalidateRepDrawCaches()
                 end
                 for k in pairs(repBurstChanged) do repBurstChanged[k] = nil end
             end)

@@ -559,7 +559,20 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     -- itemSummaryIndex.pending). WN_ITEMS_UPDATED / WN_BAGS_UPDATED listeners here were
     -- redundant double-invalidates on every bag write.
 
-    WarbandNexus.RegisterMessage(DataServiceEvents, E.CHARACTER_UPDATED, function()
+    -- Field-only payloads cannot add, drop, re-key or rename a roster row; the cached roster holds the live
+    -- rows and its signature already covers lastSeen / level. They kept dropping the roster and the
+    -- Utilities key index on every gold / zone / XP tick (2026-10-22). Anything else (no dataType, isNew,
+    -- isDeleted, isTracked, rosterPrune, professions, unknown) still invalidates.
+    local ROSTER_NEUTRAL_UPDATES = {
+        gold = true, zone = true, rested = true, level = true, itemLevel = true, spec = true,
+        mail = true, guild = true, favorite = true, customSection = true, customSections = true,
+        vaultClaim = true, mythicKey = true,
+    }
+    WarbandNexus.RegisterMessage(DataServiceEvents, E.CHARACTER_UPDATED, function(_, payload)
+        if type(payload) == "table" and payload.dataType and ROSTER_NEUTRAL_UPDATES[payload.dataType]
+            and payload.isNew == nil and payload.isDeleted == nil and payload.isTracked == nil then
+            return
+        end
         InvalidateGetAllCharactersCache()
     end)
     WarbandNexus.RegisterMessage(DataServiceEvents, E.CHARACTER_TRACKING_CHANGED, function()

@@ -271,6 +271,12 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         if not tryCounterReady then return end
     end
     if not addon then return end
+    -- Module off: these three only feed try counting (lockout quest sweep, loot-source target,
+    -- statistic seed index) and had no gate of their own (2026-10-22).
+    if (event == "QUEST_LOG_UPDATE" or event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_REGEN_ENABLED")
+        and not Fns.IsTryCounterModuleEnabled() then
+        return
+    end
     if event == "LOOT_READY" then
         addon:OnTryCounterLootReady(...)
     elseif event == "LOOT_OPENED" then
