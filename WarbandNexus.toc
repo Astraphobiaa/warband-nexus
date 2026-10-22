@@ -201,6 +201,12 @@ Modules\UI\SettingsUI_Shell.lua
 Modules\UI\SettingsUI_Keybind.lua
 Modules\UI\SettingsUI_Modules.lua
 Modules\UI\SettingsUI.lua
+Modules\UI\SettingsUI_General.lua
+Modules\UI\SettingsUI_Access.lua
+Modules\UI\SettingsUI_Filters.lua
+Modules\UI\SettingsUI_Notifications.lua
+Modules\UI\SettingsUI_Appearance.lua
+Modules\UI\SettingsUI_Advanced.lua
 Modules\UI\CharacterTrackingDialog.lua
 Modules\UI\MailDetailsPopup.lua
 Modules\UI\CharactersUI.lua
