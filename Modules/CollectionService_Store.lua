@@ -55,6 +55,19 @@ local function SetDerived(category, id, key, value, overwrite)
     end
 end
 
+---Fill the RAM display fields of one id from the API resolver; scan values already there win.
+---@return boolean resolved
+local function ResolveDerivedRow(category, id)
+    local data = RT.ResolveStoreRowDisplay and RT.ResolveStoreRowDisplay(category, id)
+    if type(data) ~= "table" then return false end
+    local keep = STORE_PERSIST_FIELDS[category]
+    for k, v in pairs(data) do
+        if not keep[k] then SetDerived(category, id, k, v, false) end
+    end
+    derivedResolved[category][id] = true
+    return true
+end
+
 for category, keep in pairs(STORE_PERSIST_FIELDS) do
     derivedByField[category] = {}
     derivedResolved[category] = {}
@@ -69,12 +82,7 @@ for category, keep in pairs(STORE_PERSIST_FIELDS) do
             if value ~= nil or not derived[key] or derivedResolved[category][id] then
                 return value
             end
-            local data = RT.ResolveStoreRowDisplay and RT.ResolveStoreRowDisplay(category, id)
-            if type(data) == "table" then
-                for k, v in pairs(data) do
-                    if not keep[k] then SetDerived(category, id, k, v, false) end
-                end
-                derivedResolved[category][id] = true
+            if ResolveDerivedRow(category, id) then
                 byField = derivedByField[category][key]
                 value = byField and byField[id]
             end
@@ -108,6 +116,12 @@ function RT.SlimCollectionStoreRows(category, map)
         if type(row) == "table" and getmetatable(row) ~= meta then
             if rawget(row, "id") == nil then rawset(row, "id", id) end
             local rowID = rawget(row, "id")
+            -- A row without the metatable is a fresh scan/event result for this id: it replaces
+            -- what RAM held, so fields it leaves out resolve again instead of keeping old values.
+            for field, byField in pairs(derivedByField[category]) do
+                if rawget(row, field) == nil then byField[rowID] = nil end
+            end
+            derivedResolved[category][rowID] = nil
             for k, v in pairs(row) do
                 if not keep[k] then
                     SetDerived(category, rowID, k, v, true)
@@ -117,6 +131,49 @@ function RT.SlimCollectionStoreRows(category, map)
             setmetatable(row, meta)
         end
     end
+end
+
+-- Display-field warm-up (2026-10-22). Slim rows resolve display fields on first read, so the first
+-- achievement list query read ~12k names in one frame (three API calls each). After the store loads,
+-- resolve rows ahead in time-budgeted slices; a query that comes first still resolves on demand.
+local WARM_BUDGET_MS = 2
+local WARM_COMBAT_RETRY_SEC = 5
+local warmGen = 0
+
+---@param categories string[] slim categories, warmed in this order
+function RT.WarmStoreRowDisplay(categories)
+    warmGen = warmGen + 1
+    local gen = warmGen
+    local queue = {}
+    for i = 1, #categories do
+        local category = categories[i]
+        local map = RT.collectionStore[category]
+        if STORE_PERSIST_FIELDS[category] and type(map) == "table" then
+            for id in pairs(map) do
+                queue[#queue + 1] = category
+                queue[#queue + 1] = id
+            end
+        end
+    end
+    local pos = 1
+    local function step()
+        if gen ~= warmGen then return end
+        if InCombatLockdown and InCombatLockdown() then
+            C_Timer.After(WARM_COMBAT_RETRY_SEC, step)
+            return
+        end
+        local start = debugprofilestop()
+        while pos < #queue do
+            local category, id = queue[pos], queue[pos + 1]
+            pos = pos + 2
+            if not derivedResolved[category][id] then ResolveDerivedRow(category, id) end
+            if debugprofilestop() - start > WARM_BUDGET_MS then
+                C_Timer.After(0, step)
+                return
+            end
+        end
+    end
+    C_Timer.After(0, step)
 end
 
 function RT.ScheduleDeferredCollectionStoreSave()

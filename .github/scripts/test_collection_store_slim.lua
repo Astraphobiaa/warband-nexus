@@ -282,6 +282,54 @@ do
 end
 
 -- ---------------------------------------------------------------------------------------------
+print("Phase 3b: placeholder caching, fresh rows, display warm-up")
+do
+    -- Pet metadata while the journal has nothing yet must not pin the placeholder for the session.
+    RT.collectionStore.pet[41] = { id = 41, collected = false, sourceTypeIndex = 1 }
+    RT.SlimCollectionStoreRows("pet", RT.collectionStore.pet)
+    apiMissing[41] = true
+    local early = WarbandNexus:ResolveCollectionMetadata("pet", 41)
+    assert_eq(early and early.name, "ID:41", "unresolved pet metadata reads the placeholder")
+    apiMissing[41] = nil
+    local later = WarbandNexus:ResolveCollectionMetadata("pet", 41)
+    assert_eq(later and later.name, "Api Pet 41", "pet metadata resolves once the journal answers (placeholder not cached)")
+
+    -- A rescan row replaces what RAM held for that id; fields it leaves out resolve again.
+    RT.collectionStore.mount[2002] = { id = 2002, collected = true, sourceType = 4, name = "Rescanned 2002" }
+    RT.SlimCollectionStoreRows("mount", RT.collectionStore.mount)
+    local m = RT.collectionStore.mount[2002]
+    assert_eq(m.name, "Rescanned 2002", "fresh row's own field wins")
+    assert_eq(m.description, "Api mount description 2002", "field missing from the fresh row resolves again, not the stale session value")
+
+    -- Store load schedules a warm-up: slim rows resolve ahead of the first list query.
+    for id = 501, 520 do RT.collectionStore.achievement[id] = { id = id, collected = false, points = 5 } end
+    RT.SlimCollectionStoreRows("achievement", RT.collectionStore.achievement)
+    local callsBefore = apiCalls.achievement
+    stub.Advance(10)
+    check(apiCalls.achievement - callsBefore >= 20, "load-time warm-up resolved the unread achievement rows",
+        apiCalls.achievement - callsBefore)
+    local afterWarm = apiCalls.achievement
+    local unc = WarbandNexus:GetUncollectedAchievements("", nil)
+    check(#unc >= 20, "uncollected achievement list returned", #unc)
+    assert_eq(apiCalls.achievement, afterWarm, "list query after warm-up makes no achievement API calls")
+
+    -- Warm-up work is spread over frames by its time budget.
+    for id = 601, 640 do RT.collectionStore.achievement[id] = { id = id, collected = false, points = 5 } end
+    RT.SlimCollectionStoreRows("achievement", RT.collectionStore.achievement)
+    local realProfile, realAfter = debugprofilestop, C_Timer.After
+    local fakeMs, slices = 0, 0
+    debugprofilestop = function() fakeMs = fakeMs + 1; return fakeMs end
+    C_Timer.After = function(delay, fn) if delay == 0 then slices = slices + 1 end; return realAfter(delay, fn) end
+    RT.WarmStoreRowDisplay({ "achievement" })
+    stub.Advance(1)
+    debugprofilestop, C_Timer.After = realProfile, realAfter
+    check(slices > 5, "warm-up ran in several budgeted slices", slices)
+    local calls = apiCalls.achievement
+    local _ = RT.collectionStore.achievement[640].name
+    assert_eq(apiCalls.achievement, calls, "every queued row resolved by the sliced warm-up")
+end
+
+-- ---------------------------------------------------------------------------------------------
 print("Phase 4: serialized size on a synthetic store")
 -- WoW SavedVariables layout: one `["key"] = value,` line per field, tab-indented.
 local function Serialize(v, depth, out)

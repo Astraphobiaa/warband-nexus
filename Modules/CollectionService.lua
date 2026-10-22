@@ -751,6 +751,11 @@ function WarbandNexus:InitializeCollectionCache()
             slimRows("pet", collectionStore.pet)
             slimRows("achievement", collectionStore.achievement)
             slimRows("title", collectionStore.title)
+            -- Resolve display fields before the first list query asks for all of them at once.
+            C_Timer.After(10, function()
+                local warm = ns.CollectionServiceRT.WarmStoreRowDisplay
+                if warm then warm({ "achievement", "mount", "pet", "title" }) end
+            end)
         end
         if debugMode then
             local m, p, t, a, ti, il = 0, 0, 0, 0, 0, 0

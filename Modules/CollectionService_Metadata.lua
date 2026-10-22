@@ -279,7 +279,11 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             isCollected = d.collected,
             creatureDisplayID = d.creatureDisplayID,
         }
-        metadataCache[cacheKey] = meta
+        -- A slim pet row whose API data is not ready yet reads back the "ID:<id>" placeholder;
+        -- caching that would keep the placeholder for the whole session.
+        if meta.name ~= ("ID:" .. tostring(id)) then
+            metadataCache[cacheKey] = meta
+        end
         return meta
     end
     if collectionType == "toy" and collectionData.toy and collectionData.toy[id] then
