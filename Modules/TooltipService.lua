@@ -302,18 +302,29 @@ local function ResolveTooltipItemID(itemID, itemLink)
     return nil
 end
 
+-- "<gold>Item ID|r|cffffffff : " prefix, rebuilt only when the label or the semantic gold changes
+-- (theme switch) (2026-10-22): it was trimmed, formatted and concatenated on every item hover.
+local itemIDLabelCache = { raw = nil, r = nil, g = nil, b = nil, prefix = nil }
+
 local function BuildItemIDTooltipMarkup(itemID)
-    if itemID == nil then return nil end
     if issecretvalue and issecretvalue(itemID) then return nil end
+    if itemID == nil then return nil end
     local n = tonumber(itemID)
     if not n or n < 1 then return nil end
     local rawLabel = (ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID:"
     if issecretvalue and issecretvalue(rawLabel) then return nil end
-    local labelText = rawLabel:match("^%s*(.-)%s*$") or rawLabel
-    labelText = labelText:gsub("%s*:%s*$", "")
-    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
-    local whiteHex = "|cffffffff"
-    return goldHex .. labelText .. "|r" .. whiteHex .. " : " .. tostring(n) .. "|r"
+    local gr, gg, gb
+    if ns.UI_GetSemanticGoldColor then gr, gg, gb = ns.UI_GetSemanticGoldColor() end
+    local cache = itemIDLabelCache
+    if not cache.prefix or cache.raw ~= rawLabel or cache.r ~= gr or cache.g ~= gg or cache.b ~= gb then
+        local labelText = rawLabel:match("^%s*(.-)%s*$") or rawLabel
+        labelText = labelText:gsub("%s*:%s*$", "")
+        local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
+        local whiteHex = "|cffffffff"
+        cache.prefix = goldHex .. labelText .. "|r" .. whiteHex .. " : "
+        cache.raw, cache.r, cache.g, cache.b = rawLabel, gr, gg, gb
+    end
+    return cache.prefix .. tostring(n) .. "|r"
 end
 
 local function FormatItemIDTooltipText(itemID)
@@ -1456,6 +1467,12 @@ local function BuildCurrencyPerCharacterRows(currencyID)
     local rows = {}
     local summedTotal = 0
     local seenCanon = {}
+    -- Current character's canonical key, once per tooltip (2026-10-22; was resolved per row).
+    local curCanon
+    if WarbandNexus.GetCurrencyData then
+        local storage = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
+        curCanon = storage and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(storage)
+    end
 
     for i = 1, #characters do
         local char = characters[i]
@@ -1469,8 +1486,6 @@ local function BuildCurrencyPerCharacterRows(currencyID)
                     local amount = ReadCurrencyCharQuantityFromSnapshot(currData, charKey)
                     local isCurrentChar = false
                     if WarbandNexus.GetCurrencyData then
-                        local storage = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
-                        local curCanon = storage and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(storage)
                         if curCanon and canon == curCanon then
                             isCurrentChar = true
                             local cd = WarbandNexus:GetCurrencyData(currencyID, charKey)
@@ -1788,42 +1803,25 @@ local function NormalizeTooltipAnchorPref(anchor)
     return "right"
 end
 
-local function ResolveSideOrder(pref, aLeft, aRight, screenW)
-    if pref == "left" then return { "left", "right" } end
-    if pref == "right" then return { "right", "left" } end
-    if pref == "top" or pref == "bottom" then return { "right", "left" } end
-    local centerX = (aLeft + aRight) * 0.5
-    if centerX < screenW * 0.55 then
-        return { "right", "left" }
-    end
-    return { "left", "right" }
-end
-
---- Build ranked placement candidates (Blizzard-style: side first with vertical center, then top/bottom).
-local function BuildTooltipPlacementCandidates(pref, aLeft, aRight, screenW)
+--- Build one ranked placement list (Blizzard-style: side first with vertical center, then top/bottom).
+--- `groups` is an ordered list of "right" | "left" | "above" | "below".
+local function BuildPlacementCandidateList(groups)
     local gap = TOOLTIP_GAP
     local out = {}
-    local rank = 1
-
     local function push(point, relativePoint, x, y)
-        out[#out + 1] = { point, relativePoint, x, y, rank = rank }
-        rank = rank + 1
+        out[#out + 1] = { point, relativePoint, x, y, rank = #out + 1 }
     end
-
-    local function addSide(side)
-        if side == "right" then
+    for i = 1, #groups do
+        local g = groups[i]
+        if g == "right" then
             push("LEFT", "RIGHT", gap, 0)
             push("TOPLEFT", "TOPRIGHT", gap, 0)
             push("BOTTOMLEFT", "BOTTOMRIGHT", gap, 0)
-        else
+        elseif g == "left" then
             push("RIGHT", "LEFT", -gap, 0)
             push("TOPRIGHT", "TOPLEFT", -gap, 0)
             push("BOTTOMRIGHT", "BOTTOMLEFT", -gap, 0)
-        end
-    end
-
-    local function addVertical(vert)
-        if vert == "above" then
+        elseif g == "above" then
             push("BOTTOMLEFT", "TOPLEFT", 0, gap)
             push("BOTTOMRIGHT", "TOPRIGHT", 0, gap)
         else
@@ -1831,28 +1829,29 @@ local function BuildTooltipPlacementCandidates(pref, aLeft, aRight, screenW)
             push("TOPRIGHT", "BOTTOMRIGHT", 0, -gap)
         end
     end
-
-    if pref == "top" then
-        addVertical("above")
-        addVertical("below")
-        for i = 1, #ResolveSideOrder(pref, aLeft, aRight, screenW) do
-            addSide(ResolveSideOrder(pref, aLeft, aRight, screenW)[i])
-        end
-    elseif pref == "bottom" then
-        addVertical("below")
-        addVertical("above")
-        for i = 1, #ResolveSideOrder(pref, aLeft, aRight, screenW) do
-            addSide(ResolveSideOrder(pref, aLeft, aRight, screenW)[i])
-        end
-    else
-        local sides = ResolveSideOrder(pref, aLeft, aRight, screenW)
-        addSide(sides[1])
-        addSide(sides[2])
-        addVertical("above")
-        addVertical("below")
-    end
-
     return out
+end
+
+-- The list depends only on the anchor preference and which side comes first, so the four possible
+-- lists are built once and shared read-only (2026-10-22): building per Show allocated ~11 tables
+-- and 3 closures. Top/bottom preferences always try the right side before the left.
+local PLACEMENT_CANDIDATES = {
+    top = BuildPlacementCandidateList({ "above", "below", "right", "left" }),
+    bottom = BuildPlacementCandidateList({ "below", "above", "right", "left" }),
+    rightFirst = BuildPlacementCandidateList({ "right", "left", "above", "below" }),
+    leftFirst = BuildPlacementCandidateList({ "left", "right", "above", "below" }),
+}
+
+--- Ranked placement candidates for `pref` (read-only shared list; do not modify).
+local function BuildTooltipPlacementCandidates(pref, aLeft, aRight, screenW)
+    if pref == "top" or pref == "bottom" then return PLACEMENT_CANDIDATES[pref] end
+    if pref == "left" then return PLACEMENT_CANDIDATES.leftFirst end
+    if pref == "right" then return PLACEMENT_CANDIDATES.rightFirst end
+    -- auto: open toward the larger side of the screen.
+    if (aLeft + aRight) * 0.5 < screenW * 0.55 then
+        return PLACEMENT_CANDIDATES.rightFirst
+    end
+    return PLACEMENT_CANDIDATES.leftFirst
 end
 
 --- Score a candidate: prefer low rank, no anchor overlap, minimal off-screen overflow.

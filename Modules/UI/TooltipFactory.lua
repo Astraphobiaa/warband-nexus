@@ -137,6 +137,31 @@ local VAULT_GRID_GAP_VAULT_COL = 6
 local VAULT_GRID_TRACK_MIN_W = 72
 local VAULT_TRACK_GAP_COL = 10
 
+-- Shared read-only default for the `opts` argument of the Add* line APIs (2026-10-22: was `opts or {}`).
+local EMPTY_OPTS = {}
+
+--- Append one `allLines` entry, reusing a pooled table (2026-10-22): every Add* call used to allocate
+--- a fresh entry per line on every tooltip build. Clear() returns the entries to `lineEntryPool`.
+local function PushLineEntry(frame, kind, element)
+    local pool = frame.lineEntryPool
+    local n = #pool
+    local entry
+    if n > 0 then
+        entry = pool[n]
+        pool[n] = nil
+    else
+        entry = {}
+    end
+    entry.type = kind
+    entry.element = element
+    entry.wrap = nil
+    entry.balanced = nil
+    entry.height = nil
+    local all = frame.allLines
+    all[#all + 1] = entry
+    return entry
+end
+
 --[[
     Create singleton tooltip frame
     @return Frame - Reusable tooltip frame
@@ -218,6 +243,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.titleAffixPairRight = nil
     frame.bodyDividerPool = {}
     frame.allLines = {}
+    frame.lineEntryPool = {}
     frame._balancedSplit = nil
     frame._deferLayout = false
     frame._layoutDirty = false
@@ -361,6 +387,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         table.wipe(self.vaultTrackRows)
         
+        local entryPool = self.lineEntryPool
         for i = 1, #self.allLines do
             local lineData = self.allLines[i]
             if lineData.type == "divider" and lineData.element then
@@ -369,6 +396,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 div:ClearAllPoints()
                 table.insert(self.bodyDividerPool, div)
             end
+            lineData.element = nil
+            entryPool[#entryPool + 1] = lineData
         end
 
         -- Clear unified line list
@@ -526,14 +555,14 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         
         line:Show()
         table.insert(self.lines, line)
-        table.insert(self.allLines, {type = "single", element = line, wrap = wrap and true or false})
+        PushLineEntry(self, "single", line).wrap = wrap and true or false
 
         RequestLayout(self)
     end
     
     -- API: Add double-column line (left/right text)
     frame.AddDoubleLine = function(self, leftText, rightText, lr, lg, lb, rr, rg, rb, opts)
-        opts = opts or {}
+        opts = opts or EMPTY_OPTS
         local dLine = self:GetOrCreateDoubleLine()
         
         dLine.left:SetText(leftText)
@@ -562,11 +591,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         dLine.right:Show()
         
         table.insert(self.doubleLines, dLine)
-        table.insert(self.allLines, {
-            type = "double",
-            element = dLine,
-            balanced = opts.balanced == true,
-        })
+        PushLineEntry(self, "double", dLine).balanced = opts.balanced == true
         
         RequestLayout(self)
     end
@@ -583,7 +608,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         line:SetJustifyH("CENTER")
         line:Show()
         table.insert(self.lines, line)
-        table.insert(self.allLines, { type = "centered", element = line })
+        PushLineEntry(self, "centered", line)
         RequestLayout(self)
     end
 
@@ -604,7 +629,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         line:SetJustifyH("CENTER")
         line:Show()
         table.insert(self.lines, line)
-        table.insert(self.allLines, { type = "section_label", element = line })
+        PushLineEntry(self, "section_label", line)
         RequestLayout(self)
     end
 
@@ -623,7 +648,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local ac = (COLORS and COLORS.accent) or { 0.45, 0.35, 0.72 }
         div:SetColorTexture(ac[1], ac[2], ac[3], 0.32)
         div:Show()
-        table.insert(self.allLines, { type = "divider", element = div })
+        PushLineEntry(self, "divider", div)
         self:AddSpacer(6)
     end
 
@@ -635,7 +660,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         spacerLine:SetHeight(height)
         spacerLine:Show()
         table.insert(self.lines, spacerLine)
-        table.insert(self.allLines, {type = "spacer", element = spacerLine, height = height})
+        PushLineEntry(self, "spacer", spacerLine).height = height
         RequestLayout(self)
     end
     
@@ -710,7 +735,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         opts.isHeader â€” gold column labels for vault headers.
     ]]
     frame.AddVaultGridRow = function(self, nameText, realmText, colRaid, colMplus, colWorld, widths, opts)
-        opts = opts or {}
+        opts = opts or EMPTY_OPTS
         local row = self:GetOrCreateVaultGridRow()
         row.nameFs:SetText(nameText or "")
         row.realmFs:SetText(realmText or "")
@@ -746,7 +771,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         row.mplusFs:Show()
         row.worldFs:Show()
         table.insert(self.vaultGridRows, row)
-        table.insert(self.allLines, { type = "vault_grid", element = row })
+        PushLineEntry(self, "vault_grid", row)
         RequestLayout(self)
     end
 
@@ -769,7 +794,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     end
 
     frame.AddVaultTrackRow = function(self, colRaid, colMplus, colWorld, colW, opts)
-        opts = opts or {}
+        opts = opts or EMPTY_OPTS
         local row = self:GetOrCreateVaultTrackRow()
         row.raidFs:SetText(colRaid or "")
         row.mplusFs:SetText(colMplus or "")
@@ -790,7 +815,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         row.mplusFs:Show()
         row.worldFs:Show()
         table.insert(self.vaultTrackRows, row)
-        table.insert(self.allLines, { type = "vault_track", element = row })
+        PushLineEntry(self, "vault_track", row)
         RequestLayout(self)
     end
     

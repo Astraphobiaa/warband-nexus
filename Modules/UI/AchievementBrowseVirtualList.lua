@@ -391,6 +391,12 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     local deferListChrome = BeginAchievementBrowseDeferredChrome(opts)
 
+    -- New draw generation: earned-meta text is cached per achievement until the next populate.
+    local cuiMeta = ns.CollectionsUI
+    if cuiMeta and cuiMeta.InvalidateAchievementEarnedMetaCache then
+        cuiMeta.InvalidateAchievementEarnedMetaCache()
+    end
+
     scrollChild:SetWidth(listWidth)
 
     -- Recycle the previous paint (rows -> caller pool, headers -> header pool) before the sweep below.
@@ -451,6 +457,18 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     local function refreshVisibleInternal()
         VLM.RepaintVisible(scrollChild)
+    end
+
+    -- Scroll deltas coalesce to one re-window on the next frame (2026-10-22, CollectionsUI_Lists
+    -- cfg.onScroll pattern): every OnVerticalScroll used to re-acquire and repaint every visible row.
+    local function flushListScroll()
+        state._achScrollCoalesce = false
+        refreshVisibleInternal()
+    end
+    local function onListScroll()
+        if state._achScrollCoalesce then return end
+        state._achScrollCoalesce = true
+        C_Timer.After(0, flushListScroll)
     end
 
     --- Section toggle: flip the model flag, rebuild O(n), re-window. No reflow pass, no measurement.
@@ -573,6 +591,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
         })
 
         state._achListRefreshVisible = refreshVisibleInternal
+        state._achListOnScroll = onListScroll
         if state._achUseOuterScroll then
             state._achOuterScrollActive = true
             ns._plansAchOuterVirtualState = state
@@ -580,13 +599,13 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 ns._plansAchOuterScrollHooked = true
                 listScrollFrame:HookScript("OnVerticalScroll", function()
                     local st = ns._plansAchOuterVirtualState
-                    if st and st._achOuterScrollActive and st._achListRefreshVisible then
-                        st._achListRefreshVisible()
+                    if st and st._achOuterScrollActive and st._achListOnScroll then
+                        st._achListOnScroll()
                     end
                 end)
             end
         elseif listScrollFrame then
-            listScrollFrame:SetScript("OnVerticalScroll", refreshVisibleInternal)
+            listScrollFrame:SetScript("OnVerticalScroll", onListScroll)
         end
     end
     -- Re-show deferred list chrome before the first window pass: VirtualListModule skips paints on
@@ -617,4 +636,13 @@ if WarbandNexus and WarbandNexus.RegisterMessage and Constants and Constants.EVE
     WarbandNexus.RegisterMessage(AchBrowseMsgListeners, Constants.EVENTS.ACHIEVEMENT_CATEGORY_CACHE_INVALIDATED, function()
         ns.UI_InvalidateAchievementCategoryCaches()
     end)
+    -- An achievement earned while the list is open must not keep its cached "not earned" meta.
+    if Constants.EVENTS.COLLECTIBLE_OBTAINED then
+        WarbandNexus.RegisterMessage(AchBrowseMsgListeners, Constants.EVENTS.COLLECTIBLE_OBTAINED, function()
+            local cui = ns.CollectionsUI
+            if cui and cui.InvalidateAchievementEarnedMetaCache then
+                cui.InvalidateAchievementEarnedMetaCache()
+            end
+        end)
+    end
 end

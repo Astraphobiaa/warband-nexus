@@ -802,10 +802,21 @@ function M.PaintVaultTrackerColumnCells(cellGroup, opts)
     end
 end
 
-function M.RefreshVaultShiftBindings()
+-- One options table for every cell of a refresh (2026-10-22): VaultFormatCategoryColumn and
+-- PaintVaultTrackerColumnCells read it synchronously and never keep it.
+local vaultShiftRefreshOpts = {}
+
+--- True when `fs` is not on screen. `visibleOnly` refreshes (the Shift watcher) skip those cells:
+--- the PvE tab and the Easy Access table re-bind every cell when they are shown again.
+local function IsHiddenRegion(fs)
+    return fs.IsVisible ~= nil and not fs:IsVisible()
+end
+
+function M.RefreshVaultShiftBindings(visibleOnly)
     local shiftHeld = IsShiftKeyDown and IsShiftKeyDown() or false
+    local opts = vaultShiftRefreshOpts
     for fs, activity in pairs(S.vaultSlotProgressBindings) do
-        if fs and fs.SetText then
+        if fs and fs.SetText and not (visibleOnly and IsHiddenRegion(fs)) then
             local txt = ns.FormatVaultSlotProgressText(activity, shiftHeld)
             if txt then
                 fs:SetText(txt)
@@ -813,25 +824,29 @@ function M.RefreshVaultShiftBindings()
         end
     end
     for fs, data in pairs(S.vaultColumnBindings) do
-        if fs and fs.SetText and data and data.slots then
+        if fs and fs.SetText and data and data.slots and not (visibleOnly and IsHiddenRegion(fs)) then
             local pveWeekly = false
             local colShift = shiftHeld
             if data.pveDisplayMode then
                 pveWeekly = ns.UI_GetPvEShowWeeklyView and ns.UI_GetPvEShowWeeklyView() or false
                 colShift = false
             end
-            fs:SetText(ns.VaultFormatCategoryColumn(data.slots, data.category, {
-                shiftHeld = colShift,
-                pveWeeklyView = pveWeekly,
-                showRewardProgress = data.showRewardProgress,
-                showRewardItemLevel = data.showRewardItemLevel,
-                vaultLootClaimable = data.vaultLootClaimable,
-            }))
+            opts.shiftHeld = colShift
+            opts.pveWeeklyView = pveWeekly
+            opts.showRewardProgress = data.showRewardProgress
+            opts.showRewardItemLevel = data.showRewardItemLevel
+            opts.vaultLootClaimable = data.vaultLootClaimable
+            fs:SetText(ns.VaultFormatCategoryColumn(data.slots, data.category, opts))
         end
     end
-    for _, cellGroup in pairs(S.vaultColumnCellBindings) do
-        PaintVaultTrackerColumnCells(cellGroup, { shiftHeld = shiftHeld })
+    wipe(opts)
+    opts.shiftHeld = shiftHeld
+    for anchorFs, cellGroup in pairs(S.vaultColumnCellBindings) do
+        if not (visibleOnly and anchorFs and IsHiddenRegion(anchorFs)) then
+            PaintVaultTrackerColumnCells(cellGroup, opts)
+        end
     end
+    wipe(opts)
 end
 
 function ns.RefreshVaultShiftAwareDisplays()
@@ -844,7 +859,7 @@ function M.EnsureVaultShiftWatcher()
     S.vaultShiftWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
     S.vaultShiftWatcher:SetScript("OnEvent", function(_, _, key)
         if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
-        RefreshVaultShiftBindings()
+        RefreshVaultShiftBindings(true)
         RefreshEasyAccessHoverTooltip()
     end)
 end

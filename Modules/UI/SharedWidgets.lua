@@ -4301,6 +4301,22 @@ function ns.UI_CreateClassColorStripe(parent, relFrame, x, y, barW, barH, classF
     return bar
 end
 
+-- Lowercase character name -> class token (`false` = stored without a resolvable class), built once
+-- per roster (2026-10-22): the lookup used to lowercase every stored name on every call, and the
+-- achievement rows call it per visible completed row on each paint. Dropped on roster messages and
+-- when db.global.characters is replaced. Tokens (not hex) are cached so theme switches stay live.
+ns.UI_WarbandClassTokenCache = { map = nil, src = nil }
+
+function ns.UI_InvalidateWarbandClassTokenCache()
+    ns.UI_WarbandClassTokenCache.map = nil
+end
+
+if WarbandNexus and WarbandNexus.RegisterMessage and E then
+    local classTokenCacheListener = {}
+    WarbandNexus.RegisterMessage(classTokenCacheListener, E.CHARACTER_UPDATED, ns.UI_InvalidateWarbandClassTokenCache)
+    WarbandNexus.RegisterMessage(classTokenCacheListener, E.CHARACTER_TRACKING_CHANGED, ns.UI_InvalidateWarbandClassTokenCache)
+end
+
 --- `|cffrrggbb` prefix for `displayName` using `db.global.characters` (case-insensitive name; `classFile`, `classID`, or localized `class`).
 ---@return string
 function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
@@ -4312,17 +4328,27 @@ function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
     if type(chars) ~= "table" then
         return "|cffaaaaaa"
     end
-    local wantLower = displayName:lower()
-    for _, charData in pairs(chars) do
-        if type(charData) == "table" and charData.name and not (issecretvalue and issecretvalue(charData.name)) then
-            if charData.name:lower() == wantLower then
-                local token = ResolveClassFileTokenFromCharData(charData)
-                if token then
-                    return "|cff" .. GetClassColorHexForSurface(token)
+    local cache = ns.UI_WarbandClassTokenCache
+    local map = cache.map
+    if not map or cache.src ~= chars then
+        map = {}
+        for _, charData in pairs(chars) do
+            local name
+            if type(charData) == "table" then name = charData.name end
+            if not (issecretvalue and issecretvalue(name)) and type(name) == "string" then
+                local lower = name:lower()
+                -- First stored match wins, as the linear scan did.
+                if map[lower] == nil then
+                    map[lower] = ResolveClassFileTokenFromCharData(charData) or false
                 end
-                break
             end
         end
+        cache.map = map
+        cache.src = chars
+    end
+    local token = map[displayName:lower()]
+    if token then
+        return "|cff" .. GetClassColorHexForSurface(token)
     end
     return "|cffaaaaaa"
 end

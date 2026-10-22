@@ -798,11 +798,12 @@ end
 
 --- Build WN Search item-count rows (online / alts / warband / guild).
 --- Returned rows are pooled scratch: consume them before the next call (both callers paint synchronously).
-function GT.BuildWNItemCountRows(itemID, isShift)
+--- `keystoneChecked`: the caller already ran IsKeystoneItemID for this hover (item post-call), skip the repeat.
+function GT.BuildWNItemCountRows(itemID, isShift, keystoneChecked)
     if not itemID or not WarbandNexus or not WarbandNexus.GetDetailedItemCountsFast then
         return nil, 0
     end
-    if Utilities and Utilities.IsKeystoneItemID and Utilities:IsKeystoneItemID(itemID) then
+    if not keystoneChecked and Utilities and Utilities.IsKeystoneItemID and Utilities:IsKeystoneItemID(itemID) then
         return nil, 0
     end
 
@@ -1016,13 +1017,14 @@ function gameTooltipCountSink.AddDoubleLine(sink, left, right, lr, lg, lb, rr, r
     return pcall(tooltip.AddDoubleLine, tooltip, left, right, lr, lg, lb, rr, rg, rb)
 end
 
+--- Only reached from InjectItemCountTooltipLines for a non-keystone item (checked once per hover).
 local function AppendWNItemCountLines(tooltip, itemID)
     if not tooltip or not itemID or not tooltip.AddLine or not tooltip.AddDoubleLine then
         return false
     end
 
     local isShift = IsShiftKeyDown and IsShiftKeyDown() or false
-    local rows, total = GT.BuildWNItemCountRows(itemID, isShift)
+    local rows, total = GT.BuildWNItemCountRows(itemID, isShift, true)
     if not rows then return false end
 
     local sink = gameTooltipCountSink
@@ -1179,6 +1181,8 @@ function GT.InitializeGameTooltipHook(service)
         local itemID = ResolveItemTooltipID(data)
         -- dataInstanceID can be secret in Midnight — sanitize before `or`/tostring below.
         local dataInstanceID = SafeTooltipNumber(data and data.dataInstanceID)
+        -- One "<dataInstanceID>:<itemID>" suffix per hover, shared by every injection token below (2026-10-22).
+        local tokenSuffix = itemID and (tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)) or nil
 
         -- WN Search counts per character (sync pre-Show; never call Show() here — retriggers rebuild loop)
         if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
@@ -1188,8 +1192,7 @@ function GT.InitializeGameTooltipHook(service)
             end
             if showTooltipItemCount and tooltip and itemID then
                 local isKeystone = Utilities and Utilities.IsKeystoneItemID and Utilities:IsKeystoneItemID(itemID)
-                local countToken = (isKeystone and "keystone:" or "counts:")
-                    .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                local countToken = (isKeystone and "keystone:" or "counts:") .. tokenSuffix
                 if not TooltipInjectionAlreadyDone(tooltip, countToken) then
                     local ok, err = pcall(InjectItemCountTooltipLines, tooltip, data, itemID, isKeystone, countToken)
                     if not ok and WarbandNexus.Debug then
@@ -1205,14 +1208,19 @@ function GT.InitializeGameTooltipHook(service)
             if WarbandNexus.IsItemPlanned then
                 planned = WarbandNexus:IsItemPlanned(nil, itemID)
             end
-            if not planned and WarbandNexus.IsMountPlanned
+            -- Journal lookups only while a mount / pet plan exists (2026-10-22): both ran on every
+            -- item hover. planCache is built by the IsItemPlanned call above; ids are only set to true.
+            local planCache = WarbandNexus.planCache
+            local anyMountPlan = not planCache or not planCache.mountIDs or next(planCache.mountIDs) ~= nil
+            local anyPetPlan = not planCache or not planCache.petIDs or next(planCache.petIDs) ~= nil
+            if not planned and anyMountPlan and WarbandNexus.IsMountPlanned
                 and C_MountJournal and C_MountJournal.GetMountFromItem then
                 local mountID = C_MountJournal.GetMountFromItem(itemID)
                 if mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
                     planned = WarbandNexus:IsMountPlanned(mountID)
                 end
             end
-            if not planned and WarbandNexus.IsPetPlanned
+            if not planned and anyPetPlan and WarbandNexus.IsPetPlanned
                 and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                 local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(itemID)
                 if specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
@@ -1221,7 +1229,7 @@ function GT.InitializeGameTooltipHook(service)
             end
 
             if planned and not ItemTooltipCollectibleOwned(itemID) then
-                local plannedToken = "planned:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                local plannedToken = "planned:" .. tokenSuffix
                 if not TooltipInjectionAlreadyDone(tooltip, plannedToken) then
                     local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
                     tooltip:AddLine("|cffffcc00(" .. plannedWord .. ")|r")
@@ -1238,7 +1246,7 @@ function GT.InitializeGameTooltipHook(service)
                 if containerData then
                     local drops = containerData.drops or containerData
                     if drops and type(drops) == "table" and #drops > 0 then
-                        local dropsToken = "drops:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                        local dropsToken = "drops:" .. tokenSuffix
                         if not TooltipInjectionAlreadyDone(tooltip, dropsToken) then
                             InjectCollectibleDropLines(tooltip, drops)
                             MarkTooltipInjectionDone(tooltip, dropsToken)
@@ -1253,7 +1261,7 @@ function GT.InitializeGameTooltipHook(service)
             local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
             local showItemID = not profile or profile.showTooltipItemID ~= false
             if showItemID then
-                local idToken = "itemid:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                local idToken = "itemid:" .. tokenSuffix
                 if not TooltipInjectionAlreadyDone(tooltip, idToken) then
                     local TooltipService = ns.TooltipService
                     local idText = TooltipService and TooltipService.FormatItemIDTooltipText
@@ -1430,9 +1438,85 @@ function GT.InitializeGameTooltipHook(service)
             return localizedNpcNameIndex
         end
 
-        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
-            if tooltip ~= GameTooltip then return end
-            RunGameTooltipInjection(tooltip, data, function()
+        -- Unit post-call helpers live outside the hover (2026-10-22): the body used to build four
+        -- closures per creature tooltip. Zone entries are memoized per player mapID (`false` = no
+        -- entry up the parent chain); CollectibleSourceDB.zones is static, a replaced table resets it.
+        local zoneEntryByMapID = {}
+        local zoneEntrySource = nil
+
+        -- Helper: Get current zone's drops (if any)
+        -- Returns: drops, raresOnly (boolean), hostileOnly (boolean)
+        local function GetCurrentZoneDrops(sourceDB)
+            local zones = sourceDB.zones
+            if not zones then return nil, false, false end
+            local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+            local startMapID = SafeTooltipNumber(rawMapID)
+            if not startMapID or startMapID <= 0 then return nil, false, false end
+            if zoneEntrySource ~= zones then
+                wipe(zoneEntryByMapID)
+                zoneEntrySource = zones
+            end
+            local zData = zoneEntryByMapID[startMapID]
+            if zData == nil then
+                zData = false
+                local mapID = startMapID
+                while mapID and mapID > 0 do
+                    if zones[mapID] then
+                        zData = zones[mapID]
+                        break
+                    end
+                    local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
+                    mapID = SafeTooltipNumber(mapInfo and mapInfo.parentMapID)
+                end
+                zoneEntryByMapID[startMapID] = zData
+            end
+            if not zData then return nil, false, false end
+            -- New format: { drops = {...}, raresOnly = true, hostileOnly = true }
+            if zData.drops then
+                return zData.drops, zData.raresOnly == true, zData.hostileOnly == true
+            end
+            -- Old format: direct array of drops
+            return zData, false, false
+        end
+
+        -- Helper: Check if mouseover unit is rare/elite (for raresOnly zones)
+        local function IsMouseoverRareOrElite()
+            local ok, classification = pcall(UnitClassification, "mouseover")
+            if not ok or not classification then return false end
+            if issecretvalue and issecretvalue(classification) then return false end
+            -- "rare", "rareelite", "worldboss" are rare-quality units
+            return classification == "rare" or classification == "rareelite" or classification == "worldboss"
+        end
+
+        -- Helper: Check if mouseover unit is attackable (for hostileOnly zones)
+        local function IsMouseoverAttackable()
+            local ok, canAttack = pcall(UnitCanAttack, "player", "mouseover")
+            if ok and canAttack and not (issecretvalue and issecretvalue(canAttack)) and canAttack == true then
+                return true
+            end
+            -- Dead units are no longer attackable; check if it's a lootable corpse
+            local okDead, isDead = pcall(UnitIsDead, "mouseover")
+            if okDead and isDead and not (issecretvalue and issecretvalue(isDead)) and isDead == true then
+                local okReact, reaction = pcall(UnitReaction, "mouseover", "player")
+                if okReact and reaction and not (issecretvalue and issecretvalue(reaction))
+                    and type(reaction) == "number" and reaction <= 4 then
+                    return true
+                end
+            end
+            return false
+        end
+
+        -- In instances, do not show zone-wide drops on unit tooltips (avoids e.g. "Mount"
+        -- appearing on objects like Empowered Restoration Stone that use Unit tooltip).
+        local function ZoneDropsOutsideInstance(zoneDrops)
+            if not zoneDrops or #zoneDrops == 0 then return zoneDrops end
+            local inInstance = IsInInstance and IsInInstance()
+            if inInstance and issecretvalue and issecretvalue(inInstance) then inInstance = nil end
+            if inInstance then return nil end
+            return zoneDrops
+        end
+
+        local function UnitTooltipPostCallBody(tooltip, data)
             if IsBlizzardWidgetTooltip(tooltip) then return end
 
             local sourceDB = ns.CollectibleSourceDB
@@ -1441,64 +1525,6 @@ function GT.InitializeGameTooltipHook(service)
             local drops = nil
             local resolvedNpcID = nil  -- Track NPC ID for lockout quest checking
             local zoneDrops = nil      -- Zone-wide drops to merge
-
-            -- Helper: Get current zone's drops (if any)
-            -- Returns: drops, raresOnly (boolean), hostileOnly (boolean)
-            local function GetCurrentZoneDrops()
-                if not sourceDB.zones then return nil, false, false end
-                local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-                local mapID = SafeTooltipNumber(rawMapID)
-                while mapID and mapID > 0 do
-                    local zData = sourceDB.zones[mapID]
-                    if zData then
-                        -- New format: { drops = {...}, raresOnly = true, hostileOnly = true }
-                        if zData.drops then
-                            return zData.drops, zData.raresOnly == true, zData.hostileOnly == true
-                        end
-                        -- Old format: direct array of drops
-                        return zData, false, false
-                    end
-                    local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
-                    mapID = SafeTooltipNumber(mapInfo and mapInfo.parentMapID)
-                end
-                return nil, false, false
-            end
-
-            -- Helper: Check if mouseover unit is rare/elite (for raresOnly zones)
-            local function IsMouseoverRareOrElite()
-                local ok, classification = pcall(UnitClassification, "mouseover")
-                if not ok or not classification then return false end
-                if issecretvalue and issecretvalue(classification) then return false end
-                -- "rare", "rareelite", "worldboss" are rare-quality units
-                return classification == "rare" or classification == "rareelite" or classification == "worldboss"
-            end
-
-            -- Helper: Check if mouseover unit is attackable (for hostileOnly zones)
-            local function IsMouseoverAttackable()
-                local ok, canAttack = pcall(UnitCanAttack, "player", "mouseover")
-                if ok and canAttack and not (issecretvalue and issecretvalue(canAttack)) and canAttack == true then
-                    return true
-                end
-                -- Dead units are no longer attackable; check if it's a lootable corpse
-                local okDead, isDead = pcall(UnitIsDead, "mouseover")
-                if okDead and isDead and not (issecretvalue and issecretvalue(isDead)) and isDead == true then
-                    local okReact, reaction = pcall(UnitReaction, "mouseover", "player")
-                    if okReact and reaction and not (issecretvalue and issecretvalue(reaction))
-                        and type(reaction) == "number" and reaction <= 4 then
-                        return true
-                    end
-                end
-                return false
-            end
-
-            -- In instances, do not show zone-wide drops on unit tooltips (avoids e.g. "Mount"
-            -- appearing on objects like Empowered Restoration Stone that use Unit tooltip).
-            local function ClearZoneDropsInInstance()
-                if not zoneDrops or #zoneDrops == 0 then return end
-                local inInstance = IsInInstance and IsInInstance()
-                if inInstance and issecretvalue and issecretvalue(inInstance) then inInstance = nil end
-                if inInstance then zoneDrops = nil end
-            end
 
             -- METHOD 1: GUID-based lookup (works outside instances / when not secret)
             local ok, guid = pcall(UnitGUID, "mouseover")
@@ -1516,7 +1542,7 @@ function GT.InitializeGameTooltipHook(service)
                         if drops then resolvedNpcID = npcID end
                         -- Check for zone-wide drops (e.g., Midnight zone rare mounts)
                         local zRaresOnly, zHostileOnly
-                        zoneDrops, zRaresOnly, zHostileOnly = GetCurrentZoneDrops()
+                        zoneDrops, zRaresOnly, zHostileOnly = GetCurrentZoneDrops(sourceDB)
                         -- If zone is raresOnly, only show on rare/elite units
                         if zoneDrops and zRaresOnly and not IsMouseoverRareOrElite() then
                             zoneDrops = nil
@@ -1526,7 +1552,7 @@ function GT.InitializeGameTooltipHook(service)
                             zoneDrops = nil
                         end
                         -- In instances, never show zone drops on unit tooltip (e.g. Empowered Restoration Stone)
-                        ClearZoneDropsInInstance()
+                        zoneDrops = ZoneDropsOutsideInstance(zoneDrops)
                         -- Cache name → drops and name → npcID for future secret-value fallback
                         if drops and #drops > 0 then
                             local ttLeft = _G["GameTooltipTextLeft1"]
@@ -1658,7 +1684,11 @@ function GT.InitializeGameTooltipHook(service)
 
             -- Use shared rendering function (pass npcID for lockout checking)
             InjectCollectibleDropLines(tooltip, finalDrops, resolvedNpcID)
-            end)
+        end
+
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
+            if tooltip ~= GameTooltip then return end
+            RunGameTooltipInjection(tooltip, data, UnitTooltipPostCallBody)
         end)
 
         -- Expose diagnostic accessors (MUST be inside this scope to access closures)
@@ -1877,11 +1907,30 @@ local function IsConcentrationCurrencyID(currencyID)
     return cache.idSet[currencyID] == true
 end
 
+-- "<tooltip>TextLeft<i>" global names, built once per tooltip name and line index (2026-10-22):
+-- the marker scan concatenated one name per line on every concentration tooltip Show.
+local tooltipLeftLineNames = {}
+local function GetTooltipLeftLineName(tooltipName, i)
+    local names = tooltipLeftLineNames[tooltipName]
+    if not names then
+        names = {}
+        tooltipLeftLineNames[tooltipName] = names
+    end
+    local lineName = names[i]
+    if not lineName then
+        lineName = tooltipName .. "TextLeft" .. i
+        names[i] = lineName
+    end
+    return lineName
+end
+
 local function HasAlreadyInjected(tooltip)
     local marker = (ns.L and ns.L["TOOLTIP_CONCENTRATION_MARKER"]) or "Warband Nexus - Concentration"
     local numLines = tooltip:NumLines()
+    local tooltipName = tooltip:GetName()
+    if not tooltipName then return false end
     for i = 2, numLines do
-        local line = _G[tooltip:GetName() .. "TextLeft" .. i]
+        local line = _G[GetTooltipLeftLineName(tooltipName, i)]
         if line then
             local lineText = line:GetText()
             if lineText and not (issecretvalue and issecretvalue(lineText)) and marker ~= "" and lineText:find(marker, 1, true) then
@@ -1893,7 +1942,9 @@ local function HasAlreadyInjected(tooltip)
 end
 
 local function IsConcentrationTooltip(tooltip)
-    local firstLine = _G[tooltip:GetName() .. "TextLeft1"]
+    local tooltipName = tooltip:GetName()
+    if not tooltipName then return false end
+    local firstLine = _G[GetTooltipLeftLineName(tooltipName, 1)]
     if not firstLine then return false end
     local text = firstLine:GetText()
     if not text or (issecretvalue and issecretvalue(text)) then return false end
@@ -1983,9 +2034,10 @@ function GT.InstallConcentrationTooltipHook(service)
     -- Layer 2: hooksecurefunc(Show) fallback — taint-safe (no HookScript on GameTooltip).
     if hooksecurefunc and GameTooltip then
         hooksecurefunc(GameTooltip, "Show", function(tooltip)
+            -- Cheapest gate first (2026-10-22): this runs on every GameTooltip Show in the game.
+            if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
             if IsBlizzardWidgetTooltip(tooltip) then return end
             if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
-            if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
             if not IsConcentrationTooltip(tooltip) then return end
             if HasAlreadyInjected(tooltip) then return end
 

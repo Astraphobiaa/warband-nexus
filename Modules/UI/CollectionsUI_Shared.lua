@@ -295,8 +295,36 @@ end
 
 local COLLECTIONS_LIST_META_WHITE = "|cffffffff"
 
+-- Earned meta per achievement ID for the current achievement-browse draw (2026-10-22). Virtual rows
+-- are re-acquired on every scroll paint; each paint used to redo two GetAchievementInfo calls, a scan
+-- of collectionsRecentObtained, maybe a criteria loop and a roster walk per completed row.
+-- `false` caches "not earned". Wiped by InvalidateAchievementEarnedMetaCache (every browse populate).
+local earnedMetaDateByID, earnedMetaEarnerByID = {}, {}
+
+function M.InvalidateAchievementEarnedMetaCache()
+    wipe(earnedMetaDateByID)
+    wipe(earnedMetaEarnerByID)
+end
+
+local FormatAchievementEarnedRowMetaSplitUncached
+
 --- Split earned meta for collection rows: date (right-aligned in column), earner (right column); white + class name.
 function M.FormatAchievementEarnedRowMetaSplit(achievementID)
+    if (issecretvalue and issecretvalue(achievementID)) or type(achievementID) ~= "number" then
+        return FormatAchievementEarnedRowMetaSplitUncached(achievementID)
+    end
+    local earner = earnedMetaEarnerByID[achievementID]
+    if earner == false then return nil, nil end
+    if earner then
+        return earnedMetaDateByID[achievementID] or nil, earner
+    end
+    local dateRich, earnerRich = FormatAchievementEarnedRowMetaSplitUncached(achievementID)
+    earnedMetaEarnerByID[achievementID] = earnerRich or false
+    earnedMetaDateByID[achievementID] = dateRich or false
+    return dateRich, earnerRich
+end
+
+function FormatAchievementEarnedRowMetaSplitUncached(achievementID)
     local dateStr, whoLabel, charLabel = BuildAchievementEarnedRowParts(achievementID)
     if not whoLabel then return nil, nil end
     local loc = ns.L

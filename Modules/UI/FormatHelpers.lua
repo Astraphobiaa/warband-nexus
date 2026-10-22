@@ -452,13 +452,16 @@ local function EnsureSeasonAmountWatcher()
     _seasonAmountWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
     _seasonAmountWatcher:SetScript("OnEvent", function(_, _, key)
         if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+        -- Skip cells that are not on screen (2026-10-22): rows stay bound while the main window is
+        -- closed and Shift is a common combat key. Hidden cells are re-bound (and re-formatted) by
+        -- the tab paint that shows them again (ShowMainWindow / tab switch -> PopulateContent).
         for fs, entry in pairs(_seasonAmountBindings) do
-            if fs and fs.SetText and fs.IsObjectType then
+            if fs and fs.SetText and fs.IsObjectType and (not fs.IsVisible or fs:IsVisible()) then
                 ApplySeasonProgressBindingText(fs, entry)
             end
         end
         for fs, entry in pairs(_pveBountyBindings) do
-            if fs and fs.SetText and fs.IsObjectType then
+            if fs and fs.SetText and fs.IsObjectType and (not fs.IsVisible or fs:IsVisible()) then
                 ApplyPvEBountyBindingText(fs, entry)
             end
         end
