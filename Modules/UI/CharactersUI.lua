@@ -612,9 +612,8 @@ function WarbandNexus:DrawCharacterList(parent)
     -- and we re-adopt here. A character-icon change (rare) rebuilds from scratch.
     local bundle = parent._wnCharsGoldBundle
     if bundle and bundle.charIconTex ~= charIconTex then
-        local bin = ns.UI_RecycleBin
         for _, f in ipairs({ bundle.char, bundle.wb, bundle.total }) do
-            if f then f:Hide(); f:ClearAllPoints(); if bin then f:SetParent(bin) end end
+            if f then ns.UI_SectionPool.Discard(f) end
         end
         bundle = nil
         parent._wnCharsGoldBundle = nil
@@ -1081,12 +1080,29 @@ function WarbandNexus:DrawCharacterList(parent)
         yOffset = ns.CharactersUI.PlaceCharactersColumnHeader(parent, yOffset, contentSide, sectionStackW, SECTION_HEADER_GAP)
     end
 
-    local function AcquireSectionContentFrame(anchorHeader)
+    -- Section headers, their count labels and content frames are pooled on the scroll child
+    -- (SectionPool, "chr:" keys) and re-bound every paint; each CHARACTER_UPDATED repaint used to
+    -- create them anew and park the old ones in the recycle bin forever (2026-10-22).
+    local SP = ns.UI_SectionPool
+    SP.BeginPass(parent)
+
+    local function SectionCountFS(headerFrame)
+        local fs = headerFrame._wnSectionCountFs
+        if not fs then
+            fs = FontManager:CreateFontString(headerFrame, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
+            headerFrame._wnSectionCountFs = fs
+        end
+        fs:ClearAllPoints()
+        fs:Show()
+        return fs
+    end
+
+    local function AcquireSectionContentFrame(anchorHeader, poolKey)
         local contentFrame = nil
         local hostW = math.max(1, sectionStackW or width or (parent.GetWidth and parent:GetWidth()) or 1)
         if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
             -- Parent = section header so virtual-scroll offset walks header -> scrollChild correctly.
-            contentFrame = ns.UI.Factory:CreateContainer(anchorHeader, hostW, 1, false)
+            contentFrame = SP.Acquire(parent, "chr:content:" .. poolKey, anchorHeader, hostW, 1)
         else
             contentFrame = CreateFrame("Frame", nil, anchorHeader)
             contentFrame:SetSize(hostW, 1)
@@ -1105,6 +1121,7 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Row stripes (ApplyRowBackground index): still **per-section** 1..n â€” not one merged index across Favorites + Characters + Untracked.
     local function DrawCharactersIntoSection(contentFrame, list, isFavorite, listKey, emptyMessage)
         contentFrame._wnVirtualContentHeight = nil
+        if contentFrame._wnEmptyText then contentFrame._wnEmptyText:Hide() end
         local sectionYOffset = 0
         if #list > 0 then
             local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
@@ -1229,7 +1246,13 @@ function WarbandNexus:DrawCharacterList(parent)
                 end
             end
         elseif emptyMessage and emptyMessage ~= "" then
-            local emptyText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+            local emptyText = contentFrame._wnEmptyText
+            if not emptyText then
+                emptyText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+                contentFrame._wnEmptyText = emptyText
+            end
+            emptyText:ClearAllPoints()
+            emptyText:Show()
             emptyText:SetPoint("TOP", contentFrame, "TOP", 0, -20)
             emptyText:SetText(ThemeTextHex("Muted") .. emptyMessage .. "|r")
             emptyText:SetWidth(math.max(200, (sectionStackW or width or 400) - 40))
@@ -1315,18 +1338,19 @@ function WarbandNexus:DrawCharacterList(parent)
             true,
             nil,
             nil,
-            favoritesVisualOpts
+            SP.HeaderOpts(parent, "chr:hdr:favorites", favoritesVisualOpts)
         )
+        SP.Remember(parent, "chr:hdr:favorites", favHeader)
         AnchorSectionHeader(favHeader)
         if favIcon then favIcon:SetSize(24, 24) end
 
-        local favCount = FontManager:CreateFontString(favHeader, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
+        local favCount = SectionCountFS(favHeader)
         favCount:SetPoint("RIGHT", favHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         favCount:SetJustifyH("RIGHT")
         SetSectionHeaderCount(favCount, #trackedFavorites, "Normal")
         AttachSectionGoldTotal(favHeader, favCount, trackedFavorites)
 
-        favoritesContent = AcquireSectionContentFrame(favHeader)
+        favoritesContent = AcquireSectionContentFrame(favHeader, "favorites")
         local favoritesHeight = DrawCharactersIntoSection(
             favoritesContent,
             trackedFavorites,
@@ -1393,8 +1417,9 @@ function WarbandNexus:DrawCharacterList(parent)
                 true,
                 nil,
                 nil,
-                grpVisualOpts
+                SP.HeaderOpts(parent, "chr:hdr:cgrp_" .. tostring(gid), grpVisualOpts)
             )
+            SP.Remember(parent, "chr:hdr:cgrp_" .. tostring(gid), grpHeader)
             AnchorSectionHeader(grpHeader)
             if grpIcon then grpIcon:SetSize(24, 24) end
 
@@ -1422,7 +1447,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 })
             end
 
-            grpContent = AcquireSectionContentFrame(grpHeader)
+            grpContent = AcquireSectionContentFrame(grpHeader, "cgrp_" .. tostring(gid))
             local grpHeight = DrawCharactersIntoSection(
                 grpContent,
                 gList,
@@ -1476,18 +1501,19 @@ function WarbandNexus:DrawCharacterList(parent)
             true,
             nil,
             nil,
-            charVisualOpts
+            SP.HeaderOpts(parent, "chr:hdr:characters", charVisualOpts)
         )
+        SP.Remember(parent, "chr:hdr:characters", charHeader)
         AnchorSectionHeader(charHeader)
         if charIcon then charIcon:SetSize(24, 24) end
 
-        local charCount = FontManager:CreateFontString(charHeader, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
+        local charCount = SectionCountFS(charHeader)
         charCount:SetPoint("RIGHT", charHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         charCount:SetJustifyH("RIGHT")
         SetSectionHeaderCount(charCount, #trackedRegular, "Normal")
         AttachSectionGoldTotal(charHeader, charCount, trackedRegular)
 
-        charactersContent = AcquireSectionContentFrame(charHeader)
+        charactersContent = AcquireSectionContentFrame(charHeader, "characters")
         local charactersHeight = DrawCharactersIntoSection(
             charactersContent,
             trackedRegular,
@@ -1549,18 +1575,19 @@ function WarbandNexus:DrawCharacterList(parent)
             true,
             nil,
             nil,
-            untrackedVisualOpts
+            SP.HeaderOpts(parent, "chr:hdr:untracked", untrackedVisualOpts)
         )
+        SP.Remember(parent, "chr:hdr:untracked", untrackedHeader)
         AnchorSectionHeader(untrackedHeader)
         if untrackedIcon then untrackedIcon:SetSize(24, 24) end
 
-        local untrackedCount = FontManager:CreateFontString(untrackedHeader, FontManager:GetFontRole("sectionHeaderCount"), "OVERLAY")
+        local untrackedCount = SectionCountFS(untrackedHeader)
         untrackedCount:SetPoint("RIGHT", untrackedHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         untrackedCount:SetJustifyH("RIGHT")
         SetSectionHeaderCount(untrackedCount, #untracked, "Muted")
         AttachSectionGoldTotal(untrackedHeader, untrackedCount, untracked)
 
-        untrackedContent = AcquireSectionContentFrame(untrackedHeader)
+        untrackedContent = AcquireSectionContentFrame(untrackedHeader, "untracked")
         local untrackedHeight = DrawCharactersIntoSection(
             untrackedContent,
             untracked,

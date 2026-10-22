@@ -30,14 +30,16 @@ local function count(s, pat)
     return n
 end
 
--- { label, file, function header pattern }
+-- { label, file, function header pattern, allowed direct CreateContainer calls (non-section chrome) }
 local ADOPTED = {
     { "Currency", "Modules/UI/CurrencyUI.lua", "function WarbandNexus:DrawCurrencyList%(container, width%)" },
     { "Reputation", "Modules/UI/ReputationUI.lua", "function WarbandNexus:DrawReputationList%(container, width%)" },
+    -- Characters: the two text blocks inside the persistent gold-card bundle (built once).
+    { "Characters", "Modules/UI/CharactersUI.lua", "function WarbandNexus:DrawCharacterList%(parent%)", 2 },
 }
 
 for i = 1, #ADOPTED do
-    local label, rel, head = ADOPTED[i][1], ADOPTED[i][2], ADOPTED[i][3]
+    local label, rel, head, allowCC = ADOPTED[i][1], ADOPTED[i][2], ADOPTED[i][3], ADOPTED[i][4] or 0
     local src = ReadFile(rel)
     local s = src:find(head)
     check(s ~= nil, label .. ": draw function found")
@@ -47,10 +49,20 @@ for i = 1, #ADOPTED do
         check(headers > 0 and headers == count(body, "SP%.HeaderOpts%("),
             label .. ": every collapsible header goes through SectionPool.HeaderOpts (" .. headers .. ")")
         check(count(body, "SP%.Remember%(") == headers, label .. ": every pooled header is remembered")
-        check(count(body, "CreateContainer%(") == 0, label .. ": no direct Factory:CreateContainer for section chrome")
-        check(body:find("SetParent%(recycleBin") == nil, label .. ": no raw recycle-bin parking in teardown")
+        check(count(body, "CreateContainer%(") == allowCC, label .. ": no direct Factory:CreateContainer for section chrome")
+        check(body:find("SetParent%(recycleBin") == nil and body:find("SetParent%(bin%)") == nil,
+            label .. ": no raw recycle-bin parking")
         check(body:find("SP.BeginPass(", 1, true) ~= nil, label .. ": teardown starts a SectionPool pass")
     end
+end
+
+-- Characters: per-paint labels on pooled headers / content frames are cached, not recreated.
+do
+    local src = ReadFile("Modules/UI/CharactersUI.lua")
+    check(count(src, 'FontManager:CreateFontString%(%w+Header, FontManager:GetFontRole%("sectionHeaderCount"%)') == 0
+        and src:find("headerFrame._wnSectionCountFs = fs", 1, true) ~= nil,
+        "Characters: section count labels come from the cached SectionCountFS")
+    check(src:find("contentFrame._wnEmptyText", 1, true) ~= nil, "Characters: empty-section text is cached on the content frame")
 end
 
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))
