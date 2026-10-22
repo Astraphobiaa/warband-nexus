@@ -1140,7 +1140,8 @@ function M.DrawToysContent(contentFrame)
         local toyObtainedLine = M.CreateCollectionsSmallLabel(scrollChild)
         toyObtainedLine:SetJustifyH("LEFT")
         toyObtainedLine:SetWordWrap(true)
-        ns.UI_SetTextColorRole(toyObtainedLine, "Dim")
+        -- GRAY BAN: Collections detail labels use Bright, not Dim (2026-10-22).
+        ns.UI_SetTextColorRole(toyObtainedLine, "Bright")
         toyObtainedLine:Hide()
         M.state._toyDetailObtainedLine = toyObtainedLine
     else

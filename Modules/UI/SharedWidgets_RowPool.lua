@@ -522,7 +522,6 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
         rightLabel:SetJustifyH("RIGHT")
         rightLabel:SetText(rightStr)
         ns.UI_SetTextColorRole(rightLabel, "Bright")
-        rightLabel:SetTextColor(1, 1, 1, 1)
         title:SetPoint("RIGHT", rightLabel, "LEFT", -6, 0)
     end
 
@@ -728,9 +727,10 @@ local COLLECTION_ROW_META_EARNER_W = 116
 local COLLECTION_ROW_META_DATE_W = 92
 local COLLECTION_ROW_META_GAP = 12
 
+-- Role ink, not raw white: a per-populate SetTextColor(1,1,1) re-whitened light rows (2026-10-22).
 local function ApplyCollectionRowMetaLabelChrome(fs)
     if not fs then return end
-    fs:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(fs, "Bright")
 end
 
 local function LayoutCollectionListRowMetaColumns(row, pad)

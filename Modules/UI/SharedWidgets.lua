@@ -111,6 +111,18 @@ function ns.UI_GetMonochromeIconVertex(alpha)
     return { 1, 1, 1, alpha }
 end
 
+--- Fixed grey `|cff` markup that no text role matches in dark mode: dark/classic keep the literal
+--- (frozen baseline), light resolves the role so the label stays readable on pale cards (2026-10-22).
+---@param darkHex string `|cffrrggbb` used today in dark mode
+---@param role string "Bright" | "Normal" | "Muted" | "Dim"
+---@return string
+function ns.UI_GetThemedGreyHex(darkHex, role)
+    if IsLightModeEnabled() then
+        return ThemeAPI.GetTextRoleHex(role)
+    end
+    return darkHex
+end
+
 --- Collection list row status: gold `common-icon-checkmark` when collected (canonical WN check).
 function ns.UI_ApplyCollectionRowStatusIcon(statusIcon, isCollected)
     if not statusIcon then return end
@@ -655,6 +667,10 @@ local function RefreshColors()
     end
     if ns.ReminderSetAlertDialog and ns.ReminderSetAlertDialog.RefreshTheme then
         ns.ReminderSetAlertDialog.RefreshTheme()
+    end
+    -- Money log popup was only repainted on the font path; theme/accent toggles left it stale (2026-10-22).
+    if ns.CharacterBankMoneyLogPopup and ns.CharacterBankMoneyLogPopup.RefreshTheme then
+        ns.CharacterBankMoneyLogPopup.RefreshTheme()
     end
     if WarbandNexus and WarbandNexus.RefreshVaultEasyAccessTheme then
         WarbandNexus:RefreshVaultEasyAccessTheme()

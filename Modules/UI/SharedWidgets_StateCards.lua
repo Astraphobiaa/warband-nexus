@@ -204,7 +204,8 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     -- "Module Disabled" title
     local title = FontManager:CreateFontString(contentContainer, UIFontRole("moduleDisabledTitle"), "OVERLAY")
     title:SetPoint("TOP", icon, "BOTTOM", 0, -24)
-    title:SetText("|cffcccccc" .. ((ns.L and ns.L["MODULE_DISABLED"]) or "Module Disabled") .. "|r")
+    -- Light: Bright role (fixed #cccccc was near invisible on the light card); dark keeps #cccccc (2026-10-22).
+    title:SetText(ns.UI_GetThemedGreyHex("|cffcccccc", "Bright") .. ((ns.L and ns.L["MODULE_DISABLED"]) or "Module Disabled") .. "|r")
     
     -- Description with colored module name
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -329,7 +330,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
     text:SetWidth(200)
     
     -- Color based on source type
-    local color = "|cff999999" -- Gray for unknown
+    local color = ns.UI_GetThemedGreyHex("|cff999999", "Muted") -- Gray for unknown (Muted role in light, 2026-10-22)
     if dataSource:find("Cache") then
         color = "|cff00ff00" -- Green for cache services (modern)
     elseif dataSource:find("LEGACY") or dataSource:find("db%.global") then
@@ -429,7 +430,8 @@ local function ApplyLoadingCardProgress(card)
     if currentStage ~= card._wnLastStage or progress ~= card._wnLastProgress then
         card._wnLastStage = currentStage
         card._wnLastProgress = progress
-        card._wnProgressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
+        -- Light: Muted role instead of fixed #888888 (2026-10-22).
+        card._wnProgressText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Muted") .. string.format("%s - %d%%|r", currentStage, progress))
     end
     local bw = card._wnBarBg:GetWidth()
     if bw and bw > 0 then

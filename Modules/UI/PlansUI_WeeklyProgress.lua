@@ -31,6 +31,11 @@ local PAGE_STACK
 local PlansContentPadH
 local CATEGORIES
 
+--- Fixed grey kept in dark, text role in light (ns.UI_GetThemedGreyHex; literal when not loaded) (2026-10-22).
+local function PlanGreyHex(darkHex, role)
+    return (ns.UI_GetThemedGreyHex and ns.UI_GetThemedGreyHex(darkHex, role)) or darkHex
+end
+
 function WP.Install(addon, deps)
     IsSafeDisplayString = deps.IsSafeDisplayString
     PlanGreenHex = deps.PlanGreenHex
@@ -319,7 +324,8 @@ local function PaintWeeklyQuestRow(row, quest, width)
     elseif quest.isLocked then
         titleFs:SetText("|cffff9933" .. (quest.title or "") .. "|r")
     elseif isSub then
-        titleFs:SetText("|cffaaaaaa" .. (quest.title or "") .. "|r")
+        -- Fixed greys: kept in dark, text role in light (2026-10-22).
+        titleFs:SetText(PlanGreyHex("|cffaaaaaa", "Muted") .. (quest.title or "") .. "|r")
     else
         titleFs:SetText(PlanBrightHex() .. (quest.title or "") .. "|r")
     end
@@ -363,7 +369,7 @@ local function PaintWeeklyQuestRow(row, quest, width)
             local zoneFs = WeeklyRowRegion(row, "_wnPlnZoneSmallFs", nil, "small")
             zoneFs:SetPoint("TOPRIGHT", -14, -6)
             zoneFs:SetJustifyH("RIGHT")
-            zoneFs:SetText("|cff888888" .. quest.zone .. "|r")
+            zoneFs:SetText(PlanGreyHex("|cff888888", "Dim") .. quest.zone .. "|r")
         else
             HideWeeklyRowRegion(row, "_wnPlnZoneSmallFs")
         end
@@ -672,9 +678,10 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             realmHdr = ns.Utilities:FormatRealmName(realmHdr)
         end
         local charTitlePlain = format(
-            "|cff%02x%02x%02x%s|r |cff888888-%s|r",
+            "|cff%02x%02x%02x%s|r %s-%s|r",
             classColor.r * 255, classColor.g * 255, classColor.b * 255,
             plan.characterName or "Unknown",
+            PlanGreyHex("|cff888888", "Dim"),
             realmHdr
         )
 

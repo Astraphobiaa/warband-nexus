@@ -293,13 +293,13 @@ function M.FormatAchievementEarnedMetaPlain(achievementID)
     return format(byOnlyFmt, whoLabel)
 end
 
-local COLLECTIONS_LIST_META_WHITE = "|cffffffff"
-
 -- Earned meta per achievement ID for the current achievement-browse draw (2026-10-22). Virtual rows
 -- are re-acquired on every scroll paint; each paint used to redo two GetAchievementInfo calls, a scan
 -- of collectionsRecentObtained, maybe a criteria loop and a roster walk per completed row.
 -- `false` caches "not earned". Wiped by InvalidateAchievementEarnedMetaCache (every browse populate).
 local earnedMetaDateByID, earnedMetaEarnerByID = {}, {}
+-- Bright hex baked into the cached strings; a theme toggle drops the cache (2026-10-22).
+local earnedMetaHex
 
 function M.InvalidateAchievementEarnedMetaCache()
     wipe(earnedMetaDateByID)
@@ -312,6 +312,12 @@ local FormatAchievementEarnedRowMetaSplitUncached
 function M.FormatAchievementEarnedRowMetaSplit(achievementID)
     if (issecretvalue and issecretvalue(achievementID)) or type(achievementID) ~= "number" then
         return FormatAchievementEarnedRowMetaSplitUncached(achievementID)
+    end
+    local metaHex = M.CollectionsListWhiteHex()
+    if metaHex ~= earnedMetaHex then
+        wipe(earnedMetaDateByID)
+        wipe(earnedMetaEarnerByID)
+        earnedMetaHex = metaHex
     end
     local earner = earnedMetaEarnerByID[achievementID]
     -- "Not earned" is only trusted for a few seconds: GetAchievementInfo can report it transiently
@@ -340,16 +346,18 @@ function FormatAchievementEarnedRowMetaSplitUncached(achievementID)
     if not whoLabel then return nil, nil end
     local loc = ns.L
     local warbandLabel = (loc and loc["COLLECTIONS_ACHIEVEMENT_BY_WARBAND"]) or "Warband"
-    local byPrefix = COLLECTIONS_LIST_META_WHITE .. "By " .. "|r"
+    -- Bright role ink resolved per call (was a fixed |cffffffff: white on light rows) (2026-10-22).
+    local metaHex = M.CollectionsListWhiteHex()
+    local byPrefix = metaHex .. "By " .. "|r"
     local earnerRich
     if charLabel and charLabel ~= "" then
         local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(charLabel))
-            or COLLECTIONS_LIST_META_WHITE
+            or metaHex
         earnerRich = byPrefix .. cc .. charLabel .. "|r"
     else
-        earnerRich = byPrefix .. COLLECTIONS_LIST_META_WHITE .. warbandLabel .. "|r"
+        earnerRich = byPrefix .. metaHex .. warbandLabel .. "|r"
     end
-    local dateRich = (dateStr and dateStr ~= "") and (COLLECTIONS_LIST_META_WHITE .. dateStr .. "|r") or nil
+    local dateRich = (dateStr and dateStr ~= "") and (metaHex .. dateStr .. "|r") or nil
     return dateRich, earnerRich
 end
 
@@ -646,8 +654,9 @@ function M.CollectionsBrightHex()
 end
 
 --- Collections list: mandatory white markup (GRAY BAN — no Dim/Muted hex on row meta or counts).
+--- Bright role at call time: white in dark, charcoal ink in light (2026-10-22).
 function M.CollectionsListWhiteHex()
-    return "|cffffffff"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffffffff"
 end
 
 function M.CollectionsGoldHex()

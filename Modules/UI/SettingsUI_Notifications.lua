@@ -496,7 +496,13 @@ function M.AppendNotificationsPanel(ctx)
                     end
                 elseif dep.type == "label" then
                     if isEnabled then
-                        dep.widget:SetTextColor(dep.color[1], dep.color[2], dep.color[3], dep.color[4] or 1)
+                        -- Role / accent resolved at call time; build-time copies went stale on
+                        -- theme or accent change (2026-10-22).
+                        if dep.role then
+                            ns.UI_SetTextColorRole(dep.widget, dep.role)
+                        else
+                            dep.widget:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+                        end
                     else
                         ns.UI_SetTextColorRole(dep.widget, "Dim", 0.6)
                     end
@@ -1179,7 +1185,7 @@ function M.AppendNotificationsPanel(ctx)
     RefreshNotifAnchorControlsVisibility()
 
     if durationLabel then
-        table.insert(notifExternalDependents, { type = "label", widget = durationLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
+        table.insert(notifExternalDependents, { type = "label", widget = durationLabel })
     end
     if durationSlider then
         table.insert(notifExternalDependents, { type = "slider", widget = durationSlider, label = durationLabel })
@@ -1190,17 +1196,10 @@ function M.AppendNotificationsPanel(ctx)
     for i = 1, #lanePosButtons do
         table.insert(notifExternalDependents, { type = "button", widget = lanePosButtons[i] })
     end
-    local function roleRgb(role, dr, dg, db)
-        if ns.UI_GetTextRoleRGB then
-            local r, g, b = ns.UI_GetTextRoleRGB(role)
-            return { r, g, b }
-        end
-        return { dr, dg, db }
-    end
-    table.insert(notifExternalDependents, { type = "label", widget = notifPerLaneLabel, color = roleRgb("Muted", 0.82, 0.82, 0.82) })
+    table.insert(notifExternalDependents, { type = "label", widget = notifPerLaneLabel, role = "Muted" })
     table.insert(notifExternalDependents, { type = "button", widget = unifiedLayoutCheck })
-    table.insert(notifExternalDependents, { type = "label", widget = unifiedLayoutLabel, color = roleRgb("Bright", 1, 1, 1) })
-    table.insert(notifExternalDependents, { type = "label", widget = useAlertFrameLabel, color = {1, 1, 1} })
+    table.insert(notifExternalDependents, { type = "label", widget = unifiedLayoutLabel, role = "Bright" })
+    table.insert(notifExternalDependents, { type = "label", widget = useAlertFrameLabel, role = "Bright" })
     table.insert(notifExternalDependents, { type = "button", widget = useAlertFrameCheck })
     
     -- Apply initial disabled state if notifications are OFF

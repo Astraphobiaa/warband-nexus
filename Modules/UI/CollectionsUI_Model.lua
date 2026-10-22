@@ -946,7 +946,8 @@ function M.CreateModelViewer(parent, width, height)
     local obtainedAtLine = M.CreateCollectionsSmallLabel(textOverlay)
     obtainedAtLine:SetJustifyH("LEFT")
     obtainedAtLine:SetWordWrap(true)
-    ns.UI_SetTextColorRole(obtainedAtLine, "Dim")
+    -- GRAY BAN: Collections detail labels use Bright, not Dim (2026-10-22).
+    ns.UI_SetTextColorRole(obtainedAtLine, "Bright")
     obtainedAtLine:Hide()
     panel.obtainedAtLine = obtainedAtLine
 
@@ -2672,7 +2673,8 @@ function M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
     end
     if tabChanged or row._subPlain ~= subPlain then
         row._subPlain = subPlain
-        row._subtitle:SetText(subPlain ~= "" and ("|cffffffff" .. subPlain .. "|r") or "")
+        -- Bright role ink at call time (fixed |cffffffff was white on the light header) (2026-10-22).
+        row._subtitle:SetText(subPlain ~= "" and (M.CollectionsListWhiteHex() .. subPlain .. "|r") or "")
         row._subtitle:SetShown(subPlain ~= "")
     end
     row:Show()
@@ -2710,7 +2712,6 @@ function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, h
         row._subtitle:SetNonSpaceWrap(false)
         row._subtitle:SetMaxLines(1)
         ns.UI_SetTextColorRole(row._subtitle, "Bright")
-        row._subtitle:SetTextColor(1, 1, 1, 1)
         hdrCache.contentSubHeader = row
     end
     local nextY

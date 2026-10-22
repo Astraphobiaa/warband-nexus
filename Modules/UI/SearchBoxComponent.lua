@@ -182,8 +182,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     end
     placeholderText:SetText(placeholder or "Search...")
     if registryKey == "collections" then
-        ns.UI_SetTextColorRole(placeholderText, "Bright")
-        placeholderText:SetTextColor(1, 1, 1, 0.85)
+        ns.UI_SetTextColorRole(placeholderText, "Bright", 0.85)
     else
         ns.UI_SetTextColorRole(placeholderText, "Muted")
     end

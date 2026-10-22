@@ -1834,7 +1834,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                         
                         local notDone = FontManager:CreateFontString(iconFrame, "header", "OVERLAY")
                         notDone:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
-                        notDone:SetText("|cff666666?|r")
+                        notDone:SetText(ns.UI_GetThemedGreyHex("|cff666666", "Dim") .. "?|r")
                         
                         local zeroScore = FontManager:CreateFontString(iconFrame, "title", "OVERLAY")
                         zeroScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
@@ -1861,7 +1861,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                             else
                                 local notCompletedLabel = GetLocalizedText("NOT_COMPLETED_SEASON", "Not completed this season")
                                 table.insert(tooltipLines, {
-                                    text = "|cff888888" .. notCompletedLabel .. "|r",
+                                    text = ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. notCompletedLabel .. "|r",
                                     color = {0.6, 0.6, 0.6}
                                 })
                             end
@@ -1887,7 +1887,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 local noData = FontManager:CreateFontString(mplusCard, "small", "OVERLAY")
                 noData:SetPoint("TOPLEFT", 15, -mplusY)
                 local noDataLabel = GetLocalizedText("NO_DATA", "No data")
-                noData:SetText("|cff666666" .. noDataLabel .. "|r")
+                noData:SetText(ns.UI_GetThemedGreyHex("|cff666666", "Dim") .. noDataLabel .. "|r")
                 mplusNeededH = math.max(baseCardHeight, mplusY + 40)
             end
             
@@ -1950,14 +1950,14 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                     local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                     noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
                     local noKeyLabel = GetLocalizedText("NO_KEY", "No Key")
-                    noKeyText:SetText("|cff888888" .. noKeyLabel .. "|r")
+                    noKeyText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. noKeyLabel .. "|r")
                     noKeyText:SetJustifyH("CENTER")
                 end
             else
                 local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
                 local noKeyLabel = GetLocalizedText("NO_KEY", "No Key")
-                noKeyText:SetText("|cff888888" .. noKeyLabel .. "|r")
+                noKeyText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. noKeyLabel .. "|r")
                 noKeyText:SetJustifyH("CENTER")
             end
             
@@ -2034,7 +2034,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -30)
                 local noAffixesLabel = GetLocalizedText("NO_AFFIXES", "No Affixes")
-                noAffixesText:SetText("|cff888888" .. noAffixesLabel .. "|r")
+                noAffixesText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. noAffixesLabel .. "|r")
                 noAffixesText:SetJustifyH("CENTER")
             end
 
@@ -2261,7 +2261,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             local noVault = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
             noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
             local noVaultLabel = GetLocalizedText("NO_VAULT_DATA", "No vault data")
-            noVault:SetText("|cff666666" .. noVaultLabel .. "|r")
+            noVault:SetText(ns.UI_GetThemedGreyHex("|cff666666", "Dim") .. noVaultLabel .. "|r")
         end
         
         vaultCard:Show()
@@ -2451,7 +2451,9 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
         })
     else
         local FormatNumberFn = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
-        local countHex = ((visualOpts and visualOpts.sectionPreset == "danger") and "|cff888888") or "|cffaaaaaa"
+        -- Fixed greys stay in dark; light resolves the text role (2026-10-22).
+        local countHex = ((visualOpts and visualOpts.sectionPreset == "danger") and ns.UI_GetThemedGreyHex("|cff888888", "Dim"))
+            or ns.UI_GetThemedGreyHex("|cffaaaaaa", "Muted")
         if not header._wnPveSectionCount then
             header._wnPveSectionCount = FontManager:CreateFontString(header, "header", "OVERLAY")
         end
@@ -2707,7 +2709,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                 end
                 local realmCol = ""
                 if realmDisp ~= "" then
-                    realmCol = "|cffaaaaaa" .. realmDisp .. "|r"
+                    realmCol = ns.UI_GetThemedGreyHex("|cffaaaaaa", "Muted") .. realmDisp .. "|r"
                 end
 
                 rows[#rows + 1] = {
