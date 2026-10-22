@@ -92,6 +92,9 @@ LoadFile("Locales/enUS.lua")
 ns.L = ns.LOCALES and ns.LOCALES.enUS
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/ProfessionService.lua")
+LoadFile("Modules/ProfessionService_WeeklyKnowledge.lua")
+LoadFile("Modules/ProfessionService_Login.lua")
+LoadFile("Modules/ProfessionService_Queries.lua")
 LoadFile("Modules/UI/ProfessionsUI.lua")
 
 print("Phase 1: Alt Character Profession Recognition Without Open Window")

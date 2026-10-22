@@ -55,7 +55,7 @@ for _, path in ipairs(files) do
             checked = checked + 1
             local esc = var:gsub("%p", "%%%0")
             local secretAt = code:find("issecretvalue%(%s*" .. esc .. "%s*%)")
-            local isProfession = path:find("ProfessionService%.lua$") ~= nil
+            local isProfession = path:find("ProfessionService[%w_]*%.lua$") ~= nil
             local cmpAt
             if isProfession then
                 cmpAt = code:find("%f[%w_%.]" .. esc .. "%s*[~=]=%s*nil") or code:find("%f[%w_%.]" .. esc .. '%s*[~=]=%s*""')

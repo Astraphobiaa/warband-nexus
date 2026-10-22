@@ -274,6 +274,9 @@ do
     profNs.L = profNs.LOCALES and profNs.LOCALES.enUS
     LoadFile("Modules/Constants.lua", profNs)
     LoadFile("Modules/ProfessionService.lua", profNs)
+    LoadFile("Modules/ProfessionService_WeeklyKnowledge.lua", profNs)
+    LoadFile("Modules/ProfessionService_Login.lua", profNs)
+    LoadFile("Modules/ProfessionService_Queries.lua", profNs)
 
     local flagReads = 0
     local realFlag = C_QuestLog.IsQuestFlaggedCompleted

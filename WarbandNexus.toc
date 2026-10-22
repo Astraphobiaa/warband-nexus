@@ -96,6 +96,9 @@ Modules\ChatMessageService.lua
 
 # Modules (Features)
 Modules\ProfessionService.lua
+Modules\ProfessionService_WeeklyKnowledge.lua
+Modules\ProfessionService_Login.lua
+Modules\ProfessionService_Queries.lua
 Modules\MinimapButton.lua
 Modules\TooltipService_GameTooltip.lua
 Modules\TooltipService.lua
