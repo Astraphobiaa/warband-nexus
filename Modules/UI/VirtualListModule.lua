@@ -672,6 +672,15 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
 
         local incrementalReuse = container._vlm_incrementalRowReuse == true
         local oldVis = container._virtualVisibleFrames
+        -- Content generation: every paint that is not a pure scroll (setup, refresh, in-place refill
+        -- + repaint, resize) starts a new one, so rows always repopulate after a data change. On a
+        -- scroll paint a reused row already populated for the same index in this generation shows
+        -- the same data and is only re-anchored (2026-10-22: every wheel step repopulated all rows).
+        local scrollPaint = mainFrame and mainFrame._vlmScrollPaint == true
+        if not scrollPaint then
+            container._vlm_contentGen = (container._vlm_contentGen or 0) + 1
+        end
+        local contentGen = container._vlm_contentGen or 0
 
         if incrementalReuse then
             if oldVis then
@@ -806,11 +815,15 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
 
                         local layoutFn = layoutRowFn or container._vlm_layoutRowFn
                         if frame then
-                            local needsPopulate = populateRowFn
+                            local unchanged = scrollPaint and frameReused and frame._wnVlmPopulated
+                                and frame._vlm_popGen == contentGen and frame._vlm_popIndex == i
+                            local needsPopulate = populateRowFn and not unchanged
                                 and (not resizing or not frameReused or not frame._wnVlmPopulated)
                             if needsPopulate then
                                 pcall(populateRowFn, frame, it, i)
                                 frame._wnVlmPopulated = true
+                                frame._vlm_popGen = contentGen
+                                frame._vlm_popIndex = i
                             elseif resizing and layoutFn then
                                 pcall(layoutFn, frame, it, i)
                             end
