@@ -112,6 +112,7 @@ jobs:
             lua5.1 .github/scripts/test_account_wide_currency_value.lua
             lua5.1 .github/scripts/test_character_merge_gold.lua
             lua5.1 .github/scripts/test_full_character_save_keys.lua
+            lua5.1 .github/scripts/test_character_row_fields.lua
             lua5.1 .github/scripts/test_reputation_warm_new_alt.lua
             lua5.1 .github/scripts/test_timer_handles.lua
             lua5.1 .github/scripts/test_vault_plan_progress.lua

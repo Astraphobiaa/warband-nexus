@@ -291,8 +291,10 @@ local function CollectPlayerLocation()
             end
         end
     end
-    local zoneName = (mapInfo and mapInfo.name) or (GetZoneText and GetZoneText()) or ""
-    if issecretvalue and issecretvalue(zoneName) then zoneName = "" end
+    local zoneName = (mapInfo and mapInfo.name) or (GetZoneText and GetZoneText()) or nil
+    -- nil (not "") when unknown, so callers keep the stored zone instead of writing an empty name.
+    if issecretvalue and issecretvalue(zoneName) then zoneName = nil end
+    if zoneName == "" then zoneName = nil end
     local isResting = (IsResting and IsResting()) and true or false
     return {
         uiMapID = uiMapID,
@@ -415,8 +417,11 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         local newSubZone = GetSubZoneText()
         if newZone and issecretvalue and issecretvalue(newZone) then newZone = nil end
         if newSubZone and issecretvalue and issecretvalue(newSubZone) then newSubZone = nil end
-        charData.zoneName = newZone
-        charData.subZoneName = newSubZone
+        -- An empty / unread zone text keeps the stored zone (2026-10-22).
+        if newZone and newZone ~= "" then
+            charData.zoneName = newZone
+            charData.subZoneName = newSubZone
+        end
 
         local loc = CollectPlayerLocation()
         if loc then
@@ -1208,7 +1213,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         local lightLoc = CollectPlayerLocation()
         if lightLoc then
             existingEntry.uiMapID = lightLoc.uiMapID
-            existingEntry.zoneName = lightLoc.zoneName
+            if lightLoc.zoneName then existingEntry.zoneName = lightLoc.zoneName end
             existingEntry.mapX = lightLoc.mapX
             existingEntry.mapY = lightLoc.mapY
             existingEntry.isResting = lightLoc.isResting
@@ -1235,6 +1240,14 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     end
 
     local fullLoc = CollectPlayerLocation()
+    -- A fresh read decides isResting, including false; `fullLoc.isResting or existing` kept a stale
+    -- true forever once set (2026-10-22).
+    local isRestingNow
+    if fullLoc then
+        isRestingNow = fullLoc.isResting
+    else
+        isRestingNow = existingEntry and existingEntry.isResting
+    end
 
     local newRow = {
         name = name,
@@ -1257,7 +1270,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         zoneName = (fullLoc and fullLoc.zoneName) or (existingEntry and existingEntry.zoneName),
         mapX = (fullLoc and fullLoc.mapX) or (existingEntry and existingEntry.mapX),
         mapY = (fullLoc and fullLoc.mapY) or (existingEntry and existingEntry.mapY),
-        isResting = (fullLoc and fullLoc.isResting) or (existingEntry and existingEntry.isResting),
+        isResting = isRestingNow,
         locationSavedAt = (fullLoc and fullLoc.savedAt) or (existingEntry and existingEntry.locationSavedAt),
         isTracked = true,     -- Track this character (API calls, data updates enabled)
         -- Preserve the user's explicit choice (false must survive a save or the

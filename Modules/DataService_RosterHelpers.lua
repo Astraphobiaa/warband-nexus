@@ -35,19 +35,19 @@ local function InvalidateGetAllCharactersCache()
 end
 
 --- GetMoney() may return a secret value (Midnight+); math.floor/tonumber on it throws.
---- When secret, fall back to last saved gold/silver/copper from existingEntry if present.
+--- When secret, nil or not a number (unready read), fall back to the last saved gold/silver/copper
+--- from existingEntry if present, so an unread balance never overwrites the stored one with 0.
 local function SafeGetMoneyCopperFromEntry(existingEntry)
     local m = GetMoney()
-    if m == nil then return 0 end
-    if issecretvalue and issecretvalue(m) then
-        if existingEntry and type(existingEntry.gold) == "number" then
-            return math.floor((existingEntry.gold or 0) * 10000 + (existingEntry.silver or 0) * 100 + (existingEntry.copper or 0))
-        end
-        return 0
+    local n = nil
+    if not (issecretvalue and issecretvalue(m)) and m ~= nil then
+        n = tonumber(m)
     end
-    local n = tonumber(m)
-    if not n then return 0 end
-    return math.floor(n)
+    if n then return math.floor(n) end
+    if existingEntry and type(existingEntry.gold) == "number" then
+        return math.floor((existingEntry.gold or 0) * 10000 + (existingEntry.silver or 0) * 100 + (existingEntry.copper or 0))
+    end
+    return 0
 end
 
 --- Fill missing name/realm on a roster row from its table index when possible.
