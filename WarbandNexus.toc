@@ -78,6 +78,10 @@ Modules\CollectionService_Scan.lua
 Modules\CollectionService.lua
 Modules\CollectionService_Store.lua
 Modules\CollectionService_Events.lua
+Modules\CollectionService_JournalScan.lua
+Modules\CollectionService_Metadata.lua
+Modules\CollectionService_Queries.lua
+Modules\CollectionService_Achievements.lua
 Modules\ReputationScanner.lua
 Modules\ReputationProcessor.lua
 Modules\ReputationCacheService.lua

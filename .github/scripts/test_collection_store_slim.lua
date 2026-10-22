@@ -76,6 +76,10 @@ LoadFile("Modules/CollectionService_NotifyDedup.lua")
 LoadFile("Modules/CollectionService_Scan.lua")
 LoadFile("Modules/CollectionService.lua")
 LoadFile("Modules/CollectionService_Store.lua")
+LoadFile("Modules/CollectionService_JournalScan.lua")
+LoadFile("Modules/CollectionService_Metadata.lua")
+LoadFile("Modules/CollectionService_Queries.lua")
+LoadFile("Modules/CollectionService_Achievements.lua")
 
 local RT = ns.CollectionServiceRT
 local MS = ns.MigrationService
