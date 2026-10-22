@@ -21,10 +21,12 @@ local colorPickerOwnedByWN = false
 -- HELPER FUNCTIONS (DRY - Don't Repeat Yourself)
 
 --- Create a module toggle handler (eliminates 6x duplicate code)
+--- Routed through the ModuleManager setters (2026-10-22): writing the flag directly skipped their side
+--- effects (recharge timer, companion hide, PvE loading state). The table is still registered with
+--- AceConfig, so a generic AceConfig dialog (e.g. standalone Ace3 /ace3) can reach these toggles.
 local function CreateModuleToggleHandler(moduleName)
     return function(_, value)
-        WarbandNexus.db.profile.modulesEnabled[moduleName] = value
-        WarbandNexus:SendMessage(E.MODULE_TOGGLED, moduleName, value)
+        WarbandNexus:SetModuleEnabled(moduleName, value)
         WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
     end
 end

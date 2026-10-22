@@ -155,6 +155,7 @@ jobs:
             lua5.1 .github/scripts/test_character_updated_roster_cache.lua
             lua5.1 .github/scripts/test_locale_format_safety.lua
             lua5.1 .github/scripts/test_message_layering.lua
+            lua5.1 .github/scripts/test_profile_switch_module_gates.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

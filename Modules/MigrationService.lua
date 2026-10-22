@@ -300,7 +300,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 7
+local MIGRATION_FAST_PATH_REVISION = 8
 
 --- Every step RunMigrations runs on the full path, in order. Each step is a MigrationService method
 --- taking (db) and guards itself (flag, stamp or version compare), so re-running one is a no-op.
@@ -342,6 +342,7 @@ local MIGRATION_STEPS = {
     "MigrateSlimCollectionStoreV1",
     "MigratePruneAceCharLegacyBagItemsV1",
     "MigrateNormalizeCharacterKeyPrefsV1",
+    "MigratePruneDeadProfileKeysV1",
     "FinalizeGuidOnlySubsidiaryV1",
 }
 
@@ -352,6 +353,21 @@ local EVERY_LOGIN_STEPS = {
     "MigrateRarityMountSyncReseed",
     "MigrateReminderQuestCatalog",
     "PruneStaleReminderQuestRows",
+}
+
+--- Steps that migrate db.profile, each guarded by a flag on the profile itself (2026-10-22). They ran only for
+--- the profile active on a full-path login, so a profile first loaded later (switch / copy / reset, or a
+--- login on the fast path) never got them. They are cheap flag checks: the fast path and
+--- RunProfileMigrations (Core OnProfileChanged) run them too.
+local PROFILE_STEPS = {
+    "MigrateThemeColors",
+    "MigrateThemeMode",
+    "MigrateUiThemeSplit",
+    "MigrateReminderToastAnchors",
+    "MigrateNotificationToastLaneDefaults",
+    "MigrateFontScalePreset",
+    "MigrateNormalizeCharacterKeyPrefsV1",
+    "MigratePruneDeadProfileKeysV1",
 }
 
 --- Run steps in order, each isolated (2026-10-22): one failing step used to abort OnInitialize and the
@@ -394,6 +410,9 @@ function MigrationService:RunMigrations(db)
         and db.global._wnMigrationFastPathRev == MIGRATION_FAST_PATH_REVISION
         and (db.global._schemaVersion or 0) >= CURRENT_SCHEMA_VERSION then
         RunMigrationSteps(self, db, EVERY_LOGIN_STEPS)
+        if db.profile then
+            RunMigrationSteps(self, db, PROFILE_STEPS)
+        end
         return false
     end
 
@@ -403,6 +422,14 @@ function MigrationService:RunMigrations(db)
         db.global._wnMigrationFastPathRev = MIGRATION_FAST_PATH_REVISION
     end
     return false
+end
+
+---Run the profile-scoped steps for the active profile (after a profile switch / copy / reset).
+---@param db table AceDB instance
+---@return boolean allOk
+function MigrationService:RunProfileMigrations(db)
+    if not db or not db.profile then return true end
+    return RunMigrationSteps(self, db, PROFILE_STEPS)
 end
 
 --- Enable GUID-only subsidiary reads after orphan + alias migrations complete.
@@ -2134,6 +2161,19 @@ function MigrationService:MigratePruneOrphanSvKeysV2(db)
         DebugPrint("|cff9370DB[Migration]|r pruneOrphanSvKeysV2: removed debugPixelProbe")
     end
     db.global.pruneOrphanSvKeysV2 = true
+end
+
+--- Drop profile.notifications keys no code reads (grep 2026-10-22): dismissedNotifications and lastVaultCheck
+--- (their defaults are gone too). Flag on the profile, so each profile is cleaned when it loads.
+---@param db table AceDB root
+function MigrationService:MigratePruneDeadProfileKeysV1(db)
+    if not db or not db.profile or db.profile.deadProfileKeysPrunedV1 then return end
+    local n = db.profile.notifications
+    if type(n) == "table" then
+        n.dismissedNotifications = nil
+        n.lastVaultCheck = nil
+    end
+    db.profile.deadProfileKeysPrunedV1 = true
 end
 
 local function CollectionStoreIsAuthoritative(global)

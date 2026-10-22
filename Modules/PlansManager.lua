@@ -373,6 +373,7 @@ function WarbandNexus:InitializePlanTracking()
             if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
             WarbandNexus:CheckPlansForCompletion()
             WarbandNexus:CheckWeeklyReset()
+            WarbandNexus:CheckRecurringPlanResets()
             WarbandNexus:UpdatePlanSources()
             WarbandNexus:PreResolvePlansData()
             if WarbandNexus._DeferVaultPlanCheckFromPvE then
@@ -544,6 +545,9 @@ function WarbandNexus:CheckPlansForCompletion()
     local anyCompleted = false
     local function processPlan(plan)
         if not plan or plan.completed or plan.completionNotified then return end
+        -- Recipe plans never report collected (CheckPlanProgress only fills materials/canObtain), and no
+        -- UI path creates them any more; skip the warband-wide material walk per pass (2026-10-22).
+        if plan.type == PLAN_TYPES.RECIPE then return end
         local progress = self:CheckPlanProgress(plan)
         if not (progress and progress.collected) then return end
         if plan.type == "title" then
@@ -902,34 +906,25 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
 end
 
 
+-- Thin delegates (2026-10-22): ResetService (TOC-loaded first) owns the reset math. The local
+-- fallbacks here had drifted from it (no epoch normalization), so a divergent answer was possible.
+
 ---Check if a Blizzard daily reset has occurred since the given timestamp.
 ---@return boolean
 function WarbandNexus:HasDailyResetOccurredSince(sinceTimestamp)
-    if ns.ResetService and ns.ResetService.HasDailyResetOccurred then
-        return ns.ResetService.HasDailyResetOccurred(sinceTimestamp)
-    end
-    if not sinceTimestamp or sinceTimestamp == 0 then return true end
-    local secondsUntilReset = C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset and C_DateAndTime.GetSecondsUntilDailyReset() or 0
-    local now = (GetServerTime and GetServerTime()) or time()
-    local lastResetTime = now + secondsUntilReset - 86400
-    return sinceTimestamp < lastResetTime
+    return ns.ResetService.HasDailyResetOccurred(sinceTimestamp)
 end
 
 ---Check if a Blizzard weekly reset has occurred since the given timestamp.
 ---@return boolean
 function WarbandNexus:HasWeeklyResetOccurredSince(sinceTimestamp)
-    if ns.ResetService and ns.ResetService.HasWeeklyResetOccurred then
-        return ns.ResetService.HasWeeklyResetOccurred(sinceTimestamp)
-    end
-    if not sinceTimestamp or sinceTimestamp == 0 then return true end
-    local secondsUntilReset = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
-    local now = (GetServerTime and GetServerTime()) or time()
-    local lastResetTime = now + secondsUntilReset - (7 * 86400)
-    return sinceTimestamp < lastResetTime
+    return ns.ResetService.HasWeeklyResetOccurred(sinceTimestamp)
 end
 
 ---Check all custom plans with resetCycle and reset completed ones when the cycle fires.
 function WarbandNexus:CheckRecurringPlanResets()
+    -- Plans module off: no plan writes / PLANS_UPDATED (2026-10-22); re-enabling reruns this check.
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     if not self.db or not self.db.global or not self.db.global.customPlans then return end
 
     local now = time()

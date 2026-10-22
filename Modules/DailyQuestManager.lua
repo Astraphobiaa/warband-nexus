@@ -1428,6 +1428,8 @@ end
 
 function WarbandNexus:UpdateDailyQuestWeeklyReset()
     self.dailyQuestWeeklyCheckTime = time()
+    -- Plans module off: no plan rows / PLANS_UPDATED (2026-10-22); re-enable runs OnDailyQuestLogin.
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not currentKey then return end
     local dailyList = GetDailyQuestPlansForCharKey(currentKey)
@@ -1442,6 +1444,7 @@ function WarbandNexus:UpdateDailyQuestWeeklyReset()
 end
 
 function WarbandNexus:RefreshDailyQuestsOnDailyReset()
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not currentKey then return end
     local dailyList = GetDailyQuestPlansForCharKey(currentKey)

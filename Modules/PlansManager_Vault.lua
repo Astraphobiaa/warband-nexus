@@ -679,24 +679,12 @@ function WarbandNexus:ResetWeeklyPlans(onlyStaleBefore)
 end
 
 --[[
-    Get next weekly reset time (region-aware)
-    US/NA: Tuesday 15:00 UTC
-    EU: Wednesday 04:00 UTC (05:00 CET; changed from 07:00 UTC in Nov 2022)
-    KR/TW/CN: Wednesday 15:00 UTC
+    Get next weekly reset time (region-aware via C_DateAndTime, see ResetService)
     @return number - Unix timestamp of next reset
 ]]
 function WarbandNexus:GetWeeklyResetTime()
-    if ns.ResetService and ns.ResetService.GetNextWeeklyResetTime then
-        return ns.ResetService.GetNextWeeklyResetTime()
-    end
-    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
-        local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
-        if secondsUntil and secondsUntil > 0 then
-            local now = (GetServerTime and GetServerTime()) or time()
-            return now + secondsUntil
-        end
-    end
-    return ((GetServerTime and GetServerTime()) or time()) + 604800
+    -- Thin delegate (2026-10-22): ResetService owns the reset math; the local fallback had drifted.
+    return ns.ResetService.GetNextWeeklyResetTime()
 end
 
 function WarbandNexus:FormatTimeUntilReset(resetTime)
@@ -828,6 +816,8 @@ function WarbandNexus:CheckWeeklyReset()
         self:PruneAllPvEWeeklyData()
     end
 
+    -- Plans module off: leave vault plan rows alone (2026-10-22); re-enabling reruns this check.
+    if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
     if not self.db or not self.db.global or not self.db.global.plans then
         return
     end

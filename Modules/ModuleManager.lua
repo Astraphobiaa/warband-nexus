@@ -201,3 +201,78 @@ function WarbandNexus:SetProfessionModuleEnabled(enabled)
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
     self:SendMessage(E.MODULE_TOGGLED, "professions", enabled)
 end
+
+-- Profile switch support (2026-10-22; called from Core OnInitialize / OnProfileChanged).
+-- Module keys (Settings > Modules) and the ModuleManager setter that owns each one's side effects
+-- (PvP event registration, recharge timer, PvE loading state). gear / collections have no setter:
+-- their listeners act on WN_MODULE_TOGGLED alone.
+local MODULE_ENABLE_KEYS = {
+    "currencies", "reputations", "items", "storage", "pve", "pvp",
+    "plans", "professions", "gear", "collections", "tryCounter",
+}
+local MODULE_ENABLE_SETTERS = {
+    currencies = "SetCurrencyModuleEnabled",
+    reputations = "SetReputationModuleEnabled",
+    items = "SetItemsModuleEnabled",
+    storage = "SetStorageModuleEnabled",
+    pve = "SetPvEModuleEnabled",
+    pvp = "SetPvPModuleEnabled",
+    plans = "SetPlansModuleEnabled",
+    professions = "SetProfessionModuleEnabled",
+    tryCounter = "SetTryCounterModuleEnabled",
+}
+-- Enabled state the WN_MODULE_TOGGLED listeners were last told about (key -> boolean).
+local moduleEnabledSnapshot = {}
+local moduleSnapshotSink = {}
+
+---Toggle one module the same way Settings does: through its ModuleManager setter (writes
+---profile.modulesEnabled, runs side effects, sends WN_MODULE_TOGGLED). Setter-less keys write the
+---flag and send the message.
+---@param moduleName string
+---@param enabled boolean
+function WarbandNexus:SetModuleEnabled(moduleName, enabled)
+    local setterName = MODULE_ENABLE_SETTERS[moduleName]
+    local setter = setterName and self[setterName]
+    if setter then
+        setter(self, enabled)
+        return
+    end
+    if not self.db or not self.db.profile then return end
+    self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+    self.db.profile.modulesEnabled[moduleName] = enabled
+    self:SendMessage(E.MODULE_TOGGLED, moduleName, enabled)
+end
+
+---Record the current module state and follow every later toggle (any sender of WN_MODULE_TOGGLED).
+function WarbandNexus:TrackModuleEnabledState()
+    local U = ns.Utilities
+    if not (U and U.IsModuleEnabled) then return end
+    for i = 1, #MODULE_ENABLE_KEYS do
+        local key = MODULE_ENABLE_KEYS[i]
+        moduleEnabledSnapshot[key] = U:IsModuleEnabled(key)
+    end
+    if not moduleSnapshotSink.registered and self.RegisterMessage then
+        moduleSnapshotSink.registered = true
+        self.RegisterMessage(moduleSnapshotSink, E.MODULE_TOGGLED, function(_, moduleName, enabled)
+            if moduleName and moduleEnabledSnapshot[moduleName] ~= nil then
+                moduleEnabledSnapshot[moduleName] = (enabled ~= false)
+            end
+        end)
+    end
+end
+
+---Profile switch / copy / reset (2026-10-22): the new profile may carry a different modulesEnabled set,
+---but nothing told the services (PvP events stayed registered, collection listeners stayed off, ...).
+---Every module whose state differs from what listeners last heard goes through SetModuleEnabled.
+function WarbandNexus:ResyncModulesAfterProfileChange()
+    local U = ns.Utilities
+    if not (U and U.IsModuleEnabled) then return end
+    for i = 1, #MODULE_ENABLE_KEYS do
+        local key = MODULE_ENABLE_KEYS[i]
+        local before = moduleEnabledSnapshot[key]
+        local enabled = U:IsModuleEnabled(key)
+        if before ~= nil and before ~= enabled then
+            self:SetModuleEnabled(key, enabled)
+        end
+    end
+end

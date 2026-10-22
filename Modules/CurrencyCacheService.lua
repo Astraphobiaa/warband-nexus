@@ -1695,6 +1695,26 @@ local CURRENCY_CHAT_FALLBACK_QUIET_SEC = 2.0
 
 local DrainCurrencyQueue
 
+--- Module gate for currency event processing (2026-10-22). Currency rows are read by more than the
+--- Currencies tab: Gear (upgrade currencies), Professions (concentration), PvP (honor / conquest),
+--- the PvE tab (crests, shards, keys) and the Vault button. Processing stops only when none is on.
+local function IsCurrencyConsumerEnabled()
+    local U = ns.Utilities
+    if not (U and U.IsAnyModuleEnabled) then return true end
+    if U:IsAnyModuleEnabled("currencies", "gear", "professions", "pvp", "pve") then return true end
+    local db = WarbandNexus and WarbandNexus.db
+    local vb = db and db.profile and db.profile.vaultButton
+    return (vb and vb.enabled) and true or false
+end
+
+--- True (and remembers it) when an event must be dropped because no consumer is on;
+--- the next consumer re-enable runs one broad scan to catch up.
+local function DropCurrencyEventWhileGated()
+    if IsCurrencyConsumerEnabled() then return false end
+    CurrencyCache.droppedWhileGated = true
+    return true
+end
+
 local function ScheduleDebouncedBroadCurrencyScan()
     if CurrencyCache.initScanPending then return end
     if InCombatLockdown and InCombatLockdown() then
@@ -1867,6 +1887,7 @@ local function OnCurrencyUpdate(currencyType, quantity, quantityChange, quantity
     if CurrencyCache.initScanPending then
         return
     end
+    if DropCurrencyEventWhileGated() then return end
 
     CurrencyCache._lastCurrencyDisplayEventAt = GetTime()
 
@@ -2323,6 +2344,7 @@ function CurrencyCache:OnCurrencyChatSignal()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
         return
     end
+    if DropCurrencyEventWhileGated() then return end
     local lastDisplay = self._lastCurrencyDisplayEventAt or 0
     if (GetTime() - lastDisplay) < CURRENCY_CHAT_FALLBACK_QUIET_SEC then
         return
@@ -2354,6 +2376,7 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
     self:RegisterEvent("ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED", function()
         ns.DebugPrint("EVENT: ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED")
+        if DropCurrencyEventWhileGated() then return end
         if CurrencyCache.syncTimer then
             CurrencyCache.syncTimer:Cancel()
             CurrencyCache.syncTimer = nil
@@ -2370,6 +2393,7 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
         hooksecurefunc(C_CurrencyInfo, "RequestCurrencyFromAccountCharacter", function(sourceCharacterGUID, currencyID, quantity)
             if not currencyID or not sourceCharacterGUID or not quantity then return end
             if issecretvalue and issecretvalue(sourceCharacterGUID) then return end
+            if DropCurrencyEventWhileGated() then return end
             
             -- LOCAL PREDICTION: Immediately deduct from our local DB for the source character
             -- The API is heavily delayed/throttled for offline characters.
@@ -2423,7 +2447,21 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
     -- PLAYER_MONEY: owned by Core.lua / EventManager (OnMoneyChanged)
     -- Do NOT register here — prevents duplicate gold processing
-    
+
+    -- A consumer module came back after events were dropped: one broad scan catches the rows up.
+    if WarbandNexus.RegisterMessage then
+        CurrencyCache._moduleToggleSink = CurrencyCache._moduleToggleSink or {}
+        WarbandNexus.RegisterMessage(CurrencyCache._moduleToggleSink, E.MODULE_TOGGLED, function(_, _, enabled)
+            if enabled ~= true or not CurrencyCache.droppedWhileGated then return end
+            if not IsCurrencyConsumerEnabled() then return end
+            CurrencyCache.droppedWhileGated = false
+            C_Timer.After(0.5, function()
+                if WarbandNexus and WarbandNexus.ScanCurrencies then
+                    WarbandNexus:ScanCurrencies()
+                end
+            end)
+        end)
+    end
 end
 
 -- ACCOUNT WIDE SYNCHRONIZATION

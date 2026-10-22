@@ -418,8 +418,6 @@ local defaults = {
             -- Try counter chat routing: loot | dedicated (WN_TRYCOUNTER group) | all_tabs
             tryCounterChatRoute = "loot",
             lastSeenVersion = "0.0.0",         -- Last addon version seen
-            lastVaultCheck = 0,                -- Last time vault was checked
-            dismissedNotifications = {},       -- Array of dismissed notification IDs
         },
         
         -- Keybinding (override binding, saved in addon DB)
@@ -687,13 +685,16 @@ function WarbandNexus:OnInitialize()
         if P and P.enabled and mLabel then
             P:Stop(mLabel)
         end
+        -- Baseline for re-syncing modules on a profile switch (see ResyncModulesAfterProfileChange).
+        self:TrackModuleEnabledState()
         if didReset then
             -- Schema was reset. Block ALL further initialization and reload immediately.
             -- This prevents tracking popups, data scans, and stale cache usage.
             self._pendingSchemaReload = true
             
             -- Re-apply global and char defaults after full schema reset.
-            -- AceDB only auto-applies profile defaults; global/char need manual seeding.
+            -- AceDB applies defaults to every section when it is created, but the wipe above dropped
+            -- them; ResetProfile re-seeds the profile only, so global/char are re-seeded here.
             for k, v in pairs(defaults.global) do
                 if self.db.global[k] == nil then
                     if type(v) == "table" then
@@ -1292,10 +1293,15 @@ end
     Refresh settings when profile is changed/copied/reset
 ]]
 function WarbandNexus:OnProfileChanged()
+    -- Profile-scoped one-shot migrations ran at login only for the profile active then (2026-10-22).
+    if ns.MigrationService and ns.MigrationService.RunProfileMigrations and self.db then
+        ns.MigrationService:RunProfileMigrations(self.db)
+    end
     self:ResetStorageTreeExpandState()
     if ns.Profiler and ns.Profiler.ApplyPersistedSettings and self.db and self.db.profile then
         ns.Profiler:ApplyPersistedSettings(self.db.profile)
     end
+    self:ResyncModulesAfterProfileChange()
     if self.SendMessage then
         self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
     end
