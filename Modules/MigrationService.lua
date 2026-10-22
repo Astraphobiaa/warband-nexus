@@ -1728,6 +1728,26 @@ local function PurgeLegacySubsidiaryKeyWhenCanonicalHasData(db, legacyKey, canon
     return removed
 end
 
+--- Fold one character's legacy (Name-Realm) subsidiary buckets into its current storage key, merging
+--- where both exist. Used when a character is tracked again: the alias migrations had moved its
+--- buckets to the Name-Realm key while it was untracked, and nothing ever read or purged them.
+--- No-op when a separate roster row still owns legacyKey.
+---@param db table AceDB root
+---@param legacyKey string
+---@param canonKey string
+---@return number folded 1 when buckets were moved, else 0
+function MigrationService:FoldLegacySubsidiaryBuckets(db, legacyKey, canonKey)
+    if not db or not db.global or not legacyKey or not canonKey or legacyKey == canonKey then return 0 end
+    if issecretvalue and (issecretvalue(legacyKey) or issecretvalue(canonKey)) then return 0 end
+    local chars = db.global.characters
+    if type(chars) == "table" and chars[legacyKey] then return 0 end
+    if not SubsidiaryBucketHasData(db, legacyKey) then return 0 end
+    local renames = { [legacyKey] = canonKey }
+    MergeSubsidiaryBucketsBeforeRenames(db, renames)
+    self:ApplyCharacterKeyedStorageRenames(db, renames)
+    return 1
+end
+
 --- After orphan remap: drop empty legacy subsidiary shells when canonical bucket has data.
 ---@param db table AceDB root
 ---@return number purged

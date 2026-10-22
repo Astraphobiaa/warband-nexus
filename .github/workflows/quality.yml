@@ -96,6 +96,7 @@ jobs:
             lua5.1 .github/scripts/test_pve_weekly_flags.lua
             lua5.1 .github/scripts/test_profession_weekly_knowledge.lua
             lua5.1 .github/scripts/test_character_tracking_toggle.lua
+            lua5.1 .github/scripts/test_delete_and_retrack_aliases.lua
             lua5.1 .github/scripts/test_character_delete_stale_copy.lua
             lua5.1 .github/scripts/test_rekey_week_stamps.lua
             lua5.1 .github/scripts/test_roster_dedup_guid_first.lua

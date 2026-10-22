@@ -281,35 +281,13 @@ function WarbandNexus:DeleteCharacter(characterKey)
     local charData = self.db.global.characters[characterKey]
     local charName = charData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     
-    -- Remove from favorites if present
-    if self.db.global.favoriteCharacters then
-        local favs = self.db.global.favoriteCharacters
-        for i = 1, #favs do
-            local favKey = favs[i]
-            if favKey == characterKey then
-                table.remove(self.db.global.favoriteCharacters, i)
-                break
-            end
-        end
-    end
-    
-    -- Remove from character order lists (all buckets including custom group_* keys)
-    if self.db.profile.characterOrder then
-        for orderKey, ordList in pairs(self.db.profile.characterOrder) do
-            if type(ordList) == "table" then
-                for i = #ordList, 1, -1 do
-                    if ordList[i] == characterKey then
-                        table.remove(ordList, i)
-                    end
-                end
-            end
-        end
-    end
-    if self.db.profile.characterGroupAssignments then
-        self.db.profile.characterGroupAssignments[characterKey] = nil
-    end
-    
     local CS = ns.CharacterService
+    -- Favorites, section assignments / locks and order lists under every alias of this row (exact,
+    -- GUID, Name-Realm); before the row is removed so the aliases still resolve.
+    if CS and CS.RemoveCharacterProfileAliases then
+        CS:RemoveCharacterProfileAliases(self, characterKey)
+    end
+    
     if CS and CS.RemoveCharacterSubsidiaryKeys then
         CS:RemoveCharacterSubsidiaryKeys(self, characterKey)
     end

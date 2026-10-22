@@ -138,6 +138,15 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         if ns.Utilities and ns.Utilities.InvalidateCharacterKeyIndex then
             ns.Utilities:InvalidateCharacterKeyIndex()
         end
+        -- Re-tracked alt: fold its Name-Realm buckets back onto the row key (see the self path below).
+        if isTracked and row.name and row.realm then
+            local U = ns.Utilities
+            local MS = ns.MigrationService
+            local legacyKey = U and U.GetCharacterKey and U:GetCharacterKey(row.name, row.realm)
+            if legacyKey and MS and MS.FoldLegacySubsidiaryBuckets then
+                MS:FoldLegacySubsidiaryBuckets(addon.db, legacyKey, otherKey)
+            end
+        end
         addon:SendMessage(E.CHARACTER_TRACKING_CHANGED, {
             charKey = otherKey,
             isTracked = isTracked
@@ -196,6 +205,18 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     -- Row key just changed shape (guid gained/dropped, legacy slot collapsed) — drop the cached roster index.
     if ns.Utilities and ns.Utilities.InvalidateCharacterKeyIndex then
         ns.Utilities:InvalidateCharacterKeyIndex()
+    end
+
+    -- Re-tracked: while untracked (no guid) the alias migrations moved this character's buckets to its
+    -- Name-Realm key. Readers use persistKey now, so fold them back instead of orphaning them forever.
+    -- (2026-10-22)
+    if isTracked and entry.name and entry.realm then
+        local U = ns.Utilities
+        local MS = ns.MigrationService
+        local legacyKey = U and U.GetCharacterKey and U:GetCharacterKey(entry.name, entry.realm)
+        if legacyKey and MS and MS.FoldLegacySubsidiaryBuckets then
+            MS:FoldLegacySubsidiaryBuckets(addon.db, legacyKey, persistKey)
+        end
     end
 
     -- HYBRID: Broadcast event for modules to react (event-driven component)
@@ -603,6 +624,88 @@ local function PurgeCharKeyedEntries(tbl, charKey)
     for i = 1, #toNil do
         tbl[toNil[i]] = nil
         removed = removed + 1
+    end
+    return removed
+end
+
+--- Drop every profile / favorites reference to a roster row that is being deleted: favorites,
+--- section assignments, section locks and every characterOrder list, under any alias that resolves
+--- to this row (exact key, GUID, unambiguous Name-Realm). DeleteCharacter removed exact matches only,
+--- so a stale "Name-Realm" favorite or assignment survived the delete (2026-10-22).
+--- Call BEFORE the row is removed: alias resolution needs it.
+---@param addon table WarbandNexus
+---@param charKey string Exact roster row key
+---@return number removed
+function CharacterService:RemoveCharacterProfileAliases(addon, charKey)
+    if not addon or not addon.db or not addon.db.global or not charKey or charKey == "" then return 0 end
+    local g, profile = addon.db.global, addon.db.profile
+    local chars = g.characters or {}
+    local U = ns.Utilities
+    local aliases = { [charKey] = true }
+    local row = chars[charKey]
+    if type(row) == "table" then
+        local guid = row.guid
+        if type(guid) == "string" and guid ~= "" and not (issecretvalue and issecretvalue(guid)) then
+            aliases[guid] = true
+        end
+        if row.name and row.realm and U and U.GetCharacterKey then
+            local shared = false
+            for key, other in pairs(chars) do
+                if key ~= charKey and type(other) == "table" and other.name == row.name and other.realm == row.realm then
+                    shared = true
+                    break
+                end
+            end
+            -- A same-name copy owns the Name-Realm key too: never strip the other row's entries.
+            if not shared then
+                local nk = U:GetCharacterKey(row.name, row.realm)
+                if nk then aliases[nk] = true end
+            end
+        end
+    end
+    local function isAlias(k)
+        if type(k) ~= "string" or k == "" or (issecretvalue and issecretvalue(k)) then return false end
+        if aliases[k] then return true end
+        return CanonCharKey(k) == charKey
+    end
+
+    local removed = 0
+    local favs = g.favoriteCharacters
+    if type(favs) == "table" then
+        for i = #favs, 1, -1 do
+            if isAlias(favs[i]) then
+                tremove(favs, i)
+                removed = removed + 1
+            end
+        end
+    end
+    if type(profile) == "table" then
+        local maps = { profile.characterGroupAssignments, profile.characterLockedAssignments }
+        for m = 1, 2 do
+            local map = maps[m]
+            if type(map) == "table" then
+                local drop = {}
+                for k in pairs(map) do
+                    if isAlias(k) then drop[#drop + 1] = k end
+                end
+                for i = 1, #drop do
+                    map[drop[i]] = nil
+                    removed = removed + 1
+                end
+            end
+        end
+        if type(profile.characterOrder) == "table" then
+            for _, list in pairs(profile.characterOrder) do
+                if type(list) == "table" then
+                    for i = #list, 1, -1 do
+                        if isAlias(list[i]) then
+                            tremove(list, i)
+                            removed = removed + 1
+                        end
+                    end
+                end
+            end
+        end
     end
     return removed
 end
