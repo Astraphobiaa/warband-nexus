@@ -36,6 +36,7 @@ local ADOPTED = {
     { "Reputation", "Modules/UI/ReputationUI.lua", "function WarbandNexus:DrawReputationList%(container, width%)" },
     -- Characters: the two text blocks inside the persistent gold-card bundle (built once).
     { "Characters", "Modules/UI/CharactersUI.lua", "function WarbandNexus:DrawCharacterList%(parent%)", 2 },
+    { "Items", "Modules/UI/ItemsUI.lua", "function WarbandNexus:DrawItemsResults%(parent, yOffset, width, currentItemsSubTab, itemsSearchText%)" },
 }
 
 for i = 1, #ADOPTED do
@@ -54,6 +55,14 @@ for i = 1, #ADOPTED do
             label .. ": no raw recycle-bin parking")
         check(body:find("SP.BeginPass(", 1, true) ~= nil, label .. ": teardown starts a SectionPool pass")
     end
+end
+
+-- Shared results container teardown keeps pooled sections in place and marks the rest as garbage.
+do
+    local src = ReadFile("Modules/UI/SearchResultsRenderer.lua")
+    local prep = src:match("function SearchResultsRenderer:PrepareContainer%(container%)(.-)\nend\n")
+    check(prep and prep:find("child._wnSectionPooled", 1, true) ~= nil, "PrepareContainer keeps SectionPool frames in place")
+    check(prep and prep:find("UI_SectionPool.Discard(child)", 1, true) ~= nil, "PrepareContainer discards through SectionPool")
 end
 
 -- Characters: per-paint labels on pooled headers / content frames are cached, not recreated.

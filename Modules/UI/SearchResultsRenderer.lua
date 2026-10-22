@@ -70,10 +70,14 @@ function SearchResultsRenderer:PrepareContainer(container)
     end
     for i = 1, #children do
         local child = children[i]
-        if (IsProtected and IsProtected(child, container)) or child._wnStorPooled then
-            -- Storage StorPool sections stay parented to the results container (reused next pass).
+        if (IsProtected and IsProtected(child, container)) or child._wnStorPooled or child._wnSectionPooled then
+            -- Storage StorPool / SectionPool sections stay parented to the results container (reused
+            -- next pass by whichever tab owns them).
             child:Hide()
-            if child._wnStorPooled then child:ClearAllPoints() end
+            if child._wnStorPooled or child._wnSectionPooled then child:ClearAllPoints() end
+        elseif ns.UI_SectionPool then
+            -- Marked as garbage (unless another pool owns it) so the theme registries drop it.
+            ns.UI_SectionPool.Discard(child)
         else
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end

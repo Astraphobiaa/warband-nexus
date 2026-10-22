@@ -2007,6 +2007,12 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
 
         local HEADER_STRIP_H = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
         local Factory = ns.UI.Factory
+        -- Group wraps / headers / row shells are pooled per results container (SectionPool, "itm:"
+        -- keys per sub-tab) and re-bound by group key: every bag update rebuilt them and parked the
+        -- old ones in the recycle bin forever (2026-10-22).
+        local SP = ns.UI_SectionPool
+        SP.BeginPass(parent)
+        local poolPrefix = "itm:" .. tostring(currentItemsSubTab) .. ":"
 
         local totalHeight = VLM.SetupVirtualList(mainFrame, parent, nil, flatList, {
             chainCollapsibleHeaders = true,
@@ -2027,7 +2033,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 local rowsBodyH = math.max(0.1, nItems * ITEMS_ROW_STRIDE)
 
                 local listW = ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(container, width, 0) or width
-                local groupWrap = Factory:CreateContainer(container, math.max(1, listW), HEADER_STRIP_H + 0.1, false)
+                local groupWrap = SP.Acquire(container, poolPrefix .. "wrap:" .. tostring(gKey), container, math.max(1, listW), HEADER_STRIP_H + 0.1)
                 if groupWrap.SetClipsChildren then
                     groupWrap:SetClipsChildren(true)
                 end
@@ -2081,8 +2087,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     false,
                     nil,
                     nil,
-                    headerVisualOpts
+                    SP.HeaderOpts(container, poolPrefix .. "hdr:" .. tostring(gKey), headerVisualOpts)
                 )
+                SP.Remember(container, poolPrefix .. "hdr:" .. tostring(gKey), headerBtn)
                 if ns.UI_AnchorSectionHeaderInWrap then
                     ns.UI_AnchorSectionHeaderInWrap(headerBtn, groupWrap, listW)
                 else
@@ -2091,7 +2098,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     headerBtn:SetWidth(math.max(1, listW))
                 end
 
-                groupShell = Factory:CreateContainer(groupWrap, math.max(1, listW), 0.1, false)
+                groupShell = SP.Acquire(container, poolPrefix .. "shell:" .. tostring(gKey), groupWrap, math.max(1, listW), 0.1)
                 groupShell:ClearAllPoints()
                 groupShell:SetPoint("TOPLEFT", headerBtn, "BOTTOMLEFT", 0, 0)
                 groupShell:SetPoint("TOPRIGHT", headerBtn, "BOTTOMRIGHT", 0, 0)
