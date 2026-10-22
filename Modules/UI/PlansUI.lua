@@ -562,9 +562,13 @@ local function ReleasePlansScrollBody(parent)
                 -- other non-browse categories) but keep it parented + positioned, so its ~50 pooled cards are
                 -- never reparented (that reparent was the 6-7s freeze). DrawBrowser re-shows it on return.
                 child:Hide()
+            elseif child._wnSectionPooled then
+                -- Pooled section chrome (Weekly Progress "pln:" keys and other tabs' keys on this scroll
+                -- child): hide it in place; the owning view re-binds it on its next paint (2026-10-22).
+                child:Hide()
+                child:ClearAllPoints()
             elseif ns.UI_SectionPool then
-                -- Marked as garbage so the theme registries drop it (the daily-tasks view still
-                -- rebuilds its chrome per paint; its quest rows are not pooled yet).
+                -- Anything else is garbage: marked so the theme registries drop it.
                 ns.UI_SectionPool.Discard(child)
             else
                 child:Hide()
@@ -1440,86 +1444,331 @@ local EVENT_GROUP_NAMES = {
     stormarion = (ns.L and ns.L["EVENT_GROUP_STORMARION"]) or "Stormarion Assault",
 }
 
+--- Stable quest-row handlers (one function each, not per-row closures): pooled rows are re-bound to
+--- another quest every paint, so the handlers read the row's current `_wnQuest` (2026-10-22).
+local function QuestRowOnEnter(self)
+    local quest = self._wnQuest
+    if not quest then return end
+    local lines = {}
+    if IsSafeDisplayString(quest.description) then
+        lines[#lines + 1] = { text = quest.description, color = {0.9, 0.9, 0.9} }
+    end
+    if quest.isSubQuest and quest.eventGroup then
+        local parentName = EVENT_GROUP_NAMES[quest.eventGroup] or quest.eventGroup
+        lines[#lines + 1] = { text = format((ns.L and ns.L["PART_OF_FORMAT"]) or "Part of: %s", parentName), color = {0.8, 0.5, 1.0} }
+    end
+    if IsSafeDisplayString(quest.zone) then
+        lines[#lines + 1] = { text = quest.zone, color = {0.7, 0.7, 0.7} }
+    end
+    if IsSafeDisplayString(quest.objective) then
+        lines[#lines + 1] = { text = quest.objective, color = {1, 1, 1} }
+    end
+    if quest.progress and not quest.isComplete then
+        local pct = math.floor((quest.progress.percent or 0) * 100)
+        lines[#lines + 1] = {
+            text = format(
+                (ns.L and ns.L["QUEST_PROGRESS_FORMAT"]) or "Progress: %d/%d (%d%%)",
+                quest.progress.totalFulfilled or 0,
+                quest.progress.totalRequired or 0,
+                pct
+            ),
+            color = pct >= 100 and {0.27, 1, 0.27} or {1, 0.82, 0.2},
+        }
+    end
+    if quest.timeLeft and quest.timeLeft > 0 then
+        local timeColor = quest.timeLeft < 60 and {1, 0.3, 0.3} or {0.7, 0.7, 0.7}
+        lines[#lines + 1] = {
+            text = format(
+                (ns.L and ns.L["QUEST_TIME_REMAINING_FORMAT"]) or "%s remaining",
+                FormatTimeLeft(quest.timeLeft)
+            ),
+            color = timeColor
+        }
+    end
+    if quest.isComplete then
+        local gr, gg, gb = PlanGreenRgb()
+        lines[#lines + 1] = { text = PlanGreenHex() .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete") .. "|r", color = { gr, gg, gb } }
+    elseif quest.isLocked then
+        lines[#lines + 1] = { text = "|cffff9933" .. ((ns.L and ns.L["LOCKED_WORLD_QUESTS"]) or "Locked — complete World Quests to unlock") .. "|r", color = {1, 0.6, 0.2} }
+    end
+    if quest.questID then
+        lines[#lines + 1] = { text = format((ns.L and ns.L["QUEST_ID_FORMAT"]) or "Quest ID: %s", quest.questID), color = {0.5, 0.5, 0.5} }
+        lines[#lines + 1] = { text = (ns.L and ns.L["CLICK_FOR_WOWHEAD_LINK"]) or "Click for Wowhead link", color = {0.5, 0.4, 0.7} }
+    end
+
+    if ns.TooltipService and ns.TooltipService.Show then
+        ns.TooltipService:Show(self, {
+            type = "custom",
+            title = quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"),
+            icon = false,
+            lines = lines,
+        })
+    else
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"), 1, 1, 1)
+        for i = 1, #lines do
+            local c = lines[i].color or {1, 1, 1}
+            GameTooltip:AddLine(lines[i].text, c[1], c[2], c[3], true)
+        end
+        GameTooltip:Show()
+    end
+end
+
+local function QuestRowOnLeave()
+    if ns.TooltipService and ns.TooltipService.Hide then
+        ns.TooltipService:Hide()
+    else
+        GameTooltip:Hide()
+    end
+end
+
+local function QuestRowOnMouseDown(self)
+    local quest = self._wnQuest
+    if quest and ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+        ns.UI.Factory:ShowWowheadCopyURL("quest", quest.questID, self)
+    end
+end
+
 local function AttachQuestRowTooltip(frame, quest)
-    frame:SetScript("OnEnter", function(self)
-        local lines = {}
-        if IsSafeDisplayString(quest.description) then
-            lines[#lines + 1] = { text = quest.description, color = {0.9, 0.9, 0.9} }
+    frame._wnQuest = quest
+    frame:SetScript("OnEnter", QuestRowOnEnter)
+    frame:SetScript("OnLeave", QuestRowOnLeave)
+    -- A re-used row must drop the Wowhead click of the quest it showed last paint.
+    if quest.questID and quest.questID > 0 then
+        frame:SetScript("OnMouseDown", QuestRowOnMouseDown)
+    else
+        frame:SetScript("OnMouseDown", nil)
+    end
+end
+
+-- Weekly Progress rows are pooled per section body (2026-10-22): every paint used to create each row,
+-- its icons and FontStrings anew and park the old ones in the recycle bin (frames are never GC'd).
+
+--- Row `idx` of `body[listField]`, created on first use; placed exactly like Factory:CreateDataRow.
+---@return Frame row, number newYOffset
+local function AcquireWeeklySectionRow(body, listField, idx, yOffset, rowIndex, height)
+    local Factory = ns.UI.Factory
+    local rows = body[listField]
+    if not rows then
+        rows = {}
+        body[listField] = rows
+    end
+    local row = rows[idx]
+    if not row then
+        local newY
+        row, newY = Factory:CreateDataRow(body, yOffset, rowIndex, height)
+        rows[idx] = row
+        return row, newY
+    end
+    row:SetHeight(height)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", 0, -yOffset)
+    row:SetPoint("RIGHT", body, "RIGHT", 0, 0)
+    row:Show()
+    Factory:ApplyRowBackground(row, rowIndex)
+    return row, yOffset + height
+end
+
+local function HideWeeklySectionRowsFrom(body, listField, first)
+    local rows = body[listField]
+    if not rows then return end
+    for i = first, #rows do
+        rows[i]:Hide()
+    end
+end
+
+--- Cached region of a pooled weekly row: FontString when `role` is set, else an ARTWORK texture.
+--- With `idx` the region lives in the array `row[field]` (objective lines). Returned unanchored + shown.
+local function WeeklyRowRegion(row, field, idx, role)
+    local holder, slot = row, field
+    if idx then
+        holder = row[field]
+        if not holder then
+            holder = {}
+            row[field] = holder
         end
-        if quest.isSubQuest and quest.eventGroup then
-            local parentName = EVENT_GROUP_NAMES[quest.eventGroup] or quest.eventGroup
-            lines[#lines + 1] = { text = format((ns.L and ns.L["PART_OF_FORMAT"]) or "Part of: %s", parentName), color = {0.8, 0.5, 1.0} }
+        slot = idx
+    end
+    local region = holder[slot]
+    if not region then
+        if role then
+            region = FontManager:CreateFontString(row, role, "OVERLAY")
+        else
+            region = row:CreateTexture(nil, "ARTWORK")
         end
-        if IsSafeDisplayString(quest.zone) then
-            lines[#lines + 1] = { text = quest.zone, color = {0.7, 0.7, 0.7} }
-        end
-        if IsSafeDisplayString(quest.objective) then
-            lines[#lines + 1] = { text = quest.objective, color = {1, 1, 1} }
-        end
-        if quest.progress and not quest.isComplete then
-            local pct = math.floor((quest.progress.percent or 0) * 100)
-            lines[#lines + 1] = {
-                text = format(
-                    (ns.L and ns.L["QUEST_PROGRESS_FORMAT"]) or "Progress: %d/%d (%d%%)",
-                    quest.progress.totalFulfilled or 0,
-                    quest.progress.totalRequired or 0,
-                    pct
-                ),
-                color = pct >= 100 and {0.27, 1, 0.27} or {1, 0.82, 0.2},
-            }
-        end
-        if quest.timeLeft and quest.timeLeft > 0 then
-            local timeColor = quest.timeLeft < 60 and {1, 0.3, 0.3} or {0.7, 0.7, 0.7}
-            lines[#lines + 1] = {
-                text = format(
-                    (ns.L and ns.L["QUEST_TIME_REMAINING_FORMAT"]) or "%s remaining",
-                    FormatTimeLeft(quest.timeLeft)
-                ),
-                color = timeColor
-            }
-        end
-        if quest.isComplete then
-            local gr, gg, gb = PlanGreenRgb()
-            lines[#lines + 1] = { text = PlanGreenHex() .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete") .. "|r", color = { gr, gg, gb } }
-        elseif quest.isLocked then
-            lines[#lines + 1] = { text = "|cffff9933" .. ((ns.L and ns.L["LOCKED_WORLD_QUESTS"]) or "Locked — complete World Quests to unlock") .. "|r", color = {1, 0.6, 0.2} }
-        end
-        if quest.questID then
-            lines[#lines + 1] = { text = format((ns.L and ns.L["QUEST_ID_FORMAT"]) or "Quest ID: %s", quest.questID), color = {0.5, 0.5, 0.5} }
-            lines[#lines + 1] = { text = (ns.L and ns.L["CLICK_FOR_WOWHEAD_LINK"]) or "Click for Wowhead link", color = {0.5, 0.4, 0.7} }
+        holder[slot] = region
+    end
+    region:ClearAllPoints()
+    region:Show()
+    return region
+end
+
+local function HideWeeklyRowRegion(row, field)
+    if row[field] then row[field]:Hide() end
+end
+
+local function HideWeeklyRowRegionsFrom(row, field, first)
+    local list = row[field]
+    if not list then return end
+    for i = first, #list do
+        list[i]:Hide()
+    end
+end
+
+local function PaintWeeklyEmptyRow(row)
+    local emptyIcon = WeeklyRowRegion(row, "_wnPlnEmptyIcon")
+    emptyIcon:SetSize(14, 14)
+    emptyIcon:SetPoint("LEFT", 14, 0)
+    ns.UI_SetIcon(emptyIcon, "status_pending", { alpha = 0.4 })
+    local emptyFs = WeeklyRowRegion(row, "_wnPlnEmptyFs", nil, "body")
+    emptyFs:SetPoint("LEFT", 32, 0)
+    ns.UI_SetTextColorRole(emptyFs, "Dim")
+    emptyFs:SetText((ns.L and ns.L["NO_ACTIVE_CONTENT"]) or "No active content this week")
+end
+
+--- Bind a pooled row to `quest`; regions the quest does not use are hidden.
+local function PaintWeeklyQuestRow(row, quest, width)
+    local hasObjectives = (quest.objectives and #quest.objectives > 0) or false
+    local isSub = quest.isSubQuest
+    local leftIndent = isSub and 26 or 14
+    local iconSize = isSub and 12 or 14
+    row:EnableMouse(true)
+
+    local statusIcon = WeeklyRowRegion(row, "_wnPlnStatusIcon")
+    statusIcon:SetSize(iconSize, iconSize)
+    if hasObjectives then
+        statusIcon:SetPoint("TOPLEFT", leftIndent, -6)
+    else
+        statusIcon:SetPoint("LEFT", leftIndent, 0)
+    end
+    if quest.isComplete then
+        statusIcon:SetAtlas("common-icon-checkmark", false)
+        statusIcon:SetVertexColor(0.27, 1, 0.27)
+    elseif quest.isLocked then
+        ns.UI_SetIcon(statusIcon, "lock", { vertexColor = { 1, 0.6, 0.2, 1 } })
+    else
+        ns.UI_SetIcon(statusIcon, "status_pending", { alpha = 0.6 })
+    end
+
+    -- Font role is fixed at creation: one title FontString per role, the other one hidden.
+    local titleFs = WeeklyRowRegion(row, isSub and "_wnPlnTitleSmall" or "_wnPlnTitleBody", nil, isSub and "small" or "body")
+    HideWeeklyRowRegion(row, isSub and "_wnPlnTitleBody" or "_wnPlnTitleSmall")
+    if hasObjectives then
+        titleFs:SetPoint("TOPLEFT", leftIndent + iconSize + 4, -4)
+    else
+        titleFs:SetPoint("LEFT", leftIndent + iconSize + 4, 0)
+    end
+    titleFs:SetWidth(width * 0.50)
+    titleFs:SetJustifyH("LEFT")
+    titleFs:SetWordWrap(false)
+    if quest.isComplete then
+        titleFs:SetText(PlanGreenHex() .. (quest.title or "") .. "|r")
+    elseif quest.isLocked then
+        titleFs:SetText("|cffff9933" .. (quest.title or "") .. "|r")
+    elseif isSub then
+        titleFs:SetText("|cffaaaaaa" .. (quest.title or "") .. "|r")
+    else
+        titleFs:SetText(PlanBrightHex() .. (quest.title or "") .. "|r")
+    end
+
+    local nObj = 0
+    if hasObjectives then
+        nObj = #quest.objectives
+        local objY = -4
+        for oi = 1, nObj do
+            local obj = quest.objectives[oi]
+            objY = objY - 16
+            local objIcon = WeeklyRowRegion(row, "_wnPlnObjIcons", oi)
+            objIcon:SetSize(8, 8)
+            objIcon:SetPoint("TOPLEFT", leftIndent + iconSize + 8, objY)
+            if obj.finished then
+                objIcon:SetAtlas("common-icon-checkmark", false)
+                objIcon:SetVertexColor(0.27, 1, 0.27)
+            else
+                ns.UI_SetIcon(objIcon, "status_pending", { alpha = 0.5 })
+            end
+
+            local objText = obj.text or format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
+            local objColor = obj.finished and PlanGreenHex() or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted") or "|cffaaaaaa")
+            local objFs = WeeklyRowRegion(row, "_wnPlnObjFs", oi, "small")
+            objFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20, objY + 2)
+            objFs:SetWidth(width * 0.45)
+            objFs:SetJustifyH("LEFT")
+            objFs:SetWordWrap(false)
+            objFs:SetText(objColor .. objText .. "|r")
+
+            local progFs = WeeklyRowRegion(row, "_wnPlnObjProgFs", oi, "small")
+            progFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20 + width * 0.46, objY + 2)
+            progFs:SetJustifyH("LEFT")
+            local progColor = obj.finished and PlanGreenHex() or PlanGoldHex()
+            progFs:SetText(format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
         end
 
-        if ns.TooltipService and ns.TooltipService.Show then
-            ns.TooltipService:Show(self, {
-                type = "custom",
-                title = quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"),
-                icon = false,
-                lines = lines,
-            })
+        HideWeeklyRowRegion(row, "_wnPlnZoneBodyFs")
+        HideWeeklyRowRegion(row, "_wnPlnTimeFs")
+        if IsSafeDisplayString(quest.zone) then
+            local zoneFs = WeeklyRowRegion(row, "_wnPlnZoneSmallFs", nil, "small")
+            zoneFs:SetPoint("TOPRIGHT", -14, -6)
+            zoneFs:SetJustifyH("RIGHT")
+            zoneFs:SetText("|cff888888" .. quest.zone .. "|r")
         else
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"), 1, 1, 1)
-            for i = 1, #lines do
-                local c = lines[i].color or {1, 1, 1}
-                GameTooltip:AddLine(lines[i].text, c[1], c[2], c[3], true)
-            end
-            GameTooltip:Show()
+            HideWeeklyRowRegion(row, "_wnPlnZoneSmallFs")
         end
-    end)
-    frame:SetScript("OnLeave", function()
-        if ns.TooltipService and ns.TooltipService.Hide then
-            ns.TooltipService:Hide()
+    else
+        HideWeeklyRowRegion(row, "_wnPlnZoneSmallFs")
+        local zoneFs = WeeklyRowRegion(row, "_wnPlnZoneBodyFs", nil, "body")
+        zoneFs:SetPoint("LEFT", 32 + width * 0.52, 0)
+        zoneFs:SetWidth(width * 0.25)
+        zoneFs:SetJustifyH("LEFT")
+        zoneFs:SetWordWrap(false)
+        zoneFs:SetText(PlanBrightHex() .. (IsSafeDisplayString(quest.zone) and quest.zone or "") .. "|r")
+
+        if quest.timeLeft and quest.timeLeft > 0 then
+            local timeFs = WeeklyRowRegion(row, "_wnPlnTimeFs", nil, "body")
+            timeFs:SetPoint("RIGHT", -14, 0)
+            timeFs:SetText(PlanBrightHex() .. FormatTimeLeft(quest.timeLeft) .. "|r")
         else
-            GameTooltip:Hide()
+            HideWeeklyRowRegion(row, "_wnPlnTimeFs")
         end
-    end)
-    if quest.questID and quest.questID > 0 then
-        frame:SetScript("OnMouseDown", function(self)
-            if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
-                ns.UI.Factory:ShowWowheadCopyURL("quest", quest.questID, self)
-            end
-        end)
     end
+    HideWeeklyRowRegionsFrom(row, "_wnPlnObjIcons", nObj + 1)
+    HideWeeklyRowRegionsFrom(row, "_wnPlnObjFs", nObj + 1)
+    HideWeeklyRowRegionsFrom(row, "_wnPlnObjProgFs", nObj + 1)
+
+    AttachQuestRowTooltip(row, quest)
+end
+
+--- Weekly Progress character-header controls (remove / configure): one stable handler each, reading
+--- the plan bound to the button this paint.
+local function WeeklyRemoveBtnOnClick(btn)
+    WarbandNexus:RemovePlan(btn._wnPlanId)
+end
+
+local function WeeklyConfigBtnOnClick(btn)
+    if WarbandNexus.ShowWeeklyProgressPlanDialog then
+        WarbandNexus:ShowWeeklyProgressPlanDialog(btn._wnPlan)
+    end
+end
+
+local function WeeklyConfigBtnOnEnter(btn)
+    if ns.TooltipService and ns.TooltipService.Show then
+        ns.TooltipService:Show(btn, {
+            type = "custom",
+            title = (ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking",
+            icon = false,
+            lines = {
+                { text = (ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE_HELP"]) or "Choose categories and specific weekly objectives to track.", color = {0.85, 0.85, 0.85} },
+            },
+        })
+    else
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText((ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking", 1, 1, 1)
+        GameTooltip:Show()
+    end
+end
+
+local function WeeklyConfigBtnOnLeave()
+    if ns.TooltipService and ns.TooltipService.Hide then ns.TooltipService:Hide() else GameTooltip:Hide() end
 end
 
 function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
@@ -1534,6 +1783,11 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         return ((a.characterName or "") .. (a.characterRealm or ""))
              < ((b.characterName or "") .. (b.characterRealm or ""))
     end)
+
+    -- Section wraps / bodies / stats strips / headers are pooled on the scroll child (SectionPool,
+    -- "pln:" keys) and re-bound every paint instead of being recreated per repaint (2026-10-22).
+    local SP = ns.UI_SectionPool
+    SP.BeginPass(parent)
 
     if #filteredPlans == 0 then
         if ns.UI_ShowTabEmptyStateCard then
@@ -1751,7 +2005,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             totalBlockH = totalBlockH + sectionSpacing
         end
 
-        local charWrap = Factory:CreateContainer(parent, innerW, SECTION_COLLAPSE_H + 0.1, false)
+        local planPoolKey = tostring(plan.id)
+        local charWrap = SP.Acquire(parent, "pln:wrap:" .. planPoolKey, parent, innerW, SECTION_COLLAPSE_H + 0.1)
         parent._wnWeeklyCharWraps[#parent._wnWeeklyCharWraps + 1] = charWrap
         if charWrap.SetClipsChildren then
             charWrap:SetClipsChildren(true)
@@ -1774,6 +2029,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         local charExpanded = (expandedGroups[charGroupKey] == true)
 
         local charSectionBody
+        local charHdrKey = "pln:hdr:" .. planPoolKey
         local charHeader, charHdrExpandIcon, _, charHdrTitleFs = CreateCollapsibleHeader(
             charWrap,
             charTitlePlain,
@@ -1784,7 +2040,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             true,
             0,
             true,
-            BuildCollapsibleSectionOpts({
+            SP.HeaderOpts(parent, charHdrKey, BuildCollapsibleSectionOpts({
                 wrapFrame = charWrap,
                 bodyGetter = function() return charSectionBody end,
                 headerHeight = SECTION_COLLAPSE_H,
@@ -1797,8 +2053,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 onComplete = function()
                     ReflowWeeklyProgressCharSectionBody(charSectionBody)
                 end,
-            })
+            }))
         )
+        SP.Remember(parent, charHdrKey, charHeader)
         charHeader:SetPoint("TOPLEFT", charWrap, "TOPLEFT", 0, 0)
         charHeader:SetWidth(innerW)
 
@@ -1813,47 +2070,35 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             charHdrExpandIcon._wnCollapseVertexColor = { r, g, b, 1 }
         end
 
-        local removeBtn = Factory:CreateButton(charHeader, 24, 24, true)
-        removeBtn:SetPoint("RIGHT", -8, 0)
+        -- Header controls are cached on the (pooled) header; the click handlers read the bound plan.
+        local removeBtn = charHeader._wnPlnRemoveBtn
+        local configBtn = charHeader._wnPlnConfigBtn
+        local totalFs = charHeader._wnPlnTotalFs
+        if not removeBtn then
+            removeBtn = Factory:CreateButton(charHeader, 24, 24, true)
+            removeBtn:SetPoint("RIGHT", -8, 0)
+            removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+            removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+            removeBtn:SetScript("OnClick", WeeklyRemoveBtnOnClick)
+
+            configBtn = Factory:CreateButton(charHeader, 24, 24, true)
+            configBtn:SetPoint("RIGHT", removeBtn, "LEFT", -4, 0)
+            configBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+            configBtn:SetHighlightTexture("Interface\\Buttons\\UI-OptionsButton")
+            configBtn:SetScript("OnClick", WeeklyConfigBtnOnClick)
+            configBtn:SetScript("OnEnter", WeeklyConfigBtnOnEnter)
+            configBtn:SetScript("OnLeave", WeeklyConfigBtnOnLeave)
+
+            totalFs = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
+            totalFs:SetPoint("RIGHT", configBtn, "LEFT", -6, 0)
+            charHeader._wnPlnRemoveBtn = removeBtn
+            charHeader._wnPlnConfigBtn = configBtn
+            charHeader._wnPlnTotalFs = totalFs
+        end
+        removeBtn._wnPlanId = plan.id
+        configBtn._wnPlan = plan
         removeBtn:SetFrameLevel((charHeader:GetFrameLevel() or 0) + 5)
-        removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-        removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-        removeBtn:SetScript("OnClick", function()
-            self:RemovePlan(plan.id)
-        end)
-
-        local configBtn = Factory:CreateButton(charHeader, 24, 24, true)
-        configBtn:SetPoint("RIGHT", removeBtn, "LEFT", -4, 0)
         configBtn:SetFrameLevel((charHeader:GetFrameLevel() or 0) + 5)
-        configBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-        configBtn:SetHighlightTexture("Interface\\Buttons\\UI-OptionsButton")
-        configBtn:SetScript("OnClick", function()
-            if self.ShowWeeklyProgressPlanDialog then
-                self:ShowWeeklyProgressPlanDialog(plan)
-            end
-        end)
-        configBtn:SetScript("OnEnter", function(btn)
-            if ns.TooltipService and ns.TooltipService.Show then
-                ns.TooltipService:Show(btn, {
-                    type = "custom",
-                    title = (ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking",
-                    icon = false,
-                    lines = {
-                        { text = (ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE_HELP"]) or "Choose categories and specific weekly objectives to track.", color = {0.85, 0.85, 0.85} },
-                    },
-                })
-            else
-                GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-                GameTooltip:SetText((ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking", 1, 1, 1)
-                GameTooltip:Show()
-            end
-        end)
-        configBtn:SetScript("OnLeave", function()
-            if ns.TooltipService and ns.TooltipService.Hide then ns.TooltipService:Hide() else GameTooltip:Hide() end
-        end)
-
-        local totalFs = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        totalFs:SetPoint("RIGHT", configBtn, "LEFT", -6, 0)
         local totalColor = (totalAll > 0 and completedAll == totalAll) and PlanGreenHex() or PlanGoldHex()
         totalFs:SetText(totalColor .. completedAll .. "/" .. totalAll .. "|r")
 
@@ -1864,15 +2109,24 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             charHdrTitleFs:SetPoint("RIGHT", totalFs, "LEFT", -10, 0)
         end
 
-        charSectionBody = Factory:CreateContainer(charWrap, innerW, 0.1, false)
+        charSectionBody = SP.Acquire(parent, "pln:body:" .. planPoolKey, charWrap, innerW, 0.1)
         charSectionBody:ClearAllPoints()
         charSectionBody:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
         charSectionBody:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
 
-        local statsStrip = Factory:CreateContainer(charSectionBody, innerW, STATS_H, false)
+        local statsStrip = SP.Acquire(parent, "pln:stats:" .. planPoolKey, charSectionBody, innerW, STATS_H)
         statsStrip:SetPoint("TOPLEFT", charSectionBody, "TOPLEFT", 0, 0)
         if statsStrip.SetClipsChildren then
             statsStrip:SetClipsChildren(true)
+        end
+        -- One cached FontString per category key; categories not shown this paint stay hidden.
+        local statFsByCat = statsStrip._wnPlnCatFs
+        if not statFsByCat then
+            statFsByCat = {}
+            statsStrip._wnPlnCatFs = statFsByCat
+        end
+        for _, statFs in pairs(statFsByCat) do
+            statFs:Hide()
         end
 
         local catX = 8
@@ -1884,7 +2138,13 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 local catName = display.name and display.name() or catInfo.key
                 local c, t = GetCategoryStats(plan, catInfo.key)
                 if t > 0 then
-                    local catFs = FontManager:CreateFontString(statsStrip, "small", "OVERLAY")
+                    local catFs = statFsByCat[catInfo.key]
+                    if not catFs then
+                        catFs = FontManager:CreateFontString(statsStrip, "small", "OVERLAY")
+                        statFsByCat[catInfo.key] = catFs
+                    end
+                    catFs:ClearAllPoints()
+                    catFs:Show()
                     catFs:SetPoint("LEFT", statsStrip, "LEFT", catX, 0)
                     local cColor = (c == t) and PlanGreenHex() or format("|cff%02x%02x%02x", catColor[1] * 255, catColor[2] * 255, catColor[3] * 255)
                     catFs:SetText(cColor .. catName .. " " .. c .. "/" .. t .. "|r")
@@ -1894,7 +2154,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         end
 
         local catChainTail = statsStrip
-        local weeklyRowList = { statsStrip }
+        local weeklyRowList = charSectionBody._weeklyRowList or {}
+        wipe(weeklyRowList)
+        weeklyRowList[1] = statsStrip
 
         for ci = 1, #CATEGORIES do
             local catInfo = CATEGORIES[ci]
@@ -1922,7 +2184,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                     catName
                 )
 
-                local catWrap = Factory:CreateContainer(charSectionBody, innerW, SECTION_HDR_H + 0.1, false)
+                local catPoolKey = planPoolKey .. ":" .. catKey
+                local catWrap = SP.Acquire(parent, "pln:cwrap:" .. catPoolKey, charSectionBody, innerW, SECTION_HDR_H + 0.1)
                 if catWrap.SetClipsChildren then
                     catWrap:SetClipsChildren(true)
                 end
@@ -1932,6 +2195,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 weeklyRowList[#weeklyRowList + 1] = catWrap
 
                 local sectionBody
+                local catHdrKey = "pln:chdr:" .. catPoolKey
                 local catHeader, hdrExpandIcon, hdrCategoryIcon, catHdrTitleFs = CreateCollapsibleHeader(
                     catWrap,
                     catTitleHex,
@@ -1942,7 +2206,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                     true,
                     0,
                     nil,
-                    BuildCollapsibleSectionOpts({
+                    SP.HeaderOpts(parent, catHdrKey, BuildCollapsibleSectionOpts({
                         wrapFrame = catWrap,
                         bodyGetter = function() return sectionBody end,
                         headerHeight = SECTION_HDR_H,
@@ -1958,13 +2222,14 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                         onComplete = function()
                             ReflowWeeklyProgressCharSectionBody(charSectionBody)
                         end,
-                    })
+                    }))
                 )
+                SP.Remember(parent, catHdrKey, catHeader)
                 catHeader:SetPoint("TOPLEFT", catWrap, "TOPLEFT", 0, 0)
                 catHeader:SetWidth(innerW)
                 catHeader:SetHeight(SECTION_HDR_H)
 
-                sectionBody = Factory:CreateContainer(catWrap, innerW, 0.1, false)
+                sectionBody = SP.Acquire(parent, "pln:cbody:" .. catPoolKey, catWrap, innerW, 0.1)
                 sectionBody:ClearAllPoints()
                 sectionBody:SetPoint("TOPLEFT", catHeader, "BOTTOMLEFT", 0, 0)
                 sectionBody:SetPoint("TOPRIGHT", catHeader, "BOTTOMRIGHT", 0, 0)
@@ -1983,8 +2248,12 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                     hdrCategoryIcon:SetVertexColor(catColor[1], catColor[2], catColor[3])
                 end
 
-                local countHdrFs = FontManager:CreateFontString(catHeader, "body", "OVERLAY")
-                countHdrFs:SetPoint("RIGHT", -14, 0)
+                local countHdrFs = catHeader._wnPlnCountFs
+                if not countHdrFs then
+                    countHdrFs = FontManager:CreateFontString(catHeader, "body", "OVERLAY")
+                    countHdrFs:SetPoint("RIGHT", -14, 0)
+                    catHeader._wnPlnCountFs = countHdrFs
+                end
                 local countColorHdr = (completed == total and total > 0) and PlanGreenHex() or PlanBrightHex()
                 countHdrFs:SetText(countColorHdr .. completed .. "/" .. total .. "|r")
 
@@ -1998,22 +2267,14 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 local rowY = 4
                 if #questList == 0 then
                     local emptyRow
-                    emptyRow, rowY = Factory:CreateDataRow(sectionBody, rowY, 1, ROW_H)
-                    local emptyIcon = emptyRow:CreateTexture(nil, "ARTWORK")
-                    emptyIcon:SetSize(14, 14)
-                    emptyIcon:SetPoint("LEFT", 14, 0)
-                    ns.UI_SetIcon(emptyIcon, "status_pending", { alpha = 0.4 })
-                    local emptyFs = FontManager:CreateFontString(emptyRow, "body", "OVERLAY")
-                    emptyFs:SetPoint("LEFT", 32, 0)
-                    ns.UI_SetTextColorRole(emptyFs, "Dim")
-                    emptyFs:SetText((ns.L and ns.L["NO_ACTIVE_CONTENT"]) or "No active content this week")
+                    emptyRow, rowY = AcquireWeeklySectionRow(sectionBody, "_wnPlnEmptyRows", 1, rowY, 1, ROW_H)
+                    PaintWeeklyEmptyRow(emptyRow)
+                    HideWeeklySectionRowsFrom(sectionBody, "_wnPlnRows", 1)
                 else
+                    HideWeeklySectionRowsFrom(sectionBody, "_wnPlnEmptyRows", 1)
                     for qi = 1, #questList do
                         local quest = questList[qi]
                         local hasObjectives = (quest.objectives and #quest.objectives > 0) or false
-                        local isSub = quest.isSubQuest
-                        local leftIndent = isSub and 26 or 14
-                        local iconSize = isSub and 12 or 14
                         local nObj = hasObjectives and quest.objectives and #quest.objectives or 0
                         local rowH = ROW_H
                         if hasObjectives and nObj > 0 then
@@ -2021,98 +2282,10 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                         end
 
                         local row
-                        row, rowY = Factory:CreateDataRow(sectionBody, rowY, qi, rowH)
-                        row:EnableMouse(true)
-
-                        local statusIcon = row:CreateTexture(nil, "ARTWORK")
-                        statusIcon:SetSize(iconSize, iconSize)
-                        if hasObjectives then
-                            statusIcon:SetPoint("TOPLEFT", leftIndent, -6)
-                        else
-                            statusIcon:SetPoint("LEFT", leftIndent, 0)
-                        end
-                        if quest.isComplete then
-                            statusIcon:SetAtlas("common-icon-checkmark", false)
-                            statusIcon:SetVertexColor(0.27, 1, 0.27)
-                        elseif quest.isLocked then
-                            ns.UI_SetIcon(statusIcon, "lock", { vertexColor = { 1, 0.6, 0.2, 1 } })
-                        else
-                            ns.UI_SetIcon(statusIcon, "status_pending", { alpha = 0.6 })
-                        end
-
-                        local titleFs = FontManager:CreateFontString(row, isSub and "small" or "body", "OVERLAY")
-                        if hasObjectives then
-                            titleFs:SetPoint("TOPLEFT", leftIndent + iconSize + 4, -4)
-                        else
-                            titleFs:SetPoint("LEFT", leftIndent + iconSize + 4, 0)
-                        end
-                        titleFs:SetWidth(width * 0.50)
-                        titleFs:SetJustifyH("LEFT")
-                        titleFs:SetWordWrap(false)
-                        if quest.isComplete then
-                            titleFs:SetText(PlanGreenHex() .. (quest.title or "") .. "|r")
-                        elseif quest.isLocked then
-                            titleFs:SetText("|cffff9933" .. (quest.title or "") .. "|r")
-                        elseif isSub then
-                            titleFs:SetText("|cffaaaaaa" .. (quest.title or "") .. "|r")
-                        else
-                            titleFs:SetText(PlanBrightHex() .. (quest.title or "") .. "|r")
-                        end
-
-                        if hasObjectives then
-                            local objY = -4
-                            for oi = 1, #quest.objectives do
-                                local obj = quest.objectives[oi]
-                                objY = objY - 16
-                                local objIcon = row:CreateTexture(nil, "ARTWORK")
-                                objIcon:SetSize(8, 8)
-                                objIcon:SetPoint("TOPLEFT", leftIndent + iconSize + 8, objY)
-                                if obj.finished then
-                                    objIcon:SetAtlas("common-icon-checkmark", false)
-                                    objIcon:SetVertexColor(0.27, 1, 0.27)
-                                else
-                                    ns.UI_SetIcon(objIcon, "status_pending", { alpha = 0.5 })
-                                end
-
-                                local objText = obj.text or format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
-                                local objColor = obj.finished and PlanGreenHex() or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted") or "|cffaaaaaa")
-                                local objFs = FontManager:CreateFontString(row, "small", "OVERLAY")
-                                objFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20, objY + 2)
-                                objFs:SetWidth(width * 0.45)
-                                objFs:SetJustifyH("LEFT")
-                                objFs:SetWordWrap(false)
-                                objFs:SetText(objColor .. objText .. "|r")
-
-                                local progFs = FontManager:CreateFontString(row, "small", "OVERLAY")
-                                progFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20 + width * 0.46, objY + 2)
-                                progFs:SetJustifyH("LEFT")
-                                local progColor = obj.finished and PlanGreenHex() or PlanGoldHex()
-                                progFs:SetText(format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
-                            end
-
-                            if IsSafeDisplayString(quest.zone) then
-                                local zoneFs = FontManager:CreateFontString(row, "small", "OVERLAY")
-                                zoneFs:SetPoint("TOPRIGHT", -14, -6)
-                                zoneFs:SetJustifyH("RIGHT")
-                                zoneFs:SetText("|cff888888" .. quest.zone .. "|r")
-                            end
-                        else
-                            local zoneFs = FontManager:CreateFontString(row, "body", "OVERLAY")
-                            zoneFs:SetPoint("LEFT", 32 + width * 0.52, 0)
-                            zoneFs:SetWidth(width * 0.25)
-                            zoneFs:SetJustifyH("LEFT")
-                            zoneFs:SetWordWrap(false)
-                            zoneFs:SetText(PlanBrightHex() .. (IsSafeDisplayString(quest.zone) and quest.zone or "") .. "|r")
-
-                            if quest.timeLeft and quest.timeLeft > 0 then
-                                local timeFs = FontManager:CreateFontString(row, "body", "OVERLAY")
-                                timeFs:SetPoint("RIGHT", -14, 0)
-                                timeFs:SetText(PlanBrightHex() .. FormatTimeLeft(quest.timeLeft) .. "|r")
-                            end
-                        end
-
-                        AttachQuestRowTooltip(row, quest)
+                        row, rowY = AcquireWeeklySectionRow(sectionBody, "_wnPlnRows", qi, rowY, qi, rowH)
+                        PaintWeeklyQuestRow(row, quest, width)
                     end
+                    HideWeeklySectionRowsFrom(sectionBody, "_wnPlnRows", #questList + 1)
                 end
 
                 local sectionBodyH = rowY + 4

@@ -912,8 +912,15 @@ local function AnchorBrowseAction(row, control)
     else
         control:SetPoint("RIGHT", row.headerFrame, "RIGHT", -edge, 0)
     end
-    row._todoActionControls = { control }
-    row._todoActionOffsets = { edge }
+    -- Per-card tables filled in place: this runs on every card rebind (2026-10-22).
+    local controls = row._todoActionControls or {}
+    local offsets = row._todoActionOffsets or {}
+    wipe(controls)
+    wipe(offsets)
+    controls[1] = control
+    offsets[1] = edge
+    row._todoActionControls = controls
+    row._todoActionOffsets = offsets
     if ns.UI_PlansSyncTitleRightInset then
         ns.UI_PlansSyncTitleRightInset(row, edge + sz + (row._browseActionGap or 4))
     end
@@ -1051,32 +1058,71 @@ function ns.UI_UpdateBrowseGridVisibleRange(force)
     local colStride = st.colStride
     local topInset = st.top or 0
     local addon = WarbandNexus
+
+    -- Cards are keyed by result index (2026-10-22): filling the pool by visible slot re-rendered every
+    -- visible card whenever the first visible row changed. A card still bound to the same item at an
+    -- index inside the window keeps its binding; only entering indices are bound, from the cards that
+    -- left. A forced pass (new results, planned-state flip, layout settle) rebinds every visible card.
+    local firstIdx = firstRow * cols + 1
+    local lastIdx = (lastRow + 1) * cols
+    if lastIdx > count then lastIdx = count end
+    local byIndex = st._wnCardByIndex
+    local free = st._wnFreeCards
+    if not byIndex then
+        byIndex, free = {}, {}
+        st._wnCardByIndex, st._wnFreeCards = byIndex, free
+    end
+    wipe(byIndex)
+    wipe(free)
+    for k = 1, #pool do
+        local card = pool[k]
+        local bi = card and card._wnBrowseIndex
+        if card and (force or not bi or bi < firstIdx or bi > lastIdx or byIndex[bi]
+            or card._wnBrowseItem ~= results[bi] or card._wnBrowseHost ~= host) then
+            card._wnBrowseIndex = nil
+            free[#free + 1] = card
+        elseif card then
+            byIndex[bi] = card
+        end
+    end
+
     local used = 0
-    for r = firstRow, lastRow do
-        for c = 0, cols - 1 do
-            local i = r * cols + c + 1
-            if i <= count then
-                local item = results[i]
-                if item then
-                    item.category = st.category
-                    used = used + 1
-                    local card = pool[used]
-                    card = addon:RenderPlansBrowseUnifiedRow(host, card, item, st.category, i, cardWidth,
-                        st.todoHeaderH, st.PCM, st.browseExpanded, st.browserTryTypes)
-                    pool[used] = card
-                    if card then
-                        card:ClearAllPoints()
-                        card:SetPoint("TOPLEFT", host, "TOPLEFT", c * colStride, -(topInset + r * stride))
-                        card:SetWidth(cardWidth)
-                        card:Show()
-                    end
+    local nextFree = 1
+    for i = firstIdx, lastIdx do
+        local item = results[i]
+        if item then
+            item.category = st.category
+            used = used + 1
+            local card = byIndex[i]
+            if card then
+                if not card:IsShown() then card:Show() end
+            else
+                card = free[nextFree]
+                if card then
+                    free[nextFree] = false
+                    nextFree = nextFree + 1
+                end
+                local isNew = (card == nil)
+                card = addon:RenderPlansBrowseUnifiedRow(host, card, item, st.category, i, cardWidth,
+                    st.todoHeaderH, st.PCM, st.browseExpanded, st.browserTryTypes)
+                if card then
+                    if isNew then pool[#pool + 1] = card end
+                    card._wnBrowseIndex = i
+                    card._wnBrowseItem = item
+                    card._wnBrowseHost = host
+                    local r = math.floor((i - 1) / cols)
+                    local c = (i - 1) - r * cols
+                    card:ClearAllPoints()
+                    card:SetPoint("TOPLEFT", host, "TOPLEFT", c * colStride, -(topInset + r * stride))
+                    card:SetWidth(cardWidth)
+                    card:Show()
                 end
             end
         end
     end
     st._usedCount = used
-    for k = used + 1, #pool do
-        local card = pool[k]
+    for k = nextFree, #free do
+        local card = free[k]
         if card and card.IsShown and card:IsShown() then card:Hide() end
     end
 end
@@ -1199,6 +1245,85 @@ function ns.UI_PrewarmBrowseGrid()
     C_Timer.After(0, chunk)
 end
 
+-- Browse card callbacks are module-level (2026-10-22): the renderer runs on every scroll rebind, so it
+-- must not build closures per card. Each reads the card's current binding (`row._browseCtx` / data).
+
+--- Browse cards are canExpand=false (uniform height), so resize / toggle never fire; kept as a harmless
+--- no-op hook so shared header code has a valid callback.
+local function BrowseCardNoop() end
+
+local function BrowseCardOnExpandPopulate(data)
+    local item = data._wnBrowseItem
+    local all = item and ns.UI_BuildBrowseSourceCriteriaItems
+        and ns.UI_BuildBrowseSourceCriteriaItems(item, data._wnBrowseCategory, item._wnBrowseSources) or {}
+    if #all > 1 then
+        local rest = {}
+        for si = 2, #all do
+            rest[#rest + 1] = all[si]
+        end
+        data.criteriaData = rest
+    else
+        data.criteriaData = all
+    end
+    data.criteriaShowHeader = false
+    data.summaryInHeader = true
+end
+
+--- Header click: right-click opens the try-count popup (try-tracked types), left-click on a title with a
+--- source achievement opens the Achievements tab.
+local function BrowseHeaderOnMouseDown(frame, button)
+    local row = frame._wnBrowseCard
+    local ctx = row and row._browseCtx
+    local item = ctx and ctx.item
+    if not item then return end
+    local cat = ctx.category
+    if ctx.tryPopup and button == "RightButton" then
+        if WarbandNexus.ShouldShowTryCountInUI and WarbandNexus:ShouldShowTryCountInUI(cat, item.id) and ns.UI_ShowTryCountPopup then
+            ns.UI_ShowTryCountPopup(cat, item.id, item.name)
+        end
+        return
+    end
+    if ctx.titleAchLink and button == "LeftButton" then
+        WarbandNexus:ShowTab("achievements")
+    end
+end
+
+local function BrowsePlannedBtnOnEnter(bf)
+    local removeTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_REMOVE"]) or "Click to remove from your To-Do list."
+    GameTooltip:SetOwner(bf, "ANCHOR_LEFT")
+    local tr, tg, tb = 1, 1, 1
+    if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+    GameTooltip:SetText(removeTip, tr, tg, tb)
+    GameTooltip:Show()
+end
+
+local function BrowsePlannedBtnOnLeave() GameTooltip:Hide() end
+
+--- Planned toggle of a browse card, created once per card.
+local function EnsureBrowsePlannedBtn(addon, row, PCF, size)
+    local btn = row._browsePlannedBtn
+    if not btn and PCF and PCF.CreateAddButton then
+        btn = PCF.CreateAddButton(row.headerFrame, {
+            buttonType = "card", iconOnly = true, plannedState = true,
+            width = size, height = size,
+            -- Planned is a toggle, not a badge: clicking it removes the plan this card created.
+            onClick = function()
+                local ctx = row._browseCtx
+                if not ctx or not ctx.item then return end
+                local it, cat = ctx.item, ctx.category
+                if not RemoveBrowseItemPlan(cat, it.id) then return end
+                RerenderBrowseCard(addon, row)
+            end,
+        })
+        if btn then
+            btn:SetScript("OnEnter", BrowsePlannedBtnOnEnter)
+            btn:SetScript("OnLeave", BrowsePlannedBtnOnLeave)
+        end
+        row._browsePlannedBtn = btn
+    end
+    return btn
+end
+
 --- Single browse card: To-Do unified expandable row (Mounts / Pets / Toys / Illusions / Titles).
 --- Acquires/rebinds `card` (create if nil) into `host` and returns it; positioning is done by the grid.
 function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gridIndex, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
@@ -1242,7 +1367,6 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
             and ns.UI_BuildBrowseTodoSummaryLines(item, category, item._wnBrowseSources, { maxLines = 2 }) or {}
         item._wnBrowseDerived = true
     end
-    local sources = item._wnBrowseSources
     local summaryLines = item._wnBrowseSummaryLines
 
     local expandKey = (category or "x") .. ":" .. tostring(item.id or gridIndex)
@@ -1280,40 +1404,29 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
 
     local collapsedH = ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)
         or todoHeaderH
-    local rowData = {
-        todoUnifiedHeader = true,
-        summaryInHeader = true,
-        canExpand = canExpand,
-        icon = iconTexture,
-        iconIsAtlas = iconIsAtlas,
-        iconSize = (PCM and PCM.todoUnifiedIconSize) or 40,
-        typeAtlas = typeAtlas,
-        title = displayName,
-        summaryLines = summaryLines,
-        metaRightText = (trySuffix ~= "") and trySuffix or nil,
-        collapsedHeight = collapsedH,
-        criteriaData = {},
-        criteriaShowHeader = false,
-        titleRightInset = titleRightInset,
-        onSectionResize = function(rowFrame, currentH)
-            -- Browse cards are canExpand=false (uniform height), so this never fires; kept as a harmless
-            -- no-op hook so shared header code has a valid callback.
-        end,
-        onExpandPopulate = function(data)
-            local all = ns.UI_BuildBrowseSourceCriteriaItems and ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources) or {}
-            if #all > 1 then
-                local rest = {}
-                for si = 2, #all do
-                    rest[#rest + 1] = all[si]
-                end
-                data.criteriaData = rest
-            else
-                data.criteriaData = all
-            end
-            data.criteriaShowHeader = false
-            data.summaryInHeader = true
-        end,
-    }
+    -- Row data is owned by the card and refilled per rebind (no per-card tables / closures per paint).
+    local rowData = card and card._wnBrowseRowData or {}
+    local criteria = rowData._wnCriteria or {}
+    wipe(criteria)
+    rowData._wnCriteria = criteria
+    rowData.todoUnifiedHeader = true
+    rowData.summaryInHeader = true
+    rowData.canExpand = canExpand
+    rowData.icon = iconTexture
+    rowData.iconIsAtlas = iconIsAtlas
+    rowData.iconSize = (PCM and PCM.todoUnifiedIconSize) or 40
+    rowData.typeAtlas = typeAtlas
+    rowData.title = displayName
+    rowData.summaryLines = summaryLines
+    rowData.metaRightText = (trySuffix ~= "") and trySuffix or nil
+    rowData.collapsedHeight = collapsedH
+    rowData.criteriaData = criteria
+    rowData.criteriaShowHeader = false
+    rowData.titleRightInset = titleRightInset
+    rowData.onSectionResize = BrowseCardNoop
+    rowData.onExpandPopulate = BrowseCardOnExpandPopulate
+    rowData._wnBrowseItem = item
+    rowData._wnBrowseCategory = category
 
     -- POOLING: reuse a persistent card frame (cross-category). Reused cards keep their backdrop/border/icon
     -- shell (the expensive-to-render frames) and only rebind header content — no CreateFrame, no SetParent.
@@ -1324,9 +1437,10 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
         end
         ns.UI_RebindTodoBrowseRow(row, cardWidth, rowData)
     else
-        row = CreateExpandableRow(host, cardWidth, collapsedH, rowData, isExpanded, function() end)
+        row = CreateExpandableRow(host, cardWidth, collapsedH, rowData, isExpanded, BrowseCardNoop)
         if not row then return nil end
     end
+    row._wnBrowseRowData = rowData
     row:SetWidth(cardWidth)
     row._wnPlansBrowseKeep = true  -- PrepareContainer hides these in place instead of reparenting them
     row._browseExpandKey = expandKey
@@ -1343,7 +1457,9 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
         if item.isCollected or item.isPlanned then
             borderColor = GetCompletedBorderColor()
         else
-            borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
+            borderColor = row._wnBrowseAccentBorder or {}
+            borderColor[1], borderColor[2], borderColor[3], borderColor[4] = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6
+            row._wnBrowseAccentBorder = borderColor
         end
         ApplyVisuals(row, COLORS.bgCard, borderColor)
     end
@@ -1351,51 +1467,23 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
     -- Action button: exactly one of Add / Planned (or none for collected). Both button frames are cached on
     -- the row and the right one is shown; the Add button reads row._browseCtx so a reused button always acts
     -- on the current item. Reset both + any stale header script from the previous item first.
-    row._todoActionControls = {}
-    row._todoActionOffsets = {}
+    if row._todoActionControls then wipe(row._todoActionControls) end
+    if row._todoActionOffsets then wipe(row._todoActionOffsets) end
     if row._browseAddBtn then row._browseAddBtn:Hide() end
     if row._browsePlannedBtn then row._browsePlannedBtn:Hide() end
-    row.headerFrame:SetScript("OnMouseDown", nil)
-    -- Cached action buttons read this on click, so it must carry everything a re-render needs.
-    row._browseCtx = {
-        item = item, category = category, host = host, gridIndex = gridIndex,
-        cardWidth = cardWidth, todoHeaderH = todoHeaderH, PCM = PCM,
-        browseExpanded = browseExpanded, browserTryTypes = browserTryTypes,
-    }
-
-    local function EnsurePlannedBtn()
-        local btn = row._browsePlannedBtn
-        if not btn and PCF and PCF.CreateAddButton then
-            btn = PCF.CreateAddButton(row.headerFrame, {
-                buttonType = "card", iconOnly = true, plannedState = true,
-                width = ACTION_SIZE, height = ACTION_SIZE,
-                -- Planned is a toggle, not a badge: clicking it removes the plan this card created.
-                onClick = function()
-                    local ctx = row._browseCtx
-                    if not ctx or not ctx.item then return end
-                    local it, cat = ctx.item, ctx.category
-                    if not RemoveBrowseItemPlan(cat, it.id) then return end
-                    RerenderBrowseCard(self, row)
-                end,
-            })
-            if btn then
-                local removeTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_REMOVE"]) or "Click to remove from your To-Do list."
-                btn:SetScript("OnEnter", function(bf)
-                    GameTooltip:SetOwner(bf, "ANCHOR_LEFT")
-                    local tr, tg, tb = 1, 1, 1
-                    if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
-                    GameTooltip:SetText(removeTip, tr, tg, tb)
-                    GameTooltip:Show()
-                end)
-                btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            end
-            row._browsePlannedBtn = btn
-        end
-        return btn
-    end
+    -- Cached action buttons and the header click handler read this, so it must carry everything a
+    -- re-render needs. One table per card, refilled on every rebind.
+    local ctx = row._browseCtx or {}
+    ctx.item, ctx.category, ctx.host, ctx.gridIndex = item, category, host, gridIndex
+    ctx.cardWidth, ctx.todoHeaderH, ctx.PCM = cardWidth, todoHeaderH, PCM
+    ctx.browseExpanded, ctx.browserTryTypes = browseExpanded, browserTryTypes
+    ctx.titleAchLink = (category == "title" and item.sourceAchievement) and true or false
+    ctx.tryPopup = (browserTryTypes[category] and item.id and self.ShouldShowTryCountInUI
+        and self:ShouldShowTryCountInUI(category, item.id)) and true or false
+    row._browseCtx = ctx
 
     if item.isPlanned then
-        local plannedBtn = EnsurePlannedBtn()
+        local plannedBtn = EnsureBrowsePlannedBtn(self, row, PCF, ACTION_SIZE)
         if plannedBtn then plannedBtn:Show(); AnchorBrowseAction(row, plannedBtn) end
     elseif not isCompletedCard and PCF and PCF.CreateAddButton then
         local addBtn = row._browseAddBtn
@@ -1428,31 +1516,11 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
         if addBtn then addBtn:Show(); AnchorBrowseAction(row, addBtn) end
     end
 
-    if category == "title" and item.sourceAchievement then
-        row.headerFrame:SetScript("OnMouseDown", function(_, button)
-            if button == "LeftButton" then
-                self:ShowTab("achievements")
-            end
-        end)
-    end
-
-    if browserTryTypes[category] and item.id and self.ShouldShowTryCountInUI
-        and self:ShouldShowTryCountInUI(category, item.id) then
-        local tryId, tryName, tryCat = item.id, item.name, category
-        local prevMouseDown
-        do
-            local ok, res = pcall(function() return row.headerFrame:GetScript("OnMouseDown") end)
-            if ok then prevMouseDown = res end
-        end
-        row.headerFrame:SetScript("OnMouseDown", function(frame, button)
-            if button == "RightButton" then
-                if WarbandNexus.ShouldShowTryCountInUI and WarbandNexus:ShouldShowTryCountInUI(tryCat, tryId) and ns.UI_ShowTryCountPopup then
-                    ns.UI_ShowTryCountPopup(tryCat, tryId, tryName)
-                end
-                return
-            end
-            if prevMouseDown then prevMouseDown(frame, button) end
-        end)
+    row.headerFrame._wnBrowseCard = row
+    if ctx.tryPopup or ctx.titleAchLink then
+        row.headerFrame:SetScript("OnMouseDown", BrowseHeaderOnMouseDown)
+    else
+        row.headerFrame:SetScript("OnMouseDown", nil)
     end
 
     return row

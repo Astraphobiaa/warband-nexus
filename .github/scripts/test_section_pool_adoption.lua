@@ -67,10 +67,13 @@ do
     check(prep and prep:find("UI_SectionPool.Discard(child)", 1, true) ~= nil, "PrepareContainer discards through SectionPool")
 end
 
--- Plans teardown (chrome not pooled yet: quest rows need their own pool) at least marks its garbage.
+-- Plans: teardown keeps pooled frames in place and discards the rest; the daily-tasks (Weekly
+-- Progress) view builds its chrome through SectionPool ("pln:" keys) with a quest-row pool.
 do
     local src = ReadFile("Modules/UI/PlansUI.lua")
     check(src:find("ns.UI_SectionPool.Discard(child)", 1, true) ~= nil, "Plans teardown discards through SectionPool")
+    check(src:find('"pln:wrap:"', 1, true) ~= nil and src:find("SP.BeginPass(parent)", 1, true) ~= nil,
+        "Plans daily-tasks view pools its section chrome")
 end
 
 -- Characters: per-paint labels on pooled headers / content frames are cached, not recreated.
