@@ -3914,7 +3914,8 @@ function Fns.ScheduleLockoutQuestFallback(npcID, questID)
     if existing and existing.Cancel then
         existing:Cancel()
     end
-    lockoutQuestFallbackTimers[questID] = C_Timer.After(LOCKOUT_QUEST_LOOT_DEFER_SEC, function()
+    -- NewTimer: C_Timer.After returns no handle, so `existing:Cancel()` above never ran (2026-10-22).
+    lockoutQuestFallbackTimers[questID] = C_Timer.NewTimer(LOCKOUT_QUEST_LOOT_DEFER_SEC, function()
         lockoutQuestFallbackTimers[questID] = nil
         if not Fns.IsAutoTryCounterEnabled() then return end
         if lockoutAttempted[questID] then return end

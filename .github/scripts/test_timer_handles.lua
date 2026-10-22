@@ -147,6 +147,28 @@ do
     end
 end
 
+print("Phase 5: No handle is stored from C_Timer.After anywhere in Modules/ (2026-10-22)")
+do
+    -- Found again in ProfessionsUI (scroll relayout debounce) and TryCounterService (lockout
+    -- fallback). The only allowed capture is UI_MainShell's, which checks the type and falls back
+    -- to a generation guard.
+    local p = io.popen('find "' .. ROOT .. '/Modules" -name "*.lua" 2>/dev/null')
+    local offenders = {}
+    for path in p:lines() do
+        local rel = path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", "")
+        local src = ReadFile(rel):gsub("%-%-[^\n]*", "")
+        local ln = 0
+        for line in (src .. "\n"):gmatch("([^\n]*)\n") do
+            ln = ln + 1
+            if line:find("[%w_%]]%s*=%s*C_Timer%.After%(") and not line:find("local afterHandle = C_Timer.After(", 1, true) then
+                offenders[#offenders + 1] = rel .. ":" .. ln
+            end
+        end
+    end
+    p:close()
+    assert_eq(#offenders, 0, "no `x = C_Timer.After(...)` handle captures" .. (#offenders > 0 and (" (" .. table.concat(offenders, ", ") .. ")") or ""))
+end
+
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")
 
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))

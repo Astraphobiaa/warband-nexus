@@ -2095,8 +2095,10 @@ function PUI.DebounceProfessionRowGradientRefresh(mf)
     if sc._wnProfGradScrollTimer then
         sc._wnProfGradScrollTimer:Cancel()
     end
-    if C_Timer and C_Timer.After then
-        sc._wnProfGradScrollTimer = C_Timer.After(0.05, function()
+    -- NewTimer: C_Timer.After returns no handle, so the Cancel above never ran and every scroll
+    -- event queued its own full row relayout (2026-10-22).
+    if C_Timer and C_Timer.NewTimer then
+        sc._wnProfGradScrollTimer = C_Timer.NewTimer(0.05, function()
             sc._wnProfGradScrollTimer = nil
             if mf.currentTab == "professions" then
                 PUI.RelayoutProfessionRowWidths(sc)
