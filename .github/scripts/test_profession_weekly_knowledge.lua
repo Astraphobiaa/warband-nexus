@@ -158,6 +158,36 @@ do
 
     -- Check message emission
     assert_true(#emittedMessages > 0, "E.PROFESSION_DATA_UPDATED emitted on treatise completion")
+
+    -- 2026-10-22: weekly knowledge lives only in the skill-line bucket (no duplicate legacy mirror).
+    local mirror = charData.professionWeeklyKnowledge
+    assert_true(mirror == nil or mirror[2913] == nil, "no legacy mirror copy of the written skill line")
+    assert_true(charData.professionData.bySkillLine[2913].weeklyKnowledge ~= nil, "bucket holds the weekly knowledge")
+end
+
+print("Phase 2b: Fold migration drops mirror rows that have a bucket, keeps the rest")
+do
+    local fh = assert(io.open((os.getenv("WN_ROOT") or ".") .. "/Modules/MigrationService.lua", "rb"))
+    local src = fh:read("*a")
+    fh:close()
+    local body = src:match("(function MigrationService:MigrateFoldProfessionWeeklyMirrorV1%(db%).-\nend)\n")
+    assert_true(body ~= nil, "fold migration defined")
+    if body then
+        local chunk = assert(loadstring("local MigrationService, DebugPrint = {}, function() end\n" .. body .. "\nreturn MigrationService"))
+        local MS = chunk()
+        local shared = { treatise = { current = 1, total = 1 } }
+        local db = { global = { characters = {
+            A = { professionData = { bySkillLine = { [2913] = { weeklyKnowledge = shared } } },
+                  professionWeeklyKnowledge = { [2913] = shared, [2906] = { treatise = { current = 0, total = 1 } } } },
+            B = { professionWeeklyKnowledge = { [2913] = shared } },
+        } } }
+        MS:MigrateFoldProfessionWeeklyMirrorV1(db)
+        local A, B = db.global.characters.A, db.global.characters.B
+        assert_true(A.professionWeeklyKnowledge and A.professionWeeklyKnowledge[2913] == nil, "mirror row with a bucket dropped")
+        assert_true(A.professionWeeklyKnowledge and A.professionWeeklyKnowledge[2906] ~= nil, "mirror row without a bucket kept")
+        assert_true(B.professionWeeklyKnowledge and B.professionWeeklyKnowledge[2913] ~= nil, "character without buckets keeps its rows")
+        assert_true(db.global.foldProfessionWeeklyMirrorV1 == true, "migration stamped")
+    end
 end
 
 print("Phase 3: Logout Flush Persists In-Flight Treatise Completion")
@@ -203,7 +233,7 @@ do
     local charData = WarbandNexus.db.global.characters[charKey]
 
     -- Artificially age the lastUpdate timestamp beyond 7 days
-    local wk = charData.professionWeeklyKnowledge[2913]
+    local wk = charData.professionData.bySkillLine[2913].weeklyKnowledge
     wk.lastUpdate = time() - (8 * 86400)
     wk.uniques = { current = 4, total = 8, source = "hardcoded_quest" }
 

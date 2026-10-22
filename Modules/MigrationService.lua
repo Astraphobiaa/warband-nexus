@@ -300,7 +300,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 8
+local MIGRATION_FAST_PATH_REVISION = 9
 
 --- Every step RunMigrations runs on the full path, in order. Each step is a MigrationService method
 --- taking (db) and guards itself (flag, stamp or version compare), so re-running one is a no-op.
@@ -344,6 +344,7 @@ local MIGRATION_STEPS = {
     "MigrateNormalizeCharacterKeyPrefsV1",
     "MigratePruneDeadProfileKeysV1",
     "FinalizeGuidOnlySubsidiaryV1",
+    "MigrateFoldProfessionWeeklyMirrorV1",
 }
 
 --- Cheap steps that also run on the fast path (2026-10-22). The first two compare a stored stamp with a
@@ -2174,6 +2175,34 @@ function MigrationService:MigratePruneDeadProfileKeysV1(db)
         n.lastVaultCheck = nil
     end
     db.profile.deadProfileKeysPrunedV1 = true
+end
+
+--- Drop charData.professionWeeklyKnowledge entries whose skill line already has
+--- professionData.bySkillLine[sl].weeklyKnowledge (2026-10-22): the "legacy mirror" was the same table,
+--- so SavedVariables stored every weekly knowledge row twice. Entries without a bucket stay (readers
+--- fall back to them); an emptied mirror is removed.
+---@param db table AceDB root
+function MigrationService:MigrateFoldProfessionWeeklyMirrorV1(db)
+    if not db or not db.global or db.global.foldProfessionWeeklyMirrorV1 then return end
+    local removed = 0
+    for _, charData in pairs(db.global.characters or {}) do
+        local mirror = type(charData) == "table" and charData.professionWeeklyKnowledge
+        if type(mirror) == "table" then
+            local bySkillLine = type(charData.professionData) == "table" and charData.professionData.bySkillLine
+            for sl in pairs(mirror) do
+                local bucket = type(bySkillLine) == "table" and bySkillLine[sl]
+                if type(bucket) == "table" and type(bucket.weeklyKnowledge) == "table" then
+                    mirror[sl] = nil
+                    removed = removed + 1
+                end
+            end
+            if next(mirror) == nil then charData.professionWeeklyKnowledge = nil end
+        end
+    end
+    if removed > 0 then
+        DebugPrint("|cff9370DB[Migration]|r foldProfessionWeeklyMirrorV1: dropped " .. removed .. " mirrored row(s)")
+    end
+    db.global.foldProfessionWeeklyMirrorV1 = true
 end
 
 local function CollectionStoreIsAuthoritative(global)

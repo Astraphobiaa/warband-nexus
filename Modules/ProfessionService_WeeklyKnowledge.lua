@@ -389,17 +389,19 @@ local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineI
         if bucket.weeklyKnowledge then
             bucket.weeklyKnowledge.lastUpdate = progress.lastUpdate or time()
         end
-        if charData.professionWeeklyKnowledge and charData.professionWeeklyKnowledge[skillLineID] then
-            charData.professionWeeklyKnowledge[skillLineID].lastUpdate = progress.lastUpdate or time()
-        end
         return false
     end
 
     bucket.weeklyKnowledge = progress
 
-    -- Legacy compatibility mirror
-    charData.professionWeeklyKnowledge = charData.professionWeeklyKnowledge or {}
-    charData.professionWeeklyKnowledge[skillLineID] = progress
+    -- 2026-10-22: no legacy mirror. charData.professionWeeklyKnowledge[sl] was the same table as
+    -- bucket.weeklyKnowledge, so SavedVariables wrote it twice; readers fall back to the mirror
+    -- only for skill lines with no bucket. Drop this line's mirror entry now that the bucket has it.
+    local mirror = charData.professionWeeklyKnowledge
+    if mirror then
+        mirror[skillLineID] = nil
+        if next(mirror) == nil then charData.professionWeeklyKnowledge = nil end
+    end
     return true
 end
 
