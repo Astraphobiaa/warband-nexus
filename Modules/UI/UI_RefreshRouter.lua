@@ -299,6 +299,13 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         if planID ~= nil and ns.PlansUI_ApplyPlanDelta and ns.PlansUI_ApplyPlanDelta(planID, action) then
             return
         end
+        -- daily_plan_updated is a background quest-log rescan, not a click: when the delta path declines
+        -- (Weekly Progress cards are not virtualized) coalesce it instead of a cooldown-skipping repaint
+        -- on every wave (2026-10-22).
+        if action == "daily_plan_updated" then
+            SchedulePopulateContent()
+            return
+        end
         SchedulePopulateContent(true)
     end)
     
@@ -503,7 +510,13 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                 SchedulePopulateContent()
             end
         elseif tab == "stats" then
-            SchedulePopulateContent(true)
+            -- Stats reads only roster rows (name / class / tracking), gold and timePlayed. Gold has its own
+            -- listener in StatisticsUI; roster and played-time updates carry no dataType. Zone, rested,
+            -- mail, item level, favorite... repainted the whole tab for nothing (2026-10-22).
+            local dataType = payload and payload.dataType
+            if dataType == nil or dataType == "rosterPrune" then
+                SchedulePopulateContent(true)
+            end
         elseif tab == "gear" then
             if payload and payload.dataType == "itemLevel" and payload.charKey
                 and WarbandNexus.TryRefreshGearTabItemLevelOnly

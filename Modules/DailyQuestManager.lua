@@ -1166,12 +1166,114 @@ function WarbandNexus:GetDailyPlan(characterName, characterRealm)
     return FindDailyPlanForCharacter(characterName, characterRealm)
 end
 
-function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
+-- QUEST_LOG_UPDATE gate (2026-10-22): every wave (>= ~1s apart) ran a full ScanMidnightQuests (9 maps,
+-- ~10 API calls per quest, GetAllCompletedQuestIDs) and sent WN_PLANS_UPDATED with no diff. A cheap
+-- quest-log fingerprint (entry IDs + objective progress) now skips the scan while the log is unchanged.
+-- Map-only data (world quest spawn / expiry, minute-resolution timeLeft) is not in the log, so a full
+-- scan still runs once the last one is QUEST_LOG_RESCAN_MAX_AGE seconds old.
+local QUEST_LOG_RESCAN_MAX_AGE = 60
+local questLogGate = { parts = {}, sig = nil, scannedAt = nil }
+
+--- Quest log fingerprint: questIDs + objective numFulfilled / finished. nil when a value is secret.
+local function BuildQuestLogSignature()
+    if not C_QuestLog or not C_QuestLog.GetNumQuestLogEntries or not C_QuestLog.GetInfo then return nil end
+    local okN, numEntries = pcall(C_QuestLog.GetNumQuestLogEntries)
+    if not okN or type(numEntries) ~= "number" then return nil end
+    local parts = questLogGate.parts
+    wipe(parts)
+    for i = 1, numEntries do
+        local info = C_QuestLog.GetInfo(i)
+        local qid = info and not info.isHeader and info.questID
+        if qid then
+            if issecretvalue and issecretvalue(qid) then return nil end
+            parts[#parts + 1] = qid
+            if C_QuestLog.GetQuestObjectives then
+                local ok, objectives = pcall(C_QuestLog.GetQuestObjectives, qid)
+                if ok and type(objectives) == "table" then
+                    for oi = 1, #objectives do
+                        local obj = objectives[oi]
+                        if type(obj) == "table" then
+                            local nf, fin = obj.numFulfilled, obj.finished
+                            if issecretvalue and (issecretvalue(nf) or issecretvalue(fin)) then return nil end
+                            parts[#parts + 1] = type(nf) == "number" and nf or -1
+                            parts[#parts + 1] = fin and "y" or "n"
+                        end
+                    end
+                end
+            end
+            parts[#parts + 1] = ";"
+        end
+    end
+    return table.concat(parts, ",")
+end
+
+--- True when the QUEST_LOG_UPDATE wave needs a full rescan (log changed, unreadable, or last scan too old).
+local function QuestLogNeedsRescan()
+    local now = GetTime()
+    local sig = BuildQuestLogSignature()
+    if sig and sig == questLogGate.sig and questLogGate.scannedAt
+        and (now - questLogGate.scannedAt) < QUEST_LOG_RESCAN_MAX_AGE then
+        return false
+    end
+    questLogGate.sig = sig
+    questLogGate.scannedAt = now
+    return true
+end
+
+-- Order-independent fingerprint of plan.quests, used to drop no-op daily_plan_updated messages.
+local fingerprintKeyBufs = {}
+local fingerprintParts = {}
+local function CmpFingerprintKey(a, b)
+    local ta, tb = type(a), type(b)
+    if ta ~= tb then return ta < tb end
+    return a < b
+end
+local function AppendFingerprint(parts, v, depth)
+    if issecretvalue and issecretvalue(v) then return false end
+    if type(v) ~= "table" then
+        parts[#parts + 1] = type(v) == "string" and v or tostring(v)
+        return true
+    end
+    local keys = fingerprintKeyBufs[depth]
+    if not keys then
+        keys = {}
+        fingerprintKeyBufs[depth] = keys
+    end
+    wipe(keys)
+    for k in pairs(v) do
+        local tk = type(k)
+        if (tk ~= "string" and tk ~= "number") or (issecretvalue and issecretvalue(k)) then return false end
+        keys[#keys + 1] = k
+    end
+    table.sort(keys, CmpFingerprintKey)
+    parts[#parts + 1] = "{"
+    for i = 1, #keys do
+        local k = keys[i]
+        parts[#parts + 1] = k
+        if not AppendFingerprint(parts, v[k], depth + 1) then return false end
+    end
+    parts[#parts + 1] = "}"
+    return true
+end
+
+--- nil when the rows cannot be fingerprinted (secret / odd key) -> caller treats as changed.
+local function QuestsFingerprint(quests)
+    if type(quests) ~= "table" then return nil end
+    wipe(fingerprintParts)
+    if not AppendFingerprint(fingerprintParts, quests, 1) then return nil end
+    return table.concat(fingerprintParts, "\031")
+end
+
+---@param onlyIfChanged boolean|nil skip WN_PLANS_UPDATED when the rescan left plan.quests unchanged
+---@return boolean|nil sent false when the message was skipped as a no-op
+function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications, onlyIfChanged)
     if not plan or plan.type ~= "daily_quests" then return end
 
     plan.questTypes = NormalizeQuestTypes(plan.questTypes)
     self:NormalizeTrackedCatalogKeys(plan)
 
+    -- Taken before the scan / merge: merged rows are shared with the old lists and mutated below.
+    local beforeFingerprint = onlyIfChanged and QuestsFingerprint(plan.quests) or nil
     local oldQuests = plan.quests
     local newQuests = self:ScanMidnightQuests()
 
@@ -1240,11 +1342,17 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     plan.quests = newQuests
     plan.lastUpdate = time()
 
+    -- QUEST_LOG_UPDATE path: identical rows -> no message (it repainted Weekly Progress every wave).
+    if beforeFingerprint and beforeFingerprint == QuestsFingerprint(newQuests) then
+        return false
+    end
+
     self:SendMessage(E.PLANS_UPDATED, {
         action   = "daily_plan_updated",
         planID   = plan.id,
         planType = "daily_quests",
     })
+    return true
 end
 
 -- EVENT HANDLERS
@@ -1441,8 +1549,12 @@ function WarbandNexus:OnDailyQuestUpdate()
         self.questUpdateTimer = nil
         local currentKey = ns.Utilities:GetCharacterKey()
         local dailyList = GetDailyQuestPlansForCharKey(currentKey)
+        -- Unchanged quest log since the last full scan: take the light path below (2026-10-22).
+        if dailyList and #dailyList > 0 and not QuestLogNeedsRescan() then
+            dailyList = nil
+        end
         if not dailyList or #dailyList == 0 then
-            -- No daily-quest plan on this character. CheckPlansForCompletion (the only listener)
+            -- No daily-quest plan on this character (or nothing in the log changed). CheckPlansForCompletion (the only listener)
             -- still doubles as a fallback for other plan types, so keep it for incomplete To-Do
             -- plans, but at most every 5s instead of on every ~1s QUEST_LOG_UPDATE wave; with no
             -- incomplete plan there is nothing to check. Turn-ins still send via QUEST_TURNED_IN.
@@ -1459,7 +1571,7 @@ function WarbandNexus:OnDailyQuestUpdate()
             return
         end
         for i = 1, #dailyList do
-            self:UpdateDailyPlanProgress(dailyList[i], true)
+            self:UpdateDailyPlanProgress(dailyList[i], true, true)
         end
 
         if self.SendMessage then

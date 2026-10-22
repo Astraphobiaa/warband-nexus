@@ -553,6 +553,12 @@ function WarbandNexus:CheckPlansForCompletion()
                 name = self:GetPlanDisplayName(plan),
                 icon = self:GetPlanDisplayIcon(plan)
             })
+            -- The dispatch above runs OnPlanCollectionUpdated synchronously, which already completes
+            -- this plan (toast + chat + PLANS_UPDATED); finishing it here again doubled both (2026-10-22).
+            if plan.completed or plan.completionNotified then
+                anyCompleted = true
+                return
+            end
         end
         self:ShowPlanCompletedNotification(plan)
         plan.completed = true
@@ -567,8 +573,14 @@ function WarbandNexus:CheckPlansForCompletion()
     end
 
     if useList then
+        -- Iterate a snapshot: a completion inside processPlan rebuilds _incompleteTodoPlansList in
+        -- place (RebuildIncompleteTodoPlansList), which shifted the live list and skipped plans (2026-10-22).
+        local snapshot = {}
         for i = 1, #list do
-            processPlan(list[i])
+            snapshot[i] = list[i]
+        end
+        for i = 1, #snapshot do
+            processPlan(snapshot[i])
         end
     else
         local _plans = self.db.global.plans
@@ -878,7 +890,9 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
     
     -- Achievement plans may also fire WN_COLLECTIBLE_OBTAINED (achievement toast) in the same
     -- burst; both toasts are intentional (plan lane + achievement lane stay separate).
+    -- planID lets the PlansUI card cache mark only this card dirty instead of rebuilding all (2026-10-22).
     self:SendMessage(E.PLAN_COMPLETED, {
+        planID = plan.id,
         planType = plan.type,
         name = displayName,
         icon = displayIcon
