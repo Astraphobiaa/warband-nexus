@@ -915,8 +915,10 @@ function TooltipService:RenderItemTooltip(frame, data)
     if sparse and resolvedID then
         QueueTooltipItemPrefetch(resolvedID)
     end
-    if tooltipData and tooltipData.dataInstanceID then
-        data._dataInstanceID = tooltipData.dataInstanceID
+    -- dataInstanceID may be a secret value (Midnight): check before any truthiness test / compare.
+    local instanceID = tooltipData and tooltipData.dataInstanceID
+    if not (issecretvalue and issecretvalue(instanceID)) and instanceID ~= nil then
+        data._dataInstanceID = instanceID
     else
         data._dataInstanceID = nil
     end
@@ -2046,6 +2048,9 @@ function TooltipService:RegisterSafetyEvents()
             return
         end
         if event == "TOOLTIP_DATA_UPDATE" then
+            -- TOOLTIP_DATA_UPDATE(dataInstanceID: number?) can carry a secret value: secret check before
+            -- `not` / tonumber / compare, which error on secrets (2026-10-22).
+            if issecretvalue and issecretvalue(arg1) then return end
             if not isVisible or not activeTooltipData or activeTooltipData.type ~= "item" then return end
             if not activeDataInstanceID or not arg1 then return end
             if tonumber(activeDataInstanceID) ~= tonumber(arg1) then return end
@@ -2058,6 +2063,7 @@ function TooltipService:RegisterSafetyEvents()
             return
         end
         if event == "GET_ITEM_INFO_RECEIVED" then
+            if issecretvalue and (issecretvalue(arg1) or issecretvalue(arg2)) then return end
             if arg2 == false then return end
             local receivedID = tonumber(arg1)
             if not ShouldRefreshActiveItemTooltip(receivedID) then return end

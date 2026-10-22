@@ -13,6 +13,7 @@
         `X ~= nil and not (issecretvalue and issecretvalue(X))` (13 sites fixed, none may come back);
       - Modules/ProfessionService.lua: no comparison of X with nil or "" before issecretvalue(X) on
         the same line, and SafeAPIString checks issecretvalue first.
+    Plus pinned sites (PINNED below) where the whole block is checked, not one line.
     The broader rule (any nil / "" comparison before the secret check) still has ~97 pre-existing
     hits elsewhere; whether such a comparison errors on a secret in-game is unverified, so they are
     reported, not enforced, until that is confirmed.
@@ -63,6 +64,37 @@ do
     local first = body and body:match("^%s*%-%-[^\n]*\n%s*([^\n]+)") or (body and body:match("^%s*([^\n]+)"))
     if not (first and first:find("issecretvalue", 1, true)) then
         failures[#failures + 1] = "Modules/ProfessionService.lua  SafeAPIString must check issecretvalue before any comparison"
+    end
+end
+
+-- Pinned sites: inside the block that starts at `anchor`, the secret check on `var` comes before
+-- the first other use of `var` (truthiness test, compare, tonumber). 2026-10-22: TooltipService ran
+-- `not arg1` / tonumber(arg1) on TOOLTIP_DATA_UPDATE's dataInstanceID (number?, can be secret).
+local PINNED = {
+    { "Modules/TooltipService.lua", 'if event == "TOOLTIP_DATA_UPDATE" then', "arg1" },
+    { "Modules/TooltipService.lua", 'if event == "GET_ITEM_INFO_RECEIVED" then', "arg1" },
+    { "Modules/TooltipService.lua", 'if event == "GET_ITEM_INFO_RECEIVED" then', "arg2" },
+    { "Modules/TooltipService.lua", "local instanceID = tooltipData and tooltipData.dataInstanceID", "instanceID" },
+}
+for i = 1, #PINNED do
+    local rel, anchor, var = PINNED[i][1], PINNED[i][2], PINNED[i][3]
+    local fh = io.open(ROOT .. "/" .. rel, "rb")
+    local src = fh and fh:read("*a"):gsub("\r\n", "\n"):gsub("%-%-[^\n]*", "") or ""
+    if fh then fh:close() end
+    checked = checked + 1
+    local at = src:find(anchor, 1, true)
+    if not at then
+        failures[#failures + 1] = rel .. "  pinned anchor not found: " .. anchor
+    else
+        local block = src:sub(at + #anchor, at + #anchor + 600)
+        local secretAt = block:find("issecretvalue%(" .. var .. "%)")
+        local useAt = block:find("%f[%w_]" .. var .. "%f[^%w_]")
+        while useAt and secretAt and useAt == secretAt + #"issecretvalue(" do
+            useAt = block:find("%f[%w_]" .. var .. "%f[^%w_]", useAt + #var)
+        end
+        if not secretAt or (useAt and useAt < secretAt) then
+            failures[#failures + 1] = string.format("%s  `%s` used before issecretvalue(%s) after: %s", rel, var, var, anchor)
+        end
     end
 end
 
