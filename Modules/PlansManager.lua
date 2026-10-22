@@ -18,8 +18,8 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 ---@return string|nil text safe for :find/:match/:gsub (nil when secret or empty)
 local function SafeTextForStringOps(text)
-    if not text or text == "" then return nil end
     if issecretvalue and issecretvalue(text) then return nil end
+    if not text or text == "" then return nil end
     return text
 end
 
@@ -747,8 +747,8 @@ function WarbandNexus:GetPlanDisplayName(plan)
                         -- TransmogIllusionInfo carries no name; GetIllusionStrings does (12.1.5 API doc).
                         if C_TransmogCollection.GetIllusionStrings then
                             local okStr, illName = pcall(C_TransmogCollection.GetIllusionStrings, illusionInfo.sourceID)
-                            if okStr and type(illName) == "string" and illName ~= ""
-                                and not (issecretvalue and issecretvalue(illName)) then
+                            if okStr and not (issecretvalue and issecretvalue(illName))
+                                and type(illName) == "string" and illName ~= "" then
                                 return illName
                             end
                         end
@@ -801,10 +801,9 @@ function WarbandNexus:GetPlanDisplaySource(plan)
     if plan.type == "mount" and plan.mountID then
         if C_MountJournal and C_MountJournal.GetMountInfoExtraByID then
             local ok, displayID, description, source = pcall(C_MountJournal.GetMountInfoExtraByID, plan.mountID)
-            if ok and source and type(source) == "string" and source ~= "" then
-                if not (issecretvalue and issecretvalue(source)) then
-                    return source
-                end
+            if ok and not (issecretvalue and issecretvalue(source))
+                and type(source) == "string" and source ~= "" then
+                return source
             end
         end
         -- Fallback: collection metadata (e.g. Nether-Warped Drake when API returns empty)
@@ -2244,8 +2243,8 @@ end
 -- CHAT LINKS (To-Do plan cards: mount / pet / toy / achievement / item types)
 
 local function SafeChatLinkString(link)
-    if not link or type(link) ~= "string" or link == "" then return nil end
     if issecretvalue and issecretvalue(link) then return nil end
+    if not link or type(link) ~= "string" or link == "" then return nil end
     return link
 end
 
@@ -2326,8 +2325,8 @@ function WarbandNexus:GetPlanChatLink(plan)
     if t == "pet" and plan.speciesID and type(plan.speciesID) == "number" and C_PetJournal then
         if C_PetJournal.GetPetInfoBySpeciesID and C_PetJournal.FindPetIDByName and C_PetJournal.GetBattlePetLink then
             local okName, speciesName = pcall(C_PetJournal.GetPetInfoBySpeciesID, plan.speciesID)
-            if okName and type(speciesName) == "string" and speciesName ~= ""
-                and not (issecretvalue and issecretvalue(speciesName)) then
+            if okName and not (issecretvalue and issecretvalue(speciesName))
+                and type(speciesName) == "string" and speciesName ~= "" then
                 local okFind, foundSpecies, petGUID = pcall(C_PetJournal.FindPetIDByName, speciesName)
                 if okFind and foundSpecies == plan.speciesID and type(petGUID) == "string"
                     and not (issecretvalue and issecretvalue(petGUID)) then

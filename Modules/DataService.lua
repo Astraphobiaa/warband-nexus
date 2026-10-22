@@ -101,8 +101,8 @@ end
 
 --- Handle TIME_PLAYED_MSG event.
 function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThisLevel)
-    if totalTimePlayed == nil then return end
     if issecretvalue and issecretvalue(totalTimePlayed) then return end
+    if totalTimePlayed == nil then return end
     local played = tonumber(totalTimePlayed)
     if not played or played <= 0 then return end
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
@@ -226,11 +226,10 @@ function WarbandNexus:RepairCharacterRowFromKey(charKey, charData)
             end
         end
     end
-    if (not charData.class or charData.class == "") and charData.classFile and charData.classFile ~= "" then
-        if not (issecretvalue and issecretvalue(charData.classFile)) then
-            charData.class = charData.classFile
-            repaired = true
-        end
+    if (not charData.class or charData.class == "") and not (issecretvalue and issecretvalue(charData.classFile))
+        and charData.classFile and charData.classFile ~= "" then
+        charData.class = charData.classFile
+        repaired = true
     end
     return repaired
 end
@@ -371,9 +370,9 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         if issecretvalue and issecretvalue(lv) then lv = nil end
         lv = tonumber(lv)
         if not lv or lv <= 0 then
-            lv = UnitLevel("player")
-            if issecretvalue and lv and issecretvalue(lv) then return end
-            lv = tonumber(lv)
+            local unitLv = UnitLevel("player")
+            if issecretvalue and issecretvalue(unitLv) then return end
+            lv = tonumber(unitLv)
             if not lv or lv <= 0 then return end
         end
         charData.level = lv
@@ -642,8 +641,8 @@ end
 --- Collect current player stats for persistence (Gear tab offline display).
 local function CollectPlayerStats()
     local function safeFloor(val)
-        if val == nil then return nil end
         if issecretvalue and issecretvalue(val) then return nil end
+        if val == nil then return nil end
         if type(val) ~= "number" then return nil end
         return math.floor(val)
     end
@@ -1235,8 +1234,8 @@ function WarbandNexus:SaveCurrentCharacterData(options)
             existingEntry.isResting = lightLoc.isResting
             existingEntry.locationSavedAt = lightLoc.savedAt
         end
-        if not existingEntry.guid or existingEntry.guid == ""
-            or (issecretvalue and issecretvalue(existingEntry.guid)) then
+        if (issecretvalue and issecretvalue(existingEntry.guid))
+            or not existingEntry.guid or existingEntry.guid == "" then
             if ns.Utilities and ns.Utilities.SafeGuid then
                 local g = ns.Utilities:SafeGuid("player")
                 if g and not (issecretvalue and issecretvalue(g)) then
@@ -1477,8 +1476,8 @@ function WarbandNexus:HealCharacterProfessions(charData)
     local foundNames = {}
     local nameOrder = {}
     local function addCandidate(name)
-        if not name or type(name) ~= "string" or name == "" then return end
         if issecretvalue and issecretvalue(name) then return end
+        if not name or type(name) ~= "string" or name == "" then return end
         if name == "Cooking" or name == "Fishing" or name == "Archaeology" or name == "_legacy" then return end
         if (has1 and p1.name == name) or (has2 and p2.name == name) then return end
         if not foundNames[name] then
@@ -1583,8 +1582,8 @@ function WarbandNexus:UpdateProfessionData()
                 for si = 1, 2 do
                     local old = existingData[si]
                     local name = old and old.name
-                    if type(name) == "string" and name ~= "" and not rawPrimary[name]
-                        and not (issecretvalue and issecretvalue(name)) then
+                    if not (issecretvalue and issecretvalue(name))
+                        and type(name) == "string" and name ~= "" and not rawPrimary[name] then
                         pending = row.professionDropPending or {}
                         row.professionDropPending = pending
                         local firstSeen = tonumber(pending[name])

@@ -753,20 +753,20 @@ end
 local function uiMapSafeName(info)
     if not info then return nil end
     local n = info.name
-    if not n or n == "" then return nil end
     if issecretvalue and issecretvalue(n) then return "<secret>" end
+    if not n or n == "" then return nil end
     return n
 end
 
 local function uiMapSafeScalar(v)
-    if v == nil then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
+    if v == nil then return nil end
     return tonumber(v)
 end
 
 local function uiMapDebugScalar(v)
-    if v == nil then return "?" end
     if issecretvalue and issecretvalue(v) then return "<secret>" end
+    if v == nil then return "?" end
     return tostring(v)
 end
 
