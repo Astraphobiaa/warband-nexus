@@ -1281,8 +1281,11 @@ function WarbandNexus:InitializeDailyQuestManager()
     if not self._dailyQuestPEWFrame then
         local pewFrame = CreateFrame("Frame")
         pewFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        pewFrame:SetScript("OnEvent", function()
+        pewFrame:SetScript("OnEvent", function(_, _, isInitialLogin, isReloadingUi)
             if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
+            -- Login / reload only: on a plain zone change QUEST_LOG_UPDATE already refreshes the
+            -- daily plans, and this pass ran one full ScanMidnightQuests per plan (2026-10-22).
+            if not (isInitialLogin or isReloadingUi) then return end
             if WarbandNexus and WarbandNexus.OnDailyQuestLogin then
                 WarbandNexus:OnDailyQuestLogin()
             end

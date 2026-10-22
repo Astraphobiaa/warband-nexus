@@ -109,6 +109,7 @@ jobs:
             lua5.1 .github/scripts/test_logout_bag_flush.lua
             lua5.1 .github/scripts/test_tooltip_item_counts.lua
             lua5.1 .github/scripts/test_message_storms.lua
+            lua5.1 .github/scripts/test_zone_change_work.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

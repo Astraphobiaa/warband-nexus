@@ -306,11 +306,17 @@ scannerFrame:SetScript("OnEvent", function(self, event, ...)
     -- Module gate: vault producer runs while PvE, Plans or the VaultButton consumes it.
     if not (ns.Utilities and ns.Utilities.IsPvEVaultConsumerEnabled and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
     if event == "PLAYER_ENTERING_WORLD" then
-        -- Player logged in or reloaded UI
-        -- Request data from server
-        C_Timer.After(1, function()
-            RequestVaultData()
-        end)
+        local isInitialLogin, isReloadingUi = ...
+        if isInitialLogin or isReloadingUi then
+            -- Player logged in or reloaded UI: request data from server
+            C_Timer.After(1, function()
+                RequestVaultData()
+            end)
+        elseif ns.WarbandNexus and ns.WarbandNexus.RequestWeeklyVaultRefresh then
+            -- Plain zone change / instance exit: the throttled poke. Each poke answers with
+            -- WEEKLY_REWARDS_UPDATE, which runs three full vault handlers (2026-10-22).
+            ns.WarbandNexus:RequestWeeklyVaultRefresh(1)
+        end
         
     elseif event == "WEEKLY_REWARDS_UPDATE" then
         -- Server sent us vault data
