@@ -3110,8 +3110,11 @@ ns.GearService._storageFindDeps = {
 -- After currency changes (e.g. crests spent on upgrade), re-scan gear so item ilvl/tier and watermarks stay in sync.
 local GearServiceMsgListeners = ns._gearServiceMsgListeners or {}
 ns._gearServiceMsgListeners = GearServiceMsgListeners
-WarbandNexus.RegisterMessage(GearServiceMsgListeners, Constants.EVENTS.CURRENCY_UPDATED, function()
+WarbandNexus.RegisterMessage(GearServiceMsgListeners, Constants.EVENTS.CURRENCY_UPDATED, function(_, currencyID)
     InvalidateGearUpgradeCurrencyCaches()
+    -- A single non-crest currency (any loot / reward tick) cannot change gear: skip the 16-slot rescan
+    -- and its GEAR_UPDATED. A batch (nil payload) or a crest still rescans. (2026-10-22)
+    if type(currencyID) == "number" and not UPGRADE_CURRENCY_ID_SET_EARLY[currencyID] then return end
     if not (ns.Utilities and ns.Utilities:IsModuleEnabled("gear")) then return end
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
     if currencyGearScanTimer then currencyGearScanTimer:Cancel() end

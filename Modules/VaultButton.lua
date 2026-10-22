@@ -758,7 +758,16 @@ function M.HookWNMessages()
         WarbandNexus.RegisterMessage(VBListeners, E.PVE_UPDATED, OnDataChanged)
     end
     if E.CHARACTER_UPDATED then
-        WarbandNexus.RegisterMessage(VBListeners, E.CHARACTER_UPDATED, OnDataChanged)
+        -- Vault rows read name / realm / class / item level / tracking only. Gold, zone, rested,
+        -- mail, guild and favorite updates (every loot, XP tick, zone change) rebuilt the whole
+        -- roster sweep for nothing (2026-10-22).
+        local IGNORED = { gold = true, zone = true, rested = true, mail = true, guild = true, favorite = true,
+            customSection = true, customSections = true }
+        WarbandNexus.RegisterMessage(VBListeners, E.CHARACTER_UPDATED, function(_, payload)
+            local dt = type(payload) == "table" and payload.dataType or nil
+            if dt and IGNORED[dt] and not payload.isDeleted then return end
+            OnDataChanged()
+        end)
     end
     if E.VAULT_REWARD_AVAILABLE then
         WarbandNexus.RegisterMessage(VBListeners, E.VAULT_REWARD_AVAILABLE, OnDataChanged)

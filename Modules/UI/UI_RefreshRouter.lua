@@ -202,13 +202,18 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_UPDATED, function()
         if HiddenOrMissing() then return end
+        -- Same routing as refreshCurrency below (2026-10-22): every currency drain (any loot / crest
+        -- tick) rebuilt the whole Gear tab and the Characters tab without the 800ms cooldown.
         if f.currentTab == "gear" then
+            if WarbandNexus.TryRefreshGearUpgradeEconomy and WarbandNexus:TryRefreshGearUpgradeEconomy() then
+                return
+            end
             SchedulePopulateContent(true)
         elseif f.currentTab == "currency" then
             SchedulePopulateContent()
         elseif f.currentTab == "chars" then
-            -- Total Gold / WoW Token card reads token price; refresh without 800ms cooldown drop.
-            SchedulePopulateContent(true)
+            -- Total Gold / WoW Token card: coalesce with the standard cooldown.
+            SchedulePopulateContent()
         elseif f.currentTab == "pve" then
             -- Restored Key / crest columns: vault open grants currency before hover tooltip refresh.
             st.lastEventPopulateTime = 0

@@ -307,9 +307,11 @@ local function CollectPlayerLocation()
 end
 
 -- Fields of a CollectRestedData() snapshot that the UI actually reads (updatedAt excluded).
+-- currentXP is not displayed: comparing it sent CHARACTER_UPDATED{rested} on every kill / quest
+-- XP tick while leveling (2026-10-22). It is still stored, silently, in the unchanged path.
 local RESTED_COMPARE_FIELDS = {
     "exhaustionID", "restStateName", "restStateFactor", "isRestingArea",
-    "currentRestedXP", "currentXP", "maxXP", "restedCapXP",
+    "currentRestedXP", "maxXP", "restedCapXP",
 }
 
 ---True when the new rested snapshot differs from the stored one (secret values count as changed).
@@ -446,6 +448,7 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         if not RestedSnapshotChanged(existingRested, newRested) then
             if type(existingRested) == "table" and newRested then
                 existingRested.updatedAt = newRested.updatedAt
+                existingRested.currentXP = newRested.currentXP
             end
             charData.lastSeen = time()
             return
@@ -473,14 +476,11 @@ function WarbandNexus:RegisterCharacterCacheEvents()
         return
     end
     
-    -- PLAYER_MONEY: owned by Core.lua → EventManager (OnMoneyChanged)
-    -- DataService listens to WN_MONEY_UPDATED message instead
-    local DataServiceMsgListeners = ns._dataServiceMsgListeners or {}
-    ns._dataServiceMsgListeners = DataServiceMsgListeners
-    WarbandNexus.RegisterMessage(DataServiceMsgListeners, E.MONEY_UPDATED, function()
-        self:UpdateCharacterCache("gold")
-    end)
-    
+    -- PLAYER_MONEY: owned by Core.lua → EventManager (OnMoneyChanged), which calls UpdateCharacterGold
+    -- (writes gold + CHARACTER_UPDATED{gold}) before WN_MONEY_UPDATED. The old MONEY_UPDATED ->
+    -- UpdateCharacterCache("gold") listener rewrote the same values and sent CHARACTER_UPDATED a
+    -- second time on every money change (2026-10-22).
+
     -- Level changes. PLAYER_LEVEL_UP payload arg1 is the new level (wiki-verified);
     -- UnitLevel("player") may still return the old level inside this handler, so the
     -- payload is threaded through to UpdateCharacterCache.
@@ -1675,6 +1675,7 @@ function WarbandNexus:UpdateMailStatus()
     local row = self.db.global.characters and self.db.global.characters[tableKey]
     if not row then return end
 
+    local hadMail = row.hasMail == true
     local hasPending = (HasNewMail and HasNewMail()) and true or false
     if hasPending then
         row.hasMail = true
@@ -1687,6 +1688,8 @@ function WarbandNexus:UpdateMailStatus()
     else
         row.hasMail = false
     end
+    -- UPDATE_PENDING_MAIL repeats with nothing new; only a flip of hasMail is news (2026-10-22).
+    if (row.hasMail == true) == hadMail then return end
 
     local msgKey = tableKey
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then

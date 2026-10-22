@@ -195,7 +195,14 @@ function Fns.RegisterTryCounterEvents()
     local anyRegistered = false
     for i = 1, #TRYCOUNTER_EVENTS do
         local ev = TRYCOUNTER_EVENTS[i]
-        local ok, err = pcall(tryCounterFrame.RegisterEvent, tryCounterFrame, ev)
+        -- UNIT_SPELLCAST_*: every handler drops units other than "player". RegisterUnitEvent filters
+        -- in the client instead of firing for every party / raid / nameplate cast (2026-10-22).
+        local ok, err
+        if ev:sub(1, 15) == "UNIT_SPELLCAST_" and tryCounterFrame.RegisterUnitEvent then
+            ok, err = pcall(tryCounterFrame.RegisterUnitEvent, tryCounterFrame, ev, "player")
+        else
+            ok, err = pcall(tryCounterFrame.RegisterEvent, tryCounterFrame, ev)
+        end
         if ok then
             anyRegistered = true
         elseif IsDebugModeEnabled and IsDebugModeEnabled() then
