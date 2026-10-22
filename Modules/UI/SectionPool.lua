@@ -58,12 +58,16 @@ function SectionPool.BeginPass(host)
     end
 end
 
---- Mark a frame as garbage and park it (hidden) in the recycle bin.
+--- Park a frame (hidden) in the recycle bin and mark it as garbage. Frames another pool owns
+--- (section / Storage pools, pooled rows, tab-persistent chrome) are parked but never marked: hosts
+--- such as scrollChild.resultsContainer are shared by several tabs, and those frames come back.
 function SectionPool.Discard(frame)
     if not frame then return end
     frame:Hide()
     frame:ClearAllPoints()
-    frame._wnDiscarded = true
+    if not (frame._wnSectionPooled or frame._wnStorPooled or frame.isPooled or frame._wnKeepOnTabSwitch) then
+        frame._wnDiscarded = true
+    end
     frame:SetParent(ns.UI_RecycleBin or UIParent)
 end
 
@@ -110,6 +114,7 @@ function SectionPool.Acquire(host, key, parent, w, h)
         for i = 1, #fields do
             f[fields[i]] = nil
         end
+        f._wnDiscarded = nil
         f:ClearAllPoints()
         if w and h then f:SetSize(w, h) end
         f:SetAlpha(1)
@@ -148,6 +153,7 @@ function SectionPool.Remember(host, key, header)
     local old = pool.frames[key]
     if old and old ~= header then
         -- Chrome signature changed (e.g. classic <-> custom theme): the old header was not reused.
+        old._wnSectionPooled = nil
         SectionPool.Discard(old)
     end
     header._wnSectionPooled = true

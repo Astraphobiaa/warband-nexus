@@ -1608,17 +1608,19 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Clean up old non-virtual children (headers, notice frames, empty-state text)
     -- from previous render. VLM handles its own _isVirtualRow frames.
-    local recycleBin = ns.UI_RecycleBin
     local oldChildren = {container:GetChildren()}
     for i = 1, #oldChildren do
         ReleaseReputationRowsFromSubtree(oldChildren[i])
     end
+    -- Section wraps / bodies / headers are pooled per container (SectionPool) and re-bound below by
+    -- section key; each rep update used to park ~3 new frames per section in the recycle bin forever
+    -- (2026-10-22). Anything else non-virtual is real garbage.
+    local SP = ns.UI_SectionPool
+    SP.BeginPass(container)
     for i = 1, #oldChildren do
         local child = oldChildren[i]
-        if not child._isVirtualRow then
-            child:Hide()
-            child:ClearAllPoints()
-            child:SetParent(recycleBin or UIParent)
+        if not child._isVirtualRow and not child._wnSectionPooled then
+            SP.Discard(child)
         end
     end
     local oldRegions = {container:GetRegions()}
@@ -1845,8 +1847,8 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
 
-    local function CreateWrap(parentFrame, wrapWidth)
-        local wrap = Factory and Factory.CreateContainer and Factory:CreateContainer(parentFrame) or nil
+    local function CreateWrap(parentFrame, wrapWidth, poolKey)
+        local wrap = SP.Acquire(container, "rep:wrap:" .. poolKey, parentFrame, math.max(1, wrapWidth), COLLAPSE_H_REP + 0.1)
         if not wrap then return nil end
         wrap:SetWidth(math.max(1, wrapWidth))
         wrap:SetHeight(COLLAPSE_H_REP + 0.1)
@@ -1856,8 +1858,8 @@ function WarbandNexus:DrawReputationList(container, width)
         return wrap
     end
 
-    local function CreateBody(wrap, bodyWidth)
-        local body = Factory and Factory.CreateContainer and Factory:CreateContainer(wrap) or nil
+    local function CreateBody(wrap, bodyWidth, poolKey)
+        local body = SP.Acquire(container, "rep:body:" .. poolKey, wrap, math.max(1, bodyWidth), 0.1)
         if not body then return nil end
         body:ClearAllPoints()
         body:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, -COLLAPSE_H_REP)
@@ -2096,8 +2098,8 @@ function WarbandNexus:DrawReputationList(container, width)
 
     local function RenderSection(sectionKey, sectionTitle, iconTexture, isAtlas, headers, scopeTag)
         local sectionExpanded = IsExpanded(sectionKey, false)
-        local sectionWrap = CreateWrap(parent, width)
-        local sectionBody = CreateBody(sectionWrap, width)
+        local sectionWrap = CreateWrap(parent, width, sectionKey)
+        local sectionBody = sectionWrap and CreateBody(sectionWrap, width, sectionKey)
         if not (sectionWrap and sectionBody) then return end
 
         -- CurrencyUI parity: when a nested category section opens/closes, reflow ancestor bodies/wraps
@@ -2126,7 +2128,7 @@ function WarbandNexus:DrawReputationList(container, width)
             isAtlas,
             nil,
             nil,
-            {
+            SP.HeaderOpts(container, "rep:hdr:" .. sectionKey, {
                 animatedContent = function() return sectionBody end,
                 persistToggle = function(exp)
                     PersistExpand(sectionKey, exp)
@@ -2144,8 +2146,9 @@ function WarbandNexus:DrawReputationList(container, width)
                     sectionWrap:SetHeight(COLLAPSE_H_REP + (exp and sectionBody._wnSectionFullH or 0.1))
                     SyncScrollMetrics()
                 end,
-            }
+            })
         )
+        SP.Remember(container, "rep:hdr:" .. sectionKey, sectionHeader)
         sectionHeader:ClearAllPoints()
         sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
         sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
@@ -2165,8 +2168,8 @@ function WarbandNexus:DrawReputationList(container, width)
                 if not isSearching or #filteredFactionList > 0 then
                     local headerKey = (scopeTag == "AW" and "filtered-header-" or "filtered-cb-header-") .. (headerData.name or "")
                     local headerExpanded = isSearching and true or IsExpanded(headerKey, false)
-                    local headerWrap = CreateWrap(sectionBody, width - BASE_INDENT)
-                    local headerBody = CreateBody(headerWrap, width - BASE_INDENT)
+                    local headerWrap = CreateWrap(sectionBody, width - BASE_INDENT, headerKey)
+                    local headerBody = headerWrap and CreateBody(headerWrap, width - BASE_INDENT, headerKey)
                     if headerWrap and headerBody then
                         ChainSectionFrameBelow(sectionBody, headerWrap, headerTail, BASE_INDENT, headerTail and SECTION_SPACING or nil, headerTail and nil or SECTION_SPACING)
                         headerTail = headerWrap
@@ -2183,7 +2186,7 @@ function WarbandNexus:DrawReputationList(container, width)
                             nil,
                             nil,
                             nil,
-                            {
+                            SP.HeaderOpts(container, "rep:hdr:" .. headerKey, {
                                 animatedContent = function() return headerBody end,
                                 persistToggle = function(exp)
                                     PersistExpand(headerKey, exp)
@@ -2202,8 +2205,9 @@ function WarbandNexus:DrawReputationList(container, width)
                                     ReflowAncestors(nodeCtx.parentCtx)
                                     SyncScrollMetrics()
                                 end,
-                            }
+                            })
                         )
+                        SP.Remember(container, "rep:hdr:" .. headerKey, header)
                         header:ClearAllPoints()
                         header:SetPoint("TOPLEFT", headerWrap, "TOPLEFT", 0, 0)
                         header:SetPoint("TOPRIGHT", headerWrap, "TOPRIGHT", 0, 0)

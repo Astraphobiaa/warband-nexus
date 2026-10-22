@@ -33,6 +33,7 @@ end
 -- { label, file, function header pattern }
 local ADOPTED = {
     { "Currency", "Modules/UI/CurrencyUI.lua", "function WarbandNexus:DrawCurrencyList%(container, width%)" },
+    { "Reputation", "Modules/UI/ReputationUI.lua", "function WarbandNexus:DrawReputationList%(container, width%)" },
 }
 
 for i = 1, #ADOPTED do

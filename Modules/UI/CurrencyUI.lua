@@ -990,7 +990,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
 
     local function CreateWrap(parentFrame, wrapWidth, poolKey)
-        local wrap = SP.Acquire(container, "wrap:" .. poolKey, parentFrame, math.max(1, wrapWidth), COLLAPSE_H_CUR + 0.1)
+        local wrap = SP.Acquire(container, "cur:wrap:" .. poolKey, parentFrame, math.max(1, wrapWidth), COLLAPSE_H_CUR + 0.1)
         if not wrap then return nil end
         wrap:SetWidth(math.max(1, wrapWidth))
         wrap:SetHeight(COLLAPSE_H_CUR + 0.1)
@@ -1001,7 +1001,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
 
     local function CreateBody(wrap, bodyWidth, poolKey)
-        local body = SP.Acquire(container, "body:" .. poolKey, wrap, math.max(1, bodyWidth), 0.1)
+        local body = SP.Acquire(container, "cur:body:" .. poolKey, wrap, math.max(1, bodyWidth), 0.1)
         if not body then return nil end
         body:ClearAllPoints()
         body:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, -COLLAPSE_H_CUR)
@@ -1099,7 +1099,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             nil,
                             nil,
                             nil,
-                            SP.HeaderOpts(container, "hdr:" .. headerKey, {
+                            SP.HeaderOpts(container, "cur:hdr:" .. headerKey, {
                                 animatedContent = function() return headerBody end,
                                 persistToggle = function(exp)
                                     PersistExpand(headerKey, exp)
@@ -1121,7 +1121,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                 end,
                             })
                         )
-                        SP.Remember(container, "hdr:" .. headerKey, header)
+                        SP.Remember(container, "cur:hdr:" .. headerKey, header)
                         header:ClearAllPoints()
                         header:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
                         header:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
@@ -1169,7 +1169,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 nil,
                 nil,
                 nil,
-                SP.HeaderOpts(container, "hdr:" .. sectionKey, {
+                SP.HeaderOpts(container, "cur:hdr:" .. sectionKey, {
                     animatedContent = function() return sectionBody end,
                     persistToggle = function(exp)
                         PersistExpand(sectionKey, exp)
@@ -1189,7 +1189,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     end,
                 })
             )
-            SP.Remember(container, "hdr:" .. sectionKey, sectionHeader)
+            SP.Remember(container, "cur:hdr:" .. sectionKey, sectionHeader)
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
@@ -1261,7 +1261,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 true,
                 nil,
                 nil,
-                SP.HeaderOpts(container, "hdr:" .. sectionKey, {
+                SP.HeaderOpts(container, "cur:hdr:" .. sectionKey, {
                     animatedContent = function() return sectionBody end,
                     persistToggle = function(exp)
                         PersistExpand(sectionKey, exp)
@@ -1281,7 +1281,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     end,
                 })
             )
-            SP.Remember(container, "hdr:" .. sectionKey, sectionHeader)
+            SP.Remember(container, "cur:hdr:" .. sectionKey, sectionHeader)
             sectionHeader:ClearAllPoints()
             sectionHeader:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
             sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)

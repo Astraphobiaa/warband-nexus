@@ -136,6 +136,28 @@ do
     assert_eq(SP.IsDiscardedRegion(fsUnderPlainParked), false, "recycle-bin parent alone is not a discard signal")
 end
 
+print("Phase 4b: Frames another pool owns are parked but never marked as garbage")
+do
+    local storPooled = NewFrame(host); storPooled._wnStorPooled = true
+    local fs = NewFrame(storPooled)
+    SP.Discard(storPooled)                                       -- e.g. Currency teardown on the shared container
+    assert_eq(storPooled._wnDiscarded, nil, "Storage-pooled frame not marked")
+    assert_eq(SP.IsDiscardedRegion(fs), false, "its registry entries survive")
+end
+
+print("Phase 4c: A header replaced after a chrome change is discarded")
+do
+    pass({ "Z" })
+    local oldHeader = SP.Get(host).frames["hdr:Z"]
+    SP.BeginPass(host)
+    local wrap = SP.Acquire(host, "wrap:Z", host, 1, 1)
+    local fresh = ns.UI.Factory:CreateContainer(wrap)           -- reuse signature mismatch: new header
+    SP.Remember(host, "hdr:Z", fresh)
+    assert_eq(oldHeader._wnDiscarded, true, "old header discarded")
+    assert_eq(oldHeader:GetParent(), ns.UI_RecycleBin, "old header no longer under the re-used wrap")
+    assert_eq(SP.Get(host).frames["hdr:Z"], fresh, "new header pooled")
+end
+
 print("Phase 5: The three registries prune discarded entries (static)")
 do
     local function has(rel, pat)
