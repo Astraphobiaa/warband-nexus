@@ -53,6 +53,10 @@ local TRY_COUNTER_FILES = {
     "Modules/TryCounterService_Process.lua", "Modules/TryCounterService.lua",
     "Modules/TryCounterService_Loot.lua", "Modules/TryCounterService_Stats.lua",
     "Modules/TryCounterService_Handlers.lua",
+    "Modules/TryCounterService_Debug.lua", "Modules/TryCounterService_Import.lua",
+    "Modules/TryCounterService_LootSession.lua", "Modules/TryCounterService_Outcomes.lua",
+    "Modules/TryCounterService_Lockout.lua", "Modules/TryCounterService_Difficulty.lua",
+    "Modules/TryCounterService_Instance.lua", "Modules/TryCounterService_TrackDB.lua",
 }
 local function ListGlobalWrites(path)
     local out, pattern = "", "SETGLOBAL.-; ([%w_]+)"
