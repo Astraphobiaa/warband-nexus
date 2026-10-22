@@ -11,6 +11,10 @@
         stale position, and DrawTab's cachedRowWidth never reached ProfessionsUI's local.
     This test lists every global / environment write (GSET under LuaJIT, SETGLOBAL under Lua 5.1)
     in Modules/**/*.lua and Core.lua and fails on any that is not allow-listed.
+
+    It also lists free reads of lowercase names (GGET / GETGLOBAL). WoW's own globals in that shape
+    are the Lua base library plus a few FrameXML helpers (LOWER_READS); anything else is a local
+    that was never declared, e.g. VaultButton_SavedInstancesUI read an unset `rowH` (nil).
 ]]
 
 local ROOT = os.getenv("WN_ROOT") or "."
@@ -18,12 +22,27 @@ local ALLOWED = {
     -- name = true for intentional globals (none today; Core publishes WarbandNexus via _G.WarbandNexus).
 }
 
+local hits, scanned = {}, 0
+
+-- Lowercase globals the WoW client (or Lua 5.1) provides. `os` / `debug` are read only behind a
+-- nil guard (ResetService, ChatIntegrationService).
+local LOWER_READS = {}
+for name in ([[_G assert coroutine date debug debugprofilestart debugprofilestop debugstack error format
+    geterrorhandler getmetatable hooksecurefunc ipairs issecretvalue math next os pairs pcall print rawget
+    rawset select setfenv setmetatable string strlower strsplit strupper table time tinsert tonumber
+    tostring type unpack wipe xpcall]]):gmatch("%S+") do LOWER_READS[name] = true end
+
+local function CheckRead(path, line, name)
+    if type(name) == "string" and name:match("^[a-z_]") and not LOWER_READS[name] then
+        hits[#hits + 1] = string.format("%s:%s reads undeclared `%s`", path, tostring(line), name)
+    end
+end
+
 local files = {}
 local p = io.popen('find "' .. ROOT .. '/Modules" -name "*.lua" 2>/dev/null; echo "' .. ROOT .. '/Core.lua"')
 for line in p:lines() do files[#files + 1] = line end
 p:close()
 
-local hits, scanned = {}, 0
 local ok, jutil = pcall(require, "jit.util")
 if ok then
     local bcnames = require("jit.vmdef").bcnames
@@ -42,7 +61,11 @@ if ok then
             while true do
                 local ins = jutil.funcbc(f, pc)
                 if not ins then break end
-                if opname(bit.band(ins, 0xff)) == "GSET" then
+                local op = opname(bit.band(ins, 0xff))
+                if op == "GGET" then
+                    CheckRead(path, jutil.funcinfo(f, pc).currentline, jutil.funck(f, -bit.rshift(ins, 16) - 1))
+                end
+                if op == "GSET" then
                     local name = jutil.funck(f, -bit.rshift(ins, 16) - 1)
                     if not ALLOWED[name] then
                         hits[#hits + 1] = string.format("%s:%s writes `%s`", path, tostring(jutil.funcinfo(f, pc).currentline), tostring(name))
@@ -80,6 +103,8 @@ else
             if name and not ALLOWED[name] then
                 hits[#hits + 1] = string.format("%s:%s writes `%s`", path, ln, name)
             end
+            local rln, rname = line:match("%[(%d+)%]%s+GETGLOBAL%s+.-;%s*([%w_]+)")
+            if rname then CheckRead(path, rln, rname) end
         end
         h:close()
     end

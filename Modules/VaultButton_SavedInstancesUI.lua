@@ -251,8 +251,8 @@ function M.BuildInstanceCard(parent, group, cardSize)
         end
     end
 
-    local card = M.VBButton(parent, 1, rowH, true)
-    card:SetSize(cardSize, cardSize)
+    -- Square card; `rowH` here was an unset environment read (nil -> 1px) before SetSize fixed it.
+    local card = M.VBButton(parent, cardSize, cardSize, true)
     card:EnableMouse(true)
     if ApplyVisuals then
         local cardBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
