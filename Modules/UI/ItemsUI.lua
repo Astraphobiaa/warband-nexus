@@ -1638,6 +1638,36 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
         items = filtered
     end
 
+    if #items == 0 then
+        local mfClear = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mfClear then mfClear._itemsFlatListPaintCache = nil end
+        return nil, startYOffset, 0, itemsSearchActive
+    end
+
+    -- Cache key includes the item contents, not just their count: a swap / stack change / name load
+    -- with the same count served the previous flat list (old item tables, stale rows). Checked before
+    -- the sort so a hit skips it too (2026-10-22).
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local expandSig = ItemsExpandGroupsSig(currentItemsSubTab, expandedGroups, self.itemsExpandAllActive == true)
+    local contentParts = {}
+    for i = 1, #items do
+        local it = items[i]
+        local base = (i - 1) * 6
+        contentParts[base + 1] = it.itemID or 0
+        contentParts[base + 2] = it.stackCount or 1
+        contentParts[base + 3] = it.actualBagID or it.bagID or it.tabIndex or ""
+        contentParts[base + 4] = it.slotIndex or it.slot or it.slotID or ""
+        contentParts[base + 5] = it.pending and 1 or 0
+        contentParts[base + 6] = it.name and 1 or 0
+    end
+    local sig = (currentItemsSubTab or "") .. "\0" .. (itemsSearchText or "") .. "\0"
+        .. #items .. "\0" .. expandSig .. "\0" .. table.concat(contentParts, ",")
+    if mf and mf._itemsFlatListPaintCache and mf._itemsFlatListPaintCache.sig == sig then
+        local cached = mf._itemsFlatListPaintCache
+        SearchStateManager:UpdateResults("items", cached.itemCount or #items)
+        return cached.flatList, cached.endYOffset, cached.itemCount, cached.searchActive
+    end
+
     do
         local n = #items
         if n > 1 then
@@ -1668,21 +1698,6 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
         end
     end
 
-    if #items == 0 then
-        local mfClear = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        if mfClear then mfClear._itemsFlatListPaintCache = nil end
-        return nil, startYOffset, 0, itemsSearchActive
-    end
-
-    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local expandSig = ItemsExpandGroupsSig(currentItemsSubTab, expandedGroups, self.itemsExpandAllActive == true)
-    local sig = (currentItemsSubTab or "") .. "\0" .. (itemsSearchText or "") .. "\0"
-        .. #items .. "\0" .. expandSig
-    if mf and mf._itemsFlatListPaintCache and mf._itemsFlatListPaintCache.sig == sig then
-        local cached = mf._itemsFlatListPaintCache
-        SearchStateManager:UpdateResults("items", cached.itemCount or #items)
-        return cached.flatList, cached.endYOffset, cached.itemCount, cached.searchActive
-    end
 
     SearchStateManager:UpdateResults("items", #items)
 
