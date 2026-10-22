@@ -554,7 +554,9 @@ end
 -- are kept; a miss is retried after PET_NAME_RETRY_SEC (item / pet data may still be loading).
 local petDisplayNameByItemID = {}
 local petDisplayNameRetryAt = {}
-local PET_NAME_RETRY_SEC = 5
+-- Short: item data usually arrives within a frame or two, and the metadata-ready redraw must not
+-- land inside the back-off window (2026-10-22).
+local PET_NAME_RETRY_SEC = 1
 
 --- Get display name for an item (handles caged pets)
 --- Caged pets show "Pet Cage" in item name but have the real pet name in tooltip line 3

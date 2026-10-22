@@ -679,5 +679,22 @@ do
     end
 end
 
+-- Review follow-ups (2026-10-22, static): transient negatives must not stick.
+do
+    local function src(rel)
+        local fh = assert(io.open((os.getenv("WN_ROOT") or ".") .. "/" .. rel, "rb"))
+        local t = fh:read("*a"):gsub("\r\n", "\n")
+        fh:close()
+        return t
+    end
+    local shared = src("Modules/UI/CollectionsUI_Shared.lua")
+    check(shared:find("(GetTime() - at) < 5", 1, true) ~= nil,
+        "a 'not earned' achievement meta result expires after a few seconds")
+    check(src("Modules/Utilities.lua"):find("local PET_NAME_RETRY_SEC = 1", 1, true) ~= nil,
+        "a failed caged-pet name lookup is retried within a second")
+    check(src("Modules/UI/PlansUI.lua"):find("SetVertexColor(0.27, 1, 0.27, 1)", 1, true) ~= nil,
+        "the pooled completed-quest status icon sets its alpha explicitly")
+end
+
 print(string.format("\nTotal: %d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

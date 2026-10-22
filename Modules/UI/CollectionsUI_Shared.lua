@@ -314,13 +314,24 @@ function M.FormatAchievementEarnedRowMetaSplit(achievementID)
         return FormatAchievementEarnedRowMetaSplitUncached(achievementID)
     end
     local earner = earnedMetaEarnerByID[achievementID]
-    if earner == false then return nil, nil end
+    -- "Not earned" is only trusted for a few seconds: GetAchievementInfo can report it transiently
+    -- (data not loaded at login), and an earned row must not stay blank until the next populate.
+    if earner == false then
+        local at = earnedMetaDateByID[achievementID]
+        if type(at) == "number" and GetTime and (GetTime() - at) < 5 then return nil, nil end
+        earner = nil
+    end
     if earner then
         return earnedMetaDateByID[achievementID] or nil, earner
     end
     local dateRich, earnerRich = FormatAchievementEarnedRowMetaSplitUncached(achievementID)
-    earnedMetaEarnerByID[achievementID] = earnerRich or false
-    earnedMetaDateByID[achievementID] = dateRich or false
+    if earnerRich then
+        earnedMetaEarnerByID[achievementID] = earnerRich
+        earnedMetaDateByID[achievementID] = dateRich or false
+    else
+        earnedMetaEarnerByID[achievementID] = false
+        earnedMetaDateByID[achievementID] = GetTime and GetTime() or 0   -- negative-cache stamp
+    end
     return dateRich, earnerRich
 end
 
