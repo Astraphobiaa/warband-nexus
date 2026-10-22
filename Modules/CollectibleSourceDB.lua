@@ -2518,6 +2518,30 @@ local function MergeLegacyNpcs(db)
 end
 MergeLegacyNpcs(ns.CollectibleSourceDB)
 
+-- "Contained in : <container>" label. GetItemInfo returns nil until the client has the container cached;
+-- the lazy indexes below used to keep the bare "Contained in" for the whole session. Now an unresolved
+-- label is recorded as pending, a load is requested while building, and the lookup retries it (2026-10-22).
+local function ContainerSourceLabel(containerItemID, requestLoad)
+    local containerName = GetItemInfo and GetItemInfo(containerItemID)
+    if containerName and not (issecretvalue and issecretvalue(containerName)) and containerName ~= "" then
+        return "Contained in : " .. containerName, true
+    end
+    if requestLoad and C_Item and C_Item.RequestLoadItemDataByID then
+        pcall(C_Item.RequestLoadItemDataByID, containerItemID)
+    end
+    return "Contained in", false
+end
+
+local function ResolvePendingContainerLabel(idx, pending, key)
+    local containerItemID = pending and pending[key]
+    if not containerItemID then return end
+    local label, resolved = ContainerSourceLabel(containerItemID, false)
+    if resolved then
+        idx[key] = label
+        pending[key] = nil
+    end
+end
+
 -- TOY SOURCE LOOKUP (for Plans + Collections)
 -- Returns display string when this toy is in the DB (npc/container/zone/fishing/rare).
 -- Used to enrich tooltip source when Blizzard returns "Toy Collection".
@@ -2533,6 +2557,7 @@ function ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
         local zoneDrop = (ns.L and ns.L["ZONE_DROP"]) or "Zone drop"
         local fishing = (ns.L and ns.L["FISHING"]) or "Fishing"
         local idx = {}
+        local pendingContainer = {}
         local function npcIDToName(npcID)
             if not db.npcNameIndex then return nil end
             for name, ids in pairs(db.npcNameIndex) do
@@ -2577,8 +2602,9 @@ function ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
                     for j = 1, #data.drops do
                         local d = data.drops[j]
                         if d and d.type == "toy" and d.itemID and not idx[d.itemID] then
-                            local containerName = (GetItemInfo and GetItemInfo(containerItemID)) or nil
-                            idx[d.itemID] = (containerName and containerName ~= "") and ("Contained in : " .. containerName) or "Contained in"
+                            local label, resolved = ContainerSourceLabel(containerItemID, true)
+                            idx[d.itemID] = label
+                            if not resolved then pendingContainer[d.itemID] = containerItemID end
                         end
                     end
                 end
@@ -2624,8 +2650,10 @@ function ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
             end
         end
         db._toySourceByItemID = idx
+        db._toySourcePendingContainer = pendingContainer
     end
 
+    ResolvePendingContainerLabel(db._toySourceByItemID, db._toySourcePendingContainer, itemID)
     return db._toySourceByItemID[itemID]
 end
 
@@ -2646,11 +2674,14 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
         local zoneDrop = (ns.L and ns.L["ZONE_DROP"]) or "Zone drop"
         local fishing = (ns.L and ns.L["FISHING"]) or "Fishing"
         local idx = {}
+        local pendingContainer = {}
+        local currentContainer -- set while a container with an unresolved name is collected
         local function addMount(itemID, sourceStr)
             if not itemID then return end
             local mID = C_MountJournal.GetMountFromItem(itemID)
             if mID and not (issecretvalue and issecretvalue(mID)) and not idx[mID] then
                 idx[mID] = sourceStr
+                if currentContainer then pendingContainer[mID] = currentContainer end
             end
         end
         local function collectMountsFromDrops(drops, sourceStr)
@@ -2719,9 +2750,10 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
         if db.containers then
             for containerItemID, cData in pairs(db.containers) do
                 if cData and cData.drops then
-                    local containerName = (GetItemInfo and GetItemInfo(containerItemID)) or nil
-                    local src = (containerName and containerName ~= "") and ("Contained in : " .. containerName) or "Contained in"
+                    local src, resolved = ContainerSourceLabel(containerItemID, true)
+                    currentContainer = (not resolved) and containerItemID or nil
                     collectMountsFromDrops(cData.drops, src)
+                    currentContainer = nil
                 end
             end
         end
@@ -2733,8 +2765,10 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
             end
         end
         db._mountSourceByMountID = idx
+        db._mountSourcePendingContainer = pendingContainer
     end
 
+    ResolvePendingContainerLabel(db._mountSourceByMountID, db._mountSourcePendingContainer, mountID)
     return db._mountSourceByMountID[mountID]
 end
 

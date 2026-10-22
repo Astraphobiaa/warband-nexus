@@ -310,8 +310,9 @@ function WarbandNexus:GetItemCollectionType(itemID)
     end
     
     -- Check each collection type
+    -- Only rule tables: UnobtainableFilters (below) has no CheckIfItemID (2026-10-22).
     for collectionType, rule in pairs(CollectionRules) do
-        if rule.CheckIfItemID(itemID) then
+        if type(rule) == "table" and type(rule.CheckIfItemID) == "function" and rule.CheckIfItemID(itemID) then
             return collectionType
         end
     end

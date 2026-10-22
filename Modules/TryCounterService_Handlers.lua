@@ -77,8 +77,9 @@ function WarbandNexus:OnTryCounterEncounterStart(event, encounterID, encounterNa
 
     -- Filter secrets: partial capture is still useful (e.g. have difficultyID + name but not ID).
     local safeEncID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
-    local safeName  = (type(encounterName) == "string" and encounterName ~= ""
-        and not (issecretvalue and issecretvalue(encounterName))) and encounterName or nil
+    -- 2026-10-22: secret check before the "" compare (a secret name errored here and lost the try).
+    local safeName  = (type(encounterName) == "string" and not (issecretvalue and issecretvalue(encounterName))
+        and encounterName ~= "") and encounterName or nil
     local safeDiff  = (type(difficultyID) == "number" and not (issecretvalue and issecretvalue(difficultyID))) and difficultyID or nil
     local safeSize  = (type(groupSize) == "number" and not (issecretvalue and issecretvalue(groupSize))) and groupSize or nil
 
@@ -114,8 +115,9 @@ function WarbandNexus:OnTryCounterBossKill(event, encounterID, encounterName)
     if not Fns.IsAutoTryCounterEnabled() then return end
 
     local safeEncID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
-    local safeName  = (type(encounterName) == "string" and encounterName ~= ""
-        and not (issecretvalue and issecretvalue(encounterName))) and encounterName or nil
+    -- 2026-10-22: secret check before the "" compare (a secret name errored here and lost the try).
+    local safeName  = (type(encounterName) == "string" and not (issecretvalue and issecretvalue(encounterName))
+        and encounterName ~= "") and encounterName or nil
 
     if not safeEncID and not safeName then return end
 
@@ -172,14 +174,14 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     local cacheFresh = RT.currentEncounterCache.startTime > 0
         and (GetTime() - RT.currentEncounterCache.startTime) <= RT.ENCOUNTER_CACHE_TTL
     if cacheFresh then
-        if (not encounterID or (issecretvalue and issecretvalue(encounterID))) and RT.currentEncounterCache.encounterID then
+        if ((issecretvalue and issecretvalue(encounterID)) or not encounterID) and RT.currentEncounterCache.encounterID then
             encounterID = RT.currentEncounterCache.encounterID
         end
-        if (not encounterName or type(encounterName) ~= "string" or encounterName == ""
-            or (issecretvalue and issecretvalue(encounterName))) and RT.currentEncounterCache.encounterName then
+        if ((issecretvalue and issecretvalue(encounterName)) or not encounterName or type(encounterName) ~= "string"
+            or encounterName == "") and RT.currentEncounterCache.encounterName then
             encounterName = RT.currentEncounterCache.encounterName
         end
-        if (not difficultyID or (issecretvalue and issecretvalue(difficultyID))) and RT.currentEncounterCache.difficultyID then
+        if ((issecretvalue and issecretvalue(difficultyID)) or not difficultyID) and RT.currentEncounterCache.difficultyID then
             difficultyID = RT.currentEncounterCache.difficultyID
         end
     end
@@ -190,8 +192,8 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     do
         local dedupID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID)))
             and encounterID or nil
-        local dedupName = (type(encounterName) == "string" and encounterName ~= ""
-            and not (issecretvalue and issecretvalue(encounterName))) and encounterName or nil
+        local dedupName = (type(encounterName) == "string" and not (issecretvalue and issecretvalue(encounterName))
+            and encounterName ~= "") and encounterName or nil
         local last = V.lastHandledBossKill
         local tNow = GetTime()
         if last and (tNow - last.time) < 10

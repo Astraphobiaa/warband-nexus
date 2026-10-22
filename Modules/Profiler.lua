@@ -58,6 +58,12 @@ local tinsert = table.insert
 local tremove = table.remove
 local issecretvalue = issecretvalue
 
+--- Count + table of every value, nils included: `{ pcall(f) }` + table.remove + unpack dropped the
+--- returns after a nil (2026-10-22).
+local function PackResults(...)
+    return select("#", ...), { ... }
+end
+
 -- MODULE DEFINITION
 
 local Profiler = {
@@ -263,13 +269,12 @@ end
 function Profiler:RunAsyncSlice(category, name, func, ...)
     local label = self:SliceLabel(category, name)
     self:StartAsync(label)
-    local results = { pcall(func, ...) }
+    local n, results = PackResults(pcall(func, ...))
     self:StopAsync(label)
-    local ok = tremove(results, 1)
-    if not ok then
-        error(results[1], 2)
+    if not results[1] then
+        error(results[2], 2)
     end
-    return unpack(results)
+    return unpack(results, 2, n)
 end
 
 --- Guess trace "Where" bucket from a profiler label (frame spike attribution).
@@ -1035,17 +1040,16 @@ function Profiler:Wrap(label, func, ...)
 
     self:Start(label)
     -- Pack results to handle multiple return values + nils
-    local results = {pcall(func, ...)}
+    local n, results = PackResults(pcall(func, ...))
     local elapsed = self:Stop(label)
     
-    local ok = table.remove(results, 1)
-    if not ok then
-        local err = results[1]
+    if not results[1] then
+        local err = results[2]
         print(PREFIX .. C_BAD .. "ERROR in " .. label .. ": " .. tostring(err) .. C_R)
         error(err, 2)
     end
     
-    return unpack(results)
+    return unpack(results, 2, n)
 end
 
 ---Start timing an async/multi-frame operation.
@@ -1135,10 +1139,10 @@ function Profiler:FormatEventPayload(...)
         elseif t == "boolean" then
             parts[#parts + 1] = v and "1" or "0"
         elseif t == "string" then
-            if v == "" then
-                parts[#parts + 1] = "s0"
-            elseif issecretvalue and issecretvalue(v) then
+            if issecretvalue and issecretvalue(v) then
                 parts[#parts + 1] = "<secret>"
+            elseif v == "" then
+                parts[#parts + 1] = "s0"
             else
                 parts[#parts + 1] = "s" .. tostring(#v)
             end

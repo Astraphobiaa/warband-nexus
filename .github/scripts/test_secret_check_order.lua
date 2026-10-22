@@ -20,7 +20,8 @@
         issecretvalue(x)) and x ~= ""`, `x == "" or (issecretvalue and issecretvalue(x))` ->
         `(issecretvalue and issecretvalue(x)) or x == ""`. Truthiness (`x and`, `not x`) and type(x)
         are not flagged.
-    Plus pinned sites (PINNED below) where the whole block is checked, not one line.
+    Plus pinned sites (PINNED below) where the whole block is checked, not one line, and the two-line
+    order (TWO_LINE_ALLOW below): the same unsafe uses on one of the 1-3 lines above issecretvalue(X).
 ]]
 
 local ROOT = os.getenv("WN_ROOT") or "."
@@ -74,6 +75,120 @@ for _, path in ipairs(files) do
         end
     end
     fh:close()
+end
+
+-- Two-line order (added 2026-10-22): a compare / tonumber / tostring / method / # on X in one of the
+-- 1-3 lines above `issecretvalue(X)` runs before the guard just like the same-line case. The scan walks
+-- up from the issecretvalue line and stops at a line that already checks issecretvalue(X) or opens a
+-- function. TryCounterService_Handlers compared the ENCOUNTER_START / BOSS_KILL / ENCOUNTER_END name
+-- with "" one line before its secret check, so a secret name errored the handler and lost the try.
+-- TODO(other fix packages): the files below still carry this pattern (hit counts on 2026-10-22, after
+-- the Utilities / ReminderService / TooltipService / Profiler / UIMapContentKind / TryCounter fixes).
+-- Fixing one lowers its count; a file may not go above its count and files not listed must stay at 0.
+-- Includes ProfessionService.lua (SafeAPIString caller ~64) and CurrencyCacheService.lua (~15, ~29).
+local TWO_LINE_ALLOW = {
+    ["Modules/AchievementFrameIntegration.lua"] = 2,
+    ["Modules/CharacterService.lua"] = 2,
+    ["Modules/ChatMessageService.lua"] = 1,
+    ["Modules/CollectionService.lua"] = 5,
+    ["Modules/CollectionService_JournalScan.lua"] = 1,
+    ["Modules/CollectionService_Scan.lua"] = 1,
+    ["Modules/CommandService.lua"] = 3,
+    ["Modules/CurrencyCacheService.lua"] = 3,
+    ["Modules/Data/ReminderContentIndex.lua"] = 1,
+    ["Modules/Data/ReminderMidnightFactionEmissaryData.lua"] = 1,
+    ["Modules/Data/ReminderZoneCatalog.lua"] = 4,
+    ["Modules/DataService.lua"] = 7,
+    ["Modules/DataService_RosterHelpers.lua"] = 2,
+    ["Modules/GearService.lua"] = 10,
+    ["Modules/ItemsCacheService.lua"] = 3,
+    ["Modules/MailSnapshotService.lua"] = 5,
+    ["Modules/MigrationService.lua"] = 8,
+    ["Modules/NotificationManager.lua"] = 9,
+    ["Modules/NotificationManager_Tests.lua"] = 3,
+    ["Modules/PlansManager.lua"] = 5,
+    ["Modules/ProfessionService.lua"] = 2,
+    ["Modules/PvECacheService.lua"] = 6,
+    ["Modules/PvPService.lua"] = 3,
+    ["Modules/ReputationCacheService.lua"] = 3,
+    ["Modules/ReputationScanner.lua"] = 2,
+    ["Modules/TooltipService_GameTooltip.lua"] = 2,
+    ["Modules/TryCounterService.lua"] = 2,
+    ["Modules/TryCounterService_Debug.lua"] = 2,
+    ["Modules/TryCounterService_LootSession.lua"] = 1,
+    ["Modules/UI.lua"] = 1,
+    ["Modules/UI/AchievementCriteriaHelpers.lua"] = 2,
+    ["Modules/UI/CharacterBankMoneyLogPopup.lua"] = 3,
+    ["Modules/UI/CharacterTrackingDialog.lua"] = 1,
+    ["Modules/UI/CharactersUI.lua"] = 1,
+    ["Modules/UI/CollectionsUI_Model.lua"] = 6,
+    ["Modules/UI/CollectionsUI_Recent.lua"] = 1,
+    ["Modules/UI/CollectionsUI_Shared.lua"] = 9,
+    ["Modules/UI/CollectionsUI_SourceData.lua"] = 1,
+    ["Modules/UI/CurrencyUI.lua"] = 1,
+    ["Modules/UI/FormatHelpers.lua"] = 2,
+    ["Modules/UI/GearUI.lua"] = 3,
+    ["Modules/UI/GearUI_Chrome.lua"] = 1,
+    ["Modules/UI/GearUI_Paperdoll.lua"] = 8,
+    ["Modules/UI/GoldManagementPopup.lua"] = 1,
+    ["Modules/UI/ItemsUI.lua"] = 3,
+    ["Modules/UI/MailDetailsPopup.lua"] = 1,
+    ["Modules/UI/PlanCardFactory.lua"] = 1,
+    ["Modules/UI/PlansTrackerWindow.lua"] = 3,
+    ["Modules/UI/PlansUI.lua"] = 1,
+    ["Modules/UI/PlansUI_Browse.lua"] = 1,
+    ["Modules/UI/PlansUI_SourceParser.lua"] = 1,
+    ["Modules/UI/ProfessionsUI.lua"] = 6,
+    ["Modules/UI/PvEUI.lua"] = 3,
+    ["Modules/UI/PvEUI_VaultGrid.lua"] = 2,
+    ["Modules/UI/PvPUI_Overview.lua"] = 2,
+    ["Modules/UI/ReminderSetAlertDialog.lua"] = 1,
+    ["Modules/UI/ReminderSetAlertDialog_Helpers.lua"] = 1,
+    ["Modules/UI/ReputationUI.lua"] = 3,
+    ["Modules/UI/SearchBoxComponent.lua"] = 1,
+    ["Modules/UI/SearchResultsRenderer.lua"] = 1,
+    ["Modules/UI/SharedWidgets.lua"] = 3,
+    ["Modules/UI/SharedWidgets_Icons.lua"] = 1,
+    ["Modules/UI/SharedWidgets_PlansLayout.lua"] = 1,
+    ["Modules/UI/SharedWidgets_Search.lua"] = 2,
+    ["Modules/UI/SharedWidgets_Theme.lua"] = 1,
+    ["Modules/UI/SharedWidgets_TitleCard.lua"] = 2,
+    ["Modules/VaultButton_Tooltip.lua"] = 2,
+    ["Modules/VaultScanner.lua"] = 1,
+}
+local twoLineHits = {}
+for _, path in ipairs(files) do
+    local rel = path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", "")
+    local lines = {}
+    for l in io.lines(path) do lines[#lines + 1] = (l:gsub("%-%-.*$", "")) end
+    for i = 1, #lines do
+        for var in lines[i]:gmatch("issecretvalue%(%s*([%w_%.]+)%s*%)") do
+            local esc = var:gsub("%p", "%%%0")
+            for k = i - 1, math.max(1, i - 3), -1 do
+                local prev = lines[k]
+                if prev:find("issecretvalue%(%s*" .. esc .. "%s*%)") or prev:find("%f[%w_]function%f[^%w_]") then break end
+                if FirstUnsafeUse(prev, esc) then
+                    twoLineHits[rel] = twoLineHits[rel] or {}
+                    local list = twoLineHits[rel]
+                    list[#list + 1] = string.format("%s:%d  `%s` is compared / converted on line %d, before issecretvalue(%s)",
+                        rel, k, var, k, var)
+                    break
+                end
+            end
+        end
+    end
+end
+for _, path in ipairs(files) do
+    local rel = path:gsub("^" .. ROOT:gsub("%p", "%%%0") .. "/", "")
+    local list = twoLineHits[rel] or {}
+    local allowed = TWO_LINE_ALLOW[rel] or 0
+    checked = checked + 1
+    if #list > allowed then
+        for j = 1, #list do failures[#failures + 1] = list[j] end
+        failures[#failures + 1] = string.format("%s  %d two-line secret-order hit(s), allow-list says %d", rel, #list, allowed)
+    elseif #list < allowed then
+        print(string.format("  note %s: %d two-line hit(s) left, allow-list says %d (lower it)", rel, #list, allowed))
+    end
 end
 
 -- SafeAPIString (ProfessionService): its first statement must be the secret check.

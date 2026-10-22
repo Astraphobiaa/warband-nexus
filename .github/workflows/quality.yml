@@ -162,6 +162,11 @@ jobs:
             lua5.1 .github/scripts/test_metadata_payload_routing.lua
             lua5.1 .github/scripts/test_profession_knowledge_refresh_cost.lua
             lua5.1 .github/scripts/test_secret_guard_first.lua
+            lua5.1 .github/scripts/test_tooltip_custom_colors.lua
+            lua5.1 .github/scripts/test_mount_journal_filter_restore.lua
+            lua5.1 .github/scripts/test_source_db_container_names.lua
+            lua5.1 .github/scripts/test_reagent_name_load_request.lua
+            lua5.1 .github/scripts/test_profiler_and_rules_guards.lua
             lua5.1 .github/scripts/test_reputation_scan_merge.lua
             lua5.1 .github/scripts/test_pve_pvp_snapshots.lua
             lua5.1 .github/scripts/test_data_guards_round3.lua

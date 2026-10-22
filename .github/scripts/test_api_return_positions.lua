@@ -34,6 +34,16 @@ RETURNS["GetAchievementCriteriaInfo"] = { "criteriaString", "criteriaType", "com
     "charName", "flags", "assetID", "quantityString", "criteriaID", "eligible", "duration", "elapsed" }
 RETURNS["GetProfessionInfo"] = { "name", "icon", "skillLevel", "maxSkillLevel", "numAbilities", "spelloffset",
     "skillLine", "skillModifier", "specializationIndex", "specializationOffset", "skillLineName" }
+-- Encounter Journal globals are not in the generated docs. Orders: warcraft.wiki.gg API_EJ_GetEncounterInfo /
+-- API_EJ_GetInstanceInfo, cross-checked against 12.1.5 FrameXML: Blizzard_WeeklyRewards destructures
+-- `name, description, encounterID, rootSectionID, link, instanceID = EJ_GetEncounterInfo(...)`;
+-- Blizzard_EncounterJournal (Mainline) and DungeonEntranceDataProvider read isRaid as select(12, ...),
+-- AdventureGuideUtil reads mapID as select(10, ...). 2026-10-22: the vault read #5 (link) as the
+-- instance ID and UIMapContentKind read #11 (covenantID) as isRaid.
+RETURNS["EJ_GetEncounterInfo"] = { "name", "description", "journalEncounterID", "rootSectionID", "link",
+    "journalInstanceID", "dungeonEncounterID", "instanceID" }
+RETURNS["EJ_GetInstanceInfo"] = { "name", "description", "bgImage", "buttonImage1", "loreImage", "buttonImage2",
+    "dungeonAreaMapID", "link", "shouldDisplayDifficulty", "mapID", "covenantID", "isRaid" }
 -- Legacy global with the same return order as C_Item.GetItemInfo.
 RETURNS["GetItemInfo"] = RETURNS["C_Item.GetItemInfo"]
 RETURNS["C_Item.GetItemInfoInstant"].alias = "GetItemInfoInstant"
@@ -50,6 +60,8 @@ local CLASSIFY = {
     { "criteriaid", "criteriaID" }, { "criteriatype", "criteriaType" }, { "reqquantity", "reqQuantity" },
     { "quantitystring", "quantityString" }, { "skilllinename", "skillLineName" }, { "skillline", "skillLine" },
     { "maxskill", "maxSkillLevel" }, { "skilllevel", "skillLevel" }, { "spelloffset", "spelloffset" },
+    { "israid", "isRaid" }, { "^instid$", "journalInstanceID" }, { "^dex$", "dungeonEncounterID" },
+    { "bgimage", "bgImage" }, { "loreimage", "loreImage" }, { "^ejname$", "name" }, { "^instnm$", "name" },
     { "^achname$", "name" }, { "^name%d*$", "name" }, { "^achid$", "id" },
     { "minl", "itemMinLevel" }, { "reqlevel", "itemMinLevel" }, { "requiredlevel", "itemMinLevel" },
     { "subclass", "subclassID" }, { "classid", "classID" },

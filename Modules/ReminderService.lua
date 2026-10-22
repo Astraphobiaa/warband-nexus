@@ -164,9 +164,10 @@ local function BuildZoneLookup()
         if not ok or type(children) ~= "table" then return end
         for i = 1, #children do
             local info = children[i]
-            if info and info.name and info.name ~= ""
-                and #info.name >= MIN_ZONE_NAME_LEN
-                and not (issecretvalue and issecretvalue(info.name)) then
+            -- 2026-10-22: secret check before the compare / length (both error on a secret name).
+            if info and not (issecretvalue and issecretvalue(info.name))
+                and info.name and info.name ~= ""
+                and #info.name >= MIN_ZONE_NAME_LEN then
                 local lower = info.name:lower()
                 if not ZONE_LOOKUP[lower] then
                     ZONE_LOOKUP[lower] = {}
@@ -1277,8 +1278,8 @@ local function SafeUIMapDisplayName(mapID)
     local ok, info = pcall(C_Map.GetMapInfo, id)
     if not ok or not info then return nil end
     local name = info.name
-    if name == nil then return nil end
     if issecretvalue and issecretvalue(name) then return nil end
+    if name == nil then return nil end
     if name == "" then return nil end
     return name
 end
@@ -1287,8 +1288,8 @@ end
 local function SafeGetRawPlayerUIMapID()
     if not C_Map or not C_Map.GetBestMapForUnit then return nil end
     local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
-    if not ok or mapID == nil then return nil end
-    if issecretvalue and issecretvalue(mapID) then return nil end
+    if not ok or (issecretvalue and issecretvalue(mapID)) then return nil end
+    if mapID == nil then return nil end
     mapID = tonumber(mapID)
     if not mapID or mapID <= 0 then return nil end
     return mapID
@@ -1300,8 +1301,8 @@ local function SafeParentUIMapIDForReminders(mid)
     local ok, info = pcall(C_Map.GetMapInfo, mid)
     if not ok or not info then return nil end
     local p = info.parentMapID
-    if p == nil or p == 0 then return nil end
     if issecretvalue and issecretvalue(p) then return nil end
+    if p == nil or p == 0 then return nil end
     p = tonumber(p)
     if not p or p <= 0 then return nil end
     return p

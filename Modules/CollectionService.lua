@@ -1507,6 +1507,23 @@ function WarbandNexus:EnsureMountSourceIndexMap()
         end
     end
     local origSearch = Mat.GetMountJournalSearchText()
+    -- The scan widens the collected (1-3) and type filters too; save them so the player's Mount Journal
+    -- comes back as it was (2026-10-22: only source filters and search were restored).
+    -- Type filter range as Blizzard_MountCollection: 1..Enum.MountTypeMeta.NumValues.
+    local origCollected, origTypes = {}, {}
+    if C_MountJournal.GetCollectedFilterSetting then
+        for i = 1, 3 do
+            local ok, checked = pcall(C_MountJournal.GetCollectedFilterSetting, i)
+            if ok and not (issecretvalue and issecretvalue(checked)) and type(checked) == "boolean" then origCollected[i] = checked end
+        end
+    end
+    local typeCount = Enum and Enum.MountTypeMeta and Enum.MountTypeMeta.NumValues
+    if C_MountJournal.IsTypeChecked and type(typeCount) == "number" then
+        for i = 1, typeCount do
+            local ok, checked = pcall(C_MountJournal.IsTypeChecked, i)
+            if ok and not (issecretvalue and issecretvalue(checked)) and type(checked) == "boolean" then origTypes[i] = checked end
+        end
+    end
     pcall(function()
         if C_MountJournal.SetSearch then C_MountJournal.SetSearch("") end
         if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(false) end
@@ -1530,12 +1547,23 @@ function WarbandNexus:EnsureMountSourceIndexMap()
                 end
             end
         end
-        if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(true) end
-        if origSearch ~= "" and C_MountJournal.SetSearch then C_MountJournal.SetSearch(origSearch) end
-        for i, checked in pairs(origSourceFilters) do
-            C_MountJournal.SetSourceFilter(i, checked)
-        end
     end)
+    -- Restore outside the scan pcall so an error mid-scan still gives the player their filters back.
+    if C_MountJournal.SetAllSourceFilters then pcall(C_MountJournal.SetAllSourceFilters, true) end
+    if origSearch ~= "" and C_MountJournal.SetSearch then pcall(C_MountJournal.SetSearch, origSearch) end
+    for i, checked in pairs(origSourceFilters) do
+        pcall(C_MountJournal.SetSourceFilter, i, checked)
+    end
+    if C_MountJournal.SetCollectedFilterSetting then
+        for i, checked in pairs(origCollected) do
+            pcall(C_MountJournal.SetCollectedFilterSetting, i, checked)
+        end
+    end
+    if C_MountJournal.SetTypeFilter then
+        for i, checked in pairs(origTypes) do
+            pcall(C_MountJournal.SetTypeFilter, i, checked)
+        end
+    end
     ns._mountIDToSourceIndex = mountIDToSource
     ns._mountGroupedFromMapValid = next(mountIDToSource) ~= nil
     return mountIDToSource

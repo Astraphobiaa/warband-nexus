@@ -160,7 +160,8 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
                         local encName, instanceID
                         if EJ_GetEncounterInfo and enc.encounterID
                             and not (issecretvalue and issecretvalue(enc.encounterID)) then
-                            local okEj, name, _, _, _, instID = pcall(EJ_GetEncounterInfo, enc.encounterID)
+                            -- 2026-10-22: journalInstanceID is return #6 (#5 is the link), as in Blizzard_WeeklyRewards.
+                            local okEj, name, _, _, _, _, instID = pcall(EJ_GetEncounterInfo, enc.encounterID)
                             if okEj then
                                 encName = name
                                 instanceID = instID

@@ -32,8 +32,8 @@ ns.Utilities = Utilities
 ---@return string|nil namePart Space-stripped name prefix
 ---@return string|nil realmPart Space-stripped realm suffix (may include hyphens, apostrophes)
 function Utilities:SplitCharacterKey(charKey)
-    if charKey == nil or charKey == "" then return nil, nil end
     if issecretvalue and issecretvalue(charKey) then return nil, nil end
+    if charKey == nil or charKey == "" then return nil, nil end
     local name, realm = tostring(charKey):match("^([^-]+)%-(.+)$")
     if not name or not realm then return nil, nil end
     return name:gsub("%s+", ""), realm:gsub("%s+", "")
@@ -222,10 +222,11 @@ end
 ---@param charKey string Key from db.characters or UI (may be guid, Name-Realm, or spaced legacy)
 ---@return string|nil Canonical storage key
 function Utilities:GetCanonicalCharacterKey(charKey)
-    if charKey == nil or charKey == "" then return charKey end
     -- Never return a secret string: callers often do `GetCanonicalCharacterKey(k) or k` and would
     -- reintroduce the secret for downstream strsplit / equality / table indexing (ADDON_ACTION_FORBIDDEN).
+    -- Checked before the nil / "" compare, which errors on a secret (2026-10-22).
     if issecretvalue and issecretvalue(charKey) then return nil end
+    if charKey == nil or charKey == "" then return charKey end
     local db = ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.global
     local chars = db and db.characters
     local charData = chars and chars[charKey]
@@ -340,23 +341,23 @@ local issecretvalue = issecretvalue
 
 --- Safe string for display/indexing. Returns fallback if value is nil or secret.
 function Utilities:SafeString(val, fallback)
-    if val == nil then return fallback or "" end
     if issecretvalue and issecretvalue(val) then return fallback or "" end
+    if val == nil then return fallback or "" end
     return tostring(val)
 end
 
 --- Safe number for comparisons/math. Returns fallback if value is secret or not a number.
 function Utilities:SafeNumber(val, fallback)
-    if val == nil then return fallback end
     if issecretvalue and issecretvalue(val) then return fallback end
+    if val == nil then return fallback end
     local n = tonumber(val)
     return (n ~= nil) and n or fallback
 end
 
 --- Safe boolean. Returns fallback if value is secret.
 function Utilities:SafeBool(val, fallback)
-    if val == nil then return fallback ~= nil and fallback or false end
     if issecretvalue and issecretvalue(val) then return fallback ~= nil and fallback or false end
+    if val == nil then return fallback ~= nil and fallback or false end
     return not not val
 end
 
@@ -376,12 +377,14 @@ end
 
 --- Check if a value is secret; safe to call (no string/table ops on val).
 function Utilities:IsSecretValue(val)
-    if val == nil then return false end
+    -- issecretvalue(nil) is false, so no nil compare first (2026-10-22).
     return issecretvalue and issecretvalue(val) or false
 end
 
 --- Lowercase for search/sort when the string is safe to touch (never call `:lower()` on secret values).
 function Utilities:SafeLower(s)
+    -- 2026-10-22: secret check first; `s == ""` on a secret string errors.
+    if issecretvalue and issecretvalue(s) then return "" end
     if s == nil or s == "" then return "" end
     if type(s) ~= "string" then
         if type(s) == "number" then
@@ -389,7 +392,6 @@ function Utilities:SafeLower(s)
         end
         return ""
     end
-    if issecretvalue and issecretvalue(s) then return "" end
     return s:lower()
 end
 
@@ -686,8 +688,8 @@ end
 
 --- nil-preserving field readers (Utilities:SafeString returns "" for nil, which reads truthy).
 local function PetField(val, wantType)
-    if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
+    if val == nil then return nil end
     if type(val) ~= wantType then return nil end
     return val
 end
@@ -836,10 +838,10 @@ end
 ---@param name string|nil
 ---@return boolean
 function Utilities:IsCofferKeyShardCurrency(currencyID, name)
-    if name == nil or name == "" then
+    if issecretvalue and issecretvalue(name) then
         return false
     end
-    if issecretvalue and issecretvalue(name) then
+    if name == nil or name == "" then
         return false
     end
     local n = string.lower(tostring(name))
@@ -847,10 +849,10 @@ function Utilities:IsCofferKeyShardCurrency(currencyID, name)
 end
 
 function Utilities:IsRestoredCofferKeyCurrency(currencyID, name)
-    if name == nil or name == "" then
+    if issecretvalue and issecretvalue(name) then
         return false
     end
-    if issecretvalue and issecretvalue(name) then
+    if name == nil or name == "" then
         return false
     end
     local n = string.lower(tostring(name))
@@ -867,10 +869,10 @@ function Utilities:IsWeeklyCapCurrency(currencyID, name)
     if currencyID == 3376 then
         return true
     end
-    if name == nil or name == "" then
+    if issecretvalue and issecretvalue(name) then
         return false
     end
-    if issecretvalue and issecretvalue(name) then
+    if name == nil or name == "" then
         return false
     end
     local n = string.lower(tostring(name))
@@ -1046,8 +1048,8 @@ end
 function Utilities:SafePlainStringFromEdit(edit)
     if not edit or not edit.GetText then return "" end
     local t = edit:GetText()
-    if t == nil then return "" end
     if issecretvalue and issecretvalue(t) then return "" end
+    if t == nil then return "" end
     if type(t) ~= "string" then return "" end
     return t
 end
@@ -1062,19 +1064,16 @@ function Utilities:ResolveKeystoneDungeonName(keystone, fallback)
         return fallback
     end
     local cached = keystone.dungeonName or keystone.name
-    if cached and cached ~= "" and cached ~= fallback then
-        if not (issecretvalue and issecretvalue(cached)) then
-            return cached
-        end
+    if cached and not (issecretvalue and issecretvalue(cached))
+        and cached ~= "" and cached ~= fallback then
+        return cached
     end
     local mapID = keystone.mapID or keystone.dungeonID
     local mid = mapID and tonumber(mapID)
     if mid and mid > 0 and C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
         local ok, mapName = pcall(C_ChallengeMode.GetMapUIInfo, mid)
-        if ok and mapName and mapName ~= "" then
-            if not (issecretvalue and issecretvalue(mapName)) then
-                return mapName
-            end
+        if ok and mapName and not (issecretvalue and issecretvalue(mapName)) and mapName ~= "" then
+            return mapName
         end
     end
     if cached and not (issecretvalue and issecretvalue(cached)) and cached ~= "" then
@@ -1104,10 +1103,10 @@ end
 ---@param linkOrId string|number|nil
 ---@return number|string|nil texture fileID or icon path
 function Utilities:ResolveItemIconFileID(linkOrId)
-    if linkOrId == nil or linkOrId == "" then return nil end
     if type(linkOrId) == "string" and issecretvalue and issecretvalue(linkOrId) then
         return nil
     end
+    if linkOrId == nil or linkOrId == "" then return nil end
     local ok, result = pcall(function()
         if C_Item and C_Item.GetItemIconByID then
             local byId = C_Item.GetItemIconByID(linkOrId)

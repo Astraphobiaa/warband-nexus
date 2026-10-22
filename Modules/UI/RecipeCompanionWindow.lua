@@ -285,7 +285,11 @@ local function FetchReagentData(recipeID)
                 if reagent and reagent.itemID then
                     local itemName = C_Item.GetItemNameByID(reagent.itemID)
                                   or (GetItemInfo and GetItemInfo(reagent.itemID))
-                                  or ("Item " .. reagent.itemID)
+                    if not itemName then
+                        -- Not cached yet: ask the client so the next rebuild has the name (2026-10-22).
+                        if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, reagent.itemID) end
+                        itemName = "Item " .. reagent.itemID
+                    end
                     slotData.reagents[#slotData.reagents + 1] = {
                         itemID  = reagent.itemID,
                         name    = itemName,

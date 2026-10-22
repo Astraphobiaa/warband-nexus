@@ -43,6 +43,16 @@ local function RemapTooltipLineRGB(r, g, b)
     return r or 1, g or 1, b or 1
 end
 
+--- Caller-supplied `{ r, g, b }` for custom tooltip lines: same light-mode remap as C_TooltipInfo lines.
+--- Dark mode passes numbers through unchanged; a table without three numbers is passed as-is (2026-10-22).
+local function RemapTooltipColorTriplet(c)
+    local r, g, b = c[1], c[2], c[3]
+    if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+        return RemapTooltipLineRGB(r, g, b)
+    end
+    return r, g, b
+end
+
 local function TooltipBodyRGB()
     if ns.UI_GetTooltipBodyColor then
         return ns.UI_GetTooltipBodyColor()
@@ -199,8 +209,8 @@ local function ApplyItemLinkTooltipContext(itemLink, itemID, linkLevel, speciali
             itemLink = select(2, GetItemInfo(itemID))
         end
     end
-    if itemLink == nil or itemLink == "" then return itemLink end
     if issecretvalue and issecretvalue(itemLink) then return itemLink end
+    if itemLink == nil or itemLink == "" then return itemLink end
 
     local hs, he = itemLink:find("|Hitem:", 1, true)
     if not hs or not he then return itemLink end
@@ -270,6 +280,12 @@ local function IsVisuallyEmptyTooltipDataLine(line)
     l = l and tostring(l):gsub("%s", "") or ""
     r = r and tostring(r):gsub("%s", "") or ""
     return l == "" and r == ""
+end
+
+--- C_TooltipInfo line text can be secret; a secret counts as non-blank and is never compared (2026-10-22).
+local function IsBlankTooltipText(text)
+    if issecretvalue and issecretvalue(text) then return false end
+    return not text or text == ""
 end
 
 local function IsTooltipRetrievingLine(text)
@@ -605,6 +621,7 @@ end
 --- Blizzard renders enchant tier as an inline atlas in the line text, not as a surfaced field
 local function ExtractTierFromInlineAtlasMarker(text)
     if not text or type(text) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(text) then return nil end
     local d = text:match("Professions%-ChatIcon%-Quality%-[^:|]-Tier(%d)")
         or text:match("Professions%-Icon%-Quality%-Tier(%d)")
         or text:match("Professions%-Quality%-Tier(%d)")
@@ -620,7 +637,8 @@ local function ExtractProfessionCraftingQualityTierFromTooltipLine(line)
     for ki = 1, #PROFESSION_QUALITY_LINE_KEYS do
         local k = PROFESSION_QUALITY_LINE_KEYS[ki]
         local v = line[k]
-        local n = tonumber(v)
+        -- Surfaced line args can be secret: no tonumber on them (2026-10-22).
+        local n = not (issecretvalue and issecretvalue(v)) and tonumber(v)
         if n and n >= 1 and n <= 10 then
             return math.floor(n + 0.5)
         end
@@ -769,7 +787,10 @@ function TooltipService:RenderCustomTooltip(frame, data)
         elseif not rc then
             rc = { 0.83, 0.69, 0.22 }
         end
-        frame:AddTitleAffixPair(ap.left, ap.right, lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+        -- Callers pass fixed dark-theme RGB ({1,1,1} etc.): remap so light mode is not white-on-light.
+        local lr, lg, lb = RemapTooltipColorTriplet(lc)
+        local rr, rg, rb = RemapTooltipColorTriplet(rc)
+        frame:AddTitleAffixPair(ap.left, ap.right, lr, lg, lb, rr, rg, rb)
     end
     
     -- 4) Data lines
@@ -786,14 +807,14 @@ function TooltipService:RenderCustomTooltip(frame, data)
                     if ns.UI_GetTooltipLabelColor then mr, mg, mb = ns.UI_GetTooltipLabelColor() end
                     c = { mr, mg, mb }
                 end
-                frame:AddSectionLabel(line.text, c[1], c[2], c[3])
+                frame:AddSectionLabel(line.text, RemapTooltipColorTriplet(c))
             elseif line.type == "centered" and frame.AddCenteredLine then
                 local c = line.color
                 if not c then
                     local cr, cg, cb = TooltipBrightRGB()
                     c = { cr, cg, cb }
                 end
-                frame:AddCenteredLine(line.text, c[1], c[2], c[3])
+                frame:AddCenteredLine(line.text, RemapTooltipColorTriplet(c))
             elseif line.left and line.right then
                 local leftColor = line.leftColor
                 if not leftColor then
@@ -807,10 +828,12 @@ function TooltipService:RenderCustomTooltip(frame, data)
                     if ns.UI_GetTextRoleRGB then rr, rg, rb = ns.UI_GetTextRoleRGB("Bright") end
                     rightColor = { rr, rg, rb }
                 end
+                local lr, lg, lb = RemapTooltipColorTriplet(leftColor)
+                local rr, rg, rb = RemapTooltipColorTriplet(rightColor)
                 frame:AddDoubleLine(
                     line.left, line.right,
-                    leftColor[1], leftColor[2], leftColor[3],
-                    rightColor[1], rightColor[2], rightColor[3],
+                    lr, lg, lb,
+                    rr, rg, rb,
                     { balanced = line.balanced == true }
                 )
             elseif line.type == "vault_grid_row" then
@@ -838,14 +861,16 @@ function TooltipService:RenderCustomTooltip(frame, data)
                     if ns.UI_GetTooltipLabelColor then lr, lg, lb = ns.UI_GetTooltipLabelColor() end
                     leftColor = { lr, lg, lb }
                 end
-                frame:AddLine(line.left, leftColor[1], leftColor[2], leftColor[3], line.wrap or false)
+                local lr, lg, lb = RemapTooltipColorTriplet(leftColor)
+                frame:AddLine(line.left, lr, lg, lb, line.wrap or false)
             elseif line.text then
                 local color = line.color
                 if not color then
                     local cr, cg, cb = TooltipBodyRGB()
                     color = { cr, cg, cb }
                 end
-                frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
+                local cr, cg, cb = RemapTooltipColorTriplet(color)
+                frame:AddLine(line.text, cr, cg, cb, line.wrap or false)
             end
         end
     end
@@ -955,10 +980,11 @@ function TooltipService:RenderItemTooltip(frame, data)
             for _, u in ipairs(data.underTitleLines) do
                 if u and u.text then
                     local c = u.color or { 0.8, 0.5, 0.2 }
+                    local ur, ug, ub = RemapTooltipColorTriplet(c)
                     if frame.AddTitleAffix then
-                        frame:AddTitleAffix(u.text, c[1], c[2], c[3], u.wrap or false)
+                        frame:AddTitleAffix(u.text, ur, ug, ub, u.wrap or false)
                     else
-                        frame:AddLine(u.text, c[1], c[2], c[3], u.wrap or false)
+                        frame:AddLine(u.text, ur, ug, ub, u.wrap or false)
                     end
                 end
             end
@@ -981,9 +1007,9 @@ function TooltipService:RenderItemTooltip(frame, data)
                 leftText = line.leftText
                 rightText = line.rightText
                 -- Skip completely empty lines (add spacer)
-                if (not leftText or leftText == "") and (not rightText or rightText == "") then
+                if IsBlankTooltipText(leftText) and IsBlankTooltipText(rightText) then
                     frame:AddSpacer(4)
-                elseif rightText and rightText ~= "" then
+                elseif not IsBlankTooltipText(rightText) then
                     -- Double line (left + right)
                     local lr, lg, lb = 1, 1, 1
                     local rr, rg, rb = 1, 1, 1
@@ -1044,10 +1070,11 @@ function TooltipService:RenderItemTooltip(frame, data)
             for _, u in ipairs(data.underTitleLines) do
                 if u and u.text then
                     local c = u.color or { 0.8, 0.5, 0.2 }
+                    local ur, ug, ub = RemapTooltipColorTriplet(c)
                     if frame.AddTitleAffix then
-                        frame:AddTitleAffix(u.text, c[1], c[2], c[3], u.wrap or false)
+                        frame:AddTitleAffix(u.text, ur, ug, ub, u.wrap or false)
                     else
-                        frame:AddLine(u.text, c[1], c[2], c[3], u.wrap or false)
+                        frame:AddLine(u.text, ur, ug, ub, u.wrap or false)
                     end
                 end
             end
@@ -1087,11 +1114,9 @@ function TooltipService:RenderItemTooltip(frame, data)
                     local rr, rg, rb = TooltipBrightRGB()
                     rightColor = { rr, rg, rb }
                 end
-                frame:AddDoubleLine(
-                    line.left, line.right,
-                    leftColor[1], leftColor[2], leftColor[3],
-                    rightColor[1], rightColor[2], rightColor[3]
-                )
+                local lr, lg, lb = RemapTooltipColorTriplet(leftColor)
+                local rr, rg, rb = RemapTooltipColorTriplet(rightColor)
+                frame:AddDoubleLine(line.left, line.right, lr, lg, lb, rr, rg, rb)
             elseif line.text then
                 local color = line.color
                 if not color and ns.UI_GetSemanticInfoColor then
@@ -1100,7 +1125,8 @@ function TooltipService:RenderItemTooltip(frame, data)
                 elseif not color then
                     color = { 0.6, 0.4, 0.8 }
                 end
-                frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
+                local cr, cg, cb = RemapTooltipColorTriplet(color)
+                frame:AddLine(line.text, cr, cg, cb, line.wrap or false)
             end
         end
     end
@@ -1656,10 +1682,9 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             if WarbandNexus and WarbandNexus.GetCurrencyProgressEarnedFromAPI then
                 totalEarned = WarbandNexus:GetCurrencyProgressEarnedFromAPI(currencyID)
             end
-            if totalEarned == nil and info.totalEarned ~= nil then
-                if not (issecretvalue and issecretvalue(info.totalEarned)) then
-                    totalEarned = tonumber(info.totalEarned)
-                end
+            if totalEarned == nil and not (issecretvalue and issecretvalue(info.totalEarned))
+                and info.totalEarned ~= nil then
+                totalEarned = tonumber(info.totalEarned)
             end
         end
         local seasonMax = currencyData and currencyData.seasonMax
@@ -1672,8 +1697,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
         local teNum = (totalEarned ~= nil and type(totalEarned) == "number") and totalEarned or nil
 
         local function SafeCurrencyTooltipNum(v)
-            if v == nil then return nil end
             if issecretvalue and issecretvalue(v) then return nil end
+            if v == nil then return nil end
             return tonumber(v)
         end
         local isCofferShard = ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency
@@ -1745,7 +1770,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                 frame:AddSpacer(line.height or 8)
             elseif line.text then
                 local color = line.color or {0.6, 0.4, 0.8}
-                frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
+                local cr, cg, cb = RemapTooltipColorTriplet(color)
+                frame:AddLine(line.text, cr, cg, cb, line.wrap or false)
             end
         end
     end

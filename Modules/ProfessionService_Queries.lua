@@ -856,7 +856,13 @@ function WarbandNexus:GetRecipeMissingReagents(recipeID, quantityMultiplier, cha
                 local missingCount = needed - totalHave
                 local itemName = (primaryItem and primaryItem.itemID and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(primaryItem.itemID))
                     or (primaryItem and primaryItem.itemID and GetItemInfo and GetItemInfo(primaryItem.itemID))
-                    or ("Item " .. tostring(primaryItem and primaryItem.itemID or si))
+                if not itemName then
+                    -- Not cached yet: ask the client so the next query has the name (2026-10-22).
+                    if primaryItem and primaryItem.itemID and C_Item and C_Item.RequestLoadItemDataByID then
+                        pcall(C_Item.RequestLoadItemDataByID, primaryItem.itemID)
+                    end
+                    itemName = "Item " .. tostring(primaryItem and primaryItem.itemID or si)
+                end
                 result.missingReagents[#result.missingReagents + 1] = {
                     itemID = primaryItem and primaryItem.itemID or 0,
                     name = itemName,

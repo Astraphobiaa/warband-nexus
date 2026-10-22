@@ -95,7 +95,8 @@ local function ejInstanceIsRaid(journalInstanceID)
     end
     if not EJ_GetInstanceInfo then return nil end
     ensureEncounterJournal()
-    local ok, _, _, _, _, _, _, _, _, _, _, isRaid = pcall(EJ_GetInstanceInfo, journalInstanceID)
+    -- 2026-10-22: isRaid is return #12 (#11 is covenantID); Blizzard reads select(12, EJ_GetInstanceInfo(id)).
+    local ok, _, _, _, _, _, _, _, _, _, _, _, isRaid = pcall(EJ_GetInstanceInfo, journalInstanceID)
     if not ok then return nil end
     if issecretvalue and issecretvalue(isRaid) then return nil end
     if type(isRaid) ~= "boolean" then return nil end
@@ -108,9 +109,9 @@ local function journalInstanceForUIMap(mapID)
     if not EJ_GetInstanceForMap then return nil end
     ensureEncounterJournal()
     local ok, jid = pcall(EJ_GetInstanceForMap, mapID)
-    if not ok or jid == nil then return nil end
+    if not ok or (issecretvalue and issecretvalue(jid)) then return nil end
+    if jid == nil then return nil end
     if type(jid) ~= "number" or jid <= 0 then return nil end
-    if issecretvalue and issecretvalue(jid) then return nil end
     return jid
 end
 
