@@ -34,7 +34,10 @@ ROOT = Path(__file__).resolve().parents[1]
 TOC = ROOT / "WarbandNexus.toc"
 
 # Preference order: a real 5.1 compiler first, then anything that can parse Lua.
-LUAC_CANDIDATES = ("luac5.1", "luac51", "luac-5.1", "luac")
+# LuaJIT last: it parses Lua 5.1 with the same 200-local / 60-upvalue ceilings (lj_def.h) and is
+# what Homebrew still ships now that lua@5.1 is gone; it also accepts goto / labels, which the
+# 5.2+ scan below reports. It has no `-p`, so it compiles to a throwaway output instead.
+LUAC_CANDIDATES = ("luac5.1", "luac51", "luac-5.1", "luac", "luajit")
 
 # Constructs the 5.1 VM rejects outright. Deliberately limited to the
 # unambiguous ones: bitwise operators and `//` overlap with WoW colour escapes
@@ -124,7 +127,11 @@ def compile_one(luac: str, path: Path) -> tuple[int, str]:
         tmp_name = tmp.name
         target = Path(tmp_name)
     try:
-        proc = subprocess.run([luac, "-p", str(target)], capture_output=True)
+        if Path(luac).name.startswith("luajit"):
+            cmd = [luac, "-b", str(target), os.devnull]
+        else:
+            cmd = [luac, "-p", str(target)]
+        proc = subprocess.run(cmd, capture_output=True)
         raw = proc.stderr or proc.stdout or b""
         message = raw.decode("utf-8", errors="replace").strip()
         if tmp_name:
