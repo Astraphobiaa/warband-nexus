@@ -578,21 +578,38 @@ local function IsQuestInLog(questID)
 end
 
 --- uiMapID for a quest-log entry. QuestInfo (C_QuestLog.GetInfo) has no mapID / zoneName field
---- (12.1.5 API doc), so the log scan matched nothing by map: task quests report their zone via
---- C_TaskQuest.GetQuestZoneID, other quests via the first return of C_QuestLog.GetNextWaypoint.
+--- (12.1.5 API doc): task quests report their zone via C_TaskQuest.GetQuestZoneID, other quests use
+--- the Midnight zone of the quest-log header they are listed under (headerMapID).
+--- C_QuestLog.GetNextWaypoint is not used: it returns the next hop of the route (a portal room or a
+--- zone on the way), not the quest's zone, so quests were filed under the wrong zone (2026-10-22).
+--- Log quests with a POI on a Midnight map are already added by the map scan (GetQuestsOnMap).
 ---@param questID number
+---@param headerMapID number|nil
 ---@return number|nil
-local function GetQuestLogEntryMapID(questID)
+local function GetQuestLogEntryMapID(questID, headerMapID)
     if not questID then return nil end
-    local function readMap(fn)
-        if not fn then return nil end
-        local ok, mapID = pcall(fn, questID)
-        if not ok or mapID == nil or (issecretvalue and issecretvalue(mapID)) then return nil end
-        mapID = tonumber(mapID)
-        return (mapID and mapID > 0) and mapID or nil
+    if C_TaskQuest and C_TaskQuest.GetQuestZoneID then
+        local ok, mapID = pcall(C_TaskQuest.GetQuestZoneID, questID)
+        if ok and not (issecretvalue and issecretvalue(mapID)) and mapID ~= nil then
+            mapID = tonumber(mapID)
+            if mapID and mapID > 0 then return mapID end
+        end
     end
-    return readMap(C_TaskQuest and C_TaskQuest.GetQuestZoneID)
-        or readMap(C_QuestLog and C_QuestLog.GetNextWaypoint)
+    return headerMapID
+end
+
+--- Localized zone name -> Midnight uiMapID (quest-log headers carry the zone name only).
+local function BuildMidnightZoneNameMap()
+    local byName = {}
+    if not C_Map or not C_Map.GetMapInfo then return byName end
+    for mapID in pairs(MIDNIGHT_MAPS) do
+        local ok, info = pcall(C_Map.GetMapInfo, mapID)
+        local name = ok and type(info) == "table" and info.name or nil
+        if type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+            byName[name] = mapID
+        end
+    end
+    return byName
 end
 
 local function GetQuestTitle(questID, fallbackInfo)
@@ -980,10 +997,19 @@ function WarbandNexus:ScanMidnightQuests()
     -- mapID, so we also accept SA-titled quests from midnightParentMaps.
     if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
         local numEntries = C_QuestLog.GetNumQuestLogEntries()
+        local zoneByName = BuildMidnightZoneNameMap()
+        local headerMapID = nil
         for i = 1, numEntries do
             local info = C_QuestLog.GetInfo(i)
-            if info and not info.isHeader and info.questID then
-                local entryMapID = GetQuestLogEntryMapID(info.questID)
+            if info and info.isHeader then
+                local htitle = info.title
+                if type(htitle) == "string" and not (issecretvalue and issecretvalue(htitle)) then
+                    headerMapID = zoneByName[htitle]
+                else
+                    headerMapID = nil
+                end
+            elseif info and info.questID then
+                local entryMapID = GetQuestLogEntryMapID(info.questID, headerMapID)
                 local inMidnight = entryMapID and MIDNIGHT_MAP_SET[entryMapID]
                 local inMidnightParent = entryMapID and midnightParentMaps[entryMapID]
                 -- Never use info.title raw (may be secret); GetQuestTitle normalizes + fallback
