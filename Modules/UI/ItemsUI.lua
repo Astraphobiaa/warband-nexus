@@ -185,6 +185,61 @@ local wipe = table.wipe
 local tinsert = table.insert
 local tremove = table.remove
 
+-- Stable Items row scripts (no per-paint closures). PopulateRow in DrawItemsResults stores the
+-- painted item on the row (row._wnItemsItem); the shared handlers read it at hover / click time
+-- (2026-10-22).
+local ItemsRowCb = {}
+
+function ItemsRowCb.OnEnter(self)
+    local item = self._wnItemsItem
+    if not ShowTooltip or not item then return end
+    local brightR, brightG, brightB = 1, 1, 1
+    if ns.UI_GetTextRoleRGB then brightR, brightG, brightB = ns.UI_GetTextRoleRGB("Bright") end
+    local mutedR, mutedG, mutedB = 0.7, 0.7, 0.7
+    if ns.UI_GetTextRoleRGB then mutedR, mutedG, mutedB = ns.UI_GetTextRoleRGB("Muted") end
+    local normalR, normalG, normalB = 0.85, 0.85, 0.85
+    if ns.UI_GetTextRoleRGB then normalR, normalG, normalB = ns.UI_GetTextRoleRGB("Normal") end
+    local infoR, infoG, infoB = 0.4, 0.8, 1
+    if ns.UI_GetSemanticInfoColor then infoR, infoG, infoB = ns.UI_GetSemanticInfoColor() end
+    local greenR, greenG, greenB = 0, 1, 0
+    if ns.UI_GetSemanticGreenColor then greenR, greenG, greenB = ns.UI_GetSemanticGreenColor() end
+    local orangeR, orangeG, orangeB = 1, 0.65, 0.25
+    if ns.UI_GetSemanticOrangeColor then orangeR, orangeG, orangeB = ns.UI_GetSemanticOrangeColor() end
+    local additionalLines = {}
+    if item.stackCount and item.stackCount > 1 then
+        table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["STACK_LABEL"]) or "Stack:") .. FormatNumber(item.stackCount), color = {normalR, normalG, normalB}})
+    end
+    if item.location then
+        table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. item.location, color = {mutedR, mutedG, mutedB}})
+    end
+    table.insert(additionalLines, {type = "spacer"})
+    if WarbandNexus.bankIsOpen then
+        table.insert(additionalLines, {text = "Right-Click " .. ((ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"), color = {greenR, greenG, greenB}})
+        if item.stackCount and item.stackCount > 1 then
+            table.insert(additionalLines, {text = "Shift+Right-Click " .. ((ns.L and ns.L["SHIFT_RIGHT_CLICK_SPLIT"]) or "Split stack"), color = {greenR, greenG, greenB}})
+        end
+        table.insert(additionalLines, {text = "Left-Click " .. ((ns.L and ns.L["LEFT_CLICK_PICKUP"]) or "Pick up"), color = {mutedR, mutedG, mutedB}})
+    else
+        table.insert(additionalLines, {text = ((ns.L and ns.L["ITEMS_BANK_NOT_OPEN"]) or "Bank not open"), color = {orangeR, orangeG, orangeB}})
+    end
+    table.insert(additionalLines, {text = "Shift+Left-Click " .. ((ns.L and ns.L["SHIFT_LEFT_CLICK_LINK"]) or "Link in chat"), color = {mutedR, mutedG, mutedB}})
+    ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.link, additionalLines = additionalLines })
+end
+
+function ItemsRowCb.OnLeave()
+    if HideTooltip then HideTooltip() end
+end
+
+function ItemsRowCb.OnMouseUp(self, button)
+    local item = self._wnItemsItem
+    if item and button == "LeftButton" and IsShiftKeyDown() then
+        local lk = item.itemLink or item.link
+        if lk and not (issecretvalue and issecretvalue(lk)) then
+            ChatEdit_InsertLink(lk)
+        end
+    end
+end
+
 -- Bank sub-tabs: same sizing and behavior as CollectionsUI CreateSubTabBar (icon + hover + _active).
 -- Sizes come from UI_LAYOUT.SUB_TAB / PAGE_STACK.SUB_TAB_HEIGHT; only the gold reserve is Items-specific.
 local ITEMS_BANK_SUBTAB_BTN_HEIGHT = (GetLayout().PAGE_STACK or {}).SUB_TAB_HEIGHT or (GetLayout().SUB_TAB or {}).BTN_HEIGHT or 40
@@ -1975,49 +2030,11 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             row.locationText:SetWordWrap(false)
             row.locationText:SetNonSpaceWrap(false)
 
-            row:SetScript("OnEnter", function(self)
-                if not ShowTooltip then return end
-                local brightR, brightG, brightB = 1, 1, 1
-                if ns.UI_GetTextRoleRGB then brightR, brightG, brightB = ns.UI_GetTextRoleRGB("Bright") end
-                local mutedR, mutedG, mutedB = 0.7, 0.7, 0.7
-                if ns.UI_GetTextRoleRGB then mutedR, mutedG, mutedB = ns.UI_GetTextRoleRGB("Muted") end
-                local normalR, normalG, normalB = 0.85, 0.85, 0.85
-                if ns.UI_GetTextRoleRGB then normalR, normalG, normalB = ns.UI_GetTextRoleRGB("Normal") end
-                local infoR, infoG, infoB = 0.4, 0.8, 1
-                if ns.UI_GetSemanticInfoColor then infoR, infoG, infoB = ns.UI_GetSemanticInfoColor() end
-                local greenR, greenG, greenB = 0, 1, 0
-                if ns.UI_GetSemanticGreenColor then greenR, greenG, greenB = ns.UI_GetSemanticGreenColor() end
-                local orangeR, orangeG, orangeB = 1, 0.65, 0.25
-                if ns.UI_GetSemanticOrangeColor then orangeR, orangeG, orangeB = ns.UI_GetSemanticOrangeColor() end
-                local additionalLines = {}
-                if item.stackCount and item.stackCount > 1 then
-                    table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["STACK_LABEL"]) or "Stack:") .. FormatNumber(item.stackCount), color = {normalR, normalG, normalB}})
-                end
-                if item.location then
-                    table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. item.location, color = {mutedR, mutedG, mutedB}})
-                end
-                table.insert(additionalLines, {type = "spacer"})
-                if WarbandNexus.bankIsOpen then
-                    table.insert(additionalLines, {text = "Right-Click " .. ((ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"), color = {greenR, greenG, greenB}})
-                    if item.stackCount and item.stackCount > 1 then
-                        table.insert(additionalLines, {text = "Shift+Right-Click " .. ((ns.L and ns.L["SHIFT_RIGHT_CLICK_SPLIT"]) or "Split stack"), color = {greenR, greenG, greenB}})
-                    end
-                    table.insert(additionalLines, {text = "Left-Click " .. ((ns.L and ns.L["LEFT_CLICK_PICKUP"]) or "Pick up"), color = {mutedR, mutedG, mutedB}})
-                else
-                    table.insert(additionalLines, {text = ((ns.L and ns.L["ITEMS_BANK_NOT_OPEN"]) or "Bank not open"), color = {orangeR, orangeG, orangeB}})
-                end
-                table.insert(additionalLines, {text = "Shift+Left-Click " .. ((ns.L and ns.L["SHIFT_LEFT_CLICK_LINK"]) or "Link in chat"), color = {mutedR, mutedG, mutedB}})
-                ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.link, additionalLines = additionalLines })
-            end)
-            row:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-            row:SetScript("OnMouseUp", function(_, button)
-                if button == "LeftButton" and IsShiftKeyDown() then
-                    local lk = item.itemLink or item.link
-                    if lk and not (issecretvalue and issecretvalue(lk)) then
-                        ChatEdit_InsertLink(lk)
-                    end
-                end
-            end)
+            -- Stable shared scripts read the painted item from the row (2026-10-22: were 3 closures per paint).
+            row._wnItemsItem = item
+            row:SetScript("OnEnter", ItemsRowCb.OnEnter)
+            row:SetScript("OnLeave", ItemsRowCb.OnLeave)
+            row:SetScript("OnMouseUp", ItemsRowCb.OnMouseUp)
         end
 
         local HEADER_STRIP_H = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36

@@ -76,6 +76,24 @@ local StorageGuildSectionVisible = B.StorageGuildSectionVisible
 
 ns.ItemsUI = ns.ItemsUI or {}
 
+-- Stable storage row scripts (no per-paint closures): ItemsUI_PopulateStorageRowDirect stores the
+-- painted item on the row (row._wnStorageItem); these read it at hover time (2026-10-22).
+local function StorageRowOnEnter(self)
+    local item = self._wnStorageItem
+    if not item then return end
+    if not ShowTooltip then
+        if item.itemLink then
+            ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
+        end
+        return
+    end
+    ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
+end
+
+local function StorageRowOnLeave()
+    if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
+end
+
 --- Extracted from DrawStorageResults — nested row paint must not capture 60+ DrawStorage upvalues (Lua 5.1).
 local function ItemsUI_PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
     local U = ns.Utilities
@@ -120,18 +138,10 @@ local function ItemsUI_PopulateStorageRowDirect(row, item, rowIdx, rowWidth, loc
     row.locationText:SetWordWrap(false)
     row.locationText:SetNonSpaceWrap(false)
 
-    row:SetScript("OnEnter", function(self)
-        if not ShowTooltip then
-            if item.itemLink then
-                ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
-            end
-            return
-        end
-        ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
-    end)
-    row:SetScript("OnLeave", function()
-        if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
-    end)
+    -- Stable shared scripts read the painted item from the row (2026-10-22: were 2 closures per paint).
+    row._wnStorageItem = item
+    row:SetScript("OnEnter", StorageRowOnEnter)
+    row:SetScript("OnLeave", StorageRowOnLeave)
 end
 
 --- Storage tree section-frame pool (per results container: `resultsContainer._wnStorSectionPool`).

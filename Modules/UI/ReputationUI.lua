@@ -1373,6 +1373,76 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     return yOffset + REP_ROW_HEIGHT + REP_ROW_GAP, isExpanded
 end
 
+-- Stable reputation row scripts (no per-paint closures). PopulateReputationRow stores the painted
+-- reputation / character info and the subfaction collapse state on the row (row._wnRep*); these read
+-- them at hover / click time (2026-10-22).
+local function RepRowSubfactionToggle(self)
+    local row = self._wnRepRow or self
+    local collapseKey, ToggleExpand = row._wnRepCollapseKey, row._wnRepToggleExpand
+    if not collapseKey or not ToggleExpand then return end
+    row._wnRepExpanded = not row._wnRepExpanded
+    ns.UI_CollapseExpandSetState(row.collapseBtn, row._wnRepExpanded)
+    ToggleExpand(collapseKey, row._wnRepExpanded)
+end
+
+local function RepRowShowTooltip(self, tooltipService, reputation, characterInfo)
+    local lines = {}
+
+    if reputation.hasParagon and reputation.paragon then
+        table.insert(lines, {
+            left = (ns.L and ns.L["REP_PARAGON_PROGRESS"]) or "Paragon Progress:",
+            right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
+            leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
+        })
+        if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
+            table.insert(lines, {
+                left = (ns.L and ns.L["REP_CYCLES_COLON"]) or "Cycles:",
+                right = tostring(reputation.paragon.completedCycles),
+                leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
+            })
+        end
+        if reputation.paragon.hasRewardPending then
+            table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
+        end
+    end
+
+    local allCharData = (characterInfo and characterInfo.allCharData) or {}
+    AppendReputationCharacterProgressLines(lines, allCharData)
+
+    tooltipService(self, {
+        type = "custom",
+        icon = reputation.iconTexture,
+        title = reputation.name or ((ns.L and ns.L["TAB_REPUTATION"]) or "Reputation"),
+        description = (reputation.description and reputation.description ~= "") and reputation.description or nil,
+        lines = lines,
+    })
+end
+
+local function RepRowOnEnter(self)
+    local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
+    if not tooltipService then return end
+    local reputation = self._wnRepData
+    if not reputation then return end
+
+    local success, err = pcall(RepRowShowTooltip, self, tooltipService, reputation, self._wnRepCharInfo)
+
+    if not success then
+        if IsDebugModeEnabled and IsDebugModeEnabled() then
+            local errMsg = "(error)"
+            if type(err) == "string" and err ~= "" and not (issecretvalue and issecretvalue(err)) then
+                errMsg = err
+            end
+            DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)
+        end
+    end
+end
+
+local function RepRowOnLeave(self)
+    if HideTooltip then
+        HideTooltip()
+    end
+end
+
 ---Populate a reputation row frame with data (for virtual list reuse)
 ---@param row Frame Pooled reputation row frame
 ---@param entry table Flat list entry with .data (reputation), .factionID, .rowIdx, .rowWidth, .subfactions, .characterInfo, .IsExpanded, .ToggleExpand, .isSubfaction
@@ -1404,18 +1474,23 @@ local function PopulateReputationRow(row, entry)
         row.collapseBtn:SetPoint("LEFT", row, "LEFT", REP_ROW.offsets[1], 0)
         ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
 
-        local function onSubfactionToggle()
-            isExpanded = not isExpanded
-            ns.UI_CollapseExpandSetState(row.collapseBtn, isExpanded)
-            ToggleExpand(collapseKey, isExpanded)
-        end
-
-        row.collapseBtn:SetScript("OnClick", onSubfactionToggle)
-        row:SetScript("OnClick", onSubfactionToggle)
+        row._wnRepCollapseKey = collapseKey
+        row._wnRepToggleExpand = ToggleExpand
+        row._wnRepExpanded = isExpanded
+        row.collapseBtn._wnRepRow = row
+        row.collapseBtn:SetScript("OnClick", RepRowSubfactionToggle)
+        row:SetScript("OnClick", RepRowSubfactionToggle)
         row.collapseBtn:SetFrameLevel((row:GetFrameLevel() or 0) + 25)
         row.collapseBtn:Show()
     else
         if row.collapseBtn then row.collapseBtn:Hide() end
+        -- Pooled row: drop the previous faction's toggle, or clicking this row collapsed / expanded
+        -- the sub-factions of whatever faction the row showed before (2026-10-22).
+        if row._wnRepCollapseKey then
+            row._wnRepCollapseKey = nil
+            row._wnRepToggleExpand = nil
+            row:SetScript("OnClick", nil)
+        end
     end
 
     local standingWord = ""
@@ -1533,59 +1608,11 @@ local function PopulateReputationRow(row, entry)
 
     ApplyReputationRowProgressChrome(row, reputation, rowWidth)
 
-    row:SetScript("OnEnter", function(self)
-        local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
-        if not tooltipService then return end
-
-        local success, err = pcall(function()
-            local lines = {}
-
-            if reputation.hasParagon and reputation.paragon then
-                table.insert(lines, {
-                    left = (ns.L and ns.L["REP_PARAGON_PROGRESS"]) or "Paragon Progress:",
-                    right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
-                    leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
-                })
-                if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
-                    table.insert(lines, {
-                        left = (ns.L and ns.L["REP_CYCLES_COLON"]) or "Cycles:",
-                        right = tostring(reputation.paragon.completedCycles),
-                        leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
-                    })
-                end
-                if reputation.paragon.hasRewardPending then
-                    table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
-                end
-            end
-
-            local allCharData = (characterInfo and characterInfo.allCharData) or {}
-            AppendReputationCharacterProgressLines(lines, allCharData)
-
-            tooltipService(self, {
-                type = "custom",
-                icon = reputation.iconTexture,
-                title = reputation.name or ((ns.L and ns.L["TAB_REPUTATION"]) or "Reputation"),
-                description = (reputation.description and reputation.description ~= "") and reputation.description or nil,
-                lines = lines,
-            })
-        end)
-
-        if not success then
-            if IsDebugModeEnabled and IsDebugModeEnabled() then
-                local errMsg = "(error)"
-                if type(err) == "string" and err ~= "" and not (issecretvalue and issecretvalue(err)) then
-                    errMsg = err
-                end
-                DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)
-            end
-        end
-    end)
-
-    row:SetScript("OnLeave", function(self)
-        if HideTooltip then
-            HideTooltip()
-        end
-    end)
+    -- Stable shared scripts read the painted reputation from the row (2026-10-22: were 2 closures per paint).
+    row._wnRepData = reputation
+    row._wnRepCharInfo = characterInfo
+    row:SetScript("OnEnter", RepRowOnEnter)
+    row:SetScript("OnLeave", RepRowOnLeave)
 end
 
 -- MAIN DRAW FUNCTION

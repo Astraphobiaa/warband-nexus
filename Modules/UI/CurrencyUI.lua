@@ -265,6 +265,42 @@ end
 
 -- CURRENCY ROW RENDERING (EXACT StorageUI style)
 
+-- Stable currency row scripts (no per-paint closures): PopulateCurrencyRowFrame stores the painted
+-- currency on the row (row._wnCurrency / row._wnCurrencyID); these read it at hover time (2026-10-22).
+local function CurrencyRowOnEnter(self)
+    local currency, currencyID = self._wnCurrency, self._wnCurrencyID
+    if not currency then return end
+    if not ShowTooltip then
+        -- Use TooltipService fallback
+        local tooltipData = {
+            type = "currency",
+            currencyID = currencyID,
+            name = currency.name or "Currency"
+        }
+        ns.TooltipService:Show(self, tooltipData)
+        return
+    end
+
+    -- Use new tooltip system
+    local tipKey = currency.viewCharKey
+    if (not tipKey) and ns.UI_GetSubsidiaryCharKey then
+        tipKey = ns.UI_GetSubsidiaryCharKey()
+    end
+    ShowTooltip(self, {
+        type = "currency",
+        currencyID = currencyID,
+        charKey = tipKey,
+    })
+end
+
+local function CurrencyRowOnLeave(self)
+    if HideTooltip then
+        HideTooltip()
+    else
+        ns.TooltipService:Hide()
+    end
+end
+
 ---Populate a currency row frame with display data (shared by CreateCurrencyRow and virtual list createRowFn)
 ---@param row Frame Row frame from AcquireCurrencyRow
 ---@param currency table Currency data
@@ -441,38 +477,12 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         ns.UI_SetTextColorRole(row.amountText, "Dim", zeroAlpha)
     end
 
-    -- Hover effect (use new tooltip system)
-    row:SetScript("OnEnter", function(self)
-        if not ShowTooltip then
-            -- Use TooltipService fallback
-            local tooltipData = {
-                type = "currency",
-                currencyID = currencyID,
-                name = currency.name or "Currency"
-            }
-            ns.TooltipService:Show(self, tooltipData)
-            return
-        end
-        
-        -- Use new tooltip system
-        local tipKey = currency.viewCharKey
-        if (not tipKey) and ns.UI_GetSubsidiaryCharKey then
-            tipKey = ns.UI_GetSubsidiaryCharKey()
-        end
-        ShowTooltip(self, {
-            type = "currency",
-            currencyID = currencyID,
-            charKey = tipKey,
-        })
-    end)
-    
-    row:SetScript("OnLeave", function(self)
-        if HideTooltip then
-            HideTooltip()
-        else
-            ns.TooltipService:Hide()
-        end
-    end)
+    -- Hover effect (use new tooltip system). Stable shared scripts read the painted currency from
+    -- the row (2026-10-22: were 2 closures per paint).
+    row._wnCurrency = currency
+    row._wnCurrencyID = currencyID
+    row:SetScript("OnEnter", CurrencyRowOnEnter)
+    row:SetScript("OnLeave", CurrencyRowOnLeave)
     
     -- ANIMATION: Use centralized stagger animation helper
 end

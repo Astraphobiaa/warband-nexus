@@ -549,20 +549,45 @@ end
 
 -- ITEM HELPERS
 
+-- Caged-pet display names resolved by GetItemDisplayName, by item ID (2026-10-22: every row paint
+-- re-ran GetPetInfoByItemID and, on a miss, a full C_TooltipInfo scan + gsub parse). Only successes
+-- are kept; a miss is retried after PET_NAME_RETRY_SEC (item / pet data may still be loading).
+local petDisplayNameByItemID = {}
+local petDisplayNameRetryAt = {}
+local PET_NAME_RETRY_SEC = 5
+
 --- Get display name for an item (handles caged pets)
 --- Caged pets show "Pet Cage" in item name but have the real pet name in tooltip line 3
 function Utilities:GetItemDisplayName(itemID, itemName, classID)
     -- If this is a caged pet (classID 17), try to get the pet name from tooltip
     if classID == 17 and itemID then
-        local petName = self:GetPetNameFromTooltip(itemID)
-        if petName then
-            return petName
+        local cached = petDisplayNameByItemID[itemID]
+        if cached then
+            return cached
+        end
+        local now = (GetTime and GetTime()) or 0
+        local retryAt = petDisplayNameRetryAt[itemID]
+        if not retryAt or now >= retryAt then
+            local petName = self:GetPetNameFromTooltip(itemID)
+            if petName then
+                petDisplayNameByItemID[itemID] = petName
+                petDisplayNameRetryAt[itemID] = nil
+                return petName
+            end
+            petDisplayNameRetryAt[itemID] = now + PET_NAME_RETRY_SEC
         end
     end
     
     -- Fallback: Use item name
     return itemName or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown")
 end
+
+-- Tooltip lines that are never the pet name (GetPetNameFromTooltip line parse).
+local PET_TOOLTIP_BAD_PATTERNS = {
+    "^Battle Pet", "^BattlePet", "^Pet Cage", "^Kampfhaustier", "^Mascotte",
+    "^Companion", "^Use:", "^Requires:", "Level %d",
+    "^Poor", "^Common", "^Uncommon", "^Rare", "^Epic", "^Legendary", "^%d+$",
+}
 
 --- Extract pet name from item tooltip (locale-independent)
 --- Used for caged pets where item name is "Pet Cage" but tooltip has the real pet name
@@ -608,12 +633,7 @@ function Utilities:GetPetNameFromTooltip(itemID)
         return nil
     end
     
-    -- Known bad patterns to skip
-    local knownBadPatterns = {
-        "^Battle Pet", "^BattlePet", "^Pet Cage", "^Kampfhaustier", "^Mascotte",
-        "^Companion", "^Use:", "^Requires:", "Level %d", 
-        "^Poor", "^Common", "^Uncommon", "^Rare", "^Epic", "^Legendary", "^%d+$",
-    }
+    local knownBadPatterns = PET_TOOLTIP_BAD_PATTERNS
     
     -- Parse tooltip lines for pet name
     for i = 1, math.min(#tooltipData.lines, 8) do

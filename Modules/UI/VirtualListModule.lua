@@ -18,6 +18,7 @@ local wipe = wipe
 
 local BUFFER_ROWS = 2
 local DEFAULT_ROW_HEIGHT = 26
+local staleSigBuildSeq = 0  -- per-paint stamp for the stale-frame sig chain (UpdateVisible)
 
 --- Visual row height for painting (may be less than `it.height` slot stride for inter-row gaps).
 local function ResolveRowPaintHeight(it)
@@ -300,15 +301,22 @@ end
 
 --- Row frames may be parented under group shells (Bank/Items collapsible groups); walk ancestors.
 --- Incremental reuse: claim a stale frame from the previous paint whose row signature matches.
-local function TakeStaleFrameForSig(oldVis, sig)
-    if not oldVis or not sig then return nil end
-    for j = 1, #oldVis do
-        local f = oldVis[j] and oldVis[j].frame
-        if f and f._vlm_stale and f._vlm_rowSig == sig then
+--- `staleBySig` (built once per paint by UpdateVisible) maps sig -> first stale frame in oldVis order;
+--- frames sharing a sig are chained through `_vlm_sigNext` in the same order, so the claim order is
+--- the old linear scan's (2026-10-22: the scan was O(visible rows) per visible row on every scroll).
+local function TakeStaleFrameForSig(staleBySig, sig)
+    if not staleBySig or not sig then return nil end
+    local f = staleBySig[sig]
+    while f do
+        local nextF = f._vlm_sigNext
+        if f._vlm_stale and f._vlm_rowSig == sig then
             f._vlm_stale = false
+            staleBySig[sig] = nextF
             return f
         end
+        f = nextF
     end
+    staleBySig[sig] = nil
     return nil
 end
 
@@ -686,12 +694,32 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
         -- the same data and is only re-anchored (2026-10-22: every wheel step repopulated all rows).
         local contentGen = container._vlm_contentGen or 0
 
+        local staleBySig = nil
         if incrementalReuse then
+            -- sig -> stale frame lookup for TakeStaleFrameForSig, wiped per paint (no allocation).
+            -- Built back to front so each sig maps to its first frame in oldVis order.
+            staleBySig = container._vlm_staleBySig
+            if not staleBySig then
+                staleBySig = {}
+                container._vlm_staleBySig = staleBySig
+            end
+            wipe(staleBySig)
+            -- Build stamp: a frame listed twice in oldVis is chained once (a repeat would make a cycle).
+            staleSigBuildSeq = staleSigBuildSeq + 1
+            local sigBuild = staleSigBuildSeq
             if oldVis then
-                for j = 1, #oldVis do
+                for j = #oldVis, 1, -1 do
                     local f = oldVis[j] and oldVis[j].frame
                     if f then
                         f._vlm_stale = true
+                        local fSig = f._vlm_rowSig
+                        if fSig and f._vlm_sigBuildStamp ~= sigBuild then
+                            f._vlm_sigBuildStamp = sigBuild
+                            f._vlm_sigNext = staleBySig[fSig]
+                            staleBySig[fSig] = f
+                        elseif not fSig then
+                            f._vlm_sigNext = nil
+                        end
                     end
                 end
             end
@@ -802,7 +830,7 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                         local frameReused = false
                         local frame = nil
                         if incrementalReuse then
-                            frame = TakeStaleFrameForSig(oldVis, sig)
+                            frame = TakeStaleFrameForSig(staleBySig, sig)
                         end
                         if frame then
                             frameReused = true

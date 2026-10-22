@@ -43,6 +43,8 @@ local CreateFavoriteButton = ns.UI_CreateFavoriteButton
 local GetColumnOffset = ns.UI_GetColumnOffset
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
+local profLayoutScratch = {}  -- ApplyCharacterRowInteriorLayout: shown profession icons, wiped per row
+
 --- Live resize: reposition width-dependent columns + class gradient (no full DrawCharacterRow).
 local function ApplyCharacterRowInteriorLayout(row, rowW)
     if not row or not rowW or rowW < 1 then return end
@@ -116,7 +118,8 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
     local profW = (flexCols and flexCols.professions) or CHAR_ROW_COLUMNS.professions.width
     local profOffset = goldOffset + goldW + (CHAR_ROW_COLUMNS.gold.spacing or 15)
     if row.profIcons then
-        local shown = {}
+        -- Reused scratch: this runs per row on every live-resize step (2026-10-22: was a fresh {} per row).
+        local shown = wipe(profLayoutScratch)
         for i = 1, #row.profIcons do
             local pFrame = row.profIcons[i]
             if pFrame and pFrame.IsShown and pFrame:IsShown() then
@@ -293,6 +296,564 @@ local function TryOpenMailDetailsPopup(btn)
     return true
 end
 
+-- Stable Characters-row scripts (no per-paint closures). DrawCharacterRow stores what each handler
+-- needs on the row / control (_wnCharRow*, charKey, _wnProf, ...); the shared handlers read those
+-- fields at hover / click time (2026-10-22: a row paint created ~15 closures).
+local CharRowCb = {}
+
+function CharRowCb.HideTip()
+    if HideTooltip then
+        HideTooltip()
+    elseif ns.TooltipService then
+        ns.TooltipService:Hide()
+    end
+end
+
+function CharRowCb.HideTooltipOnly()
+    if HideTooltip then
+        HideTooltip()
+    end
+end
+
+function CharRowCb.RowOnMouseUp(self, button)
+    if button ~= "RightButton" then return end
+    if not ns.UI_ShowCharacterRowContextMenu then return end
+    local char, charKey, isCurrent = self._wnCharRowChar, self._wnCharRowKey, self._wnCharRowIsCurrent
+    if not char then return end
+    -- Tracking acts on this exact row: its own table index, not the canonical key (Name-Realm for
+    -- an untracked row, which can resolve to the logged-in character).
+    local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    local rowIndex = char._key
+    if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
+    ns.UI_ShowCharacterRowContextMenu(self, charKey, {
+        trackingKey = rowIndex,
+        charName = char.name,
+        isTracked = char.isTracked ~= false,
+        isCurrent = isCurrent,
+        deleteButton = self.deleteBtn,
+    })
+end
+
+function CharRowCb.FavOnClick(btn)
+    local newStatus = false
+    if ns.CharacterService then
+        newStatus = ns.CharacterService:ToggleFavoriteCharacter(WarbandNexus, btn.charKey)
+    end
+    -- Recolour immediately: the row no longer jumps to the Favorites block, so without this
+    -- the star would only catch up on the next full repaint.
+    if btn.SetChecked then
+        btn:SetChecked(newStatus and true or false)
+    end
+    return newStatus
+end
+
+function CharRowCb.FavOnEnter(self)
+    local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, self.charKey)
+    ShowTooltip(self, {
+        type = "custom",
+        icon = "Interface\\Icons\\Achievement_GuildPerk_HappyHour",
+        title = isFav and ((ns.L and ns.L["REMOVE_FROM_FAVORITES"]) or "Remove from Favorites") or ((ns.L and ns.L["ADD_TO_FAVORITES"]) or "Add to Favorites"),
+        description = (ns.L and ns.L["FAVORITES_TOOLTIP"]) or "Favorite characters appear at the top of the list",
+        lines = {
+            {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_TOGGLE"]) or "Click to toggle") .. "|r", color = {1, 1, 1}}
+        },
+    })
+end
+
+--- One profession icon of DrawCharacterRow (module level: no per-paint closure; 2026-10-22).
+function CharRowCb.SetupProfIcon(row, char, prof, idx, profX, iconSize)
+    if not prof or not prof.icon then return end
+    
+    -- Reuse or create (with accent border)
+    local pFrame = row.profIcons[idx]
+    if not pFrame then
+        -- Icon border color (accent): built only when an icon is created (was a table per paint).
+        local iconBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+        pFrame = CreateIcon(row, nil, iconSize, false, iconBorderColor, false)
+        pFrame:EnableMouse(true)
+        pFrame.icon = pFrame.texture
+        
+        row.profIcons[idx] = pFrame
+    end
+    
+    -- Clear previous position and set new centered position
+    pFrame:ClearAllPoints()
+    pFrame:SetPoint("LEFT", profX, 0)
+    pFrame.icon:SetTexture(prof.icon)
+    pFrame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Crop default WoW icon border
+    pFrame:Show()
+    
+    -- Unspent knowledge badge (yellow dot)
+    local profName = prof.name
+    local kd = nil
+    if profName and char.knowledgeData then
+        -- Prefer highest skillLineID (newest expansion) for current data
+        local bestKey = -1
+        for key, entry in pairs(char.knowledgeData) do
+            if type(key) == "number" and type(entry) == "table" and entry.professionName == profName then
+                if key > bestKey then
+                    bestKey = key
+                    kd = entry
+                end
+            end
+        end
+        -- Fallback: legacy profName-keyed data
+        if not kd then
+            kd = char.knowledgeData[profName]
+        end
+    end
+    if kd and kd.unspentPoints and kd.unspentPoints > 0 then
+        if not pFrame.knowledgeBadge then
+            local badge = pFrame:CreateTexture(nil, "OVERLAY")
+            badge:SetSize(16, 16)
+            badge:SetPoint("TOPRIGHT", pFrame, "TOPRIGHT", 5, 0)
+            ns.UI_SetIcon(badge, "attention")
+            pFrame.knowledgeBadge = badge
+        end
+        pFrame.knowledgeBadge:Show()
+    else
+        if pFrame.knowledgeBadge then
+            pFrame.knowledgeBadge:Hide()
+        end
+    end
+    
+    -- Profession detail is now shown automatically when WoW's profession UI opens.
+    -- No click action needed on these icons.
+    pFrame:SetScript("OnMouseUp", nil)
+    
+    -- Setup tooltip with detailed information (expansion skills + knowledge + concentration).
+    -- Stable shared scripts read the painted profession from the icon (2026-10-22).
+    pFrame._wnProf = prof
+    pFrame._wnProfChar = char
+    pFrame:SetScript("OnEnter", CharRowCb.ProfOnEnter)
+    pFrame:SetScript("OnLeave", CharRowCb.HideTip)
+    
+    return true
+end
+
+function CharRowCb.ProfOnEnter(self)
+    local prof, char = self._wnProf, self._wnProfChar
+    if not prof or not char then return end
+    local profName = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession")
+    local lines = {}
+
+    local expansions = char.professionExpansions and char.professionExpansions[profName]
+    if expansions and #expansions > 0 then
+        for i = 1, #expansions do
+            local exp = expansions[i]
+            local skillColor
+            local maxSkill = exp.maxSkillLevel or 0
+            local curSkill = exp.skillLevel or 0
+
+            if maxSkill > 0 and curSkill >= maxSkill then
+                skillColor = {0.3, 0.9, 0.3}
+            elseif curSkill > 0 then
+                local gr, gg, gb = SemanticGoldRGB()
+                skillColor = { gr, gg, gb }
+            else
+                skillColor = {0.4, 0.4, 0.4}
+            end
+
+            local skillText
+            if maxSkill > 0 then
+                skillText = string.format("%d / %d", curSkill, maxSkill)
+            else
+                skillText = "â€”"
+            end
+
+            lines[#lines + 1] = {
+                left = exp.name or "?",
+                right = skillText,
+                leftColor = {1, 1, 1},
+                rightColor = skillColor
+            }
+        end
+    else
+        -- Fallback: no expansion data yet, show basic skill
+        if prof.skill and prof.maxSkill then
+            lines[#lines + 1] = {
+                left = profName,
+                right = string.format("%d / %d", prof.skill, prof.maxSkill),
+                leftColor = {1, 1, 1},
+                rightColor = {0.3, 0.9, 0.3}
+            }
+        end
+    end
+
+    local kd = nil
+    if char.knowledgeData then
+        -- Prefer highest skillLineID (newest expansion) for current data
+        local bestKey = -1
+        for kKey, kEntry in pairs(char.knowledgeData) do
+            if type(kKey) == "number" and type(kEntry) == "table" and kEntry.professionName == profName then
+                if kKey > bestKey then
+                    bestKey = kKey
+                    kd = kEntry
+                end
+            end
+        end
+        -- Fallback: legacy profName-keyed data
+        if not kd then
+            kd = char.knowledgeData[profName]
+        end
+    end
+    if kd then
+        local unspent = kd.unspentPoints or 0
+        local spent = kd.spentPoints or 0
+        local maxPts = kd.maxPoints or 0
+        local collectible = (maxPts > 0) and (maxPts - unspent - spent) or 0
+        local hasKnowledgeLine = (collectible > 0) or (unspent > 0)
+        if hasKnowledgeLine then
+            lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
+            local cName = kd.currencyName or ((ns.L and ns.L["KNOWLEDGE"]) or "Knowledge")
+            if collectible > 0 then
+                lines[#lines + 1] = {
+                    left = (ns.L and ns.L["COLLECTIBLE"]) or "Collectible",
+                    right = tostring(collectible),
+                    leftColor = {1, 1, 1},
+                    rightColor = {0.3, 0.9, 0.3}
+                }
+            end
+            if unspent > 0 then
+                lines[#lines + 1] = {
+                    left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"),
+                    leftColor = {1, 0.82, 0}
+                }
+            end
+        end
+    end
+
+    -- Current (Midnight) skillLineID entry, not the legacy profName key pinned to the first
+    -- expansion ever recorded.
+    local concData = WarbandNexus.GetProfessionConcentrationEntry
+        and WarbandNexus:GetProfessionConcentrationEntry(char, profName)
+    if concData and concData.max and concData.max > 0 then
+        -- Spacer
+        lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
+
+        -- Estimate current concentration (passive regen since snapshot)
+        local estimated = concData.current or 0
+        if WarbandNexus and WarbandNexus.GetEstimatedConcentration then
+            estimated = WarbandNexus:GetEstimatedConcentration(concData)
+        end
+
+        local concColor = {1, 1, 1}
+        if estimated >= concData.max then
+            concColor = {0.3, 0.9, 0.3}
+        elseif estimated > 0 then
+            concColor = {1, 0.82, 0}
+        end
+
+        local concText = string.format("%d / %d", estimated, concData.max)
+
+        lines[#lines + 1] = {
+            left = (ns.L and ns.L["CONCENTRATION"]) or "Concentration",
+            right = concText,
+            leftColor = {1, 1, 1},
+            rightColor = concColor
+        }
+
+        -- Recharge timer (white label, yellow duration)
+        if estimated < concData.max and WarbandNexus and WarbandNexus.GetConcentrationTimeToFull then
+            local timeStr = WarbandNexus:GetConcentrationTimeToFull(concData)
+            if timeStr and timeStr ~= "" and timeStr ~= ((ns.L and ns.L["FULL"]) or "Full") then
+                lines[#lines + 1] = {
+                    left = (ns.L and ns.L["RECHARGE"]) or "Recharge",
+                    right = timeStr,
+                    leftColor = {1, 1, 1},
+                    rightColor = {1, 0.82, 0}
+                }
+            end
+        end
+    end
+
+    local eqByProf = char.professionEquipment
+    local eqData = eqByProf and eqByProf[profName] or nil
+    if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
+        lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
+        local slotKeys = { "tool", "accessory1", "accessory2" }
+        local tooltipSvc = ns.TooltipService
+        for i = 1, #slotKeys do
+            local slotKey = slotKeys[i]
+            local item = eqData[slotKey]
+            if item then
+                local iconStr = item.icon and string.format("|T%s:0|t ", tostring(item.icon)) or ""
+                -- Get stat lines first to extract actual slot type (Head, Chest, Tool, etc.)
+                local statLines = tooltipSvc and tooltipSvc.GetItemTooltipSummaryLines and tooltipSvc:GetItemTooltipSummaryLines(item.itemLink, item.itemID, slotKey) or {}
+                -- First line contains the slot type (e.g., "Head", "Chest", "Tool")
+                local slotLabel = (statLines[1] and statLines[1].left)
+                    or (slotKey == "tool" and ((ns.L and ns.L["TOOL"]) or "Tool") or ((ns.L and ns.L["ACCESSORY"]) or "Accessory"))
+                lines[#lines + 1] = {
+                    left = iconStr .. (item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")),
+                    right = slotLabel,
+                    leftColor = {1, 1, 1},
+                    rightColor = {0.5, 0.5, 0.5},
+                }
+                -- Add remaining stat lines (skip first since it's now used as slot label)
+                for si = 2, #statLines do
+                    local sLine = statLines[si]
+                    lines[#lines + 1] = {
+                        left = "    " .. sLine.left,
+                        right = sLine.right or "",
+                        leftColor = sLine.leftColor or {0.7, 0.7, 0.7},
+                        rightColor = sLine.rightColor or {0.7, 0.7, 0.7},
+                    }
+                end
+            end
+        end
+    end
+
+    if not ShowTooltip then
+        -- Fallback: Use TooltipService
+        local tooltipLines = {}
+        for i = 1, #lines do
+            local line = lines[i]
+            if line.right then
+                tooltipLines[#tooltipLines + 1] = {
+                    text = (line.left or "") .. "  " .. (line.right or ""),
+                    color = line.rightColor or line.leftColor or {1, 1, 1}
+                }
+            elseif line.left and line.left ~= " " then
+                tooltipLines[#tooltipLines + 1] = {
+                    text = line.left,
+                    color = line.leftColor or {1, 1, 1}
+                }
+            end
+        end
+        ns.TooltipService:Show(self, {
+            type = "custom",
+            icon = prof.icon,
+            title = profName,
+            lines = tooltipLines,
+        })
+        return
+    end
+
+    ShowTooltip(self, {
+        type = "custom",
+        icon = prof.icon,
+        title = profName,
+        lines = lines,
+    })
+end
+
+function CharRowCb.TrackingOnClick(selfBtn)
+    local CS = ns.CharacterService
+    if not CS or not CS.ShowTrackingChangeConfirmation then return end
+    local addon = WarbandNexus
+    local ck = selfBtn.charKey
+    local rowKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ck)
+        and ns.Utilities:GetCanonicalCharacterKey(ck) or ck
+    local rowData = addon and addon.db and addon.db.global and addon.db.global.characters
+        and rowKey and (addon.db.global.characters[rowKey] or (ck and addon.db.global.characters[ck]))
+    if selfBtn.trackingKey and addon.db.global.characters[selfBtn.trackingKey] then
+        rowData = addon.db.global.characters[selfBtn.trackingKey]
+    end
+    local tracked = rowData and rowData.isTracked ~= false
+    CS:ShowTrackingChangeConfirmation(addon, selfBtn.trackingKey or rowKey or ck, selfBtn.charName, not tracked)
+end
+
+function CharRowCb.TrackingOnEnter(selfBtn)
+    local char = selfBtn._wnCharRowChar
+    if not char then return end
+    local tracked = char.isTracked ~= false
+    ShowTooltip(selfBtn, {
+        type = "custom",
+        title = (ns.L and ns.L["TRACKING_TOGGLE_TOOLTIP_TITLE"]) or "Character tracking",
+        description = tracked
+            and ((ns.L and ns.L["TRACKING_TOGGLE_DISABLE_HINT"]) or "Click to disable tracking.")
+            or ((ns.L and ns.L["TRACKING_TOGGLE_ENABLE_HINT"]) or "Click to enable tracking."),
+    })
+end
+
+function CharRowCb.ReorderOnClick(selfBtn)
+    local rb = selfBtn._wnReorderHost
+    if not rb or not rb._wnCharRowChar then return end
+    WarbandNexus:ReorderCharacter(rb._wnCharRowChar, rb._wnCharList, rb._wnListKey, selfBtn._wnReorderDir)
+end
+
+function CharRowCb.RequestMainRefresh()
+    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+end
+
+function CharRowCb.HeaderAssignOnClick(selfBtn)
+    if ns.UI_ShowCharacterSectionAssignMenu then
+        ns.UI_ShowCharacterSectionAssignMenu(selfBtn, selfBtn._wnCharRowKey, WarbandNexus.db.profile, CharRowCb.RequestMainRefresh)
+    end
+end
+
+function CharRowCb.HeaderAssignOnEnter(selfBtn)
+    ShowTooltip(selfBtn, {
+        type = "custom",
+        title = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_TITLE"]) or "Custom header",
+        description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter â†’ New custom header.",
+    })
+end
+
+function CharRowCb.DeleteOnClick(self)
+    -- Use custom themed delete dialog
+    local charKey = self.charKey
+    local charName = self.charName
+    local char = self._wnCharRowChar
+    
+    -- Get UI functions from namespace
+    local CreateExternalWindow = ns.UI_CreateExternalWindow
+    local FontManager = ns.FontManager
+    
+    if not CreateExternalWindow then
+        DebugPrint("[WarbandNexus] ERROR: CreateExternalWindow not found!")
+        return
+    end
+    
+    -- Create custom delete confirmation dialog
+    local dialog, contentFrame = CreateExternalWindow({
+        name = "DeleteCharacterDialog",
+        title = (ns.L and ns.L["DELETE_CHARACTER_TITLE"]) or "Delete Character?",
+        icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        width = 420,
+        height = 180,
+    })
+    
+    if not dialog then
+        DebugPrint("[WarbandNexus] ERROR: Failed to create delete dialog!")
+        return
+    end
+    
+    -- Warning text
+    local dlgPS = ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK
+    local dlgPad = (dlgPS and dlgPS.SIDE) or 12
+    local warning = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+    warning:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", dlgPad, -dlgPad * 2)
+    warning:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -dlgPad, -dlgPad * 2)
+    warning:SetJustifyH("CENTER")
+    if ns.UI_GetSemanticGoldColor then
+        local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+        warning:SetTextColor(gr, gg, gb)
+    else
+        warning:SetTextColor(1, 0.85, 0.1)
+    end
+    local confirmDeleteFmt = (ns.L and ns.L["CONFIRM_DELETE"]) or "Are you sure you want to delete |cff00ccff%s|r?"
+    warning:SetText(string.format(confirmDeleteFmt, charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")))
+    
+    local subtext = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+    subtext:SetPoint("TOPLEFT", warning, "BOTTOMLEFT", 0, -10)
+    subtext:SetPoint("TOPRIGHT", warning, "BOTTOMRIGHT", 0, -10)
+    subtext:SetJustifyH("CENTER")
+    if ns.UI_GetSemanticRedColor then
+        local rr, rg, rb = ns.UI_GetSemanticRedColor()
+        subtext:SetTextColor(rr, rg, rb)
+    else
+        subtext:SetTextColor(1, 0.3, 0.3)
+    end
+    local cannotUndoText = (ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!"
+    subtext:SetText(cannotUndoText)
+    
+    -- Buttons container (using Factory pattern)
+    local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, 320, 40)
+    btnContainer:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", dlgPad, dlgPad)
+    btnContainer:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -dlgPad, dlgPad)
+    
+    -- Delete button (LEFT)
+    local deleteBtnLabel = (ns.L and ns.L["DELETE"]) or "Delete"
+    local deleteBtn = CreateCharacterDeleteDialogButton(btnContainer, deleteBtnLabel, 150, true)
+    deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
+    deleteBtn:SetScript("OnClick", function()
+        -- Delete the row that was clicked: its own table index first. The canonical key of an
+        -- untracked row is Name-Realm, which resolves to the logged-in character when a stale
+        -- same-name copy is deleted.
+        local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+        local rowIndex = char and char._key
+        if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
+        local delKey = rowIndex
+            or ((ns.UI_GetCharKey and char) and ns.UI_GetCharKey(char))
+            or (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey))
+            or charKey
+        local success = WarbandNexus:DeleteCharacter(delKey)
+        if dialog.Close then
+            dialog:Close()
+        else
+            dialog:Hide()
+        end
+    end)
+    
+    -- Cancel button (RIGHT)
+    local cancelBtnLabel = (ns.L and ns.L["CANCEL"]) or "Cancel"
+    local cancelBtn = CreateCharacterDeleteDialogButton(btnContainer, cancelBtnLabel, 150, false)
+    cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
+    cancelBtn:SetScript("OnClick", function()
+        if dialog.Close then
+            dialog:Close()
+        else
+            dialog:Hide()
+        end
+    end)
+    
+    -- NOTE: Do NOT override dialog:SetScript("OnHide") here!
+    -- WindowFactory's OnHide handles hiding the clickOutsideFrame overlay.
+    -- Overriding it leaves an invisible full-screen mouse blocker.
+    -- dialog.Close() already handles SetParent(nil) and _G cleanup.
+    
+    -- Show dialog
+    dialog:Show()
+end
+
+function CharRowCb.DeleteOnEnter(self)
+    if self.icon then
+        StyleCharacterDeleteIcon(self.icon, true)
+    end
+    local removeFromTrackingFmt = (ns.L and ns.L["REMOVE_FROM_TRACKING_FORMAT"]) or "Remove %s from tracking"
+    ShowTooltip(self, {
+        type = "custom",
+        icon = "Interface\\Icons\\Spell_Shadow_SacrificialShield",
+        title = (ns.L and ns.L["DELETE_CHARACTER"]) or "Delete Character",
+        titleColor = {1, 0.4, 0},
+        description = string.format(removeFromTrackingFmt, self.charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")),
+        lines = {
+            {text = "|cffff0000" .. ((ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!") .. "|r", color = {1, 0.2, 0.2}},
+            {type = "spacer"},
+            {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_DELETE"]) or "Click to delete") .. "|r", color = {1, 1, 1}}
+        },
+    })
+end
+
+function CharRowCb.DeleteOnLeave(self)
+    if self.icon then
+        StyleCharacterDeleteIcon(self.icon, false)
+    end
+    if HideTooltip then
+        HideTooltip()
+    end
+end
+
+function CharRowCb.GradientRefresh(row)
+    if not row.nameText or not row.realmText or not ns.UI_ApplyCharacterRowClassGradientAccent then
+        return
+    end
+    if not row._wnCharRowChar then return end
+    local nameLeft = row._wnCharGradNameLeft or 0
+    local parent, width = row._wnCharGradParent, row._wnCharGradWidth
+    local char = row._wnCharRowChar
+    local nameColW = CHAR_ROW_COLUMNS.name.width
+    local swName = row.nameText:GetStringWidth() or 0
+    local swRealm = row.realmText:GetStringWidth() or 0
+    local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + 4)
+    local gradientEnd = nameBlockRight
+    local rowW = row._wnRowPaintWidth
+    if not rowW or rowW < 2 then
+        rowW = row:GetWidth() or 0
+    end
+    if rowW < 2 and parent and parent.GetWidth then
+        rowW = parent:GetWidth() or rowW
+    end
+    if rowW < 2 then
+        rowW = width or 800
+    end
+    if gradientEnd > rowW - 2 then
+        gradientEnd = rowW - 2
+    end
+    ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
+end
+
 local function SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     local hasMail = ns.MailSnapshot and ns.MailSnapshot.CharHasPendingMail(char)
     if not hasMail then
@@ -323,19 +884,9 @@ local function SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     row.mailBtn._mailChar = char
     row.mailBtn._mailIsCurrent = isCurrent
 
-    row.mailBtn:SetScript("OnEnter", function(selfBtn)
-        ShowCharacterMailTooltip(selfBtn)
-    end)
-    row.mailBtn:SetScript("OnClick", function(selfBtn)
-        TryOpenMailDetailsPopup(selfBtn)
-    end)
-    row.mailBtn:SetScript("OnLeave", function()
-        if HideTooltip then
-            HideTooltip()
-        elseif ns.TooltipService then
-            ns.TooltipService:Hide()
-        end
-    end)
+    row.mailBtn:SetScript("OnEnter", ShowCharacterMailTooltip)
+    row.mailBtn:SetScript("OnClick", TryOpenMailDetailsPopup)
+    row.mailBtn:SetScript("OnLeave", CharRowCb.HideTip)
 end
 
 ---@param existingRow Frame|nil When set (virtual list), draw into this pooled row instead of acquiring a second frame.
@@ -375,22 +926,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
 
     -- Right-click: tracking toggle + delete. `row.deleteBtn` is built further down, so it is read
     -- when the menu opens rather than captured here.
-    row:SetScript("OnMouseUp", function(self, button)
-        if button ~= "RightButton" then return end
-        if not ns.UI_ShowCharacterRowContextMenu then return end
-        -- Tracking acts on this exact row: its own table index, not the canonical key (Name-Realm for
-        -- an untracked row, which can resolve to the logged-in character).
-        local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
-        local rowIndex = char._key
-        if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
-        ns.UI_ShowCharacterRowContextMenu(self, charKey, {
-            trackingKey = rowIndex,
-            charName = char.name,
-            isTracked = char.isTracked ~= false,
-            isCurrent = isCurrent,
-            deleteButton = self.deleteBtn,
-        })
-    end)
+    row._wnCharRowChar = char
+    row._wnCharRowKey = charKey
+    row._wnCharRowIsCurrent = isCurrent
+    row:SetScript("OnMouseUp", CharRowCb.RowOnMouseUp)
     
     -- Set alternating background colors (Factory pattern)
     ns.UI.Factory:ApplyRowBackground(row, index)
@@ -416,44 +955,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Safely set OnClick (favButton should be a Button type)
     if row.favButton.HasScript and row.favButton:HasScript("OnClick") then
-        row.favButton:SetScript("OnClick", function(btn)
-            local newStatus = false
-            if ns.CharacterService then
-                newStatus = ns.CharacterService:ToggleFavoriteCharacter(WarbandNexus, charKey)
-            end
-            -- Recolour immediately: the row no longer jumps to the Favorites block, so without this
-            -- the star would only catch up on the next full repaint.
-            if btn.SetChecked then
-                btn:SetChecked(newStatus and true or false)
-            end
-            return newStatus
-        end)
+        row.favButton:SetScript("OnClick", CharRowCb.FavOnClick)
     end
     
     -- Tooltip for favorite button
     if ShowTooltip and row.favButton.SetScript then
-        row.favButton:SetScript("OnEnter", function(self)
-            local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey)
-            ShowTooltip(self, {
-                type = "custom",
-                icon = "Interface\\Icons\\Achievement_GuildPerk_HappyHour",
-                title = isFav and ((ns.L and ns.L["REMOVE_FROM_FAVORITES"]) or "Remove from Favorites") or ((ns.L and ns.L["ADD_TO_FAVORITES"]) or "Add to Favorites"),
-                description = (ns.L and ns.L["FAVORITES_TOOLTIP"]) or "Favorite characters appear at the top of the list",
-                lines = {
-                    {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_TOGGLE"]) or "Click to toggle") .. "|r", color = {1, 1, 1}}
-                },
-            })
-        end)
-        
-        row.favButton:SetScript("OnLeave", function(self)
-            if HideTooltip then
-                HideTooltip()
-            end
-        end)
+        row.favButton:SetScript("OnEnter", CharRowCb.FavOnEnter)
+        row.favButton:SetScript("OnLeave", CharRowCb.HideTooltipOnly)
     end
-    
-    -- Icon border color (accent) â€” used for profession icons
-    local iconBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
     
     -- COLUMN 2: Faction icon
     local factionOffset = GetColumnOffset("faction")
@@ -701,288 +1210,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local currentProfX = profOffset + leftPadding
         
         local charKey = GetCharKey(char)
-        local function SetupProfIcon(prof, idx, profSlotKey)
-            if not prof or not prof.icon then return end
-            
-            -- Reuse or create (with accent border)
-            local pFrame = row.profIcons[idx]
-            if not pFrame then
-                pFrame = CreateIcon(row, nil, iconSize, false, iconBorderColor, false)
-                pFrame:EnableMouse(true)
-                pFrame.icon = pFrame.texture
-                
-                row.profIcons[idx] = pFrame
-            end
-            
-            -- Clear previous position and set new centered position
-            pFrame:ClearAllPoints()
-            pFrame:SetPoint("LEFT", currentProfX, 0)
-            pFrame.icon:SetTexture(prof.icon)
-            pFrame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Crop default WoW icon border
-            pFrame:Show()
-            
-            -- Unspent knowledge badge (yellow dot)
-            local profName = prof.name
-            local kd = nil
-            if profName and char.knowledgeData then
-                -- Prefer highest skillLineID (newest expansion) for current data
-                local bestKey = -1
-                for key, entry in pairs(char.knowledgeData) do
-                    if type(key) == "number" and type(entry) == "table" and entry.professionName == profName then
-                        if key > bestKey then
-                            bestKey = key
-                            kd = entry
-                        end
-                    end
-                end
-                -- Fallback: legacy profName-keyed data
-                if not kd then
-                    kd = char.knowledgeData[profName]
-                end
-            end
-            if kd and kd.unspentPoints and kd.unspentPoints > 0 then
-                if not pFrame.knowledgeBadge then
-                    local badge = pFrame:CreateTexture(nil, "OVERLAY")
-                    badge:SetSize(16, 16)
-                    badge:SetPoint("TOPRIGHT", pFrame, "TOPRIGHT", 5, 0)
-                    ns.UI_SetIcon(badge, "attention")
-                    pFrame.knowledgeBadge = badge
-                end
-                pFrame.knowledgeBadge:Show()
-            else
-                if pFrame.knowledgeBadge then
-                    pFrame.knowledgeBadge:Hide()
-                end
-            end
-            
-            -- Profession detail is now shown automatically when WoW's profession UI opens.
-            -- No click action needed on these icons.
-            pFrame:SetScript("OnMouseUp", nil)
-            
-            -- Setup tooltip with detailed information (expansion skills + knowledge + concentration)
-            pFrame:SetScript("OnEnter", function(self)
-                local profName = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession")
-                local lines = {}
-
-                local expansions = char.professionExpansions and char.professionExpansions[profName]
-                if expansions and #expansions > 0 then
-                    for i = 1, #expansions do
-                        local exp = expansions[i]
-                        local skillColor
-                        local maxSkill = exp.maxSkillLevel or 0
-                        local curSkill = exp.skillLevel or 0
-
-                        if maxSkill > 0 and curSkill >= maxSkill then
-                            skillColor = {0.3, 0.9, 0.3}
-                        elseif curSkill > 0 then
-                            local gr, gg, gb = SemanticGoldRGB()
-                            skillColor = { gr, gg, gb }
-                        else
-                            skillColor = {0.4, 0.4, 0.4}
-                        end
-
-                        local skillText
-                        if maxSkill > 0 then
-                            skillText = string.format("%d / %d", curSkill, maxSkill)
-                        else
-                            skillText = "â€”"
-                        end
-
-                        lines[#lines + 1] = {
-                            left = exp.name or "?",
-                            right = skillText,
-                            leftColor = {1, 1, 1},
-                            rightColor = skillColor
-                        }
-                    end
-                else
-                    -- Fallback: no expansion data yet, show basic skill
-                    if prof.skill and prof.maxSkill then
-                        lines[#lines + 1] = {
-                            left = profName,
-                            right = string.format("%d / %d", prof.skill, prof.maxSkill),
-                            leftColor = {1, 1, 1},
-                            rightColor = {0.3, 0.9, 0.3}
-                        }
-                    end
-                end
-
-                local kd = nil
-                if char.knowledgeData then
-                    -- Prefer highest skillLineID (newest expansion) for current data
-                    local bestKey = -1
-                    for kKey, kEntry in pairs(char.knowledgeData) do
-                        if type(kKey) == "number" and type(kEntry) == "table" and kEntry.professionName == profName then
-                            if kKey > bestKey then
-                                bestKey = kKey
-                                kd = kEntry
-                            end
-                        end
-                    end
-                    -- Fallback: legacy profName-keyed data
-                    if not kd then
-                        kd = char.knowledgeData[profName]
-                    end
-                end
-                if kd then
-                    local unspent = kd.unspentPoints or 0
-                    local spent = kd.spentPoints or 0
-                    local maxPts = kd.maxPoints or 0
-                    local collectible = (maxPts > 0) and (maxPts - unspent - spent) or 0
-                    local hasKnowledgeLine = (collectible > 0) or (unspent > 0)
-                    if hasKnowledgeLine then
-                        lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                        local cName = kd.currencyName or ((ns.L and ns.L["KNOWLEDGE"]) or "Knowledge")
-                        if collectible > 0 then
-                            lines[#lines + 1] = {
-                                left = (ns.L and ns.L["COLLECTIBLE"]) or "Collectible",
-                                right = tostring(collectible),
-                                leftColor = {1, 1, 1},
-                                rightColor = {0.3, 0.9, 0.3}
-                            }
-                        end
-                        if unspent > 0 then
-                            lines[#lines + 1] = {
-                                left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"),
-                                leftColor = {1, 0.82, 0}
-                            }
-                        end
-                    end
-                end
-
-                -- Current (Midnight) skillLineID entry, not the legacy profName key pinned to the first
-                -- expansion ever recorded.
-                local concData = WarbandNexus.GetProfessionConcentrationEntry
-                    and WarbandNexus:GetProfessionConcentrationEntry(char, profName)
-                if concData and concData.max and concData.max > 0 then
-                    -- Spacer
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-
-                    -- Estimate current concentration (passive regen since snapshot)
-                    local estimated = concData.current or 0
-                    if WarbandNexus and WarbandNexus.GetEstimatedConcentration then
-                        estimated = WarbandNexus:GetEstimatedConcentration(concData)
-                    end
-
-                    local concColor = {1, 1, 1}
-                    if estimated >= concData.max then
-                        concColor = {0.3, 0.9, 0.3}
-                    elseif estimated > 0 then
-                        concColor = {1, 0.82, 0}
-                    end
-
-                    local concText = string.format("%d / %d", estimated, concData.max)
-
-                    lines[#lines + 1] = {
-                        left = (ns.L and ns.L["CONCENTRATION"]) or "Concentration",
-                        right = concText,
-                        leftColor = {1, 1, 1},
-                        rightColor = concColor
-                    }
-
-                    -- Recharge timer (white label, yellow duration)
-                    if estimated < concData.max and WarbandNexus and WarbandNexus.GetConcentrationTimeToFull then
-                        local timeStr = WarbandNexus:GetConcentrationTimeToFull(concData)
-                        if timeStr and timeStr ~= "" and timeStr ~= ((ns.L and ns.L["FULL"]) or "Full") then
-                            lines[#lines + 1] = {
-                                left = (ns.L and ns.L["RECHARGE"]) or "Recharge",
-                                right = timeStr,
-                                leftColor = {1, 1, 1},
-                                rightColor = {1, 0.82, 0}
-                            }
-                        end
-                    end
-                end
-
-                local eqByProf = char.professionEquipment
-                local eqData = eqByProf and eqByProf[profName] or nil
-                if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    local slotKeys = { "tool", "accessory1", "accessory2" }
-                    local tooltipSvc = ns.TooltipService
-                    for i = 1, #slotKeys do
-                        local slotKey = slotKeys[i]
-                        local item = eqData[slotKey]
-                        if item then
-                            local iconStr = item.icon and string.format("|T%s:0|t ", tostring(item.icon)) or ""
-                            -- Get stat lines first to extract actual slot type (Head, Chest, Tool, etc.)
-                            local statLines = tooltipSvc and tooltipSvc.GetItemTooltipSummaryLines and tooltipSvc:GetItemTooltipSummaryLines(item.itemLink, item.itemID, slotKey) or {}
-                            -- First line contains the slot type (e.g., "Head", "Chest", "Tool")
-                            local slotLabel = (statLines[1] and statLines[1].left)
-                                or (slotKey == "tool" and ((ns.L and ns.L["TOOL"]) or "Tool") or ((ns.L and ns.L["ACCESSORY"]) or "Accessory"))
-                            lines[#lines + 1] = {
-                                left = iconStr .. (item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")),
-                                right = slotLabel,
-                                leftColor = {1, 1, 1},
-                                rightColor = {0.5, 0.5, 0.5},
-                            }
-                            -- Add remaining stat lines (skip first since it's now used as slot label)
-                            for si = 2, #statLines do
-                                local sLine = statLines[si]
-                                lines[#lines + 1] = {
-                                    left = "    " .. sLine.left,
-                                    right = sLine.right or "",
-                                    leftColor = sLine.leftColor or {0.7, 0.7, 0.7},
-                                    rightColor = sLine.rightColor or {0.7, 0.7, 0.7},
-                                }
-                            end
-                        end
-                    end
-                end
-
-                if not ShowTooltip then
-                    -- Fallback: Use TooltipService
-                    local tooltipLines = {}
-                    for i = 1, #lines do
-                        local line = lines[i]
-                        if line.right then
-                            tooltipLines[#tooltipLines + 1] = {
-                                text = (line.left or "") .. "  " .. (line.right or ""),
-                                color = line.rightColor or line.leftColor or {1, 1, 1}
-                            }
-                        elseif line.left and line.left ~= " " then
-                            tooltipLines[#tooltipLines + 1] = {
-                                text = line.left,
-                                color = line.leftColor or {1, 1, 1}
-                            }
-                        end
-                    end
-                    ns.TooltipService:Show(self, {
-                        type = "custom",
-                        icon = prof.icon,
-                        title = profName,
-                        lines = tooltipLines,
-                    })
-                    return
-                end
-
-                ShowTooltip(self, {
-                    type = "custom",
-                    icon = prof.icon,
-                    title = profName,
-                    lines = lines,
-                })
-            end)
-            pFrame:SetScript("OnLeave", function(self)
-                if HideTooltip then
-                    HideTooltip()
-                else
-                    ns.TooltipService:Hide()
-                end
-            end)
-            
-            return true
-        end
         
         local pIdx = 1
         -- Primary
         if char.professions[1] then
-            SetupProfIcon(char.professions[1], pIdx, 1)
+            CharRowCb.SetupProfIcon(row, char, char.professions[1], pIdx, currentProfX, iconSize)
             pIdx = pIdx + 1
             currentProfX = currentProfX + iconSize + iconSpacing
         end
         if char.professions[2] then
-            SetupProfIcon(char.professions[2], pIdx, 2)
+            CharRowCb.SetupProfIcon(row, char, char.professions[2], pIdx, currentProfX, iconSize)
             pIdx = pIdx + 1
             currentProfX = currentProfX + iconSize + iconSpacing
         end
@@ -990,7 +1227,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         for i = 1, #SECONDARY_PROF_KEYS do
             local sec = SECONDARY_PROF_KEYS[i]
             if char.professions[sec] then
-                SetupProfIcon(char.professions[sec], pIdx, sec)
+                CharRowCb.SetupProfIcon(row, char, char.professions[sec], pIdx, currentProfX, iconSize)
                 pIdx = pIdx + 1
                 currentProfX = currentProfX + iconSize + iconSpacing
             end
@@ -1124,33 +1361,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     if row.trackingBtn.HasScript and row.trackingBtn:HasScript("OnClick") then
-        row.trackingBtn:SetScript("OnClick", function(selfBtn)
-            local CS = ns.CharacterService
-            if not CS or not CS.ShowTrackingChangeConfirmation then return end
-            local addon = WarbandNexus
-            local ck = selfBtn.charKey
-            local rowKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ck)
-                and ns.Utilities:GetCanonicalCharacterKey(ck) or ck
-            local rowData = addon and addon.db and addon.db.global and addon.db.global.characters
-                and rowKey and (addon.db.global.characters[rowKey] or (ck and addon.db.global.characters[ck]))
-            if selfBtn.trackingKey and addon.db.global.characters[selfBtn.trackingKey] then
-                rowData = addon.db.global.characters[selfBtn.trackingKey]
-            end
-            local tracked = rowData and rowData.isTracked ~= false
-            CS:ShowTrackingChangeConfirmation(addon, selfBtn.trackingKey or rowKey or ck, selfBtn.charName, not tracked)
-        end)
+        row.trackingBtn:SetScript("OnClick", CharRowCb.TrackingOnClick)
     end
     if ShowTooltip and row.trackingBtn.SetScript then
-        row.trackingBtn:SetScript("OnEnter", function(selfBtn)
-            local tracked = char.isTracked ~= false
-            ShowTooltip(selfBtn, {
-                type = "custom",
-                title = (ns.L and ns.L["TRACKING_TOGGLE_TOOLTIP_TITLE"]) or "Character tracking",
-                description = tracked
-                    and ((ns.L and ns.L["TRACKING_TOGGLE_DISABLE_HINT"]) or "Click to disable tracking.")
-                    or ((ns.L and ns.L["TRACKING_TOGGLE_ENABLE_HINT"]) or "Click to enable tracking."),
-            })
-        end)
+        row.trackingBtn._wnCharRowChar = char
+        row.trackingBtn:SetScript("OnEnter", CharRowCb.TrackingOnEnter)
         row.trackingBtn:SetScript("OnLeave", HideTooltip)
     end
     row.trackingBtn:Show()
@@ -1179,14 +1394,21 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     if showReorder and charList then
         row.reorderButtons:Show()
+        row.reorderButtons._wnCharRowChar = char
+        row.reorderButtons._wnCharList = charList
+        row.reorderButtons._wnListKey = listKey
         -- Always set OnClick (WoW Button supports SetScript even without prior script; HasScript can be false before first set)
         if row.reorderButtons.up then
             row.reorderButtons.up:EnableMouse(true)
-            row.reorderButtons.up:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, -1) end)
+            row.reorderButtons.up._wnReorderHost = row.reorderButtons
+            row.reorderButtons.up._wnReorderDir = -1
+            row.reorderButtons.up:SetScript("OnClick", CharRowCb.ReorderOnClick)
         end
         if row.reorderButtons.down then
             row.reorderButtons.down:EnableMouse(true)
-            row.reorderButtons.down:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, 1) end)
+            row.reorderButtons.down._wnReorderHost = row.reorderButtons
+            row.reorderButtons.down._wnReorderDir = 1
+            row.reorderButtons.down:SetScript("OnClick", CharRowCb.ReorderOnClick)
         end
     else
         row.reorderButtons:Hide()
@@ -1280,21 +1502,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.headerAssignBtn:SetPoint("RIGHT", rail, "RIGHT", -(insetHeader + 11), 0)
         if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(row.headerAssignBtn) end
         row.headerAssignBtn:Show()
-        row.headerAssignBtn:SetScript("OnClick", function(selfBtn)
-            if ns.UI_ShowCharacterSectionAssignMenu then
-                ns.UI_ShowCharacterSectionAssignMenu(selfBtn, charKey, WarbandNexus.db.profile, function()
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
-                end)
-            end
-        end)
+        row.headerAssignBtn._wnCharRowKey = charKey
+        row.headerAssignBtn:SetScript("OnClick", CharRowCb.HeaderAssignOnClick)
         if ShowTooltip then
-            row.headerAssignBtn:SetScript("OnEnter", function(selfBtn)
-                ShowTooltip(selfBtn, {
-                    type = "custom",
-                    title = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_TITLE"]) or "Custom header",
-                    description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter â†’ New custom header.",
-                })
-            end)
+            row.headerAssignBtn:SetScript("OnEnter", CharRowCb.HeaderAssignOnEnter)
             row.headerAssignBtn:SetScript("OnLeave", HideTooltip)
         end
     elseif row.headerAssignBtn then
@@ -1329,111 +1540,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         -- Safely set OnClick
         if row.deleteBtn.HasScript and row.deleteBtn:HasScript("OnClick") then
-            row.deleteBtn:SetScript("OnClick", function(self)
-                -- Use custom themed delete dialog
-                local charKey = self.charKey
-                local charName = self.charName
-                
-                -- Get UI functions from namespace
-                local CreateExternalWindow = ns.UI_CreateExternalWindow
-                local FontManager = ns.FontManager
-                
-                if not CreateExternalWindow then
-                    DebugPrint("[WarbandNexus] ERROR: CreateExternalWindow not found!")
-                    return
-                end
-                
-                -- Create custom delete confirmation dialog
-                local dialog, contentFrame = CreateExternalWindow({
-                    name = "DeleteCharacterDialog",
-                    title = (ns.L and ns.L["DELETE_CHARACTER_TITLE"]) or "Delete Character?",
-                    icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
-                    width = 420,
-                    height = 180,
-                })
-                
-                if not dialog then
-                    DebugPrint("[WarbandNexus] ERROR: Failed to create delete dialog!")
-                    return
-                end
-                
-                -- Warning text
-                local dlgPS = ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK
-                local dlgPad = (dlgPS and dlgPS.SIDE) or 12
-                local warning = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-                warning:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", dlgPad, -dlgPad * 2)
-                warning:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -dlgPad, -dlgPad * 2)
-                warning:SetJustifyH("CENTER")
-                if ns.UI_GetSemanticGoldColor then
-                    local gr, gg, gb = ns.UI_GetSemanticGoldColor()
-                    warning:SetTextColor(gr, gg, gb)
-                else
-                    warning:SetTextColor(1, 0.85, 0.1)
-                end
-                local confirmDeleteFmt = (ns.L and ns.L["CONFIRM_DELETE"]) or "Are you sure you want to delete |cff00ccff%s|r?"
-                warning:SetText(string.format(confirmDeleteFmt, charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")))
-                
-                local subtext = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-                subtext:SetPoint("TOPLEFT", warning, "BOTTOMLEFT", 0, -10)
-                subtext:SetPoint("TOPRIGHT", warning, "BOTTOMRIGHT", 0, -10)
-                subtext:SetJustifyH("CENTER")
-                if ns.UI_GetSemanticRedColor then
-                    local rr, rg, rb = ns.UI_GetSemanticRedColor()
-                    subtext:SetTextColor(rr, rg, rb)
-                else
-                    subtext:SetTextColor(1, 0.3, 0.3)
-                end
-                local cannotUndoText = (ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!"
-                subtext:SetText(cannotUndoText)
-                
-                -- Buttons container (using Factory pattern)
-                local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, 320, 40)
-                btnContainer:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", dlgPad, dlgPad)
-                btnContainer:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -dlgPad, dlgPad)
-                
-                -- Delete button (LEFT)
-                local deleteBtnLabel = (ns.L and ns.L["DELETE"]) or "Delete"
-                local deleteBtn = CreateCharacterDeleteDialogButton(btnContainer, deleteBtnLabel, 150, true)
-                deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
-                deleteBtn:SetScript("OnClick", function()
-                    -- Delete the row that was clicked: its own table index first. The canonical key of an
-                    -- untracked row is Name-Realm, which resolves to the logged-in character when a stale
-                    -- same-name copy is deleted.
-                    local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
-                    local rowIndex = char and char._key
-                    if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
-                    local delKey = rowIndex
-                        or ((ns.UI_GetCharKey and char) and ns.UI_GetCharKey(char))
-                        or (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey))
-                        or charKey
-                    local success = WarbandNexus:DeleteCharacter(delKey)
-                    if dialog.Close then
-                        dialog:Close()
-                    else
-                        dialog:Hide()
-                    end
-                end)
-                
-                -- Cancel button (RIGHT)
-                local cancelBtnLabel = (ns.L and ns.L["CANCEL"]) or "Cancel"
-                local cancelBtn = CreateCharacterDeleteDialogButton(btnContainer, cancelBtnLabel, 150, false)
-                cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
-                cancelBtn:SetScript("OnClick", function()
-                    if dialog.Close then
-                        dialog:Close()
-                    else
-                        dialog:Hide()
-                    end
-                end)
-                
-                -- NOTE: Do NOT override dialog:SetScript("OnHide") here!
-                -- WindowFactory's OnHide handles hiding the clickOutsideFrame overlay.
-                -- Overriding it leaves an invisible full-screen mouse blocker.
-                -- dialog.Close() already handles SetParent(nil) and _G cleanup.
-                
-                -- Show dialog
-                dialog:Show()
-            end)
+            row.deleteBtn._wnCharRowChar = char
+            row.deleteBtn:SetScript("OnClick", CharRowCb.DeleteOnClick)
         end
         
         if row.deleteBtn.icon then
@@ -1442,33 +1550,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
 
         -- Tooltip for delete button
         if ShowTooltip and row.deleteBtn.SetScript then
-            row.deleteBtn:SetScript("OnEnter", function(self)
-                if self.icon then
-                    StyleCharacterDeleteIcon(self.icon, true)
-                end
-                local removeFromTrackingFmt = (ns.L and ns.L["REMOVE_FROM_TRACKING_FORMAT"]) or "Remove %s from tracking"
-                ShowTooltip(self, {
-                    type = "custom",
-                    icon = "Interface\\Icons\\Spell_Shadow_SacrificialShield",
-                    title = (ns.L and ns.L["DELETE_CHARACTER"]) or "Delete Character",
-                    titleColor = {1, 0.4, 0},
-                    description = string.format(removeFromTrackingFmt, self.charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")),
-                    lines = {
-                        {text = "|cffff0000" .. ((ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!") .. "|r", color = {1, 0.2, 0.2}},
-                        {type = "spacer"},
-                        {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_DELETE"]) or "Click to delete") .. "|r", color = {1, 1, 1}}
-                    },
-                })
-            end)
-            
-            row.deleteBtn:SetScript("OnLeave", function(self)
-                if self.icon then
-                    StyleCharacterDeleteIcon(self.icon, false)
-                end
-                if HideTooltip then
-                    HideTooltip()
-                end
-            end)
+            row.deleteBtn:SetScript("OnEnter", CharRowCb.DeleteOnEnter)
+            row.deleteBtn:SetScript("OnLeave", CharRowCb.DeleteOnLeave)
         end
         
         row.deleteBtn:Show()
@@ -1482,31 +1565,15 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    row._wnGradientRefresh = function()
-        if not row.nameText or not row.realmText or not ns.UI_ApplyCharacterRowClassGradientAccent then
-            return
-        end
-        local nameLeft = nameOffset + nameLeftPadding
-        local nameColW = CHAR_ROW_COLUMNS.name.width
-        local swName = row.nameText:GetStringWidth() or 0
-        local swRealm = row.realmText:GetStringWidth() or 0
-        local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + 4)
-        local gradientEnd = nameBlockRight
-        local rowW = row._wnRowPaintWidth
-        if not rowW or rowW < 2 then
-            rowW = row:GetWidth() or 0
-        end
-        if rowW < 2 and parent and parent.GetWidth then
-            rowW = parent:GetWidth() or rowW
-        end
-        if rowW < 2 then
-            rowW = width or 800
-        end
-        if gradientEnd > rowW - 2 then
-            gradientEnd = rowW - 2
-        end
-        ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
+    -- One thunk per row frame (created once); the paint inputs live on the row (2026-10-22: was a
+    -- new closure per paint).
+    if not row._wnCharGradientThunk then
+        row._wnCharGradientThunk = function() CharRowCb.GradientRefresh(row) end
     end
+    row._wnCharGradNameLeft = nameOffset + nameLeftPadding
+    row._wnCharGradParent = parent
+    row._wnCharGradWidth = width
+    row._wnGradientRefresh = row._wnCharGradientThunk
     row._wnGradientRefresh()
 
     local betweenRows = GetLayout().betweenRows or 0
