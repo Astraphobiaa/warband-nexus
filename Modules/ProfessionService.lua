@@ -60,8 +60,7 @@ local GetCurrentProfessionName
 -- the displayed text from a hidden FontString to get a usable string.
 local _resolverFS = nil
 local function ResolveAPIString(value)
-    if not value then return nil end
-    if type(value) == "string" and value ~= "" then return value end
+    -- Secret check first (2026-10-22): a secret string has type "string"; `not` / `~=` on it error.
     -- Secret value: extract via FontString (SetText accepts secret values, GetText returns plain string)
     if issecretvalue and issecretvalue(value) then
         if not _resolverFS then
@@ -78,6 +77,8 @@ local function ResolveAPIString(value)
         end
         return nil
     end
+    if value == nil then return nil end
+    if type(value) == "string" and value ~= "" then return value end
     -- Non-nil, non-string, non-secret: try tostring
     local s = tostring(value)
     if s and s ~= "" and s ~= "nil" then return s end

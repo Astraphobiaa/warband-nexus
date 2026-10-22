@@ -872,7 +872,8 @@ local function GetGildedStashCounts()
                 if cur == nil then
                     cur, max = ParseGildedStashFraction(right)
                 end
-                if cur == nil and left and right then
+                if cur == nil and left and right
+                    and not (issecretvalue and (issecretvalue(left) or issecretvalue(right))) then
                     cur, max = ParseGildedStashFraction(tostring(left) .. " " .. tostring(right))
                 end
                 if cur ~= nil then

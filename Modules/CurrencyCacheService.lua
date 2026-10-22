@@ -12,8 +12,8 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local issecretvalue = issecretvalue
 
 local function IsUsableCurrencyName(name)
-    if name == nil or name == "" then return false end
     if issecretvalue and issecretvalue(name) then return false end
+    if name == nil or name == "" then return false end
     return true
 end
 
@@ -26,8 +26,8 @@ end
 
 ---Tracker / meta rows in the currency list (not player-facing gains).
 local function IsTrackerMetaCurrencyName(nm)
-    if not nm or nm == "" then return false end
     if issecretvalue and issecretvalue(nm) then return false end
+    if not nm or nm == "" then return false end
     if nm:find("Tracker", 1, true)
         or nm:find("EVERGREEN", 1, true)
         or nm:find("Weekly Cap", 1, true)
