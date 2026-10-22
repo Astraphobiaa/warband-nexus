@@ -562,6 +562,10 @@ local function ReleasePlansScrollBody(parent)
                 -- other non-browse categories) but keep it parented + positioned, so its ~50 pooled cards are
                 -- never reparented (that reparent was the 6-7s freeze). DrawBrowser re-shows it on return.
                 child:Hide()
+            elseif ns.UI_SectionPool then
+                -- Marked as garbage so the theme registries drop it (the daily-tasks view still
+                -- rebuilds its chrome per paint; its quest rows are not pooled yet).
+                ns.UI_SectionPool.Discard(child)
             else
                 child:Hide()
                 child:ClearAllPoints()

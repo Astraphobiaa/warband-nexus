@@ -36,6 +36,7 @@ local ADOPTED = {
     { "Reputation", "Modules/UI/ReputationUI.lua", "function WarbandNexus:DrawReputationList%(container, width%)" },
     -- Characters: the two text blocks inside the persistent gold-card bundle (built once).
     { "Characters", "Modules/UI/CharactersUI.lua", "function WarbandNexus:DrawCharacterList%(parent%)", 2 },
+    { "Collections", "Modules/UI/CollectionsUI_Lists.lua", "local function PopulateSectionedList%(cfg, scrollChild," },
     { "Professions", "Modules/UI/ProfessionsUI_DrawTab.lua", "function WarbandNexus:DrawProfessionsTab%(parent%)" },
     { "Items", "Modules/UI/ItemsUI.lua", "function WarbandNexus:DrawItemsResults%(parent, yOffset, width, currentItemsSubTab, itemsSearchText%)" },
 }
@@ -64,6 +65,12 @@ do
     local prep = src:match("function SearchResultsRenderer:PrepareContainer%(container%)(.-)\nend\n")
     check(prep and prep:find("child._wnSectionPooled", 1, true) ~= nil, "PrepareContainer keeps SectionPool frames in place")
     check(prep and prep:find("UI_SectionPool.Discard(child)", 1, true) ~= nil, "PrepareContainer discards through SectionPool")
+end
+
+-- Plans teardown (chrome not pooled yet: quest rows need their own pool) at least marks its garbage.
+do
+    local src = ReadFile("Modules/UI/PlansUI.lua")
+    check(src:find("ns.UI_SectionPool.Discard(child)", 1, true) ~= nil, "Plans teardown discards through SectionPool")
 end
 
 -- Characters: per-paint labels on pooled headers / content frames are cached, not recreated.
