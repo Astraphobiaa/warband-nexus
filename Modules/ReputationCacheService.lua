@@ -1559,7 +1559,7 @@ function ReputationCache:RegisterEventListeners()
             if snapshot and snapshot[majorFactionID] then
                 oldRenownLevel = snapshot[majorFactionID].renownLevel or 0
             end
-            if oldRenownLevelFromEvent ~= nil and not (issecretvalue and issecretvalue(oldRenownLevelFromEvent)) then
+            if not (issecretvalue and issecretvalue(oldRenownLevelFromEvent)) and oldRenownLevelFromEvent ~= nil then
                 local evOld = tonumber(oldRenownLevelFromEvent)
                 if evOld ~= nil then
                     oldRenownLevel = evOld

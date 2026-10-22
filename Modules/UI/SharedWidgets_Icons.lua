@@ -246,7 +246,7 @@ local function ApplyIconTexture(tex, texture, isAtlas)
         if not success then
             if IsDebugModeEnabled and IsDebugModeEnabled() then
                 local texName = texture
-                if texName ~= nil and not (issecretvalue and issecretvalue(texName)) then
+                if not (issecretvalue and issecretvalue(texName)) and texName ~= nil then
                     DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texName) .. "' failed, using fallback")
                 end
             end

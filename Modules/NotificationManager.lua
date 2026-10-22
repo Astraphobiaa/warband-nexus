@@ -1035,7 +1035,7 @@ local function NM_OpenToastTarget(toast)
         local okInfo, isStatistic = pcall(function()
             return select(15, GetAchievementInfo(achievementID))
         end)
-        if not okInfo or (issecretvalue and isStatistic ~= nil and issecretvalue(isStatistic)) then
+        if not okInfo or (issecretvalue and issecretvalue(isStatistic)) then
             isStatistic = nil
         end
         if isStatistic and type(AchievementFrame_ViewStatisticByAchievementID) == "function" then

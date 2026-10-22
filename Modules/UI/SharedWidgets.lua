@@ -573,7 +573,7 @@ function ns.UI_ResolveAchievementPlanPoints(plan, cachedEntry)
     end
     if plan and plan.achievementID and GetAchievementInfo then
         local ok, _, _, ap = pcall(GetAchievementInfo, plan.achievementID)
-        if ok and ap ~= nil and not (issecretvalue and issecretvalue(ap)) then
+        if ok and not (issecretvalue and issecretvalue(ap)) and ap ~= nil then
             pts = tonumber(ap) or 0
         end
     end

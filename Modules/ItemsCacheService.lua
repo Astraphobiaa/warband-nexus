@@ -948,8 +948,8 @@ local cachedSlotData = {}  -- [bagID] = { [slot] = itemInfo, numSlots = n }
 local function ContainerSlotIsSecret(itemInfo)
     if not itemInfo or not issecretvalue then return false end
     local id, hl = itemInfo.itemID, itemInfo.hyperlink
-    if id ~= nil and issecretvalue(id) then return true end
-    if hl ~= nil and issecretvalue(hl) then return true end
+    if issecretvalue(id) then return true end
+    if issecretvalue(hl) then return true end
     return false
 end
 

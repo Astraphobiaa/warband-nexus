@@ -460,7 +460,7 @@ end
 --- Resolve display sender when GetInboxHeaderInfo returns nil (AH invoice, crafting order, GM, returned).
 --- Wiki: GetInboxHeaderInfo sender; GetInboxInvoiceInfo for AH; C_Mail.GetCraftingOrderMailInfo for orders.
 local function ResolveMailSender(mailIndex, sender, isGM, wasReturned)
-    if sender ~= nil and issecretvalue and issecretvalue(sender) then
+    if issecretvalue and issecretvalue(sender) then
         return LocaleSender("MAIL_SENDER_RESTRICTED", "Restricted")
     end
 

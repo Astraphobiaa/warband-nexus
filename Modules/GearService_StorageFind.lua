@@ -207,7 +207,7 @@ end
 local function ResolveEquippedItemIDForComparison(charKey, slotID, slotData)
     if IsViewingLivePlayerGear(charKey) and GetInventoryItemID then
         local liveID = GetInventoryItemID("player", slotID)
-        if issecretvalue and liveID ~= nil and issecretvalue(liveID) then return 0 end
+        if issecretvalue and issecretvalue(liveID) then return 0 end
         return tonumber(liveID) or 0
     end
     if slotData and slotData.itemID then

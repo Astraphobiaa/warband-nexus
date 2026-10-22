@@ -324,7 +324,7 @@ local function SafeSavedInstanceNumber(value)
 end
 
 local function BuildSavedInstanceStorageKey(slotIndex, lockoutID, journalInstanceID, difficultyID)
-    if lockoutID ~= nil and not (issecretvalue and issecretvalue(lockoutID)) then
+    if not (issecretvalue and issecretvalue(lockoutID)) and lockoutID ~= nil then
         local numericID = tonumber(lockoutID)
         if numericID then return numericID end
         if type(lockoutID) == "string" and lockoutID ~= "" then return lockoutID end
@@ -3228,7 +3228,7 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
             if id then
                 local rRaw = lockout.reset
                 local resetSec = nil
-                if rRaw ~= nil and not (issecretvalue and issecretvalue(rRaw)) then
+                if not (issecretvalue and issecretvalue(rRaw)) and rRaw ~= nil then
                     resetSec = tonumber(rRaw)
                 end
                 if resetSec and resetSec > 0 then

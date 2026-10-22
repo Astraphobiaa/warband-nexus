@@ -148,6 +148,7 @@ jobs:
             lua5.1 .github/scripts/test_api_struct_fields.lua
             lua5.1 .github/scripts/test_deprecated_api_calls.lua
             lua5.1 .github/scripts/test_zero_sentinel_fallbacks.lua
+            lua5.1 .github/scripts/test_secret_check_order.lua
           else
             echo "lua5.1 unavailable - skipping API contract lints"
           fi

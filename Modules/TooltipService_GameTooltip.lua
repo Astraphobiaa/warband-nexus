@@ -1687,7 +1687,7 @@ function GT.InitializeGameTooltipHook(service)
 
             local encNpcIDs = npcIDsOverride
             if not encNpcIDs or type(encNpcIDs) ~= "table" or #encNpcIDs == 0 then
-                if encounterID ~= nil and not (issecretvalue and issecretvalue(encounterID)) then
+                if not (issecretvalue and issecretvalue(encounterID)) and encounterID ~= nil then
                     encNpcIDs = sourceDB.encounters and sourceDB.encounters[encounterID]
                 end
             end

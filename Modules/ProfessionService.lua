@@ -117,13 +117,11 @@ end
 
 -- Safe string extraction from API values — uses ResolveAPIString for secret value support
 local function SafeAPIString(value)
-    if not value then return nil end
-    if type(value) == "string" and value ~= "" then return value end
-    -- Try to resolve secret values via FontString extraction
+    -- Secret check FIRST: comparing a secret (even `value ~= ""`) is itself forbidden.
     if issecretvalue and issecretvalue(value) then
-        return ResolveAPIString(value)
+        return ResolveAPIString(value)   -- try FontString extraction
     end
-    if type(value) ~= "string" then return nil end
+    if type(value) ~= "string" or value == "" then return nil end
     return value
 end
 
@@ -2292,7 +2290,7 @@ local function CollectCooldownData()
                     if C_TradeSkillUI.GetRecipeInfo then
                         local riOk, recipeInfo = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
                         if riOk and recipeInfo then
-                            recipeName = recipeInfo.name
+                            recipeName = SafeAPIString(recipeInfo.name)
                             recipeIcon = recipeInfo.icon
                         end
                     end
@@ -3698,7 +3696,8 @@ function WarbandNexus:CollectConcentrationOnLogin()
                                 if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
                                     local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, slID)
                                     if piOk and profInfo then
-                                        expansionName = profInfo.professionName or profInfo.parentProfessionName
+                                        expansionName = SafeAPIString(profInfo.professionName)
+                                            or SafeAPIString(profInfo.parentProfessionName)
                                     end
                                 end
                                 local concEntry = {
@@ -3736,8 +3735,10 @@ function WarbandNexus:CollectConcentrationOnLogin()
             local index = profIdxPair[ii]
             if index then
                 -- GetProfessionInfo: name, icon, skillLevel, maxSkillLevel, numAbilities, spelloffset, skillLine
-                local ok, name, _, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
-                if ok and name and name ~= "" and skillLine and skillLine > 0 and not charData.concentration[skillLine] then
+                local ok, rawName, _, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
+                local name = ok and SafeAPIString(rawName) or nil
+                if issecretvalue and issecretvalue(skillLine) then skillLine = nil end
+                if ok and name and type(skillLine) == "number" and skillLine > 0 and not charData.concentration[skillLine] then
                     local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, skillLine)
                     if concOk and currencyID and currencyID > 0 then
                         local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
@@ -4312,7 +4313,7 @@ function WarbandNexus:GetRecipeMissingReagents(recipeID, quantityMultiplier, cha
     if not schematic then return result end
 
     local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
-    result.recipeName = (recipeInfo and recipeInfo.name) or ("Recipe " .. recipeID)
+    result.recipeName = (recipeInfo and SafeAPIString(recipeInfo.name)) or ("Recipe " .. recipeID)
 
     local slots = schematic.reagentSlotSchematics
     if not slots then return result end

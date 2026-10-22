@@ -251,7 +251,7 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
 
     local rawIlvl = charData and charData.itemLevel
     local avgIlvl = 0
-    if rawIlvl ~= nil and not (issecretvalue and issecretvalue(rawIlvl)) then
+    if not (issecretvalue and issecretvalue(rawIlvl)) and rawIlvl ~= nil then
         avgIlvl = tonumber(rawIlvl) or 0
     end
     if avgIlvl > 0 then

@@ -176,7 +176,7 @@ function WarbandNexus:OnMoneyChanged()
     -- GetMoney() may be a secret value (Midnight+); never persist opaque/compare without guard.
     if tracked and self.db and self.db.char then
         local m = GetMoney()
-        if m ~= nil and not (issecretvalue and issecretvalue(m)) then
+        if not (issecretvalue and issecretvalue(m)) and m ~= nil then
             local n = tonumber(m)
             if n then
                 self.db.char.lastKnownGold = n
