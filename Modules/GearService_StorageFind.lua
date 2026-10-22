@@ -1025,6 +1025,10 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
 
     local addedCount = 0
     local rejectCounts = { stat = 0, lvlRace = 0, boeSoul = 0, bindLabel = 0, bind = 0 }
+    -- itemID -> { equipLoc, classID, subclassID } from GetItemInfoInstant, and link -> equipLoc
+    -- for the link fallback; both for this pass only.
+    local instantInfoByItemID = {}
+    local equipLocByLink = {}
 
     local function ResolveSourceClassFile(ownerKey)
         if not ownerKey or not allChars then return nil end
@@ -1114,24 +1118,45 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         end
 
         local linkEarly = item.itemLink or item.link
-        if IsCosmeticGearCandidate(item.itemID, linkEarly) then return false end
 
-        local equipLoc = ""
+        -- Equip-slot filter first: most storage items are not gear and now skip the cosmetic API
+        -- call. GetItemInfoInstant is static per itemID, so one read per pass. (2026-10-22)
+        local instant = instantInfoByItemID[item.itemID]
+        if not instant then
+            local ok, loc, classID, subclassID = false, nil, nil, nil
+            if C_Item and C_Item.GetItemInfoInstant then
+                local okCall, _, _, _, l, _, c, sc = pcall(C_Item.GetItemInfoInstant, item.itemID)
+                ok, loc, classID, subclassID = okCall, l, c, sc
+            end
+            instant = {
+                equipLoc = (ok and loc) or "",
+                classID = ok and classID or nil,
+                subclassID = ok and subclassID or nil,
+            }
+            instantInfoByItemID[item.itemID] = instant
+        end
+        local equipLoc = instant.equipLoc
         local itemClassID = item.classID
         local itemSubclassID = item.subclassID
-        pcall(function()
-            local _, _, _, loc, _, classID, subclassID = C_Item.GetItemInfoInstant(item.itemID)
-            equipLoc = loc or ""
-            if not itemClassID then itemClassID = classID end
-            if not itemSubclassID then itemSubclassID = subclassID end
-        end)
-        if (equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP") and (item.itemLink or item.link) then
-            equipLoc = GetEquipLoc(item.itemLink or item.link)
+        if not itemClassID then itemClassID = instant.classID end
+        if not itemSubclassID then itemSubclassID = instant.subclassID end
+        if (equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP") and linkEarly then
+            if type(linkEarly) == "string" and not (issecretvalue and issecretvalue(linkEarly)) then
+                local linkLoc = equipLocByLink[linkEarly]
+                if not linkLoc then
+                    linkLoc = GetEquipLoc(linkEarly)
+                    equipLocByLink[linkEarly] = linkLoc
+                end
+                equipLoc = linkLoc
+            else
+                equipLoc = GetEquipLoc(linkEarly)
+            end
         end
         if equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP" then return false end
 
         local targetSlots = EQUIP_LOC_TO_SLOTS[equipLoc]
         if not targetSlots then return false end
+        if IsCosmeticGearCandidate(item.itemID, linkEarly) then return false end
 
         local ilvl = ResolveStorageItemIlvlWarm(item)
         if ilvl == 0 then return false end

@@ -1681,11 +1681,16 @@ local function FindUpgradeLevelInfo(levelInfos, upgradeLevel)
     return levelInfos[upgradeLevel]
 end
 
-local function ScanSlotUpgradeData(slotEntry, slotID)
+---@param skipTooltip boolean|nil Caller already holds this slot's tooltip read, or the link is unchanged
+---       since the stored one (track / tier ride on the link's bonus IDs). (2026-10-22)
+local function ScanSlotUpgradeData(slotEntry, slotID, skipTooltip)
     if not C_ItemUpgrade or not ItemLocation then return end
 
     pcall(function()
-        local tooltipInfo = ScanUpgradeFromTooltip(slotID)
+        local tooltipInfo = nil
+        if not skipTooltip then
+            tooltipInfo = ScanUpgradeFromTooltip(slotID)
+        end
         -- Do NOT gate this on trackName: crafted and PvP gear report "Upgrade Level: 1/6"
         -- with no track word, and gating threw their tier away along with the missing name,
         -- leaving ResolveSlotUpgradeTrackAndTier nothing but the ambiguous ilvl guess.
@@ -1899,7 +1904,8 @@ end
 
 -- GEAR SCANNING  (Current character only — requires live API)
 
-local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, watermarks, changedSlotIDs)
+---@param triggerSlotID number|nil PLAYER_EQUIPMENT_CHANGED slot: re-reads its tooltip even when the link is unchanged.
+local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, watermarks, changedSlotIDs, triggerSlotID)
     local itemLink = GetInventoryItemLink("player", slotID)
     if itemLink and (issecretvalue and issecretvalue(itemLink)) then
         itemLink = nil
@@ -1949,12 +1955,12 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                 slotEntry.itemLevel = ilvl
                 local quality = GetItemQuality(itemLink)
                 if quality and quality > 0 then slotEntry.quality = quality end
-                pcall(function()
-                    if C_Item and C_Item.GetItemInfo then
-                        local nm = C_Item.GetItemInfo(itemLink)
-                        if nm then slotEntry.name = nm end
-                    end
-                end)
+                -- No reader uses the stored name (the link carries it) or these flags when false
+                -- (the paperdoll recomputes them from the link): drop them from rows older scans wrote. (2026-10-22)
+                slotEntry.name = nil
+                if not slotEntry.hasEnchant then slotEntry.hasEnchant = nil end
+                if not slotEntry.isMissingGem then slotEntry.isMissingGem = nil end
+                if not slotEntry.isEnchantable then slotEntry.isEnchantable = nil end
                 slots[slotID] = slotEntry
                 local prevWM = watermarks[slotID] or 0
                 if ilvl > prevWM then
@@ -1981,7 +1987,10 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                         end
                     end
                 end)
-                ScanSlotUpgradeData(slotEntry, slotID)
+                -- Same link = same track / tier (they ride on its bonus IDs): a crest or batch rescan
+                -- skipped the per-slot tooltip read for 16 unchanged slots. The event's slot still
+                -- re-reads. (2026-10-22)
+                ScanSlotUpgradeData(slotEntry, slotID, slotID ~= triggerSlotID)
                 local tn = NormalizeUpgradeTrackName(slotEntry.upgradeTrack)
                 if tn and TRACK_ILVLS[tn] and slotEntry.currUpgrade and slotEntry.maxUpgrade then
                     local tc, tm = ReconcileUpgradeTierForSlot(tn, ilvl, slotEntry.currUpgrade, slotEntry.maxUpgrade)
@@ -1993,20 +2002,14 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                 local equipLoc  = GetEquipLoc(itemLink)
                 local ilvl      = GetEffectiveIlvl(itemLink)
                 local quality   = GetItemQuality(itemLink)
-                local name      = nil
-                pcall(function()
-                    if C_Item and C_Item.GetItemInfo then
-                        name = C_Item.GetItemInfo(itemLink)
-                    end
-                end)
 
+                -- No `name`: nothing reads it, the link carries it. (2026-10-22)
                 local slotEntry = {
                     itemID    = itemID,
                     itemLink  = itemLink,
                     itemLevel = ilvl,
                     quality   = quality,
                     equipLoc  = equipLoc,
-                    name      = name,
                 }
 
                 local hasEnchant = false
@@ -2026,9 +2029,10 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                     end
                 end
 
-                slotEntry.hasEnchant = hasEnchant
-                slotEntry.isMissingGem = isMissingGem
-                slotEntry.isEnchantable = IsPrimaryEnchantExpected(slotID, equipLoc)
+                -- Stored only when true; every reader treats a missing flag as false. (2026-10-22)
+                slotEntry.hasEnchant = hasEnchant or nil
+                slotEntry.isMissingGem = isMissingGem or nil
+                slotEntry.isEnchantable = IsPrimaryEnchantExpected(slotID, equipLoc) or nil
 
                 local tooltipInfo = ScanUpgradeFromTooltip(slotID)
                 if tooltipInfo then
@@ -2039,7 +2043,8 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                         slotEntry.isCrafted = true
                     end
                 end
-                ScanSlotUpgradeData(slotEntry, slotID)
+                -- Tooltip already read just above for this slot. (2026-10-22)
+                ScanSlotUpgradeData(slotEntry, slotID, true)
                 local tn = NormalizeUpgradeTrackName(slotEntry.upgradeTrack)
                 if tn and TRACK_ILVLS[tn] and slotEntry.currUpgrade and slotEntry.maxUpgrade then
                     local tc, tm = ReconcileUpgradeTierForSlot(tn, ilvl, slotEntry.currUpgrade, slotEntry.maxUpgrade)
@@ -2103,7 +2108,7 @@ local function FinalizeEquippedGearPersist(charKey, slots, watermarks, baselineG
     local baselinePayload = CountGearDataPayloadSlots(baselineGearData)
     if newPayload == 0 and baselinePayload > 0 then
         -- Logout / reload edge: inventory APIs can return nil while watermarks still copy forward.
-        if WarbandNexus._gearSkipEmptyWipe or LivePlayerHasAnyEquippedItem() then
+        if LivePlayerHasAnyEquippedItem() then
             return
         end
     end
@@ -2128,6 +2133,36 @@ local function FinalizeEquippedGearPersist(charKey, slots, watermarks, baselineG
     if silent then return end
 
     if Constants and Constants.EVENTS and Constants.EVENTS.GEAR_UPDATED then
+        -- A rescan with the same links (crest / batch CURRENCY_UPDATED, save pass) can still move a
+        -- slot's ilvl, tier, costs or watermark: list those slots as changed too. (2026-10-22)
+        if baselineGearData then
+            local function sameValue(a, b, depth)
+                if issecretvalue and (issecretvalue(a) or issecretvalue(b)) then return false end
+                if type(a) ~= "table" or type(b) ~= "table" or depth > 3 then return a == b end
+                local n = 0
+                for k, v in pairs(a) do
+                    if not sameValue(v, b[k], depth + 1) then return false end
+                    n = n + 1
+                end
+                for _ in pairs(b) do
+                    n = n - 1
+                end
+                return n == 0
+            end
+            local prevSlots = baselineGearData.slots or {}
+            local prevWatermarks = baselineGearData.watermarks or {}
+            local listed = {}
+            for si = 1, #changedSlotIDs do
+                listed[changedSlotIDs[si]] = true
+            end
+            for gi = 1, #GEAR_SLOTS do
+                local sid = GEAR_SLOTS[gi].id
+                if not listed[sid] and not (sameValue(slots[sid], prevSlots[sid], 1)
+                    and sameValue(watermarks[sid], prevWatermarks[sid], 1)) then
+                    changedSlotIDs[#changedSlotIDs + 1] = sid
+                end
+            end
+        end
         local expanded = {}
         local seen = {}
         local function addSid(sid)
@@ -2149,6 +2184,9 @@ local function FinalizeEquippedGearPersist(charKey, slots, watermarks, baselineG
         if triggerSlotID and type(triggerSlotID) == "number" then
             addSid(triggerSlotID)
         end
+        -- Nothing changed: an empty slot list makes the Gear tab repaint everything (3D paperdoll
+        -- included), on top of the CURRENCY_UPDATED repaint that triggered this rescan. (2026-10-22)
+        if #expanded == 0 and baselineGearData then return end
         WarbandNexus:SendMessage(Constants.EVENTS.GEAR_UPDATED, { charKey = charKey, slotIDs = expanded })
     end
 end
@@ -2185,7 +2223,7 @@ function WarbandNexus:ScanEquippedGear(triggerSlotID, opts)
 
     for i = 1, #GEAR_SLOTS do
         local slotDef = GEAR_SLOTS[i]
-        ApplyEquippedGearSlotScan(slotDef.id, baselineGearData, slots, watermarks, changedSlotIDs)
+        ApplyEquippedGearSlotScan(slotDef.id, baselineGearData, slots, watermarks, changedSlotIDs, triggerSlotID)
     end
 
     FinalizeEquippedGearPersist(charKey, slots, watermarks, baselineGearData, triggerSlotID, changedSlotIDs, silent)
@@ -2320,17 +2358,16 @@ function WarbandNexus:OnGearEquipmentChanged(slotID)
     end)
 end
 
----Cancel debounced gear scan and persist equipped gear on PLAYER_LOGOUT.
+---Cancel the debounced gear scan on PLAYER_LOGOUT (no live read: see below).
 function WarbandNexus:FlushGearCacheOnLogout()
     if gearScanTimer then
         gearScanTimer:Cancel()
         gearScanTimer = nil
     end
-    if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
-        self._gearSkipEmptyWipe = true
-        self:ScanEquippedGear()
-        self._gearSkipEmptyWipe = nil
-    end
+    -- No live inventory read at PLAYER_LOGOUT: teardown can return partial slot data (track nil,
+    -- ilvl 0) that the all-empty guard does not catch and that would overwrite the stored row.
+    -- PLAYER_EQUIPMENT_CHANGED and the save passes already persisted what play changed; a swap still
+    -- inside the 0.12 s debounce is picked up by the next login scan. (2026-10-22)
 end
 
 --- Get stored equipped gear for a tracked character.
