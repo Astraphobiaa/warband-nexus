@@ -2216,7 +2216,9 @@ local function ShouldToastAchievementLikeBlizzard(achievementID, alreadyEarnedOn
     if not ok or (issecretvalue and (issecretvalue(flags) or issecretvalue(isGuild))) then return false end
     if isGuild then return true end
     local repeatFlag = _G.ACHIEVEMENT_FLAGS_TOAST_ON_REPEAT_COMPLETION
-    return type(flags) == "number" and type(repeatFlag) == "number" and bit.band(flags, repeatFlag) ~= 0
+    if type(flags) ~= "number" or type(repeatFlag) ~= "number" or repeatFlag <= 0 then return false end
+    -- Single-bit flag test without the `bit` library (no undeclared global reads in shipped modules).
+    return math.floor(flags / repeatFlag) % 2 == 1
 end
 
 ---Handle ACHIEVEMENT_EARNED event
