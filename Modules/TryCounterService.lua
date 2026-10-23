@@ -214,9 +214,9 @@ Fns.RegisterTryCounterEvents()
 
 local function TryCounterIsPartyOrRaidInstance()
     local inI, it = IsInInstance()
-    if issecretvalue and inI and issecretvalue(inI) then return false end
+    if issecretvalue and issecretvalue(inI) then return false end
     if not inI then return false end
-    if issecretvalue and it and issecretvalue(it) then it = nil end
+    if issecretvalue and issecretvalue(it) then it = nil end
     return it == "party" or it == "raid"
 end
 
@@ -305,12 +305,12 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         addon:OnTryCounterSpellcastFailed(event, ...)
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
         local interactionType = ...
-        if interactionType and not (issecretvalue and issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
+        if not (issecretvalue and issecretvalue(interactionType)) and interactionType and BLOCKING_INTERACTION_TYPES[interactionType] then
             V.isBlockingInteractionOpen = true
         end
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
         local interactionType = ...
-        if interactionType and not (issecretvalue and issecretvalue(interactionType)) and BLOCKING_INTERACTION_TYPES[interactionType] then
+        if not (issecretvalue and issecretvalue(interactionType)) and interactionType and BLOCKING_INTERACTION_TYPES[interactionType] then
             V.isBlockingInteractionOpen = false
         end
     elseif event == "NEW_MOUNT_ADDED" then
@@ -1064,7 +1064,7 @@ function Fns.BuildReverseIndices()
                         local mountID = qs.mountID
                         if not mountID and C_MountJournal and C_MountJournal.GetMountFromItem then
                             mountID = C_MountJournal.GetMountFromItem(qs.itemID)
-                            if issecretvalue and mountID and issecretvalue(mountID) then mountID = nil end
+                            if issecretvalue and issecretvalue(mountID) then mountID = nil end
                         end
                         if mountID and mountID ~= qs.itemID then
                             questStarterMountToSourceItemID[mountID] = drop.itemID
@@ -1287,7 +1287,7 @@ function Fns.ScheduleDeferredJournalMirrorIndexBuild()
                             local journalID = drop.mountID
                             if not journalID and C_MountJournal and C_MountJournal.GetMountFromItem then
                                 journalID = C_MountJournal.GetMountFromItem(drop.itemID)
-                                if issecretvalue and journalID and issecretvalue(journalID) then journalID = nil end
+                                if issecretvalue and issecretvalue(journalID) then journalID = nil end
                             end
                             journalID = journalID and tonumber(journalID) or nil
                             if journalID and journalID ~= tonumber(drop.itemID) then
@@ -1306,7 +1306,7 @@ function Fns.ScheduleDeferredJournalMirrorIndexBuild()
                             if not speciesID and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                                 local _, _, _, _, _, _, _, _, _, _, _, _, sid = C_PetJournal.GetPetInfoByItemID(drop.itemID)
                                 speciesID = sid
-                                if issecretvalue and speciesID and issecretvalue(speciesID) then speciesID = nil end
+                                if issecretvalue and issecretvalue(speciesID) then speciesID = nil end
                             end
                             speciesID = speciesID and tonumber(speciesID) or nil
                             if speciesID and speciesID ~= tonumber(drop.itemID) then
@@ -1415,7 +1415,7 @@ function Fns.ReconcileObtainedFromInventory()
             Fns.delayedYieldItemIDs[itemID] = nil
         else
             local ok, count = pcall(GetCount, itemID, true, false, true, true)
-            if ok and count and not (issecretvalue and issecretvalue(count)) then
+            if ok and not (issecretvalue and issecretvalue(count)) and count then
                 count = tonumber(count)
                 if count and count > 0 then
                     Fns.MarkItemObtained(itemID)
@@ -1462,7 +1462,7 @@ function Fns.ResolveQuestStarterSourceItemID(id)
             for mountKey, srcID in pairs(questStarterMountToSourceItemID) do
                 if type(mountKey) == "number" and type(srcID) == "number" then
                     local resolved = C_MountJournal.GetMountFromItem(mountKey)
-                    if resolved and not (issecretvalue and issecretvalue(resolved)) and tonumber(resolved) == idNum then
+                    if not (issecretvalue and issecretvalue(resolved)) and resolved and tonumber(resolved) == idNum then
                         sourceItemID = srcID
                         mountJournalResolvedSourceCache[idNum] = srcID
                         break
@@ -1716,14 +1716,14 @@ function WarbandNexus:RegisterTryCounterLootToastForBagDedupe(collectibleType, n
         mark("mount\0" .. tostring(sourceItemID))
         if C_MountJournal and C_MountJournal.GetMountFromItem then
             local mid = C_MountJournal.GetMountFromItem(sourceItemID)
-            if mid and not (issecretvalue and issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
+            if not (issecretvalue and issecretvalue(mid)) and mid and type(mid) == "number" and mid > 0 then
                 mark("mount\0" .. tostring(mid))
             end
         end
     end
     if collectibleType == "pet" and sourceItemID and type(sourceItemID) == "number" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local sid = select(13, C_PetJournal.GetPetInfoByItemID(sourceItemID))
-        if sid and not (issecretvalue and issecretvalue(sid)) and type(sid) == "number" and sid > 0 then
+        if not (issecretvalue and issecretvalue(sid)) and sid and type(sid) == "number" and sid > 0 then
             mark("pet\0" .. tostring(sid))
         end
     end
@@ -1748,14 +1748,14 @@ function WarbandNexus:ShouldSuppressBagCollectibleToastAsTryCounterDuplicate(col
         if recent("mount\0" .. tostring(itemID)) then return true end
         if C_MountJournal and C_MountJournal.GetMountFromItem then
             local mid = C_MountJournal.GetMountFromItem(itemID)
-            if mid and not (issecretvalue and issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
+            if not (issecretvalue and issecretvalue(mid)) and mid and type(mid) == "number" and mid > 0 then
                 if recent("mount\0" .. tostring(mid)) then return true end
             end
         end
     end
     if collectibleType == "pet" and itemID and type(itemID) == "number" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local sid = select(13, C_PetJournal.GetPetInfoByItemID(itemID))
-        if sid and not (issecretvalue and issecretvalue(sid)) and type(sid) == "number" and sid > 0 then
+        if not (issecretvalue and issecretvalue(sid)) and sid and type(sid) == "number" and sid > 0 then
             if recent("pet\0" .. tostring(sid)) then return true end
         end
     end
@@ -1806,7 +1806,7 @@ function WarbandNexus:GetQuestStarterMountsForBrowser()
                 local mountID = entry.itemID
                 if C_MountJournal and C_MountJournal.GetMountFromItem then
                     local resolved = C_MountJournal.GetMountFromItem(entry.itemID)
-                    if resolved and not (issecretvalue and issecretvalue(resolved)) then
+                    if not (issecretvalue and issecretvalue(resolved)) and resolved then
                         mountID = resolved
                     end
                 end
@@ -1913,7 +1913,7 @@ function Fns.ResolveCollectibleID(drop)
         elseif C_MountJournal.GetMountFromItem then
             id = C_MountJournal.GetMountFromItem(drop.itemID)
             -- Midnight 12.0: return value may be secret
-            if issecretvalue and id and issecretvalue(id) then id = nil end
+            if issecretvalue and issecretvalue(id) then id = nil end
         end
     elseif drop.type == "pet" then
         -- C_PetJournal.GetPetInfoByItemID(itemID) -> speciesID (13th return value!)
@@ -1924,7 +1924,7 @@ function Fns.ResolveCollectibleID(drop)
             local _, _, _, _, _, _, _, _, _, _, _, _, speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
             id = speciesID
             -- Midnight 12.0: return value may be secret
-            if issecretvalue and id and issecretvalue(id) then id = nil end
+            if issecretvalue and issecretvalue(id) then id = nil end
         end
     elseif drop.type == "toy" then
         -- For toys, collectibleID == itemID
@@ -2344,7 +2344,7 @@ Fns.IsCollectibleCollected = function(drop)
         if collectibleID then
             local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
             -- Midnight 12.0: isCollected may be a secret value — do not treat as "uncollected"
-            if issecretvalue and isCollected and issecretvalue(isCollected) then
+            if issecretvalue and issecretvalue(isCollected) then
                 return Fns.IsMountLearnedByItemSpell(drop.itemID)
             end
             if isCollected == true then return true end
@@ -2359,7 +2359,7 @@ Fns.IsCollectibleCollected = function(drop)
         if collectibleID then
             local numCollected = C_PetJournal.GetNumCollectedInfo(collectibleID)
             -- Midnight 12.0: numCollected may be secret — use teach-spell fallback
-            if issecretvalue and numCollected and issecretvalue(numCollected) then
+            if issecretvalue and issecretvalue(numCollected) then
                 return Fns.IsPetLearnedByItemSpell(drop.itemID)
             end
             if numCollected and numCollected > 0 then return true end
@@ -2372,7 +2372,7 @@ Fns.IsCollectibleCollected = function(drop)
         -- Toys: itemID IS the collectibleID, always works
         local hasToy = PlayerHasToy(drop.itemID)
         -- Midnight 12.0: hasToy may be secret
-        if issecretvalue and hasToy and issecretvalue(hasToy) then return false end
+        if issecretvalue and issecretvalue(hasToy) then return false end
         return hasToy == true
     end
 
@@ -2400,12 +2400,12 @@ function Fns.ScanLootForItems(expectedDrops, cachedNumLoot, cachedSlotData)
             -- while the item is visible — refresh from live API so we don't double-count misses vs ENCOUNTER_END.
             if hasItem and (not link or type(link) ~= "string") and GetLootSlotLink then
                 link = GetLootSlotLink(i)
-                if link and issecretvalue and issecretvalue(link) then link = nil end
+                if issecretvalue and issecretvalue(link) then link = nil end
             end
         else
             hasItem = LootSlotHasItem and LootSlotHasItem(i)
             link = GetLootSlotLink and GetLootSlotLink(i)
-            if link and issecretvalue and issecretvalue(link) then link = nil end
+            if issecretvalue and issecretvalue(link) then link = nil end
         end
         if hasItem and link and type(link) == "string"
             and not (issecretvalue and issecretvalue(link)) then
@@ -2451,7 +2451,7 @@ function Fns.BuildCollectibleObtainedChatLink(data)
         return "|cffffffff[?]|r"
     end
     local nm = data.name
-    if nm and issecretvalue and issecretvalue(nm) then nm = nil end
+    if issecretvalue and issecretvalue(nm) then nm = nil end
     if data.type == "mount" and C_MountJournal and data.id then
         -- C_MountJournal.GetMountItemID does not exist (no wiki page; the journal only exposes
         -- the item->mount direction via GetMountFromItem). The guarded branch that used to sit
@@ -2459,7 +2459,7 @@ function Fns.BuildCollectibleObtainedChatLink(data)
         local n = nm
         if (not n or n == "") and C_MountJournal.GetMountInfoByID then
             n = select(1, C_MountJournal.GetMountInfoByID(data.id))
-            if n and issecretvalue and issecretvalue(n) then n = nil end
+            if issecretvalue and issecretvalue(n) then n = nil end
         end
         return "|cffffffff[" .. (n or "Mount") .. "]|r"
     end
@@ -2716,7 +2716,7 @@ function Fns.HandleNewCollectibleAdded(tcType, collectibleID)
 end
 
 function WarbandNexus:OnTryCounterNewMountAdded(mountID)
-    if issecretvalue and mountID and issecretvalue(mountID) then return end
+    if issecretvalue and issecretvalue(mountID) then return end
     Fns.HandleNewCollectibleAdded("mount", tonumber(mountID))
 end
 
@@ -3294,12 +3294,12 @@ function WarbandNexus:InitializeTryCounter()
                     if safeBag and safeSlot and safeBag >= 0 and safeBag <= maxCarriedBagID then
                         local slotKey = safeBag * 100 + safeSlot
                         local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
-                        if itemID and not (issecretvalue and issecretvalue(itemID)) then
+                        if not (issecretvalue and issecretvalue(itemID)) and itemID then
                             V.bagSlotItemCache[slotKey] = itemID
                         else
                             itemID = V.bagSlotItemCache[slotKey]
                         end
-                        if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
+                        if not (issecretvalue and issecretvalue(itemID)) and itemID and containerDropDB[itemID] then
                             Fns.ScheduleContainerOpenAttempt(itemID, safeBag, safeSlot)
                         end
                     end
@@ -3312,12 +3312,12 @@ function WarbandNexus:InitializeTryCounter()
     if not self.useItemByNameHooked and C_Item and C_Item.UseItemByName then
         pcall(function()
             hooksecurefunc(C_Item, "UseItemByName", function(nameOrID)
-                if nameOrID and not (issecretvalue and issecretvalue(nameOrID)) then
+                if not (issecretvalue and issecretvalue(nameOrID)) and nameOrID then
                     local itemID = tonumber(nameOrID)
                     if not itemID and type(nameOrID) == "string" and C_Item.GetItemInfoInstant then
                         itemID = C_Item.GetItemInfoInstant(nameOrID)
                     end
-                    if itemID and not (issecretvalue and issecretvalue(itemID)) and containerDropDB[itemID] then
+                    if not (issecretvalue and issecretvalue(itemID)) and itemID and containerDropDB[itemID] then
                         Fns.ScheduleContainerOpenAttempt(itemID, nil, nil)
                     end
                 end

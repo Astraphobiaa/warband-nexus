@@ -729,7 +729,7 @@ function WarbandNexus:PrefetchSessionEquippedItemMetadata()
         local slotID = slotDef and slotDef.id
         if slotID then
             local itemLink = GetInventoryItemLink("player", slotID)
-            if itemLink and issecretvalue and issecretvalue(itemLink) then
+            if issecretvalue and issecretvalue(itemLink) then
                 itemLink = nil
             end
             if itemLink then
@@ -1050,7 +1050,7 @@ local function CaptureContainerSlotItemLevel(bagID, slot, itemID, itemLink)
             local loc = ItemLocation:CreateFromBagAndSlot(bagID, slot)
             if loc and loc.IsValid and loc:IsValid() then
                 local v = C_Item.GetCurrentItemLevel(loc)
-                if type(v) == "number" and v > 0 and not (issecretvalue and issecretvalue(v)) then
+                if type(v) == "number" and not (issecretvalue and issecretvalue(v)) and v > 0 then
                     return v
                 end
             end
@@ -1058,15 +1058,15 @@ local function CaptureContainerSlotItemLevel(bagID, slot, itemID, itemLink)
         end)
         if okLoc and ilFromLoc and ilFromLoc > 0 then return ilFromLoc end
     end
-    if itemLink and not (issecretvalue and issecretvalue(itemLink)) and C_Item and C_Item.GetDetailedItemLevelInfo then
+    if not (issecretvalue and issecretvalue(itemLink)) and itemLink and C_Item and C_Item.GetDetailedItemLevelInfo then
         local okD, det = pcall(C_Item.GetDetailedItemLevelInfo, itemLink)
-        if okD and type(det) == "number" and det > 0 and not (issecretvalue and issecretvalue(det)) then
+        if okD and type(det) == "number" and not (issecretvalue and issecretvalue(det)) and det > 0 then
             return det
         end
     end
     if itemID and C_Item and C_Item.GetDetailedItemLevelInfo then
         local okI, detI = pcall(C_Item.GetDetailedItemLevelInfo, itemID)
-        if okI and type(detI) == "number" and detI > 0 and not (issecretvalue and issecretvalue(detI)) then
+        if okI and type(detI) == "number" and not (issecretvalue and issecretvalue(detI)) and detI > 0 then
             return detI
         end
     end
@@ -1115,7 +1115,7 @@ local function ScanBag(bagID, cacheOnly)
         if not itemInfo.hyperlink then return end
         local hl = itemInfo.hyperlink
         local itemID = ResolveContainerSlotItemID(itemInfo, hl)
-        if itemID and issecretvalue and issecretvalue(itemID) then
+        if issecretvalue and issecretvalue(itemID) then
             hadSecretSlots = true
             return
         end
@@ -2854,7 +2854,7 @@ local function BuildGuildSummary()
     if gb then
         local U = ns.Utilities
         for guildName, guildData in pairs(gb) do
-            if guildName and not (issecretvalue and issecretvalue(guildName)) and type(guildData) == "table" then
+            if not (issecretvalue and issecretvalue(guildName)) and guildName and type(guildData) == "table" then
                 local guildSum = {}
                 for _, tabData in pairs(guildData.tabs or {}) do
                     for _, itemData in pairs(tabData.items or {}) do
@@ -3043,7 +3043,7 @@ local function CollectGuildItemCountsFromDB(itemID, guildBank)
     if not itemID or not guildBank then return guildRows end
     local U = ns.Utilities
     for guildName, guildData in pairs(guildBank) do
-        if guildName and not (issecretvalue and issecretvalue(guildName)) and type(guildData) == "table" then
+        if not (issecretvalue and issecretvalue(guildName)) and guildName and type(guildData) == "table" then
             local count = 0
             for _, tabData in pairs(guildData.tabs or {}) do
                 for _, itemData in pairs(tabData.items or {}) do

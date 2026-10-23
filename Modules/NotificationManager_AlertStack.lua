@@ -271,13 +271,17 @@ local function GetBlizzardAlertFramePosition()
     if not f or not f.GetPoint then return nil, nil, nil end
     local point, relativeTo, relativePoint, x, y = f:GetPoint(1)
     if not point then return nil, nil, nil end
+    -- Blizzard alert frames can carry secret anchor/size aspects: tonumber/math on them hard-errors.
+    if issecretvalue and (issecretvalue(x) or issecretvalue(y) or issecretvalue(relativeTo)) then return nil, nil, nil end
     x, y = tonumber(x) or 0, tonumber(y) or -100
     if relativeTo == UIParent then
         return point, x, y
     end
     local fLeft, fTop = f:GetLeft(), f:GetTop()
+    local w = f:GetWidth()
+    if issecretvalue and (issecretvalue(fLeft) or issecretvalue(fTop) or issecretvalue(w)) then return nil, nil, nil end
     if not fLeft or not fTop then return nil, nil, nil end
-    local w = f:GetWidth() or ALERT_WIDTH_FIXED
+    w = w or ALERT_WIDTH_FIXED
     local uiw = UIParent:GetWidth()
     local uiTop = UIParent:GetTop()
     local centerX = fLeft + (w / 2)
@@ -292,13 +296,17 @@ local function GetBlizzardCriteriaAlertFramePosition()
     if not f or not f.GetPoint or f:GetNumPoints() < 1 then return nil, nil, nil end
     local point, relativeTo, relativePoint, x, y = f:GetPoint(1)
     if not point then return nil, nil, nil end
+    -- Blizzard alert frames can carry secret anchor/size aspects: tonumber/math on them hard-errors.
+    if issecretvalue and (issecretvalue(x) or issecretvalue(y) or issecretvalue(relativeTo)) then return nil, nil, nil end
     x, y = tonumber(x) or 0, tonumber(y) or -100
     if relativeTo == UIParent then
         return point, x, y
     end
     local fLeft, fTop = f:GetLeft(), f:GetTop()
+    local w = f:GetWidth()
+    if issecretvalue and (issecretvalue(fLeft) or issecretvalue(fTop) or issecretvalue(w)) then return nil, nil, nil end
     if not fLeft or not fTop then return nil, nil, nil end
-    local w = f:GetWidth() or 300
+    w = w or 300
     local uiw = UIParent:GetWidth()
     local uiTop = UIParent:GetTop()
     local centerX = fLeft + (w / 2)

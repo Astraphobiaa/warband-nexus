@@ -751,7 +751,7 @@ local function SendPlanReminderToast(plan, triggerLabel, fromLocation)
     toastData.progressGlow = theme.progressGlow
     if not fromLocation then
         local safeMsg = triggerLabel
-        if safeMsg and issecretvalue and issecretvalue(safeMsg) then
+        if issecretvalue and issecretvalue(safeMsg) then
             safeMsg = nil
         end
         if safeMsg and safeMsg ~= "" then
@@ -1224,13 +1224,13 @@ end
 local function SafeIsPlayerAirborneTransit()
     if UnitOnTaxi then
         local ok, onTaxi = pcall(UnitOnTaxi, "player")
-        if ok and onTaxi and not (issecretvalue and issecretvalue(onTaxi)) and onTaxi == true then
+        if ok and not (issecretvalue and issecretvalue(onTaxi)) and onTaxi and onTaxi == true then
             return true
         end
     end
     if IsFlying then
         local ok, flying = pcall(IsFlying)
-        if ok and flying and not (issecretvalue and issecretvalue(flying)) and flying == true then
+        if ok and not (issecretvalue and issecretvalue(flying)) and flying and flying == true then
             return true
         end
     end

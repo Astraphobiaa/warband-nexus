@@ -655,45 +655,46 @@ local function ShowMatchTooltip(owner, m)
     local br, bg, bb = 0.9, 0.9, 0.9
     if ns.UI_GetTooltipBodyColor then br, bg, bb = ns.UI_GetTooltipBodyColor() end
 
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    local modeLabel = BRACKET_LABELS[m.mode] or m.mode or "?"
-    GameTooltip:AddLine(modeLabel, tr, tg, tb)
-    if m.mapName then
-        GameTooltip:AddLine(m.mapName, br, bg, bb)
-    end
-
-    local function addStat(label, value)
-        if value == nil then return end
-        GameTooltip:AddDoubleLine(label, tostring(value), lr, lg, lb, br, bg, bb)
-    end
-    addStat((L and L["PVP_TT_KILLING_BLOWS"]) or "Killing Blows", s.killingBlows)
-    addStat((L and L["PVP_TT_DEATHS"]) or "Deaths", s.deaths)
-    if s.damageDone ~= nil then
-        addStat((L and L["PVP_TT_DAMAGE"]) or "Damage", FormatBigNumber(s.damageDone))
-    end
-    if s.healingDone ~= nil then
-        addStat((L and L["PVP_TT_HEALING"]) or "Healing", FormatBigNumber(s.healingDone))
-    end
-    addStat((L and L["PVP_TT_HONOR_GAINED"]) or "Honor Gained", s.honorGained)
-
-    local pre, post = tonumber(s.prematchMMR), tonumber(s.postmatchMMR)
-    if not post and pre and tonumber(s.mmrChange) then
-        post = pre + tonumber(s.mmrChange)
-    end
-    if pre or post then
-        local delta = (post and pre) and (post - pre) or tonumber(s.mmrChange)
-        local deltaStr = ""
-        if delta and delta ~= 0 then
-            local hex = delta > 0
-                and ((ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff33cc55")
-                or "|cffcc4433"
-            deltaStr = string.format(" %s(%s%d)|r", hex, delta > 0 and "+" or "", delta)
+    if ns.UI_SafeSetGameTooltipOwner(owner, "ANCHOR_RIGHT") then
+        local modeLabel = BRACKET_LABELS[m.mode] or m.mode or "?"
+        GameTooltip:AddLine(modeLabel, tr, tg, tb)
+        if m.mapName then
+            GameTooltip:AddLine(m.mapName, br, bg, bb)
         end
-        GameTooltip:AddDoubleLine((L and L["PVP_TT_MMR"]) or "MMR",
-            string.format("%s > %s%s", pre and tostring(pre) or "?", post and tostring(post) or "?", deltaStr),
-            lr, lg, lb, br, bg, bb)
+
+        local function addStat(label, value)
+            if value == nil then return end
+            GameTooltip:AddDoubleLine(label, tostring(value), lr, lg, lb, br, bg, bb)
+        end
+        addStat((L and L["PVP_TT_KILLING_BLOWS"]) or "Killing Blows", s.killingBlows)
+        addStat((L and L["PVP_TT_DEATHS"]) or "Deaths", s.deaths)
+        if s.damageDone ~= nil then
+            addStat((L and L["PVP_TT_DAMAGE"]) or "Damage", FormatBigNumber(s.damageDone))
+        end
+        if s.healingDone ~= nil then
+            addStat((L and L["PVP_TT_HEALING"]) or "Healing", FormatBigNumber(s.healingDone))
+        end
+        addStat((L and L["PVP_TT_HONOR_GAINED"]) or "Honor Gained", s.honorGained)
+
+        local pre, post = tonumber(s.prematchMMR), tonumber(s.postmatchMMR)
+        if not post and pre and tonumber(s.mmrChange) then
+            post = pre + tonumber(s.mmrChange)
+        end
+        if pre or post then
+            local delta = (post and pre) and (post - pre) or tonumber(s.mmrChange)
+            local deltaStr = ""
+            if delta and delta ~= 0 then
+                local hex = delta > 0
+                    and ((ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff33cc55")
+                    or "|cffcc4433"
+                deltaStr = string.format(" %s(%s%d)|r", hex, delta > 0 and "+" or "", delta)
+            end
+            GameTooltip:AddDoubleLine((L and L["PVP_TT_MMR"]) or "MMR",
+                string.format("%s > %s%s", pre and tostring(pre) or "?", post and tostring(post) or "?", deltaStr),
+                lr, lg, lb, br, bg, bb)
+        end
+        GameTooltip:Show()
     end
-    GameTooltip:Show()
 end
 
 -- Invisible pooled hover-catcher over one recent-match row (cells are FontStrings).
@@ -710,7 +711,7 @@ local function EnsureRecentHitFrame(bundle, idx, card, rowY, innerW)
             end
         end)
         hit:SetScript("OnLeave", function()
-            if GameTooltip then GameTooltip:Hide() end
+            if GameTooltip then ns.UI_SafeHideGameTooltip() end
         end)
         bundle.recentHits[idx] = hit
     end

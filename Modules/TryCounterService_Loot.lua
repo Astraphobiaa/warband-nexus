@@ -424,9 +424,9 @@ end
 function Fns.ResolveSylvanasMythicChestFromRaidGameObject(ctx, inInstance, sourceGUIDs)
     if ctx.drops or not inInstance or not sourceGUIDs or #sourceGUIDs == 0 then return end
     local _, instType, diff, _, _, _, _, tmpl = GetInstanceInfo()
-    if issecretvalue and instType and issecretvalue(instType) then instType = nil end
-    if issecretvalue and diff and issecretvalue(diff) then diff = nil end
-    if issecretvalue and tmpl and issecretvalue(tmpl) then tmpl = nil end
+    if issecretvalue and issecretvalue(instType) then instType = nil end
+    if issecretvalue and issecretvalue(diff) then diff = nil end
+    if issecretvalue and issecretvalue(tmpl) then tmpl = nil end
     if instType ~= "raid" or diff ~= RAID_MYTHIC_DIFFICULTY_ID or tmpl ~= SANCTUM_RAID_TEMPLATE_INSTANCE_ID then
         return
     end
@@ -452,9 +452,9 @@ end
 
 function Fns.IsSanctumMythicRaid()
     local _, instType, diff, _, _, _, _, tmpl = GetInstanceInfo()
-    if issecretvalue and instType and issecretvalue(instType) then instType = nil end
-    if issecretvalue and diff and issecretvalue(diff) then diff = nil end
-    if issecretvalue and tmpl and issecretvalue(tmpl) then tmpl = nil end
+    if issecretvalue and issecretvalue(instType) then instType = nil end
+    if issecretvalue and issecretvalue(diff) then diff = nil end
+    if issecretvalue and issecretvalue(tmpl) then tmpl = nil end
     return instType == "raid" and diff == RAID_MYTHIC_DIFFICULTY_ID and tmpl == SANCTUM_RAID_TEMPLATE_INSTANCE_ID
 end
 
@@ -512,7 +512,7 @@ end
 
 function Fns.ResolveChatPath2KillDifficulty(npcID, itemID, inInst)
     local _, cached = Fns.GetFreshEncounterKillForNpc(npcID)
-    if cached and cached.difficultyID and not (issecretvalue and issecretvalue(cached.difficultyID)) then
+    if cached and not (issecretvalue and issecretvalue(cached.difficultyID)) and cached.difficultyID then
         return cached.difficultyID
     end
     local chatP2KillDiff = nil
@@ -585,7 +585,7 @@ function Fns.LootSlotsHaveReadableItemLink(slotData, numLoot)
             local link = sd.link
             if (not link or type(link) ~= "string") and GetLootSlotLink then
                 link = GetLootSlotLink(i)
-                if link and issecretvalue and issecretvalue(link) then link = nil end
+                if issecretvalue and issecretvalue(link) then link = nil end
             end
             if link and type(link) == "string" and not (issecretvalue and issecretvalue(link)) then
                 return true
@@ -606,7 +606,7 @@ function Fns.LootSlotsHaveItemsPresent(slotData, numLoot)
     if LootSlotHasItem then
         for i = 1, numLoot do
             local ok, has = pcall(LootSlotHasItem, i)
-            if ok and has then return true end
+            if ok and ((issecretvalue and issecretvalue(has)) or has) then return true end
         end
     end
     return false
@@ -746,9 +746,9 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self, lootRouteSource)
         diff = RT.tryCounterSelfTest.slotInstance.difficulty or diff
         tmpl = RT.tryCounterSelfTest.slotInstance.templateInstanceID or tmpl
     end
-    if issecretvalue and instType and issecretvalue(instType) then instType = nil end
-    if issecretvalue and diff and issecretvalue(diff) then diff = nil end
-    if issecretvalue and tmpl and issecretvalue(tmpl) then tmpl = nil end
+    if issecretvalue and issecretvalue(instType) then instType = nil end
+    if issecretvalue and issecretvalue(diff) then diff = nil end
+    if issecretvalue and issecretvalue(tmpl) then tmpl = nil end
 
     local bestRule, bestKillTime, bestKillData = nil, 0, nil
     for ri = 1, #RT.instanceBossSlotOutcomeRules do
@@ -775,7 +775,7 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self, lootRouteSource)
     local killData = bestKillData
 
     local recentKillDiff = killData.difficultyID
-    if issecretvalue and recentKillDiff and issecretvalue(recentKillDiff) then recentKillDiff = nil end
+    if issecretvalue and issecretvalue(recentKillDiff) then recentKillDiff = nil end
     local encounterDiffID = Fns.ResolveEncounterDifficultyForLootGating(true, recentKillDiff, diff)
     local selfTestTrackable = RT.tryCounterSelfTest and RT.tryCounterSelfTest.bossTrackable
     local trackable = selfTestTrackable and selfTestTrackable[bestRule.bossNpcID]
@@ -889,7 +889,7 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
 
     -- P3: Zone-wide hostileOnly pools only (see ResolveFromZone — no raresOnly anonymous pools)
     local inInstance = IsInInstance()
-    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if issecretvalue and issecretvalue(inInstance) then inInstance = nil end
     if not ctx.drops then
         Fns.ResolveFromZone(ctx, inInstance, self)
     end
@@ -972,7 +972,7 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
                 if Fns.NpcDropEntryContainsAnyItemSet(RT.npcDropDB[killData.npcID], itemSet) and killData.time > bestT then
                     bestT = killData.time
                     local kdDiff = killData.difficultyID
-                    if kdDiff and not (issecretvalue and issecretvalue(kdDiff)) then
+                    if not (issecretvalue and issecretvalue(kdDiff)) and kdDiff then
                         recentKillDiff = kdDiff
                     end
                 end

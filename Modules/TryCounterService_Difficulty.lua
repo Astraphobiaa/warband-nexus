@@ -70,6 +70,13 @@ function Fns.ResolveDifficultyLabel(difficultyID)
     if mapped then return mapped end
     if _G.GetDifficultyInfo then
         local ok, _, _, isHeroic, isChallengeMode, _, displayMythic, _, isLFR = pcall(_G.GetDifficultyInfo, difficultyID)
+        if issecretvalue then
+            -- Secret booleans error on a truth test; treat them as unknown (false).
+            if issecretvalue(isHeroic) then isHeroic = nil end
+            if issecretvalue(isChallengeMode) then isChallengeMode = nil end
+            if issecretvalue(displayMythic) then displayMythic = nil end
+            if issecretvalue(isLFR) then isLFR = nil end
+        end
         if ok and isLFR then
             return "LFR"
         end
@@ -88,33 +95,33 @@ end
 
 function Fns.ResolveLiveInstanceDifficultyID(instanceType, giDifficulty)
     local d = giDifficulty
-    if d and issecretvalue and issecretvalue(d) then d = nil end
+    if issecretvalue and issecretvalue(d) then d = nil end
     if type(d) == "number" and d > 0 then return d end
 
     local it = instanceType
-    if it and issecretvalue and issecretvalue(it) then it = nil end
+    if issecretvalue and issecretvalue(it) then it = nil end
 
     if it == "party" then
         local CCM = C_ChallengeMode
         if CCM and CCM.GetActiveKeystoneInfo then
             local level = select(1, CCM.GetActiveKeystoneInfo())
-            if level and not (issecretvalue and issecretvalue(level)) and type(level) == "number" and level > 0 then
+            if not (issecretvalue and issecretvalue(level)) and level and type(level) == "number" and level > 0 then
                 return 8 -- Mythic Keystone
             end
         end
         local dd = GetDungeonDifficultyID and GetDungeonDifficultyID()
-        if dd and not (issecretvalue and issecretvalue(dd)) and type(dd) == "number" and dd > 0 then
+        if not (issecretvalue and issecretvalue(dd)) and dd and type(dd) == "number" and dd > 0 then
             return dd
         end
     elseif it == "raid" then
         local rd = GetRaidDifficultyID and GetRaidDifficultyID()
-        if rd and not (issecretvalue and issecretvalue(rd)) and type(rd) == "number" and rd > 0 then
+        if not (issecretvalue and issecretvalue(rd)) and rd and type(rd) == "number" and rd > 0 then
             return rd
         end
     elseif it == "scenario" then
         -- Megadungeons (Mechagon, Dawn of the Infinite) report instanceType "scenario"; use dungeon difficulty.
         local dd = GetDungeonDifficultyID and GetDungeonDifficultyID()
-        if dd and not (issecretvalue and issecretvalue(dd)) and type(dd) == "number" and dd > 0 then
+        if not (issecretvalue and issecretvalue(dd)) and dd and type(dd) == "number" and dd > 0 then
             return dd
         end
     end
@@ -193,7 +200,7 @@ end
 function Fns.FormatDropDifficultySegment(reqDiff, encDiff)
     if not reqDiff or reqDiff == "All Difficulties" then return "|cff888888\226\128\148|r" end
     local label = nil
-    if encDiff and not (issecretvalue and issecretvalue(encDiff)) then
+    if not (issecretvalue and issecretvalue(encDiff)) and encDiff then
         label = Fns.ResolveDifficultyLabel(encDiff)
     end
     if type(reqDiff) == "table" then
@@ -237,9 +244,9 @@ function Fns.ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
     if inInstance then
         local _, typ, liveDiff, _, _, _, _, iid = GetInstanceInfo()
         local safeIid = iid
-        if safeIid and issecretvalue and issecretvalue(safeIid) then safeIid = nil end
+        if issecretvalue and issecretvalue(safeIid) then safeIid = nil end
         local safeLive = liveDiff
-        if safeLive and issecretvalue and issecretvalue(safeLive) then safeLive = nil end
+        if issecretvalue and issecretvalue(safeLive) then safeLive = nil end
         local resolvedLive = Fns.ResolveLiveInstanceDifficultyID(typ, safeLive)
         if tryCounterInstanceDiffCache.instanceID and safeIid
             and tryCounterInstanceDiffCache.instanceID == safeIid
@@ -251,7 +258,7 @@ function Fns.ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
             return resolvedLive
         end
     end
-    if recentKillDiff and not (issecretvalue and issecretvalue(recentKillDiff)) then
+    if not (issecretvalue and issecretvalue(recentKillDiff)) and recentKillDiff then
         return recentKillDiff
     end
     -- No guess past this point. The old last resort was GetRaidDifficultyID() or GetDungeonDifficultyID(),
@@ -262,15 +269,15 @@ end
 
 function Fns.ResolveEncounterDifficultyForLootGating(inInstance, recentKillDiff, liveDifficultyID)
     local d = Fns.ResolveEffectiveEncounterDifficultyID(inInstance, recentKillDiff)
-    if d and issecretvalue and issecretvalue(d) then
+    if issecretvalue and issecretvalue(d) then
         d = nil
     end
-    if not d and liveDifficultyID and not (issecretvalue and issecretvalue(liveDifficultyID)) then
+    if not d and not (issecretvalue and issecretvalue(liveDifficultyID)) and liveDifficultyID then
         d = liveDifficultyID
     end
     if not d and inInstance then
         local _, _, liveDiff = GetInstanceInfo()
-        if liveDiff and not (issecretvalue and issecretvalue(liveDiff)) then
+        if not (issecretvalue and issecretvalue(liveDiff)) and liveDiff then
             d = liveDiff
         end
     end
@@ -339,7 +346,7 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
     if #trackable > 0 then
         local mapInstanceID = select(8, GetInstanceInfo())
         -- issecretvalue first: comparing a secret (`> 0`) throws in tainted code.
-        if mapInstanceID and not (issecretvalue and issecretvalue(mapInstanceID))
+        if not (issecretvalue and issecretvalue(mapInstanceID)) and mapInstanceID
             and type(mapInstanceID) == "number" and mapInstanceID > 0 then
             local filtered = {}
             for ti = 1, #trackable do

@@ -247,22 +247,23 @@ local function PvE_AttachCurrencyDisplayToggle(titleCard, sortAnchor, addon)
 
     toggleBtn:SetScript("OnEnter", function(self)
         if not GameTooltip then return end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        local mode = (ns.UI_GetPvECurrencyDisplayMode and ns.UI_GetPvECurrencyDisplayMode()) or "current"
-        local activeLabel = (mode == "weekly")
-            and GetLocalizedText("PVE_CURRENCY_VIEW_WEEKLY", "Weekly")
-            or GetLocalizedText("PVE_CURRENCY_VIEW_CURRENT", "Current")
-        GameTooltip:SetText(activeLabel, 1, 1, 1)
-        local bodyR, bodyG, bodyB = 0.8, 0.8, 0.8
-        if ns.UI_GetTooltipDescColor then
-            bodyR, bodyG, bodyB = ns.UI_GetTooltipDescColor()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_BOTTOM") then
+            local mode = (ns.UI_GetPvECurrencyDisplayMode and ns.UI_GetPvECurrencyDisplayMode()) or "current"
+            local activeLabel = (mode == "weekly")
+                and GetLocalizedText("PVE_CURRENCY_VIEW_WEEKLY", "Weekly")
+                or GetLocalizedText("PVE_CURRENCY_VIEW_CURRENT", "Current")
+            GameTooltip:SetText(activeLabel, 1, 1, 1)
+            local bodyR, bodyG, bodyB = 0.8, 0.8, 0.8
+            if ns.UI_GetTooltipDescColor then
+                bodyR, bodyG, bodyB = ns.UI_GetTooltipDescColor()
+            end
+            GameTooltip:AddLine(toggleHint, bodyR, bodyG, bodyB)
+            GameTooltip:AddLine(shiftHint, bodyR, bodyG, bodyB)
+            GameTooltip:Show()
         end
-        GameTooltip:AddLine(toggleHint, bodyR, bodyG, bodyB)
-        GameTooltip:AddLine(shiftHint, bodyR, bodyG, bodyB)
-        GameTooltip:Show()
     end)
     toggleBtn:SetScript("OnLeave", function()
-        if GameTooltip then GameTooltip:Hide() end
+        if GameTooltip then ns.UI_SafeHideGameTooltip() end
     end)
 
     toggleBtn:SetScript("OnClick", function()

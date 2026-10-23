@@ -319,20 +319,21 @@ function M.BuildMenu()
     end
     header:EnableMouse(true)
     header:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:ClearLines()
-        if ns.UI_GameTooltipAddRoleLine then
-            ns.UI_GameTooltipAddRoleLine(GameTooltip, (ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", "Bright")
-        else
-            GameTooltip:AddLine((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", 1, 1, 1)
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+            GameTooltip:ClearLines()
+            if ns.UI_GameTooltipAddRoleLine then
+                ns.UI_GameTooltipAddRoleLine(GameTooltip, (ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", "Bright")
+            else
+                GameTooltip:AddLine((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", 1, 1, 1)
+            end
+            local mr, mg, mb = 0.85, 0.85, 0.85
+            GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_STAR", "Star marks your left-click action."), mr, mg, mb, true)
+            GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_SET_ACTION", "Right-click a menu item to set the left-click action."), mr, mg, mb, true)
+            GameTooltip:Show()
         end
-        local mr, mg, mb = 0.85, 0.85, 0.85
-        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_STAR", "Star marks your left-click action."), mr, mg, mb, true)
-        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_SET_ACTION", "Right-click a menu item to set the left-click action."), mr, mg, mb, true)
-        GameTooltip:Show()
     end)
     header:SetScript("OnLeave", function()
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
 
     local headerIcon = header:CreateTexture(nil, "ARTWORK")
@@ -620,7 +621,7 @@ function M.BuildButton()
                 self._hoveringBadge = true
                 self._hovering = false
                 WNTooltipHide()
-                if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+                if GameTooltip:GetOwner() == self then ns.UI_SafeHideGameTooltip() end
                 if M.ShowBadgeTooltip then
                     M.ShowBadgeTooltip(S.badgeBg)
                 end
@@ -629,7 +630,7 @@ function M.BuildButton()
         elseif self._hoveringBadge then
             self._hoveringBadge = false
             WNTooltipHide()
-            if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+            if GameTooltip:GetOwner() == self then ns.UI_SafeHideGameTooltip() end
         end
         local over = self:IsMouseOver() and self:IsVisible()
         -- Suppress tooltip while the context menu is open to prevent overlap
@@ -641,7 +642,7 @@ function M.BuildButton()
                 ShowHoverTooltip(self)
             else
                 WNTooltipHide()
-                if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+                if GameTooltip:GetOwner() == self then ns.UI_SafeHideGameTooltip() end
                 if not over then
                     S.eaTooltipHover.anchor = nil
                     S.eaTooltipHover.charKey = nil
@@ -652,7 +653,7 @@ function M.BuildButton()
         elseif over and menuOpen then
             -- Menu opened while hovering — hide tooltip immediately
             WNTooltipHide()
-            if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+            if GameTooltip:GetOwner() == self then ns.UI_SafeHideGameTooltip() end
         end
         if not over and not self._hovering and not self._hoveringBadge then
             self._hoverPollActive = false
@@ -685,7 +686,7 @@ function M.BuildButton()
         if dragged then return end
         -- Always hide tooltip on any click to prevent overlap with menu
         WNTooltipHide()
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
         if mouseButton == "RightButton" then
             ToggleMenu(self)
         else

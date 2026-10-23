@@ -2070,7 +2070,7 @@ function WarbandNexus:DrawReputationList(container, width)
 
     local function BuildFilteredList(headerData, scopeTag)
         local rawSearch = reputationSearchText or ""
-        local isSecret = rawSearch and issecretvalue and issecretvalue(rawSearch)
+        local isSecret = issecretvalue and issecretvalue(rawSearch)
         local searchTextKey = isSecret and "" or rawSearch
         local isSearching = not isSecret and rawSearch ~= ""
 

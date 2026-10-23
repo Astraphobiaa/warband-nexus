@@ -150,7 +150,7 @@ local function OnCurrencyGained(event, data)
             local maxW = SafeCurrencyNum(info.maxWeeklyQuantity) or 0
             local maxQ = SafeCurrencyNum(info.maxQuantity) or 0
             local nm = info.name
-            if nm and issecretvalue and issecretvalue(nm) then
+            if issecretvalue and issecretvalue(nm) then
                 nm = nil
             end
             dbData = {

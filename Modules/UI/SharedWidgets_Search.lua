@@ -75,8 +75,8 @@ end
 local function WnSafeCharLine(char)
     local n = char and char.name
     local rlm = char and char.realm
-    if n and issecretvalue and issecretvalue(n) then n = "?" end
-    if rlm and issecretvalue and issecretvalue(rlm) then rlm = "" end
+    if issecretvalue and issecretvalue(n) then n = "?" end
+    if issecretvalue and issecretvalue(rlm) then rlm = "" end
     n = n or "?"
     if rlm and rlm ~= "" then
         return n .. " - " .. WnFormatRealmDisplay(rlm)
@@ -94,8 +94,8 @@ end
 local function WnPlainSearchBlob(char)
     local n = char and char.name
     local rlm = char and char.realm or ""
-    if n and issecretvalue and issecretvalue(n) then n = "" end
-    if rlm and issecretvalue and issecretvalue(rlm) then rlm = "" end
+    if issecretvalue and issecretvalue(n) then n = "" end
+    if issecretvalue and issecretvalue(rlm) then rlm = "" end
     n = n or ""
     local rPretty = WnFormatRealmDisplay(rlm)
     local lv = tonumber(char and char.level) or 0
@@ -112,7 +112,7 @@ end
 --- Class-colored character name only (roster name column).
 local function WnColoredCharacterName(char)
     local n = char and char.name
-    if n and issecretvalue and issecretvalue(n) then n = "?" end
+    if issecretvalue and issecretvalue(n) then n = "?" end
     n = n or "?"
     local cc = RAID_CLASS_COLORS and char.classFile and RAID_CLASS_COLORS[char.classFile]
     local r, g, b = 1, 1, 1
@@ -135,7 +135,7 @@ end
 
 local function WnRosterRealmColored(char)
     local rlm = char and char.realm or ""
-    if rlm and issecretvalue and issecretvalue(rlm) then rlm = "" end
+    if issecretvalue and issecretvalue(rlm) then rlm = "" end
     local rShow = WnFormatRealmDisplay(rlm)
     if rShow == "" then
         return ""
@@ -485,26 +485,28 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
                     if isLocked then
                         local gname = (entry.groupId and ns.CharacterService and ns.CharacterService.GetCustomSectionName and ns.CharacterService:GetCustomSectionName(addon, entry.groupId)) or entry.groupId or ""
                         local function showLockedTip(f)
-                            GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-                            GameTooltip:SetText((L and L["CUSTOM_HEADER_ROW_LOCKED_TITLE"]) or "Section Locked", 1, 0.82, 0)
-                            GameTooltip:AddLine(string.format((L and L["CUSTOM_HEADER_ROW_LOCKED_TOOLTIP"]) or "Character is locked in section '%s'. Unlock that section first to move.", gname), 0.85, 0.85, 0.9, true)
-                            GameTooltip:Show()
+                            if ns.UI_SafeSetGameTooltipOwner(f, "ANCHOR_RIGHT") then
+                                GameTooltip:SetText((L and L["CUSTOM_HEADER_ROW_LOCKED_TITLE"]) or "Section Locked", 1, 0.82, 0)
+                                GameTooltip:AddLine(string.format((L and L["CUSTOM_HEADER_ROW_LOCKED_TOOLTIP"]) or "Character is locked in section '%s'. Unlock that section first to move.", gname), 0.85, 0.85, 0.9, true)
+                                GameTooltip:Show()
+                            end
                         end
                         row:SetScript("OnEnter", showLockedTip)
-                        row:SetScript("OnLeave", GameTooltip_Hide)
+                        row:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         if cb then
                             cb:SetScript("OnEnter", showLockedTip)
-                            cb:SetScript("OnLeave", GameTooltip_Hide)
+                            cb:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         end
                     else
                         local tipText = entry.groupId and entry.groupId ~= "" and string.format((L and L["CUSTOM_HEADER_ROW_WILL_MOVE"]) or "Will move from '%s'", (ns.CharacterService and ns.CharacterService.GetCustomSectionName and ns.CharacterService:GetCustomSectionName(addon, entry.groupId)) or entry.groupId)
                         if tipText then
                             row:SetScript("OnEnter", function(f)
-                                GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-                                GameTooltip:SetText(tipText, 1, 0.82, 0.2)
-                                GameTooltip:Show()
+                                if ns.UI_SafeSetGameTooltipOwner(f, "ANCHOR_RIGHT") then
+                                    GameTooltip:SetText(tipText, 1, 0.82, 0.2)
+                                    GameTooltip:Show()
+                                end
                             end)
-                            row:SetScript("OnLeave", GameTooltip_Hide)
+                            row:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         end
                         row:SetScript("OnClick", function()
                             if not cb then return end
@@ -557,16 +559,17 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
                     paintRosterRowColumns(row, entry, ROSTER_CONTENT_LEFT, ROSTER_ROW_RIGHT_PAD)
                     if isCurrentSecLocked then
                         local function showSecLockTip(f)
-                            GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-                            GameTooltip:SetText((L and L["CUSTOM_HEADER_ROW_LOCKED_TITLE"]) or "Section Locked", 1, 0.82, 0)
-                            GameTooltip:AddLine((L and L["CUSTOM_HEADER_SECTION_LOCKED_REMOVE_TOOLTIP"]) or "This section is locked. Unlock header to remove members.", 0.85, 0.85, 0.9, true)
-                            GameTooltip:Show()
+                            if ns.UI_SafeSetGameTooltipOwner(f, "ANCHOR_RIGHT") then
+                                GameTooltip:SetText((L and L["CUSTOM_HEADER_ROW_LOCKED_TITLE"]) or "Section Locked", 1, 0.82, 0)
+                                GameTooltip:AddLine((L and L["CUSTOM_HEADER_SECTION_LOCKED_REMOVE_TOOLTIP"]) or "This section is locked. Unlock header to remove members.", 0.85, 0.85, 0.9, true)
+                                GameTooltip:Show()
+                            end
                         end
                         row:SetScript("OnEnter", showSecLockTip)
-                        row:SetScript("OnLeave", GameTooltip_Hide)
+                        row:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         if rmCb then
                             rmCb:SetScript("OnEnter", showSecLockTip)
-                            rmCb:SetScript("OnLeave", GameTooltip_Hide)
+                            rmCb:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         end
                     else
                         row:SetScript("OnClick", function()
@@ -619,26 +622,28 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
                     if isLocked then
                         local gname = (entry.groupId and ns.CharacterService and ns.CharacterService.GetCustomSectionName and ns.CharacterService:GetCustomSectionName(addon, entry.groupId)) or entry.groupId or ""
                         local function showLockedTip(f)
-                            GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-                            GameTooltip:SetText((L and L["CUSTOM_HEADER_ROW_LOCKED_TITLE"]) or "Section Locked", 1, 0.82, 0)
-                            GameTooltip:AddLine(string.format((L and L["CUSTOM_HEADER_ROW_LOCKED_TOOLTIP"]) or "Character is locked in section '%s'. Unlock that section first to move.", gname), 0.85, 0.85, 0.9, true)
-                            GameTooltip:Show()
+                            if ns.UI_SafeSetGameTooltipOwner(f, "ANCHOR_RIGHT") then
+                                GameTooltip:SetText((L and L["CUSTOM_HEADER_ROW_LOCKED_TITLE"]) or "Section Locked", 1, 0.82, 0)
+                                GameTooltip:AddLine(string.format((L and L["CUSTOM_HEADER_ROW_LOCKED_TOOLTIP"]) or "Character is locked in section '%s'. Unlock that section first to move.", gname), 0.85, 0.85, 0.9, true)
+                                GameTooltip:Show()
+                            end
                         end
                         row:SetScript("OnEnter", showLockedTip)
-                        row:SetScript("OnLeave", GameTooltip_Hide)
+                        row:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         if cb then
                             cb:SetScript("OnEnter", showLockedTip)
-                            cb:SetScript("OnLeave", GameTooltip_Hide)
+                            cb:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         end
                     else
                         local tipText = entry.groupId and entry.groupId ~= "" and string.format((L and L["CUSTOM_HEADER_ROW_WILL_MOVE"]) or "Will move from '%s'", (ns.CharacterService and ns.CharacterService.GetCustomSectionName and ns.CharacterService:GetCustomSectionName(addon, entry.groupId)) or entry.groupId)
                         if tipText then
                             row:SetScript("OnEnter", function(f)
-                                GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-                                GameTooltip:SetText(tipText, 1, 0.82, 0.2)
-                                GameTooltip:Show()
+                                if ns.UI_SafeSetGameTooltipOwner(f, "ANCHOR_RIGHT") then
+                                    GameTooltip:SetText(tipText, 1, 0.82, 0.2)
+                                    GameTooltip:Show()
+                                end
                             end)
-                            row:SetScript("OnLeave", GameTooltip_Hide)
+                            row:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
                         end
                         row:SetScript("OnClick", function()
                             if not cb then return end
@@ -882,12 +887,13 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             local profileRef = profile
             local localGid = groupId
             addBtn:SetScript("OnEnter", function(b)
-                GameTooltip:SetOwner(b, "ANCHOR_LEFT")
-                GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_ROW_ADD_TOOLTIP"]) or "Add characters", 1, 1, 1)
-                GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_ROW_ADD_TOOLTIP_BODY"]) or "Pick tracked characters to place in this header. Remove them here or via the row note icon.", 0.85, 0.85, 0.9, true)
-                GameTooltip:Show()
+                if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_LEFT") then
+                    GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_ROW_ADD_TOOLTIP"]) or "Add characters", 1, 1, 1)
+                    GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_ROW_ADD_TOOLTIP_BODY"]) or "Pick tracked characters to place in this header. Remove them here or via the row note icon.", 0.85, 0.85, 0.9, true)
+                    GameTooltip:Show()
+                end
             end)
-            addBtn:SetScript("OnLeave", GameTooltip_Hide)
+            addBtn:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
             addBtn:SetScript("OnClick", function(b)
                 if ns.UI_ShowCustomHeaderMembersMenu then
                     ns.UI_ShowCustomHeaderMembersMenu(b, localGid, profileRef, rosterChars)
@@ -941,17 +947,18 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
                 end
             end
             lockBtn:SetScript("OnEnter", function(b)
-                GameTooltip:SetOwner(b, "ANCHOR_LEFT")
-                if isLocked then
-                    GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_UNLOCK_TOOLTIP_TITLE"]) or "Unlock section", 1, 1, 1)
-                    GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_UNLOCK_TOOLTIP_DESC"]) or "This section is locked against accidental character moves. Click to unlock.", 0.85, 0.85, 0.9, true)
-                else
-                    GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_LOCK_TOOLTIP_TITLE"]) or "Lock section", 1, 1, 1)
-                    GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_LOCK_TOOLTIP_DESC"]) or "Lock this section to protect its characters from being moved to other sections.", 0.85, 0.85, 0.9, true)
+                if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_LEFT") then
+                    if isLocked then
+                        GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_UNLOCK_TOOLTIP_TITLE"]) or "Unlock section", 1, 1, 1)
+                        GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_UNLOCK_TOOLTIP_DESC"]) or "This section is locked against accidental character moves. Click to unlock.", 0.85, 0.85, 0.9, true)
+                    else
+                        GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_LOCK_TOOLTIP_TITLE"]) or "Lock section", 1, 1, 1)
+                        GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_LOCK_TOOLTIP_DESC"]) or "Lock this section to protect its characters from being moved to other sections.", 0.85, 0.85, 0.9, true)
+                    end
+                    GameTooltip:Show()
                 end
-                GameTooltip:Show()
             end)
-            lockBtn:SetScript("OnLeave", GameTooltip_Hide)
+            lockBtn:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
             lockBtn:SetScript("OnClick", function()
                 if CharacterService and CharacterService.ToggleCustomSectionLock then
                     CharacterService:ToggleCustomSectionLock(addon, groupId)
@@ -1001,11 +1008,12 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
                 nt:SetAlpha(1)
             end
             btn:SetScript("OnEnter", function(b)
-                GameTooltip:SetOwner(b, "ANCHOR_LEFT")
-                GameTooltip:SetText((ns.L and ns.L[tipKey]) or tipFallback, 1, 1, 1)
-                GameTooltip:Show()
+                if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_LEFT") then
+                    GameTooltip:SetText((ns.L and ns.L[tipKey]) or tipFallback, 1, 1, 1)
+                    GameTooltip:Show()
+                end
             end)
-            btn:SetScript("OnLeave", GameTooltip_Hide)
+            btn:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
             btn:SetScript("OnClick", function()
                 if not enabled then return end
                 if CharacterService and CharacterService.MoveCustomCharacterSection
@@ -1091,12 +1099,13 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             goldStar.icon:SetSize(iconSz, iconSz)
         end
         goldStar:SetScript("OnEnter", function(b)
-            GameTooltip:SetOwner(b, "ANCHOR_LEFT")
-            GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_GOLD_STAR_TITLE"]) or "Gold section highlight", 1, 1, 1)
-            GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_GOLD_STAR_BODY"]) or "Click to give this section the same gold bar style as Favorites. You can highlight several sections. Click again to turn off for this section.", 0.85, 0.85, 0.9, true)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_LEFT") then
+                GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_GOLD_STAR_TITLE"]) or "Gold section highlight", 1, 1, 1)
+                GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_GOLD_STAR_BODY"]) or "Click to give this section the same gold bar style as Favorites. You can highlight several sections. Click again to turn off for this section.", 0.85, 0.85, 0.9, true)
+                GameTooltip:Show()
+            end
         end)
-        goldStar:SetScript("OnLeave", GameTooltip_Hide)
+        goldStar:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
         goldStar:Show()
     end
 

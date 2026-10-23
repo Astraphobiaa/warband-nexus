@@ -37,7 +37,7 @@ function Fns.SumStatisticTotalsFromIds(statIds)
         local sid = statIds[i]
         local val = GetStat(sid)
         local num
-        if val and not (issecretvalue and issecretvalue(val)) then
+        if not (issecretvalue and issecretvalue(val)) and val then
             local s = string.gsub(tostring(val), "[^%d]", "")
             if s ~= "" then
                 hadReadable = true
@@ -329,9 +329,9 @@ function Fns.GetTryCounterInstanceType()
     end
     if not IsInInstance then return false end
     local inInst, typ = IsInInstance()
-    if issecretvalue and inInst and issecretvalue(inInst) then return false end
+    if issecretvalue and issecretvalue(inInst) then return false end
     if not inInst then return false end
-    if issecretvalue and typ and issecretvalue(typ) then return false end
+    if issecretvalue and issecretvalue(typ) then return false end
     return true, typ
 end
 
@@ -624,7 +624,7 @@ function Fns.MarkNpcForRuntimeStatReseed(npcID, difficultyID)
     npcID = tonumber(npcID)
     if not npcID then return end
     local safeDiff = difficultyID
-    if issecretvalue and safeDiff and issecretvalue(safeDiff) then safeDiff = nil end
+    if issecretvalue and issecretvalue(safeDiff) then safeDiff = nil end
     RT.pendingRuntimeStatNpcIds[npcID] = {
         at = GetTime(),
         difficultyID = safeDiff,
@@ -664,7 +664,7 @@ function Fns.ScheduleEncounterLootlessMissFallback(npcID, difficultyID, encounte
     if not drops or Fns.NpcEntryHasStatisticIds(drops) then return end
 
     local safeDiff = difficultyID
-    if issecretvalue and safeDiff and issecretvalue(safeDiff) then safeDiff = nil end
+    if issecretvalue and issecretvalue(safeDiff) then safeDiff = nil end
 
     local serial = (RT.statState.encounterLootlessMissSerial or 0) + 1
     RT.statState.encounterLootlessMissSerial = serial
@@ -683,7 +683,7 @@ function Fns.ScheduleEncounterLootlessMissFallback(npcID, difficultyID, encounte
             return false
         end
         local inInst = IsInInstance()
-        if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+        if issecretvalue and issecretvalue(inInst) then inInst = nil end
         local encDiff = Fns.ResolveEncounterDifficultyForLootGating(inInst, killData.difficultyID or safeDiff, nil)
         local trackable = Fns.FilterDropsByDifficulty(drops, encDiff)
         if #trackable == 0 then return true end
@@ -769,7 +769,7 @@ function Fns.ReseedStatisticsForPendingRuntimeNpcs(options)
         if not liveDiffResolved then
             liveDiffResolved = true
             local inInst = IsInInstance()
-            if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+            if issecretvalue and issecretvalue(inInst) then inInst = nil end
             liveDiff = Fns.ResolveEncounterDifficultyForLootGating(inInst, nil, nil)
         end
         return liveDiff

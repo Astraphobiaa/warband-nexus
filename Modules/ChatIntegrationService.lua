@@ -737,7 +737,7 @@ function WarbandNexus:RewrapChatFrame_SystemEventHandler()
     if not self._wnSystemEventWrapper then
         self._wnSystemEventWrapper = function(chatFrame, event, ...)
             local ev = event
-            if issecretvalue and ev and issecretvalue(ev) then
+            if issecretvalue and issecretvalue(ev) then
                 ev = nil
             end
             if ev == "TIME_PLAYED_MSG" and ShouldHidePlayedTimeInChat() then

@@ -1618,7 +1618,7 @@ end
 
 function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData)
     local up = upgradeInfo and (upgradeInfo[slotID] or upgradeInfo[tostring(slotID)])
-    if not up and slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
+    if not up and slotData and not (issecretvalue and issecretvalue(slotData.itemLink)) and slotData.itemLink then
         if ns.Gear_ResolveSlotUpgradeTrackAndTier then
             local tn, tc, tm = ns.Gear_ResolveSlotUpgradeTrackAndTier(slotData)
             if tn and tc and tm and tm > 0 then
@@ -2066,7 +2066,7 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
         local displayCrestName = cur.displayName
         if not displayCrestName or displayCrestName == "" then
             local rawCrestName = cur.name or ""
-            if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
+            if not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName and rawCrestName ~= "" then
                 local firstWord = rawCrestName:match("^(%S+)")
                 displayCrestName = PD.FormatTrackMarkup(firstWord, firstWord, nil)
             else
@@ -3805,8 +3805,8 @@ function PD.GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, n
     local prev = sb._slotDataRef
     local newLink = slotData and slotData.itemLink
     local prevLink = prev and prev.itemLink
-    if newLink and issecretvalue and issecretvalue(newLink) then return false end
-    if prevLink and issecretvalue and issecretvalue(prevLink) then return false end
+    if issecretvalue and issecretvalue(newLink) then return false end
+    if issecretvalue and issecretvalue(prevLink) then return false end
     local function linkEmpty(l)
         return not l or l == ""
     end
@@ -3858,7 +3858,7 @@ function PD.GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, n
     local tl = sb._gearTrackLabel
     if tl and tl.IsShown and tl:IsShown() and tl.GetText then
         local rawOld = tl:GetText()
-        if rawOld and not (issecretvalue and issecretvalue(rawOld)) then
+        if not (issecretvalue and issecretvalue(rawOld)) and rawOld then
             tOld = rawOld
         end
     end

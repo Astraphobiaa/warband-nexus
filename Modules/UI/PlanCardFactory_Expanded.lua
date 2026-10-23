@@ -299,7 +299,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 local progressText = formatRowSuffix and formatRowSuffix(row, achSummary) or ""
                 if not (issecretvalue and issecretvalue(progressText)) and progressText ~= "" then
                     local trimmed = progressText:match("^%s*(.*)")
-                    if trimmed and not (issecretvalue and issecretvalue(trimmed)) then
+                    if not (issecretvalue and issecretvalue(trimmed)) and trimmed then
                         progressText = " " .. PCol("body") .. trimmed .. "|r"
                     end
                 end
@@ -902,7 +902,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                                 local currencyID = textureMap[texID]
                                 if currencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
                                     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-                                    if info and info.name and not (issecretvalue and issecretvalue(info.name)) then
+                                    if info and not (issecretvalue and issecretvalue(info.name)) and info.name then
                                         currencyName = info.name
                                         break
                                     end
@@ -915,7 +915,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         currencyName = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
                     end
                     
-                    if costText and currencyName and not (issecretvalue and issecretvalue(currencyName))
+                    if costText and not (issecretvalue and issecretvalue(currencyName)) and currencyName
                         and currencyName ~= "Gold" then
                         costText = costText:gsub("|T.-|t", ""):gsub("^%s+", ""):gsub("%s+$", "")
                         costText = costText .. " (" .. currencyName .. ")"

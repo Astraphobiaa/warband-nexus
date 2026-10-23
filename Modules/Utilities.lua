@@ -628,7 +628,7 @@ function Utilities:GetPetNameFromTooltip(itemID)
     end
     
     -- Check if battlePetName field exists (TWW API)
-    if tooltipData.battlePetName and not (issecretvalue and issecretvalue(tooltipData.battlePetName)) and tooltipData.battlePetName ~= "" then
+    if not (issecretvalue and issecretvalue(tooltipData.battlePetName)) and tooltipData.battlePetName and tooltipData.battlePetName ~= "" then
         return tooltipData.battlePetName
     end
     
@@ -1064,7 +1064,7 @@ function Utilities:ResolveKeystoneDungeonName(keystone, fallback)
         return fallback
     end
     local cached = keystone.dungeonName or keystone.name
-    if cached and not (issecretvalue and issecretvalue(cached))
+    if not (issecretvalue and issecretvalue(cached)) and cached
         and cached ~= "" and cached ~= fallback then
         return cached
     end
@@ -1072,11 +1072,11 @@ function Utilities:ResolveKeystoneDungeonName(keystone, fallback)
     local mid = mapID and tonumber(mapID)
     if mid and mid > 0 and C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
         local ok, mapName = pcall(C_ChallengeMode.GetMapUIInfo, mid)
-        if ok and mapName and not (issecretvalue and issecretvalue(mapName)) and mapName ~= "" then
+        if ok and not (issecretvalue and issecretvalue(mapName)) and mapName and mapName ~= "" then
             return mapName
         end
     end
-    if cached and not (issecretvalue and issecretvalue(cached)) and cached ~= "" then
+    if not (issecretvalue and issecretvalue(cached)) and cached and cached ~= "" then
         return cached
     end
     return fallback

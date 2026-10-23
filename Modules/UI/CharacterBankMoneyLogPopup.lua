@@ -144,7 +144,7 @@ local function LookupCharacterRow(storageKey)
 end
 
 local function ResolveMoneyLogCharacterLabel(entry)
-    if entry and entry.characterName and not (issecretvalue and issecretvalue(entry.characterName)) then
+    if entry and not (issecretvalue and issecretvalue(entry.characterName)) and entry.characterName then
         if entry.characterName ~= "" then
             return entry.characterName
         end

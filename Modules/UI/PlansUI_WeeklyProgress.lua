@@ -162,13 +162,14 @@ local function QuestRowOnEnter(self)
             lines = lines,
         })
     else
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"), 1, 1, 1)
-        for i = 1, #lines do
-            local c = lines[i].color or {1, 1, 1}
-            GameTooltip:AddLine(lines[i].text, c[1], c[2], c[3], true)
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+            GameTooltip:SetText(quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"), 1, 1, 1)
+            for i = 1, #lines do
+                local c = lines[i].color or {1, 1, 1}
+                GameTooltip:AddLine(lines[i].text, c[1], c[2], c[3], true)
+            end
+            GameTooltip:Show()
         end
-        GameTooltip:Show()
     end
 end
 
@@ -176,7 +177,7 @@ local function QuestRowOnLeave()
     if ns.TooltipService and ns.TooltipService.Hide then
         ns.TooltipService:Hide()
     else
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end
 end
 
@@ -420,14 +421,15 @@ local function WeeklyConfigBtnOnEnter(btn)
             },
         })
     else
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText((ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking", 1, 1, 1)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(btn, "ANCHOR_RIGHT") then
+            GameTooltip:SetText((ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking", 1, 1, 1)
+            GameTooltip:Show()
+        end
     end
 end
 
 local function WeeklyConfigBtnOnLeave()
-    if ns.TooltipService and ns.TooltipService.Hide then ns.TooltipService:Hide() else GameTooltip:Hide() end
+    if ns.TooltipService and ns.TooltipService.Hide then ns.TooltipService:Hide() else ns.UI_SafeHideGameTooltip() end
 end
 
 function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)

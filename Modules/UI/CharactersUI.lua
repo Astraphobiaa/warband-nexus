@@ -239,12 +239,12 @@ local function BuildGuildText(char, isCurrentCharacter)
     local guildName = (char and char.guildName) or nil
     if isCurrentCharacter then
         local liveGuild = IsInGuild() and GetGuildInfo("player") or nil
-        if liveGuild and not (issecretvalue and issecretvalue(liveGuild)) then
+        if not (issecretvalue and issecretvalue(liveGuild)) and liveGuild then
             guildName = liveGuild
         end
     end
 
-    if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= "" then
+    if not (issecretvalue and issecretvalue(guildName)) and guildName and guildName ~= "" then
         return ThemeTextHex("Bright") .. guildName .. "|r"
     end
 
@@ -457,12 +457,13 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 end)
                 secQuick:SetScript("OnEnter", function(btn)
-                    GameTooltip:SetOwner(btn, "ANCHOR_BOTTOMRIGHT")
-                    GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP"]) or "Custom sections", 1, 1, 1)
-                    GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP_BODY"]) or "Open the menu: new or delete headers, gold-style section, or use [+] on a header to add characters.", 0.85, 0.85, 0.9, true)
-                    GameTooltip:Show()
+                    if ns.UI_SafeSetGameTooltipOwner(btn, "ANCHOR_BOTTOMRIGHT") then
+                        GameTooltip:SetText((ns.L and ns.L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP"]) or "Custom sections", 1, 1, 1)
+                        GameTooltip:AddLine((ns.L and ns.L["CUSTOM_HEADER_TITLEBAR_BTN_TOOLTIP_BODY"]) or "Open the menu: new or delete headers, gold-style section, or use [+] on a header to add characters.", 0.85, 0.85, 0.9, true)
+                        GameTooltip:Show()
+                    end
                 end)
-                secQuick:SetScript("OnLeave", GameTooltip_Hide)
+                secQuick:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
             elseif secQuick then
                 secQuick:SetSize(sectionToolbarBtnSize, sectionToolbarBtnSize)
             end

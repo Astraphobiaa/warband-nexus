@@ -58,11 +58,11 @@ M.CALENDAR_EVENTS = {
 M.EVENTS = M.CALENDAR_EVENTS
 
 local function IsSecret(val)
-    return issecretvalue and val and issecretvalue(val)
+    return issecretvalue and issecretvalue(val)
 end
 
 local function NormalizeName(s)
-    if s == nil or IsSecret(s) then return "" end
+    if IsSecret(s) or s == nil then return "" end
     if s == "" then return "" end
     return s:lower()
 end
@@ -76,13 +76,13 @@ end
 
 --- Midnight: calendarType/title from C_Calendar may be secret in instances — never compare or index secret strings.
 local function SafeNonEmptyString(val)
-    if val == nil or IsSecret(val) then return nil end
+    if IsSecret(val) or val == nil then return nil end
     if val == "" then return nil end
     return val
 end
 
 local function IsHolidayCalendarType(calendarType)
-    if calendarType == nil or IsSecret(calendarType) then return false end
+    if IsSecret(calendarType) or calendarType == nil then return false end
     return calendarType == "HOLIDAY"
 end
 
@@ -148,7 +148,7 @@ local function GetTodayCalendarDay()
     local ok, today = pcall(C_DateAndTime.GetCurrentCalendarTime)
     if ok and type(today) == "table" then
         local day = today.monthDay
-        if type(day) == "number" and day >= 1 and day <= 31 and not IsSecret(day) then
+        if type(day) == "number" and not IsSecret(day) and day >= 1 and day <= 31 then
             return day
         end
     end
@@ -173,7 +173,7 @@ local function BuildTodayHolidayTitles(todayDay)
     end
 
     local function addTitle(title)
-        if title == nil or IsSecret(title) then return end
+        if IsSecret(title) or title == nil then return end
         if title == "" or seen[title] then return end
         seen[title] = true
         out[#out + 1] = title

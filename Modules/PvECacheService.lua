@@ -289,7 +289,7 @@ local function BuildSavedInstanceEncounterList(slotIndex, numEncounters)
     if not numEncounters or numEncounters <= 0 then return encounters end
     for j = 1, numEncounters do
         local bossName, _, isKilled = GetSavedInstanceEncounterInfo(slotIndex, j)
-        if issecretvalue and bossName and issecretvalue(bossName) then bossName = nil end
+        if issecretvalue and issecretvalue(bossName) then bossName = nil end
         if issecretvalue and issecretvalue(isKilled) then isKilled = nil end
         if bossName then
             encounters[#encounters + 1] = {
@@ -828,12 +828,12 @@ local function CollectGildedStashWidgetTexts(widget)
         }
         for i = 1, #fields do
             local v = fields[i]
-            if v and not (issecretvalue and issecretvalue(v)) and v ~= "" then
+            if not (issecretvalue and issecretvalue(v)) and v and v ~= "" then
                 out[#out + 1] = v
             end
         end
     end
-    if widget.text and not (issecretvalue and issecretvalue(widget.text)) and widget.text ~= "" then
+    if not (issecretvalue and issecretvalue(widget.text)) and widget.text and widget.text ~= "" then
         out[#out + 1] = widget.text
     end
     return out
@@ -923,7 +923,7 @@ local function GetCompanionLevelInfo(factionID)
 
     if not name and C_Reputation and C_Reputation.GetFactionDataByID then
         local ok, data = pcall(C_Reputation.GetFactionDataByID, factionID)
-        if ok and data and data.name and not (issecretvalue and issecretvalue(data.name)) then
+        if ok and data and not (issecretvalue and issecretvalue(data.name)) and data.name then
             name = data.name
         end
     end
@@ -974,7 +974,7 @@ local function LootMessageIsMythicKeystone(message)
         if ok and isKs then return true end
     end
     local name = message:match("%[(.-)%]")
-    if name and not (issecretvalue and issecretvalue(name)) and name:find("Keystone", 1, true) then
+    if not (issecretvalue and issecretvalue(name)) and name and name:find("Keystone", 1, true) then
         return true
     end
     return false
@@ -1152,9 +1152,9 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
         -- 13=extendDisabled, 14=instanceId (10.0.5+); keep full tail so encounter fields stay aligned.
         local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress, _extDis, _instId = GetSavedInstanceInfo(i)
 
-        if issecretvalue and name and issecretvalue(name) then name = nil end
-        if issecretvalue and difficulty and issecretvalue(difficulty) then difficulty = nil end
-        if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
+        if issecretvalue and issecretvalue(name) then name = nil end
+        if issecretvalue and issecretvalue(difficulty) then difficulty = nil end
+        if issecretvalue and issecretvalue(difficultyName) then difficultyName = nil end
         if issecretvalue and issecretvalue(locked) then locked = nil end
         if issecretvalue and issecretvalue(extended) then extended = nil end
 
@@ -1344,7 +1344,7 @@ function WarbandNexus:UpdateDelvesData(charKey)
     -- Companion info (account-wide — same companion for all characters)
     if C_DelvesUI and C_DelvesUI.GetCompanionInfoForActivePlayer then
         local companionInfoID = C_DelvesUI.GetCompanionInfoForActivePlayer()
-        if companionInfoID and not (issecretvalue and issecretvalue(companionInfoID)) then
+        if not (issecretvalue and issecretvalue(companionInfoID)) and companionInfoID then
             delves.companion.infoID = companionInfoID
         end
         
@@ -1374,7 +1374,7 @@ function WarbandNexus:UpdateDelvesData(charKey)
         -- Companion role info
         if C_DelvesUI.GetRoleNodeForCompanion then
             local roleNodeID = C_DelvesUI.GetRoleNodeForCompanion()
-            if roleNodeID and not (issecretvalue and issecretvalue(roleNodeID)) then
+            if not (issecretvalue and issecretvalue(roleNodeID)) and roleNodeID then
                 delves.companion.roleNodeID = roleNodeID
             end
         end
@@ -1657,7 +1657,7 @@ function WarbandNexus:GetPvEData(charKey)
                 for i = 1, #maps do
                     local mapID = maps[i]
                     local mapName, _, _, texture = C_ChallengeMode.GetMapUIInfo(mapID)
-                    if issecretvalue and mapName and issecretvalue(mapName) then mapName = nil end
+                    if issecretvalue and issecretvalue(mapName) then mapName = nil end
                     
                     local dungeonScore = 0
                     local bestLevel = 0
@@ -1930,7 +1930,7 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
                 local accept = false
                 if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
                     local mapName = C_ChallengeMode.GetMapUIInfo(mid)
-                    if mapName and not (issecretvalue and issecretvalue(mapName)) and mapName ~= "" then
+                    if not (issecretvalue and issecretvalue(mapName)) and mapName and mapName ~= "" then
                         accept = true
                     end
                 end

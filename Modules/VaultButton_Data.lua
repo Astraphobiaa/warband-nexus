@@ -807,7 +807,7 @@ function M.PaintVaultTrackerColumnCells(cellGroup, opts)
         local slotText = ""
         if fses[3].GetText then
             local rawSlotText = fses[3]:GetText()
-            if rawSlotText and not (issecretvalue and issecretvalue(rawSlotText)) then
+            if not (issecretvalue and issecretvalue(rawSlotText)) and rawSlotText then
                 slotText = rawSlotText
             end
         end

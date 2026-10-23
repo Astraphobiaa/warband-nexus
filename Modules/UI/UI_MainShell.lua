@@ -425,10 +425,11 @@ function ns.UIShell.CreateMainWindow(self)
         if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(self) and ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self, {0.18, 0.22, 0.28, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
         end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText((ns.L and ns.L["DEBUG_RELOAD_UI_BTN"]) or "Reload UI", 1, 1, 1)
-        GameTooltip:AddLine((ns.L and ns.L["DEBUG_RELOAD_UI_TOOLTIP"]) or "Reload the entire interface (/reload). WoW cannot hot-reload addon Lua; use this after saving files.", 0.65, 0.65, 0.65, true)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_BOTTOM") then
+            GameTooltip:SetText((ns.L and ns.L["DEBUG_RELOAD_UI_BTN"]) or "Reload UI", 1, 1, 1)
+            GameTooltip:AddLine((ns.L and ns.L["DEBUG_RELOAD_UI_TOOLTIP"]) or "Reload the entire interface (/reload). WoW cannot hot-reload addon Lua; use this after saving files.", 0.65, 0.65, 0.65, true)
+            GameTooltip:Show()
+        end
     end)
     reloadDebugBtn:SetScript("OnLeave", function(self)
         if ns.UI_ApplyHeaderUtilityIconStyle then
@@ -440,7 +441,7 @@ function ns.UIShell.CreateMainWindow(self)
             local chromeHover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.14, 0.18, 0.92 }
             ns.UI_ApplyVisuals(self, chromeHover, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
         end
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
     f.reloadDebugBtn = reloadDebugBtn
 

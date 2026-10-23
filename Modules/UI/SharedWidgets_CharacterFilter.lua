@@ -113,14 +113,15 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     btn:SetScript("OnEnter", function(self)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, true)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText((ns.L and ns.L["SORT_BY_LABEL"]) or "Sort By:")
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+            GameTooltip:SetText((ns.L and ns.L["SORT_BY_LABEL"]) or "Sort By:")
+            GameTooltip:Show()
+        end
     end)
     btn:SetScript("OnLeave", function(self)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, false)
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
 
     btn:SetScript("OnClick", function(self)
@@ -394,14 +395,15 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     btn:SetScript("OnEnter", function(self)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, true)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText((ns.L and ns.L["FILTER_MENU_TOOLTIP"]) or "Sort and filter which sections are visible.", 1, 1, 1)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+            GameTooltip:SetText((ns.L and ns.L["FILTER_MENU_TOOLTIP"]) or "Sort and filter which sections are visible.", 1, 1, 1)
+            GameTooltip:Show()
+        end
     end)
     btn:SetScript("OnLeave", function(self)
         ns.UI_SetTextColorRole(text, "Bright")
         ApplyFilterHostButtonChrome(self, false)
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
 
     btn:SetScript("OnClick", function(self)
@@ -671,7 +673,7 @@ function ns.UI_ShowCharacterRowContextMenu(anchorFrame, charKey, opts)
     local rows = {}
 
     local name = opts.charName
-    if name and issecretvalue and issecretvalue(name) then name = nil end
+    if issecretvalue and issecretvalue(name) then name = nil end
     rows[#rows + 1] = { isHeader = true, label = name or ((L and L["UNKNOWN"]) or "Unknown") }
 
     local isTracked = opts.isTracked ~= false

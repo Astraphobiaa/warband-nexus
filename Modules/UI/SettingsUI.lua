@@ -305,23 +305,24 @@ end
 ---@param text string|nil
 local function Settings_ShowWrappedTooltip(owner, text)
     if not owner or not text or type(text) ~= "string" then return end
-    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
-    GameTooltip:ClearLines()
-    local w = 340
-    if owner.GetParent then
-        local parent = owner:GetParent()
-        if parent and parent.GetWidth then
-            local pw = parent:GetWidth()
-            if pw and pw > 120 then
-                w = math.max(260, math.min(440, pw - 40))
+    if ns.UI_SafeSetGameTooltipOwner(owner, "ANCHOR_TOP") then
+        GameTooltip:ClearLines()
+        local w = 340
+        if owner.GetParent then
+            local parent = owner:GetParent()
+            if parent and parent.GetWidth then
+                local pw = parent:GetWidth()
+                if pw and pw > 120 then
+                    w = math.max(260, math.min(440, pw - 40))
+                end
             end
         end
+        if GameTooltip.SetMinimumWidth then
+            GameTooltip:SetMinimumWidth(w)
+        end
+        GameTooltip:SetText(text, 1, 1, 1, 1, true)
+        GameTooltip:Show()
     end
-    if GameTooltip.SetMinimumWidth then
-        GameTooltip:SetMinimumWidth(w)
-    end
-    GameTooltip:SetText(text, 1, 1, 1, 1, true)
-    GameTooltip:Show()
 end
 
 local SettingsKeybind = ns.SettingsKeybind
@@ -479,12 +480,12 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
             checkbox:SetScript("OnEnter", function(self)
                 Settings_ShowWrappedTooltip(self, option.tooltip)
             end)
-            checkbox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            checkbox:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
 
             label:SetScript("OnEnter", function(self)
                 Settings_ShowWrappedTooltip(self, option.tooltip)
             end)
-            label:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            label:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         end
 
         local ch = checkbox:GetHeight() or CELL_MIN_H
@@ -813,7 +814,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
                 ApplySettingsChrome(button, SettingsControlChrome(), { btnColor[1], btnColor[2], btnColor[3], 0.8 })
                 buttonText:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
             end
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
         
         -- Move to next grid position
@@ -975,7 +976,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
             Settings_ShowWrappedTooltip(self, desc)
         end)
-        label:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        label:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     end
 
     dropdown:EnableMouse(true)
@@ -1335,7 +1336,7 @@ local function CreateInputWidget(parent, option, yOffset)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
             Settings_ShowWrappedTooltip(self, desc)
         end)
-        label:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        label:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     end
 
     -- EditBox (Factory for standard compliance)
@@ -1366,7 +1367,7 @@ local function CreateInputWidget(parent, option, yOffset)
     local function CommitValue()
         if option.set then
             local t = editBox:GetText()
-            if t and issecretvalue and issecretvalue(t) then
+            if issecretvalue and issecretvalue(t) then
                 editBox:ClearFocus()
                 return
             end
@@ -1447,7 +1448,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
             local desc = type(option.desc) == "function" and option.desc() or option.desc
             Settings_ShowWrappedTooltip(self, desc)
         end)
-        slider:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        slider:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     end
     
     return yOffset - 65, slider

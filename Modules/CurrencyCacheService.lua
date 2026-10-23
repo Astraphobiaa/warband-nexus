@@ -102,11 +102,11 @@ local function ShouldIgnoreCurrencyEvent(currencyID, currencyData, apiInfo)
     if apiInfo and apiInfo.isHeader == true then return true end
     local nm = (currencyData and currencyData.name) or ""
     if (nm == "" or nm == ("Currency #" .. tostring(currencyID)))
-        and apiInfo and apiInfo.name and not (issecretvalue and issecretvalue(apiInfo.name)) then
+        and apiInfo and not (issecretvalue and issecretvalue(apiInfo.name)) and apiInfo.name then
         nm = apiInfo.name
     end
     if IsTrackerMetaCurrencyName(nm or "") then return true end
-    if apiInfo and apiInfo.name and not (issecretvalue and issecretvalue(apiInfo.name)) then
+    if apiInfo and not (issecretvalue and issecretvalue(apiInfo.name)) and apiInfo.name then
         if IsTrackerMetaCurrencyName(apiInfo.name) then return true end
     end
     if not IsVisibleSetEmpty() and not IsCurrencyVisibleKnown(currencyID) then return true end
@@ -1179,7 +1179,7 @@ local function ScanHeaderNode(headerIndex, depth, currencyDataCollector)
             else
                 local currencyID = nil
                 local link = C_CurrencyInfo.GetCurrencyListLink(j)
-                if link and not (issecretvalue and issecretvalue(link)) then
+                if not (issecretvalue and issecretvalue(link)) and link then
                     currencyID = tonumber(link:match("currency:(%d+)"))
                 end
                 if not currencyID and cInfo.currencyID then
@@ -1221,7 +1221,7 @@ local function BuildHierarchyFromAPI()
         local info = C_CurrencyInfo.GetCurrencyListInfo(idx)
         if info and info.isHeader and not info.isHeaderExpanded then
             local name = info.name
-            if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+            if not (issecretvalue and issecretvalue(name)) and name and name ~= "" then
                 initialCollapsedHeaders[name] = true
                 hasCollapsedState = true
             end
@@ -1262,7 +1262,7 @@ local function BuildHierarchyFromAPI()
             else
                 local currencyID = nil
                 local link = C_CurrencyInfo.GetCurrencyListLink(i)
-                if link and not (issecretvalue and issecretvalue(link)) then
+                if not (issecretvalue and issecretvalue(link)) and link then
                     currencyID = tonumber(link:match("currency:(%d+)"))
                 end
                 if currencyID and currencyID > 0 then
@@ -1305,7 +1305,7 @@ local function BuildHierarchyFromAPI()
         local info = C_CurrencyInfo.GetCurrencyListInfo(k)
         if info and not info.isHeader then
             local link = C_CurrencyInfo.GetCurrencyListLink(k)
-            if link and not (issecretvalue and issecretvalue(link)) then
+            if not (issecretvalue and issecretvalue(link)) and link then
                 local currencyID = tonumber(link:match("currency:(%d+)"))
                 if currencyID and currencyID > 0 then
                     apiListed[currencyID] = true
@@ -1320,7 +1320,7 @@ local function BuildHierarchyFromAPI()
         local currentListSize = C_CurrencyInfo.GetCurrencyListSize()
         for k = currentListSize, 1, -1 do
             local info = C_CurrencyInfo.GetCurrencyListInfo(k)
-            if info and info.isHeader and info.name and not (issecretvalue and issecretvalue(info.name)) and initialCollapsedHeaders[info.name] then
+            if info and info.isHeader and not (issecretvalue and issecretvalue(info.name)) and info.name and initialCollapsedHeaders[info.name] then
                 if info.isHeaderExpanded then
                     C_CurrencyInfo.ExpandCurrencyList(k, false)
                 end
@@ -2518,7 +2518,7 @@ local function ResolveApiEntryRosterKey(fullCharacterName, characterName)
     local candidates = { fullCharacterName, characterName }
     for i = 1, #candidates do
         local raw = candidates[i]
-        if raw and not (issecretvalue and issecretvalue(raw)) and raw ~= "" then
+        if not (issecretvalue and issecretvalue(raw)) and raw and raw ~= "" then
             local n, r = U:SplitCharacterKey(raw)
             if n and r then
                 local key = U:GetCharacterKey(n, r)
@@ -2675,7 +2675,7 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
         
         -- Now iterate over our TRACKED characters and update their DB entry
         local currentPlayerGUID = UnitGUID("player")
-        if issecretvalue and currentPlayerGUID and issecretvalue(currentPlayerGUID) then
+        if issecretvalue and issecretvalue(currentPlayerGUID) then
             currentPlayerGUID = nil
         end
         local currentPlayerKey = CurrencySubsidiaryKey(nil)

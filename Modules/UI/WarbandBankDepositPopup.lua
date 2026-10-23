@@ -105,13 +105,14 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     ns.UI_SetTextColorRole(autoLabel, "Bright")
 
     autoCB:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        local tr, tg, tb = 1, 1, 1
-        if ns.UI_GetTooltipBodyColor then tr, tg, tb = ns.UI_GetTooltipBodyColor() end
-        GameTooltip:SetText((L and L["REAGENT_DEPOSIT_AUTO_OPEN_DESC"]) or "Automatically transfers matching items to bank every time you open the bank frame.", tr, tg, tb, 1, true)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+            local tr, tg, tb = 1, 1, 1
+            if ns.UI_GetTooltipBodyColor then tr, tg, tb = ns.UI_GetTooltipBodyColor() end
+            GameTooltip:SetText((L and L["REAGENT_DEPOSIT_AUTO_OPEN_DESC"]) or "Automatically transfers matching items to bank every time you open the bank frame.", tr, tg, tb, 1, true)
+            GameTooltip:Show()
+        end
     end)
-    autoCB:SetScript("OnLeave", GameTooltip_Hide)
+    autoCB:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
 
     yOffset = yOffset + 28
 
@@ -125,13 +126,14 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     ns.UI_SetTextColorRole(ignoreFoodLabel, "Bright")
 
     ignoreFoodCB:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        local tr, tg, tb = 1, 1, 1
-        if ns.UI_GetTooltipBodyColor then tr, tg, tb = ns.UI_GetTooltipBodyColor() end
-        GameTooltip:SetText((L and L["REAGENT_DEPOSIT_IGNORE_FOOD_DESC"]) or "Never automatically deposit food, drinks, feasts, or hearty meals into the bank, keeping your raid and dungeon consumables safe.", tr, tg, tb, 1, true)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+            local tr, tg, tb = 1, 1, 1
+            if ns.UI_GetTooltipBodyColor then tr, tg, tb = ns.UI_GetTooltipBodyColor() end
+            GameTooltip:SetText((L and L["REAGENT_DEPOSIT_IGNORE_FOOD_DESC"]) or "Never automatically deposit food, drinks, feasts, or hearty meals into the bank, keeping your raid and dungeon consumables safe.", tr, tg, tb, 1, true)
+            GameTooltip:Show()
+        end
     end)
-    ignoreFoodCB:SetScript("OnLeave", GameTooltip_Hide)
+    ignoreFoodCB:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
 
     yOffset = yOffset + 28
 
@@ -190,20 +192,21 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     ns.UI_SetTextColorRole(reagentLabel, "Bright")
 
     local function ShowDestTooltip(btn, title, desc, note)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        local tr, tg, tb = 1, 1, 1
-        if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
-        GameTooltip:SetText(title, tr, tg, tb)
+        if ns.UI_SafeSetGameTooltipOwner(btn, "ANCHOR_RIGHT") then
+            local tr, tg, tb = 1, 1, 1
+            if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+            GameTooltip:SetText(title, tr, tg, tb)
 
-        local br, bg, bb = 0.9, 0.9, 0.9
-        if ns.UI_GetTooltipBodyColor then br, bg, bb = ns.UI_GetTooltipBodyColor() end
-        GameTooltip:AddLine(desc, br, bg, bb, true)
+            local br, bg, bb = 0.9, 0.9, 0.9
+            if ns.UI_GetTooltipBodyColor then br, bg, bb = ns.UI_GetTooltipBodyColor() end
+            GameTooltip:AddLine(desc, br, bg, bb, true)
 
-        local nr, ng, nb = 1, 0.82, 0.2
-        if ns.UI_GetTooltipDescColor then nr, ng, nb = ns.UI_GetTooltipDescColor() end
-        GameTooltip:AddLine(note, nr, ng, nb, true)
+            local nr, ng, nb = 1, 0.82, 0.2
+            if ns.UI_GetTooltipDescColor then nr, ng, nb = ns.UI_GetTooltipDescColor() end
+            GameTooltip:AddLine(note, nr, ng, nb, true)
 
-        GameTooltip:Show()
+            GameTooltip:Show()
+        end
     end
 
     warbandBtn:SetScript("OnClick", function()
@@ -217,7 +220,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
         local note = (L and L["REAGENT_DEPOSIT_DEST_WARBAND_NOTE"]) or "Note: Soulbound items cannot be deposited into the Warband Bank due to Blizzard game restrictions."
         ShowDestTooltip(b, title, desc, note)
     end)
-    warbandBtn:SetScript("OnLeave", GameTooltip_Hide)
+    warbandBtn:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
 
     reagentBtn:SetScript("OnClick", function()
         reagentRadio.innerDot:Show()
@@ -230,7 +233,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
         local note = (L and L["REAGENT_DEPOSIT_DEST_REAGENT_NOTE"]) or "Note: Only standard crafting reagents can be stored here. Expansion mini-game or covenant materials are not accepted."
         ShowDestTooltip(b, title, desc, note)
     end)
-    reagentBtn:SetScript("OnLeave", GameTooltip_Hide)
+    reagentBtn:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
 
     yOffset = yOffset + 30
 
@@ -337,13 +340,14 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
             depositNowBtn:Disable()
             depositNowBtn:SetAlpha(0.45)
             depositNowBtn:SetScript("OnEnter", function(b)
-                GameTooltip:SetOwner(b, "ANCHOR_TOP")
-                local tr, tg, tb = 1, 0.82, 0.2
-                if ns.UI_GetTooltipDescColor then tr, tg, tb = ns.UI_GetTooltipDescColor() end
-                GameTooltip:SetText((L and L["REAGENT_DEPOSIT_BANK_CLOSED_TIP"]) or "Open your bank or Warband bank to deposit items now.", tr, tg, tb, 1, true)
-                GameTooltip:Show()
+                if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_TOP") then
+                    local tr, tg, tb = 1, 0.82, 0.2
+                    if ns.UI_GetTooltipDescColor then tr, tg, tb = ns.UI_GetTooltipDescColor() end
+                    GameTooltip:SetText((L and L["REAGENT_DEPOSIT_BANK_CLOSED_TIP"]) or "Open your bank or Warband bank to deposit items now.", tr, tg, tb, 1, true)
+                    GameTooltip:Show()
+                end
             end)
-            depositNowBtn:SetScript("OnLeave", GameTooltip_Hide)
+            depositNowBtn:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
         end
     end
 

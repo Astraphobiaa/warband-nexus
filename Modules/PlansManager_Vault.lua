@@ -30,8 +30,8 @@ function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
     -- Use current character if not specified
     characterName = characterName or UnitName("player")
     characterRealm = characterRealm or (GetRealmName and GetRealmName())
-    if characterName and issecretvalue and issecretvalue(characterName) then characterName = nil end
-    if characterRealm and issecretvalue and issecretvalue(characterRealm) then characterRealm = nil end
+    if issecretvalue and issecretvalue(characterName) then characterName = nil end
+    if issecretvalue and issecretvalue(characterRealm) then characterRealm = nil end
     
     -- Check if API is available
     if not C_WeeklyRewards or not C_WeeklyRewards.GetActivities then
@@ -773,8 +773,8 @@ function WarbandNexus:OnPvEUpdateCheckPlans()
 
     local currentName = UnitName("player")
     local currentRealm = GetRealmName and GetRealmName()
-    if currentName and issecretvalue and issecretvalue(currentName) then currentName = nil end
-    if currentRealm and issecretvalue and issecretvalue(currentRealm) then currentRealm = nil end
+    if issecretvalue and issecretvalue(currentName) then currentName = nil end
+    if issecretvalue and issecretvalue(currentRealm) then currentRealm = nil end
 
     self:Debug("PvE Update - checking vault plans for: "
         .. (currentName or "?") .. "-" .. (currentRealm or "?"))

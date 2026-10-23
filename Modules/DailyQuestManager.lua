@@ -184,7 +184,7 @@ end
 -- QUEST FLAG HELPERS
 
 local function IsSecretValue(value)
-    return value and issecretvalue and issecretvalue(value)
+    return issecretvalue and issecretvalue(value)
 end
 
 local function CheckSingleQuestDone(questID)
@@ -617,10 +617,10 @@ local function GetQuestTitle(questID, fallbackInfo)
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then
         title = C_QuestLog.GetTitleForQuestID(questID)
     end
-    if (not title or title == "" or IsSecretValue(title)) and type(fallbackInfo) == "table" then
+    if (not title or IsSecretValue(title) or title == "") and type(fallbackInfo) == "table" then
         title = fallbackInfo.title
     end
-    if not title or title == "" or IsSecretValue(title) then
+    if not title or IsSecretValue(title) or title == "" then
         title = (ns.L and ns.L["UNKNOWN_QUEST"]) or "Unknown Quest"
     end
     return title
@@ -632,7 +632,7 @@ local function GetObjectiveText(questID)
     if not ok or type(objectives) ~= "table" then return "" end
     for i = 1, #objectives do
         local obj = objectives[i]
-        if obj and type(obj) == "table" and obj.text and obj.text ~= "" and not IsSecretValue(obj.text) then
+        if obj and type(obj) == "table" and obj.text and not IsSecretValue(obj.text) and obj.text ~= "" then
             return obj.text
         end
     end
@@ -648,7 +648,7 @@ local function GetAllObjectiveDetails(questID)
     for i = 1, #objectives do
         local obj = objectives[i]
         if obj and type(obj) == "table" then
-            local text = (obj.text and obj.text ~= "" and not IsSecretValue(obj.text)) and obj.text or nil
+            local text = (obj.text and not IsSecretValue(obj.text) and obj.text ~= "") and obj.text or nil
             result[#result + 1] = {
                 text         = text,
                 numFulfilled = obj.numFulfilled or 0,
@@ -675,7 +675,7 @@ local function DetermineQuestCategory(questID, questTitle, flags)
     end
 
     local lowerTitle = ""
-    if type(questTitle) == "string" and questTitle ~= "" and not IsSecretValue(questTitle) then
+    if type(questTitle) == "string" and not IsSecretValue(questTitle) and questTitle ~= "" then
         lowerTitle = questTitle:lower()
     end
 

@@ -1613,7 +1613,7 @@ function PUI.BuildProfessionOpenTooltip(isCurrent, prof)
     end
     local base = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open this profession's recipe list"
     local nm = prof.name
-    if nm and not (issecretvalue and issecretvalue(nm)) and nm ~= "" then
+    if not (issecretvalue and issecretvalue(nm)) and nm and nm ~= "" then
         return nm .. " - " .. base
     end
     return base
@@ -2337,23 +2337,24 @@ function PUI.SetEquipCell(cell, eqData, slotKey)
         end
         cell.warnTex:Hide()
         cell:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if item.itemLink then
-                GameTooltip:SetHyperlink(item.itemLink)
-            else
-                local nm = item.name
-                if nm and issecretvalue and issecretvalue(nm) then
-                    nm = nil
-                end
-                if ns.UI_GameTooltipAddRoleLine then
-                    ns.UI_GameTooltipAddRoleLine(GameTooltip, nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), "Bright")
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+                if item.itemLink then
+                    GameTooltip:SetHyperlink(item.itemLink)
                 else
-                    GameTooltip:AddLine(nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1)
+                    local nm = item.name
+                    if issecretvalue and issecretvalue(nm) then
+                        nm = nil
+                    end
+                    if ns.UI_GameTooltipAddRoleLine then
+                        ns.UI_GameTooltipAddRoleLine(GameTooltip, nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), "Bright")
+                    else
+                        GameTooltip:AddLine(nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1)
+                    end
                 end
+                GameTooltip:Show()
             end
-            GameTooltip:Show()
         end)
-        cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        cell:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     else
         cell.icon:SetTexture(nil)
         cell.icon:Hide()
@@ -2416,7 +2417,7 @@ local PROF_ICON_FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark"
 function PUI.ResolveProfessionIconForDisplay(prof)
     if not prof then return nil end
     local ic = prof.icon
-    if ic and not (issecretvalue and issecretvalue(ic)) then
+    if not (issecretvalue and issecretvalue(ic)) and ic then
         if type(ic) == "number" and ic > 0 then return ic end
         if type(ic) == "string" and ic ~= "" then return ic end
     end
@@ -2439,7 +2440,7 @@ function PUI.ResolveProfessionIconForDisplay(prof)
     local keys = { "iconFileID", "texture", "iconTexture", "fileID" }
     for ki = 1, #keys do
         local v = info[keys[ki]]
-        if v and not (issecretvalue and issecretvalue(v)) then
+        if not (issecretvalue and issecretvalue(v)) and v then
             if type(v) == "number" and v > 0 then
                 profSessionIconBySkillLine[slId] = v
                 return v

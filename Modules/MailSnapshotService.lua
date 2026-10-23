@@ -162,7 +162,7 @@ local function ClassifyMailItemKind(itemID)
 end
 
 local function ResolveMailItemIlvl(itemID, link)
-    if link and not (issecretvalue and issecretvalue(link)) then
+    if not (issecretvalue and issecretvalue(link)) and link then
         if C_Item and C_Item.GetDetailedItemLevelInfo then
             local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
             ilvl = SafeMailNumber(ilvl)
@@ -184,7 +184,7 @@ local function ResolveItemQuality(itemID, link, inboxQuality)
     if q and q >= 0 and q <= 7 then
         return q
     end
-    if link and not (issecretvalue and issecretvalue(link)) and GetItemInfo then
+    if not (issecretvalue and issecretvalue(link)) and link and GetItemInfo then
         local ok, _, _, quality = pcall(GetItemInfo, link)
         q = SafeMailNumber(quality)
         if ok and q and q >= 0 and q <= 7 then

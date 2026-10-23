@@ -69,7 +69,7 @@ local function ResolveAPIString(value)
         end
         _resolverFS:SetText(value)
         local text = _resolverFS:GetText()
-        if text and issecretvalue and issecretvalue(text) then
+        if issecretvalue and issecretvalue(text) then
             return nil
         end
         if text and type(text) == "string" and text ~= "" then
@@ -1022,6 +1022,9 @@ end
     Append " (N)" craft count from materials (not schematic.quantityMax) to the recipe detail title.
     Scans SchematicForm regions after Init; deferred one frame so default text is present.
 ]]
+--- Cached title FontString per Blizzard schematic form (weak; never a field on the Blizzard frame).
+local craftCountTitleRegionByForm = setmetatable({}, { __mode = "k" })
+
 local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
     if not schematicForm or not recipeInfo or not recipeInfo.recipeID then return end
     if not C_TradeSkillUI then return end
@@ -1066,7 +1069,7 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
 
     -- Cached title fontstring from a previous select: reuse only while it still sits under this
     -- form (within the walk depth) and still holds this recipe's title.
-    local cached = schematicForm._wnCraftCountTitleRegion
+    local cached = craftCountTitleRegionByForm[schematicForm]
     if cached then
         local p, depth = cached.GetParent and cached:GetParent(), 0
         while p and p ~= schematicForm and depth <= 13 do
@@ -1077,7 +1080,7 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
             cached:SetText(desired)
             return
         end
-        schematicForm._wnCraftCountTitleRegion = nil
+        craftCountTitleRegionByForm[schematicForm] = nil
     end
 
     -- Vararg walkers: no {GetRegions()} / {GetChildren()} table per visited node.
@@ -1087,7 +1090,7 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
             local r = (select(i, ...))
             if isTitleRegion(r) then
                 r:SetText(desired)
-                schematicForm._wnCraftCountTitleRegion = r
+                craftCountTitleRegionByForm[schematicForm] = r
                 return true
             end
         end

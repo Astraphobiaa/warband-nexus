@@ -43,9 +43,9 @@ local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
     local autoEnabled = Fns.IsAutoTryCounterEnabled()
     if autoEnabled and Fns.IsTryCounterChatHidden() then return end
     local inI, it = IsInInstance()
-    if issecretvalue and inI and issecretvalue(inI) then return end
+    if issecretvalue and issecretvalue(inI) then return end
     if not inI then return end
-    if issecretvalue and it and issecretvalue(it) then it = nil end
+    if issecretvalue and issecretvalue(it) then it = nil end
     if it ~= "party" and it ~= "raid" then return end
 
     Fns.TryCounterLoadEncounterJournal()
@@ -147,17 +147,15 @@ function Fns.TryCounterResolveDungeonEncounterFromEJIndex(encIndex, journalInsta
     if okEJ and a then
         encName, _, journalEncID, _, _, _, dungeonEncID = a, b, c, d, e, f, g
     end
-    if issecretvalue and journalEncID and issecretvalue(journalEncID) then journalEncID = nil end
-    if issecretvalue and dungeonEncID and issecretvalue(dungeonEncID) then dungeonEncID = nil end
+    if issecretvalue and issecretvalue(journalEncID) then journalEncID = nil end
+    if issecretvalue and issecretvalue(dungeonEncID) then dungeonEncID = nil end
     -- Fallback only when ByIndex omitted dungeonEncounterID; pcall must use 6×_ so dex = 7th return (not journalInstanceID).
     if (not dungeonEncID or type(dungeonEncID) ~= "number" or dungeonEncID <= 0)
         and EJ_GetEncounterInfo and journalEncID and type(journalEncID) == "number" and journalEncID > 0 then
         -- Returns: name, desc, journalEncounterID, rootSectionID, link, journalInstanceID, dungeonEncounterID, instanceID
         local okInfo, _, _, _, _, _, _, dex = pcall(EJ_GetEncounterInfo, journalEncID)
-        if okInfo and dex and type(dex) == "number" and dex > 0 then
-            if not (issecretvalue and issecretvalue(dex)) then
-                dungeonEncID = dex
-            end
+        if okInfo and not (issecretvalue and issecretvalue(dex)) and type(dex) == "number" and dex > 0 then
+            dungeonEncID = dex
         end
     end
     return encName, dungeonEncID
@@ -199,10 +197,10 @@ function Fns.TryCounterFindJournalInstanceIDByTemplateInstanceID(templateInstID)
     local sawNamedInstance = false
     for jid = 1, JOURNAL_INSTANCE_TEMPLATE_SCAN_MAX do
         local ok, ejName, _, _, _, _, _, _, _, _, mapTpl = pcall(EJ_GetInstanceInfo, jid)
-        if ok and ejName and not (issecretvalue and issecretvalue(ejName)) and type(ejName) == "string" and ejName ~= "" then
+        if ok and not (issecretvalue and issecretvalue(ejName)) and ejName and type(ejName) == "string" and ejName ~= "" then
             sawNamedInstance = true
         end
-        if ok and mapTpl and not (issecretvalue and issecretvalue(mapTpl)) and type(mapTpl) == "number" and mapTpl == templateInstID then
+        if ok and not (issecretvalue and issecretvalue(mapTpl)) and mapTpl and type(mapTpl) == "number" and mapTpl == templateInstID then
             tryCounterJournalIDByTemplateInstID[templateInstID] = jid
             return jid
         end
@@ -218,29 +216,31 @@ function Fns.TryCounterGetJournalInstanceID()
 
     if EJ_GetInstanceForMap and C_Map and C_Map.GetBestMapForUnit then
         local mapID = C_Map.GetBestMapForUnit("player")
-        if mapID and not (issecretvalue and issecretvalue(mapID)) then
+        if not (issecretvalue and issecretvalue(mapID)) and mapID then
             jid = EJ_GetInstanceForMap(mapID)
+            if issecretvalue and issecretvalue(jid) then jid = nil end
         end
     end
     if jid and jid ~= 0 then return jid end
 
     local inInst = IsInInstance()
-    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+    if issecretvalue and issecretvalue(inInst) then inInst = nil end
     if inInst and EJ_GetInstanceInfo then
         local _, _, _, _, _, _, _, templateInstID = GetInstanceInfo()
-        if templateInstID and not (issecretvalue and issecretvalue(templateInstID)) and type(templateInstID) == "number" and templateInstID > 0 then
+        if not (issecretvalue and issecretvalue(templateInstID)) and templateInstID and type(templateInstID) == "number" and templateInstID > 0 then
             jid = Fns.TryCounterFindJournalInstanceIDByTemplateInstanceID(templateInstID)
             if jid and jid ~= 0 then return jid end
         end
         -- If UiMap was nil but GetSafeMapID still has a floor id, only accept it when EJ template matches GetInstanceInfo (avoids SW cache).
         if EJ_GetInstanceForMap and type(Fns.GetSafeMapID) == "function" then
             local safeUm = Fns.GetSafeMapID()
-            if safeUm and not (issecretvalue and issecretvalue(safeUm)) then
+            if not (issecretvalue and issecretvalue(safeUm)) and safeUm then
                 local j2 = EJ_GetInstanceForMap(safeUm)
+                if issecretvalue and issecretvalue(j2) then j2 = nil end
                 if j2 and j2 ~= 0 and templateInstID and type(templateInstID) == "number" and templateInstID > 0 then
                     local okJ, _, _, _, _, _, _, _, _, _, ejTpl = pcall(EJ_GetInstanceInfo, j2)
-                    if okJ and ejTpl and type(ejTpl) == "number" and ejTpl == templateInstID
-                        and not (issecretvalue and issecretvalue(ejTpl)) then
+                    if okJ and not (issecretvalue and issecretvalue(ejTpl))
+                        and type(ejTpl) == "number" and ejTpl == templateInstID then
                         return j2
                     end
                 end
@@ -250,6 +250,7 @@ function Fns.TryCounterGetJournalInstanceID()
 
     if EJ_GetCurrentInstance then
         jid = EJ_GetCurrentInstance()
+        if issecretvalue and issecretvalue(jid) then jid = nil end
         if jid and jid ~= 0 then return jid end
     end
 
@@ -280,8 +281,8 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     -- in-instance phase hops). The block below is destructive - it wipes every pending encounter kill.
     -- "Unknown" must not be treated as "left the instance", or a boss killed before a long cutscene
     -- loses its recentKills row and its chest can no longer be attributed (Sylvanas Mythic).
-    if issecretvalue and inInstance and issecretvalue(inInstance) then return end
-    if issecretvalue and instanceType and issecretvalue(instanceType) then instanceType = nil end
+    if issecretvalue and issecretvalue(inInstance) then return end
+    if issecretvalue and issecretvalue(instanceType) then instanceType = nil end
     if not inInstance then
         tryCounterInstanceDiffCache.instanceID = nil
         tryCounterInstanceDiffCache.difficultyID = nil
@@ -313,9 +314,9 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     if instanceType == "party" or instanceType == "raid" then
         local _, _, diffID, _, _, _, _, instanceID = GetInstanceInfo()
         local sid = instanceID
-        if sid and issecretvalue and issecretvalue(sid) then sid = nil end
+        if issecretvalue and issecretvalue(sid) then sid = nil end
         local gi = diffID
-        if gi and issecretvalue and issecretvalue(gi) then gi = nil end
+        if issecretvalue and issecretvalue(gi) then gi = nil end
         local resolved = Fns.ResolveLiveInstanceDifficultyID(instanceType, gi)
         if sid then
             tryCounterInstanceDiffCache.instanceID = sid

@@ -202,6 +202,7 @@ local function ApplyItemLinkTooltipContext(itemLink, itemID, linkLevel, speciali
     if not linkLevel or linkLevel < 1 or not specializationID or specializationID < 1 then
         return itemLink
     end
+    if issecretvalue and issecretvalue(itemLink) then return itemLink end
     if (not itemLink or itemLink == "") and itemID then
         if C_Item and C_Item.GetItemInfo then
             itemLink = select(2, C_Item.GetItemInfo(itemID))
@@ -256,8 +257,8 @@ local function StripTooltipTextForStatMatch(text)
 end
 
 local function IsItemTooltipClassRestrictionLine(leftText, rightText)
-    if leftText and issecretvalue and issecretvalue(leftText) then return false end
-    if rightText and issecretvalue and issecretvalue(rightText) then return false end
+    if issecretvalue and issecretvalue(leftText) then return false end
+    if issecretvalue and issecretvalue(rightText) then return false end
     local combined = tostring(leftText or "")
     if rightText and tostring(rightText) ~= "" then
         combined = combined .. " " .. tostring(rightText)
@@ -275,8 +276,8 @@ end
 local function IsVisuallyEmptyTooltipDataLine(line)
     if not line then return true end
     local l, r = line.leftText, line.rightText
-    if l and issecretvalue and issecretvalue(l) then return false end
-    if r and issecretvalue and issecretvalue(r) then return false end
+    if issecretvalue and issecretvalue(l) then return false end
+    if issecretvalue and issecretvalue(r) then return false end
     l = l and tostring(l):gsub("%s", "") or ""
     r = r and tostring(r):gsub("%s", "") or ""
     return l == "" and r == ""
@@ -595,7 +596,7 @@ local function TooltipSurfaceLineArgs(line)
     if type(args) ~= "table" then return end
     for ai = 1, #args do
         local a = args[ai]
-        if type(a) == "table" and type(a.field) == "string" and a.field ~= "" then
+        if type(a) == "table" and type(a.field) == "string" and not (issecretvalue and issecretvalue(a.field)) and a.field ~= "" then
             local v = a.stringVal or a.intVal or a.floatVal
             if v == nil and a.boolVal ~= nil then v = a.boolVal end
             if v == nil and a.colorVal ~= nil then v = a.colorVal end
@@ -684,7 +685,7 @@ local function GetEnchantmentCraftingQualityTierFromItemLinkTooltipScan(itemLink
     local found = nil
     for i = 1, #data.lines do
         local ln = data.lines[i]
-        if ln and ln.type == TOOLTIP_LINE_ITEM_ENCHANTMENT_PERMANENT then
+        if ln and not (issecretvalue and issecretvalue(ln.type)) and ln.type == TOOLTIP_LINE_ITEM_ENCHANTMENT_PERMANENT then
             found = ExtractProfessionCraftingQualityTierFromTooltipLine(ln)
             if found then break end
         end
@@ -897,7 +898,7 @@ function TooltipService:RenderItemTooltip(frame, data)
         elseif srcID and GetItemInfo then
             minLv = select(5, GetItemInfo(srcID)) or 0
         end
-        if minLv and issecretvalue and issecretvalue(minLv) then
+        if issecretvalue and issecretvalue(minLv) then
             minLv = 0
         else
             minLv = tonumber(minLv) or 0

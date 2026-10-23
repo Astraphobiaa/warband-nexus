@@ -225,7 +225,7 @@ function WarbandNexus:ScanGuildBank()
     
     if not self.db.global.guildBank[guildName] then
         local scanBy = UnitName("player")
-        if scanBy and issecretvalue and issecretvalue(scanBy) then scanBy = nil end
+        if issecretvalue and issecretvalue(scanBy) then scanBy = nil end
         self.db.global.guildBank[guildName] = { 
             tabs = {},
             lastScan = 0,
@@ -548,7 +548,7 @@ function WarbandNexus:HasGuildBankCache()
         return false
     end
     for guildName, guildData in pairs(gb) do
-        if guildName and not (issecretvalue and issecretvalue(guildName)) and type(guildData) == "table" then
+        if not (issecretvalue and issecretvalue(guildName)) and guildName and type(guildData) == "table" then
             local used = self:CountGuildBankOccupiedSlots(guildData)
             if used > 0 or (guildData.cachedGold or 0) > 0 then
                 return true
@@ -629,7 +629,7 @@ function WarbandNexus:GetGuildBankSortedEntries()
         return out
     end
     for guildName, guildData in pairs(gb) do
-        if guildName and not (issecretvalue and issecretvalue(guildName)) and guildData then
+        if not (issecretvalue and issecretvalue(guildName)) and guildName and guildData then
             local _, usedSlots = self:SyncGuildBankCacheMetadata(guildData)
             if usedSlots > 0 or (guildData.cachedGold or 0) > 0 then
                 out[#out + 1] = { name = guildName, data = guildData }

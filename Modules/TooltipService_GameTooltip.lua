@@ -138,12 +138,12 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                     if questReward.type == "mount" then
                         if C_MountJournal and C_MountJournal.GetMountFromItem then
                             local mountID = C_MountJournal.GetMountFromItem(questReward.itemID)
-                            if issecretvalue and mountID and issecretvalue(mountID) then
+                            if issecretvalue and issecretvalue(mountID) then
                                 mountID = nil
                             end
                             if mountID then
                                 local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                                if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                                if not (issecretvalue and issecretvalue(isCollected)) then
                                     collected = isCollected == true
                                 end
                             end
@@ -151,12 +151,12 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                     elseif questReward.type == "pet" then
                         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                             local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(questReward.itemID)
-                            if issecretvalue and specID and issecretvalue(specID) then
+                            if issecretvalue and issecretvalue(specID) then
                                 specID = nil
                             end
                             if specID then
                                 local numCollected = C_PetJournal.GetNumCollectedInfo(specID)
-                                if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
+                                if not (issecretvalue and issecretvalue(numCollected)) then
                                     collected = numCollected and numCollected > 0
                                 end
                             end
@@ -164,7 +164,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                     elseif questReward.type == "toy" then
                         if PlayerHasToy then
                             local hasToy = PlayerHasToy(questReward.itemID)
-                            if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                            if not (issecretvalue and issecretvalue(hasToy)) then
                                 collected = hasToy == true
                             end
                         end
@@ -177,7 +177,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 -- Midnight 12.0: GetMountFromItem can return secret value; still check collected via pcall
                 if collectibleID then
                     local ok, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, collectibleID)
-                    if ok and isCollected and not (issecretvalue and issecretvalue(isCollected)) then
+                    if ok and not (issecretvalue and issecretvalue(isCollected)) and isCollected then
                         collected = isCollected == true
                     end
                     if issecretvalue and issecretvalue(collectibleID) then
@@ -192,7 +192,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 collectibleID = specID
                 if collectibleID then
                     local ok, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, collectibleID)
-                    if ok and numCollected and not (issecretvalue and issecretvalue(numCollected)) then
+                    if ok and not (issecretvalue and issecretvalue(numCollected)) and numCollected then
                         collected = numCollected > 0
                     end
                     if issecretvalue and issecretvalue(specID) then
@@ -203,7 +203,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         elseif drop.type == "toy" then
             if PlayerHasToy then
                 local hasToy = PlayerHasToy(drop.itemID)
-                if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                if not (issecretvalue and issecretvalue(hasToy)) then
                     collected = hasToy == true
                 end
             end
@@ -213,24 +213,24 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         if drop.type == "item" and not collected and drop.itemID then
             if PlayerHasToy then
                 local okToy, hasToy = pcall(PlayerHasToy, drop.itemID)
-                if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
+                if okToy and not (issecretvalue and issecretvalue(hasToy)) and hasToy == true then
                     collected = true
                 end
             end
             if not collected and C_MountJournal and C_MountJournal.GetMountFromItem then
                 local okMid, mid = pcall(C_MountJournal.GetMountFromItem, drop.itemID)
-                if okMid and mid and mid > 0 and not (issecretvalue and issecretvalue(mid)) then
+                if okMid and not (issecretvalue and issecretvalue(mid)) and mid and mid > 0 then
                     local ok2, _, _, _, _, _, _, _, _, _, _, isColl = pcall(C_MountJournal.GetMountInfoByID, mid)
-                    if ok2 and isColl == true and not (issecretvalue and issecretvalue(isColl)) then
+                    if ok2 and not (issecretvalue and issecretvalue(isColl)) and isColl == true then
                         collected = true
                     end
                 end
             end
             if not collected and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                 local ok1, _, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, drop.itemID) -- speciesID is the 13th return (12th = displayID)
-                if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+                if ok1 and not (issecretvalue and issecretvalue(specID)) and specID and specID > 0 then
                     local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
-                    if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
+                    if ok2 and not (issecretvalue and issecretvalue(numCollected)) and numCollected and numCollected > 0 then
                         collected = true
                     end
                 end
@@ -354,9 +354,9 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 if yield.type == "mount" and yield.itemID then
                     if C_MountJournal and C_MountJournal.GetMountFromItem then
                         local okMid, mountID = pcall(C_MountJournal.GetMountFromItem, yield.itemID)
-                        if okMid and mountID and not (issecretvalue and issecretvalue(mountID)) then
+                        if okMid and not (issecretvalue and issecretvalue(mountID)) and mountID then
                             local okInfo, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
-                            if okInfo and not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                            if okInfo and not (issecretvalue and issecretvalue(isCollected)) then
                                 yieldCollected = isCollected == true
                             end
                         end
@@ -364,9 +364,9 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 elseif yield.type == "pet" and yield.itemID then
                     if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                         local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(yield.itemID)
-                        if specID and not (issecretvalue and issecretvalue(specID)) then
+                        if not (issecretvalue and issecretvalue(specID)) and specID then
                             local numCollected = C_PetJournal.GetNumCollectedInfo(specID)
-                            if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
+                            if not (issecretvalue and issecretvalue(numCollected)) then
                                 yieldCollected = numCollected and numCollected > 0
                             end
                         end
@@ -374,7 +374,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 elseif yield.type == "toy" and yield.itemID then
                     if PlayerHasToy then
                         local hasToy = PlayerHasToy(yield.itemID)
-                        if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                        if not (issecretvalue and issecretvalue(hasToy)) then
                             yieldCollected = hasToy == true
                         end
                     end
@@ -385,13 +385,13 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 if WarbandNexus then
                     if yield.type == "mount" and yield.itemID and WarbandNexus.IsMountPlanned then
                         local yMountID = C_MountJournal and C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(yield.itemID)
-                        if yMountID and not (issecretvalue and issecretvalue(yMountID)) then
+                        if not (issecretvalue and issecretvalue(yMountID)) and yMountID then
                             yieldPlanned = WarbandNexus:IsMountPlanned(yMountID)
                         end
                     elseif yield.type == "pet" and yield.itemID and WarbandNexus.IsPetPlanned then
                         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                             local _, _, _, _, _, _, _, _, _, _, _, _, ySpecID = C_PetJournal.GetPetInfoByItemID(yield.itemID)
-                            if ySpecID and not (issecretvalue and issecretvalue(ySpecID)) then
+                            if not (issecretvalue and issecretvalue(ySpecID)) and ySpecID then
                                 yieldPlanned = WarbandNexus:IsPetPlanned(ySpecID)
                             end
                         end
@@ -527,6 +527,44 @@ local function IsBlizzardWidgetTooltip(tooltip)
     return false
 end
 
+--- Taint-safe replacement for `GameTooltip:Hide()` / `GameTooltip_Hide` in our own handlers.
+--- GameTooltip_OnHide runs GameTooltip_ClearWidgetSet -> UnregisterForWidgetSet -> LayoutFrame,
+--- which compares secret numbers; driving that from our (insecure) OnLeave hard-errors with
+--- "attempt to compare a secret number value (execution tainted by 'WarbandNexus')".
+--- A widget-carrying tooltip is never ours, so skipping the hide is also the correct behaviour.
+--- Args are ignored on purpose: this is used as an OnLeave script, which passes the owner frame.
+function ns.UI_SafeHideGameTooltip()
+    local tip = GameTooltip
+    if not tip then return end
+    local ok, isWidget = pcall(IsBlizzardWidgetTooltip, tip)
+    if not ok or isWidget then return end
+    -- Our wrapped setting tooltips raise the minimum width; never leak it into Blizzard's next tooltip.
+    if tip.SetMinimumWidth then pcall(tip.SetMinimumWidth, tip, 0) end
+    pcall(tip.Hide, tip)
+end
+
+--- True while GameTooltip is visibly showing a Blizzard UI-widget tooltip (POI / vignette / NPC widgets).
+--- A hidden tooltip has already run its widget teardown, so it never counts as busy.
+local function IsGameTooltipBusyWithWidgets(tip)
+    local okShown, shown = pcall(tip.IsShown, tip)
+    if not okShown then return true end
+    if issecretvalue and issecretvalue(shown) then return true end
+    if not shown then return false end
+    local ok, isWidget = pcall(IsBlizzardWidgetTooltip, tip)
+    return not ok or isWidget
+end
+
+--- Taint-safe `GameTooltip:SetOwner` for our own OnEnter handlers. Returns false and leaves the tooltip
+--- alone while a Blizzard widget tooltip is up: re-owning it from insecure code can run its widget
+--- teardown (secret-number layout) under our taint. Callers build and Show the tooltip only on true.
+function ns.UI_SafeSetGameTooltipOwner(owner, anchor, x, y)
+    local tip = GameTooltip
+    if not tip or not owner then return false end
+    if IsGameTooltipBusyWithWidgets(tip) then return false end
+    tip:SetOwner(owner, anchor, x, y)
+    return true
+end
+
 --- Injection state in weak tables — never assign tooltip._wn* (taints GameTooltip).
 local tooltipInjectTokensByFrame = setmetatable({}, { __mode = "k" })
 local tooltipLastDataInstanceByFrame = setmetatable({}, { __mode = "k" })
@@ -560,10 +598,10 @@ local function GetTooltipShownSafe(tooltip)
     -- our execution is tainted and the object is forbidden). pcall stays as the fallback net.
     if type(tooltip.CanBeAccessedInContext) == "function" then
         local okCtx, canAccess = pcall(tooltip.CanBeAccessedInContext, tooltip)
-        if not okCtx or canAccess == false then return nil end
+        if not okCtx or (issecretvalue and issecretvalue(canAccess)) or canAccess == false then return nil end
     end
     local ok, isShown = pcall(tooltip.IsShown, tooltip)
-    if not ok then return nil end
+    if not ok or (issecretvalue and issecretvalue(isShown)) then return nil end
     return isShown and true or false
 end
 
@@ -575,6 +613,8 @@ end
 local function RunGameTooltipInjection(tooltip, data, fn)
     if not tooltip or type(fn) ~= "function" then return end
     if tooltip.IsEmbedded then return end
+    -- Forbidden (secure-context) tooltips: field reads and AddLine would error from our code.
+    if GetTooltipShownSafe(tooltip) == nil then return end
     if IsBlizzardWidgetTooltip(tooltip) then return end
     if WillTooltipUseWidgets(tooltip, data) then return end
 
@@ -690,19 +730,19 @@ local function ResolveInfoLabelRGB()
 end
 
 local function ResolveLiveCharacterLabel(liveChar)
-    if liveChar and liveChar.charName and not (issecretvalue and issecretvalue(liveChar.charName))
+    if liveChar and not (issecretvalue and issecretvalue(liveChar.charName)) and liveChar.charName
         and liveChar.charName ~= "" then
         return liveChar.charName
     end
     if UnitName then
         local name = UnitName("player")
-        if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+        if not (issecretvalue and issecretvalue(name)) and name and name ~= "" then
             return name
         end
     end
     if Utilities and Utilities.GetCurrentCharacterDisplayLabel then
         local label = Utilities:GetCurrentCharacterDisplayLabel()
-        if label and not (issecretvalue and issecretvalue(label)) and label ~= "" then
+        if not (issecretvalue and issecretvalue(label)) and label and label ~= "" then
             return label
         end
     end
@@ -1143,24 +1183,24 @@ local function ItemTooltipCollectibleOwned(id)
     if not id then return false end
     if PlayerHasToy then
         local okToy, hasToy = pcall(PlayerHasToy, id)
-        if okToy and hasToy == true and not (issecretvalue and issecretvalue(hasToy)) then
+        if okToy and not (issecretvalue and issecretvalue(hasToy)) and hasToy == true then
             return true
         end
     end
     if C_MountJournal and C_MountJournal.GetMountFromItem then
         local ok1, mountID = pcall(C_MountJournal.GetMountFromItem, id)
-        if ok1 and mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+        if ok1 and not (issecretvalue and issecretvalue(mountID)) and mountID and mountID > 0 then
             local ok2, _, _, _, _, _, _, _, _, _, _, isCollected = pcall(C_MountJournal.GetMountInfoByID, mountID)
-            if ok2 and isCollected == true and not (issecretvalue and issecretvalue(isCollected)) then
+            if ok2 and not (issecretvalue and issecretvalue(isCollected)) and isCollected == true then
                 return true
             end
         end
     end
     if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local ok1, _, _, _, _, _, _, _, _, _, _, _, _, specID = pcall(C_PetJournal.GetPetInfoByItemID, id) -- speciesID is the 13th return (12th = displayID)
-        if ok1 and specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+        if ok1 and not (issecretvalue and issecretvalue(specID)) and specID and specID > 0 then
             local ok2, numCollected = pcall(C_PetJournal.GetNumCollectedInfo, specID)
-            if ok2 and numCollected and not (issecretvalue and issecretvalue(numCollected)) and numCollected > 0 then
+            if ok2 and not (issecretvalue and issecretvalue(numCollected)) and numCollected and numCollected > 0 then
                 return true
             end
         end
@@ -1220,14 +1260,14 @@ function GT.InitializeGameTooltipHook(service)
             if not planned and anyMountPlan and WarbandNexus.IsMountPlanned
                 and C_MountJournal and C_MountJournal.GetMountFromItem then
                 local mountID = C_MountJournal.GetMountFromItem(itemID)
-                if mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+                if not (issecretvalue and issecretvalue(mountID)) and mountID and mountID > 0 then
                     planned = WarbandNexus:IsMountPlanned(mountID)
                 end
             end
             if not planned and anyPetPlan and WarbandNexus.IsPetPlanned
                 and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                 local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(itemID)
-                if specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+                if not (issecretvalue and issecretvalue(specID)) and specID and specID > 0 then
                     planned = WarbandNexus:IsPetPlanned(specID)
                 end
             end
@@ -1495,14 +1535,14 @@ function GT.InitializeGameTooltipHook(service)
         -- Helper: Check if mouseover unit is attackable (for hostileOnly zones)
         local function IsMouseoverAttackable()
             local ok, canAttack = pcall(UnitCanAttack, "player", "mouseover")
-            if ok and canAttack and not (issecretvalue and issecretvalue(canAttack)) and canAttack == true then
+            if ok and not (issecretvalue and issecretvalue(canAttack)) and canAttack and canAttack == true then
                 return true
             end
             -- Dead units are no longer attackable; check if it's a lootable corpse
             local okDead, isDead = pcall(UnitIsDead, "mouseover")
-            if okDead and isDead and not (issecretvalue and issecretvalue(isDead)) and isDead == true then
+            if okDead and not (issecretvalue and issecretvalue(isDead)) and isDead and isDead == true then
                 local okReact, reaction = pcall(UnitReaction, "mouseover", "player")
-                if okReact and reaction and not (issecretvalue and issecretvalue(reaction))
+                if okReact and not (issecretvalue and issecretvalue(reaction)) and reaction
                     and type(reaction) == "number" and reaction <= 4 then
                     return true
                 end
@@ -1515,7 +1555,7 @@ function GT.InitializeGameTooltipHook(service)
         local function ZoneDropsOutsideInstance(zoneDrops)
             if not zoneDrops or #zoneDrops == 0 then return zoneDrops end
             local inInstance = IsInInstance and IsInInstance()
-            if inInstance and issecretvalue and issecretvalue(inInstance) then inInstance = nil end
+            if issecretvalue and issecretvalue(inInstance) then inInstance = nil end
             if inInstance then return nil end
             return zoneDrops
         end
@@ -1532,7 +1572,7 @@ function GT.InitializeGameTooltipHook(service)
 
             -- METHOD 1: GUID-based lookup (works outside instances / when not secret)
             local ok, guid = pcall(UnitGUID, "mouseover")
-            if ok and guid and not (issecretvalue and issecretvalue(guid)) then
+            if ok and not (issecretvalue and issecretvalue(guid)) and guid then
                 local unitType, _, _, _, _, rawID = strsplit("-", guid)
                 if unitType == "Creature" or unitType == "Vehicle" then
                     local npcID = tonumber(rawID)
@@ -1562,7 +1602,7 @@ function GT.InitializeGameTooltipHook(service)
                             local ttLeft = _G["GameTooltipTextLeft1"]
                             if ttLeft and ttLeft.GetText then
                                 local nm = ttLeft:GetText()
-                                if nm and not (issecretvalue and issecretvalue(nm)) and nm ~= "" then
+                                if not (issecretvalue and issecretvalue(nm)) and nm and nm ~= "" then
                                     nameDropCache[nm] = drops
                                     nameNpcIDCache[nm] = npcID
                                     -- Also persist to localizedNpcNameIndex for cross-session cache
@@ -1589,7 +1629,7 @@ function GT.InitializeGameTooltipHook(service)
                 if data and data.lines and data.lines[1] then
                     local lt = data.lines[1].leftText
                     -- Guard: leftText can itself be a secret value in Midnight instances
-                    if lt and not (issecretvalue and issecretvalue(lt)) then
+                    if not (issecretvalue and issecretvalue(lt)) and lt then
                         unitName = lt
                     end
                 end
@@ -1599,7 +1639,7 @@ function GT.InitializeGameTooltipHook(service)
                     local textLeft = _G["GameTooltipTextLeft1"]
                     if textLeft and textLeft.GetText then
                         local txt = textLeft:GetText()
-                        if txt and not (issecretvalue and issecretvalue(txt)) then
+                        if not (issecretvalue and issecretvalue(txt)) and txt then
                             unitName = txt
                         end
                     end
@@ -1894,7 +1934,7 @@ local function GetConcentrationCurrencyCache()
 
     for currencyID in pairs(idSet) do
         local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
-        if ok and info and info.name and not (issecretvalue and issecretvalue(info.name)) then
+        if ok and info and not (issecretvalue and issecretvalue(info.name)) and info.name then
             nameSet[info.name] = true
         end
     end
@@ -1937,7 +1977,7 @@ local function HasAlreadyInjected(tooltip)
         local line = _G[GetTooltipLeftLineName(tooltipName, i)]
         if line then
             local lineText = line:GetText()
-            if lineText and not (issecretvalue and issecretvalue(lineText)) and marker ~= "" and lineText:find(marker, 1, true) then
+            if not (issecretvalue and issecretvalue(lineText)) and lineText and marker ~= "" and lineText:find(marker, 1, true) then
                 return true
             end
         end
@@ -2021,13 +2061,14 @@ function GT.InstallConcentrationTooltipHook(service)
             if tooltip ~= GameTooltip then return end
             if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
             if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
-            if not data or not data.id or not IsConcentrationCurrencyID(data.id) then return end
+            local currencyID = SafeTooltipNumber(data and data.id)
+            if not currencyID or not IsConcentrationCurrencyID(currencyID) then return end
             RunGameTooltipInjection(tooltip, data, function()
                 if IsBlizzardWidgetTooltip(tooltip) then return end
                 if HasAlreadyInjected(tooltip) then return end
 
                 if WarbandNexus and WarbandNexus.Debug and ns.IsDebugModeEnabled and ns.IsDebugModeEnabled() then
-                    WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, currencyID=" .. tostring(data.id))
+                    WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, currencyID=" .. tostring(currencyID))
                 end
 
                 pcall(AppendConcentrationData, tooltip)

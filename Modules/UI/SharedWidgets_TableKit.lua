@@ -843,7 +843,7 @@ function TK.PickerControlHoverBackdrop()
 end
 
 function TK.PickerHideTooltips()
-    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+    if GameTooltip and GameTooltip.Hide then ns.UI_SafeHideGameTooltip() end
     if ns.UI_HideTooltip then ns.UI_HideTooltip() end
 end
 

@@ -171,13 +171,13 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
                         if instanceID and EJ_GetInstanceInfo
                             and not (issecretvalue and issecretvalue(instanceID)) then
                             local okIn, instNm = pcall(EJ_GetInstanceInfo, instanceID)
-                            if okIn and instNm and not (issecretvalue and issecretvalue(instNm)) then
+                            if okIn and not (issecretvalue and issecretvalue(instNm)) and instNm then
                                 instanceName = instNm
                             end
                         end
                         local diffName
                         local bestDiff = enc.bestDifficulty
-                        if bestDiff and issecretvalue and issecretvalue(bestDiff) then bestDiff = nil end
+                        if issecretvalue and issecretvalue(bestDiff) then bestDiff = nil end
                         if type(bestDiff) == "number" and bestDiff > 0 then
                             if DifficultyUtil and DifficultyUtil.GetDifficultyName then
                                 diffName = DifficultyUtil.GetDifficultyName(bestDiff)
@@ -186,9 +186,9 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
                             end
                         end
                         -- Guard secret values
-                        if issecretvalue and encName and issecretvalue(encName) then encName = nil end
-                        if issecretvalue and instanceName and issecretvalue(instanceName) then instanceName = nil end
-                        if issecretvalue and diffName and issecretvalue(diffName) then diffName = nil end
+                        if issecretvalue and issecretvalue(encName) then encName = nil end
+                        if issecretvalue and issecretvalue(instanceName) then instanceName = nil end
+                        if issecretvalue and issecretvalue(diffName) then diffName = nil end
                         data.encounters[ei] = {
                             encounterID = plain(enc.encounterID),
                             bestDifficulty = bestDiff,

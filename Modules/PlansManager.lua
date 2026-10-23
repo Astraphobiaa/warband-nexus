@@ -1936,7 +1936,8 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
             if numSlots and numSlots > 0 then
                 for slot = 1, numSlots do
                     local info = C_Container.GetContainerItemInfo(bagID, slot)
-                    if info and info.itemID == itemID then
+                    if info and not (issecretvalue and (issecretvalue(info.itemID) or issecretvalue(info.stackCount)))
+                        and info.itemID == itemID then
                         found = found + (info.stackCount or 1)
                         tinsert(locations, {
                             type = "bags",
@@ -1994,7 +1995,7 @@ function WarbandNexus:CheckPlanProgress(plan)
         if plan.mountID and C_MountJournal then
             local name, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(plan.mountID)
             -- Midnight 12.0: isCollected may be a secret value; do not use as boolean directly
-            if issecretvalue and isCollected and issecretvalue(isCollected) then
+            if issecretvalue and issecretvalue(isCollected) then
                 progress.collected = (plan.resolvedCollected == true) or (plan.completed == true)
             else
                 progress.collected = isCollected == true

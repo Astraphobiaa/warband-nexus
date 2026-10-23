@@ -176,7 +176,7 @@ function WarbandNexus:ScanAchievementsAsync()
                                 rewardTitle = item
                             end
                         end
-                        if not rewardTitle and achRewardText and not (issecretvalue and issecretvalue(achRewardText)) and achRewardText ~= "" then
+                        if not rewardTitle and not (issecretvalue and issecretvalue(achRewardText)) and achRewardText and achRewardText ~= "" then
                             rewardTitle = achRewardText
                         end
 
@@ -452,7 +452,7 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
     end
     
     -- Title reward
-    if rewardTitle and not (issecretvalue and issecretvalue(rewardTitle)) and rewardTitle ~= "" then
+    if not (issecretvalue and issecretvalue(rewardTitle)) and rewardTitle and rewardTitle ~= "" then
         local _, name, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
         local safeName = (name and not (issecretvalue and issecretvalue(name))) and name or nil
         return {

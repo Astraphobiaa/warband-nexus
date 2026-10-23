@@ -42,7 +42,7 @@ for zi = 1, #INDEX.ZONES do
 end
 
 local function IsSecret(val)
-    return issecretvalue and val and issecretvalue(val)
+    return issecretvalue and issecretvalue(val)
 end
 
 local expandedZoneMapTrees = {}
@@ -68,7 +68,7 @@ local function EnsureZoneMapExpansion(zoneIndex)
         for ci = 1, #children do
             local child = children[ci]
             local childID = child and (child.mapID or child.mapId)
-            if childID == nil or IsSecret(childID) then
+            if IsSecret(childID) or childID == nil then
                 childID = nil
             else
                 childID = tonumber(childID)
@@ -108,7 +108,7 @@ end
 
 --- Title fallback when map pins sit on Quel'Thalas hub (2537) or a wrong subfloor.
 function INDEX.ResolveZoneIndexFromEmissaryTitle(title)
-    if not title or title == "" or IsSecret(title) then return nil end
+    if not title or IsSecret(title) or title == "" then return nil end
     local lower = title:lower()
     if not lower:find("emissary", 1, true) then return nil end
     if lower:find("silvermoon court", 1, true) then return 2 end
@@ -119,7 +119,7 @@ function INDEX.ResolveZoneIndexFromEmissaryTitle(title)
 end
 
 local function SafeTitleSortKey(title)
-    if not title or title == "" or IsSecret(title) then return "" end
+    if not title or IsSecret(title) or title == "" then return "" end
     return title:lower()
 end
 
@@ -127,11 +127,11 @@ local function ResolveQuestTitle(questID, questInfo)
     local title
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then
         local ok, t = pcall(C_QuestLog.GetTitleForQuestID, questID)
-        if ok and t and t ~= "" and not IsSecret(t) then title = t end
+        if ok and t and not IsSecret(t) and t ~= "" then title = t end
     end
     if (not title or title == "") and type(questInfo) == "table" then
         local t2 = questInfo.title
-        if t2 and t2 ~= "" and not IsSecret(t2) then title = t2 end
+        if t2 and not IsSecret(t2) and t2 ~= "" then title = t2 end
     end
     return title
 end
@@ -259,7 +259,7 @@ local function CollectWorldQuestsOnMap(mapID, zoneName, seen, out)
             for j = 1, #taskPOIs do
                 local qi = taskPOIs[j]
                 local qid = qi and (qi.questID or qi.questId)
-                if qid == nil or IsSecret(qid) then
+                if IsSecret(qid) or qid == nil then
                     qid = nil
                 end
                 if qid then
@@ -274,7 +274,7 @@ local function CollectWorldQuestsOnMap(mapID, zoneName, seen, out)
         if ok and type(mapQuests) == "table" then
             for _, qi in pairs(mapQuests) do
                 local qid = qi and qi.questID
-                if qid == nil or IsSecret(qid) then
+                if IsSecret(qid) or qid == nil then
                     qid = nil
                 end
                 if qid then
@@ -505,7 +505,7 @@ function INDEX.GetExpandedMapIDList()
         for ci = 1, #children do
             local child = children[ci]
             local childID = child and (child.mapID or child.mapId)
-            if childID == nil or IsSecret(childID) then
+            if IsSecret(childID) or childID == nil then
                 childID = nil
             else
                 childID = tonumber(childID)

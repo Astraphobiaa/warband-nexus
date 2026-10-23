@@ -279,7 +279,7 @@ local function ResolveCurrencyIconFromText(costText)
             for ti = 1, #CURRENCY_TEST_IDS do
                 local testID = CURRENCY_TEST_IDS[ti]
                 local info = C_CurrencyInfo.GetCurrencyInfo(testID)
-                if info and info.name and not (issecretvalue and issecretvalue(info.name))
+                if info and not (issecretvalue and issecretvalue(info.name)) and info.name
                     and info.name:lower() == lowerName and info.iconFileID then
                     local icon = MakeCurrencyIconString(info.iconFileID)
                     _currencyIconCache[cacheKey] = icon

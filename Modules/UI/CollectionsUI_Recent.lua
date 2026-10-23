@@ -341,7 +341,7 @@ function M.DrawRecentContent(contentFrame)
     local loc = ns.L
     local qraw = M.state.searchText or ""
     local qlower
-    if qraw and not (issecretvalue and issecretvalue(qraw)) and qraw ~= "" then
+    if not (issecretvalue and issecretvalue(qraw)) and qraw and qraw ~= "" then
         qlower = qraw:lower()
     end
 
@@ -522,12 +522,8 @@ function M.DrawRecentContent(contentFrame)
         resetTex:SetVertexColor(1, 1, 1, 1)
         resetBtn:SetScript("OnEnter", function(self)
             resetTex:SetVertexColor(1, 0.95, 0.45, 1)
+            if not ns.UI_SetGameTooltipSmartOwner(self, 0, 0) then return end
             GameTooltip:ClearLines()
-            if ns.UI_SetGameTooltipSmartOwner then
-                ns.UI_SetGameTooltipSmartOwner(self, 0, 0)
-            else
-                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            end
             GameTooltip:SetText((loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"]) or "Clear recent list", 1, 1, 1)
             GameTooltip:AddLine(
                 (loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP_BODY"])
@@ -538,7 +534,7 @@ function M.DrawRecentContent(contentFrame)
         end)
         resetBtn:SetScript("OnLeave", function()
             resetTex:SetVertexColor(1, 1, 1, 1)
-            GameTooltip_Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
         resetBtn:SetScript("OnClick", function()
             if WarbandNexus.ClearCollectionsRecentObtainedForType then
@@ -577,16 +573,12 @@ function M.DrawRecentContent(contentFrame)
             M.ApplyRecentRowIconChrome(row)
             if tooltipBuilder then
                 row:SetScript("OnEnter", function(self)
+                    if not ns.UI_SetGameTooltipSmartOwner(self, 0, 0) then return end
                     GameTooltip:ClearLines()
-                    if ns.UI_SetGameTooltipSmartOwner then
-                        ns.UI_SetGameTooltipSmartOwner(self, 0, 0)
-                    else
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    end
                     tooltipBuilder(GameTooltip)
                     GameTooltip:Show()
                 end)
-                row:SetScript("OnLeave", GameTooltip_Hide)
+                row:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
             else
                 row:SetScript("OnEnter", nil)
                 row:SetScript("OnLeave", nil)

@@ -685,18 +685,19 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         end
 
         row:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_NONE")
-            GameTooltip:ClearAllPoints()
-            GameTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", 6, 0)
-            if GameTooltip.SetAchievementByID then
-                GameTooltip:SetAchievementByID(ach.id)
-            elseif ach.name then
-                GameTooltip:SetText(ach.name, 1, 1, 1)
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_NONE") then
+                GameTooltip:ClearAllPoints()
+                GameTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", 6, 0)
+                if GameTooltip.SetAchievementByID then
+                    GameTooltip:SetAchievementByID(ach.id)
+                elseif ach.name then
+                    GameTooltip:SetText(ach.name, 1, 1, 1)
+                end
+                GameTooltip:Show()
             end
-            GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function()
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
 
         row:Show()
@@ -1290,14 +1291,15 @@ end
 
 local function BrowsePlannedBtnOnEnter(bf)
     local removeTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_REMOVE"]) or "Click to remove from your To-Do list."
-    GameTooltip:SetOwner(bf, "ANCHOR_LEFT")
-    local tr, tg, tb = 1, 1, 1
-    if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
-    GameTooltip:SetText(removeTip, tr, tg, tb)
-    GameTooltip:Show()
+    if ns.UI_SafeSetGameTooltipOwner(bf, "ANCHOR_LEFT") then
+        local tr, tg, tb = 1, 1, 1
+        if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+        GameTooltip:SetText(removeTip, tr, tg, tb)
+        GameTooltip:Show()
+    end
 end
 
-local function BrowsePlannedBtnOnLeave() GameTooltip:Hide() end
+local function BrowsePlannedBtnOnLeave() ns.UI_SafeHideGameTooltip() end
 
 --- Planned toggle of a browse card, created once per card.
 local function EnsureBrowsePlannedBtn(addon, row, PCF, size)

@@ -860,7 +860,7 @@ function FontManager:ApplyBarOverlayFont(fontString)
         end)
     end
     ClearReadableEdge(fontString)
-    if existingText and not (issecretvalue and issecretvalue(existingText)) and existingText ~= "" then
+    if not (issecretvalue and issecretvalue(existingText)) and existingText and existingText ~= "" then
         fontString:SetText(existingText)
     end
 end
@@ -1005,7 +1005,7 @@ function FontManager:ApplyFont(fontString, category, opts)
     self:ApplyReadableEdge(fontString, category, flagOpts)
 
     -- Force re-render by re-setting existing text (never pass secret values back into SetText)
-    if existingText and not (issecretvalue and issecretvalue(existingText)) and existingText ~= "" then
+    if not (issecretvalue and issecretvalue(existingText)) and existingText and existingText ~= "" then
         fontString._wnBypassInkHook = true
         fontString:SetText(existingText)
         fontString._wnBypassInkHook = false

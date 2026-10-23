@@ -182,7 +182,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         if not realm or (issecretvalue and issecretvalue(realm)) then
             realm = GetRealmName and GetRealmName()
         end
-        if realm and not (issecretvalue and issecretvalue(realm)) then
+        if not (issecretvalue and issecretvalue(realm)) and realm then
             entry.realm = realm
         end
     end
@@ -552,7 +552,7 @@ function CharacterService:ResolveCharactersTableKey(addon)
     -- Stale row key after a rename: same player GUID under a legacy table key.
     if U and U.SafeGuid then
         local pg = U:SafeGuid("player")
-        if pg and not (issecretvalue and issecretvalue(pg)) then
+        if not (issecretvalue and issecretvalue(pg)) and pg then
             local bestKey, bestSeen = nil, -1
             for k, v in pairs(chars) do
                 if type(v) == "table" then
@@ -1682,11 +1682,11 @@ end
 function CharacterService:GetCharacterClassSortName(char)
     if not char then return "\255" end
     local cls = char.class
-    if cls and not (issecretvalue and issecretvalue(cls)) and cls ~= "" then
+    if not (issecretvalue and issecretvalue(cls)) and cls and cls ~= "" then
         return CharSortSafeLower(cls)
     end
     local classFile = char.classFile
-    if classFile and not (issecretvalue and issecretvalue(classFile)) and classFile ~= "" then
+    if not (issecretvalue and issecretvalue(classFile)) and classFile and classFile ~= "" then
         if LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[classFile] then
             return CharSortSafeLower(LOCALIZED_CLASS_NAMES_MALE[classFile])
         end

@@ -50,7 +50,7 @@ local function SampleItemIDFromBag(bagID)
     local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
     for slot = 1, numSlots do
         local info = C_Container.GetContainerItemInfo(bagID, slot)
-        if info and info.itemID and not (issecretvalue and issecretvalue(info.itemID)) then
+        if info and not (issecretvalue and issecretvalue(info.itemID)) and info.itemID then
             return info.itemID
         end
     end

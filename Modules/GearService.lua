@@ -461,7 +461,7 @@ end
 local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
     if not C_TooltipInfo then return false, false, false end
     local cacheKey = itemLink
-    if cacheKey and not (issecretvalue and issecretvalue(cacheKey)) then
+    if not (issecretvalue and issecretvalue(cacheKey)) and cacheKey then
         local cached = gearPrimaryStatProbeCache[cacheKey]
         if cached == false then
             return false, false, false
@@ -472,7 +472,7 @@ local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
     end
 
     local tipData = nil
-    if itemLink and not (issecretvalue and issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
+    if not (issecretvalue and issecretvalue(itemLink)) and itemLink and C_TooltipInfo.GetHyperlink then
         local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
         if ok and data and data.lines then tipData = data end
     end
@@ -495,7 +495,7 @@ local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
         end
     end
 
-    if cacheKey and not (issecretvalue and issecretvalue(cacheKey)) then
+    if not (issecretvalue and issecretvalue(cacheKey)) and cacheKey then
         if gearPrimaryStatProbeCache[cacheKey] == nil then
             gearPrimaryStatProbeCacheSize = gearPrimaryStatProbeCacheSize + 1
         end
@@ -1300,7 +1300,7 @@ local function LivePlayerHasAnyEquippedItem()
     for i = 1, #GEAR_SLOTS do
         local sid = GEAR_SLOTS[i].id
         local link = GetInventoryItemLink("player", sid)
-        if link and not (issecretvalue and issecretvalue(link)) and link ~= "" then
+        if not (issecretvalue and issecretvalue(link)) and link and link ~= "" then
             return true
         end
     end
@@ -1636,7 +1636,7 @@ local function ScanUpgradeFromTooltip(slotID)
             if issecretvalue and issecretvalue(text) then
                 -- skip secret lines
             else
-                if not result and upgradeLineType and line.type == upgradeLineType then
+                if not result and upgradeLineType and not (issecretvalue and issecretvalue(line.type)) and line.type == upgradeLineType then
                     -- Digits need no localization. Never match a bare "x/y" without the line
                     -- type gate above: "Durability 147 / 165" would collide.
                     local cur, max = text:match("(%d+)%s*/%s*(%d+)")
@@ -1760,7 +1760,7 @@ local function ScanSlotUpgradeData(slotEntry, slotID, skipTooltip)
             return
         end
 
-        if info.customUpgradeString and not (issecretvalue and issecretvalue(info.customUpgradeString))
+        if not (issecretvalue and issecretvalue(info.customUpgradeString)) and info.customUpgradeString
             and info.customUpgradeString ~= "" then
             slotEntry.customUpgradeString = info.customUpgradeString
         end

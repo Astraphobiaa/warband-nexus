@@ -17,8 +17,8 @@ local issecretvalue = issecretvalue
 --- Display name for stats rows: never :match on secret charKey or use secret stored name.
 local function GetStatCharDisplayName(charData, charKey)
     local n = charData and charData.name
-    if n and not (issecretvalue and issecretvalue(n)) then return n end
-    if charKey and not (issecretvalue and issecretvalue(charKey)) then
+    if not (issecretvalue and issecretvalue(n)) and n then return n end
+    if not (issecretvalue and issecretvalue(charKey)) and charKey then
         return charKey:match("^([^-]+)") or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     end
     return (ns.L and ns.L["UNKNOWN"]) or "Unknown"

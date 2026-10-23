@@ -36,7 +36,7 @@ local function SendTryCounterCollectibleObtained(self, payload, sourceItemID)
     if not self or not self.SendMessage or not payload then return end
     if not payload.obtainedBy then
         local name = UnitName("player")
-        if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+        if not (issecretvalue and issecretvalue(name)) and name and name ~= "" then
             payload.obtainedBy = name
         end
     end
@@ -103,7 +103,7 @@ function Fns.RefreshLootSessionSlotLinks(numLoot, slotData)
         local entry = slotData[i]
         if entry and entry.hasItem and GetLootSlotLink then
             local link = GetLootSlotLink(i)
-            if link and issecretvalue and issecretvalue(link) then link = nil end
+            if issecretvalue and issecretvalue(link) then link = nil end
             if link then entry.link = link end
         end
     end

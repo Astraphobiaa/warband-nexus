@@ -14,8 +14,8 @@ local issecretvalue = issecretvalue
 --- Tooltip line name: prefer DB name; never :match on secret charKey.
 local function GetMinimapTooltipCharName(charKey, charData)
     local n = charData and charData.name
-    if n and not (issecretvalue and issecretvalue(n)) then return n end
-    if charKey and not (issecretvalue and issecretvalue(charKey)) then
+    if not (issecretvalue and issecretvalue(n)) and n then return n end
+    if not (issecretvalue and issecretvalue(charKey)) and charKey then
         return charKey:match("^([^-]+)") or charKey
     end
     return "?"
@@ -180,7 +180,7 @@ function WarbandNexus:InitializeMinimapButton()
         end,
 
         OnEnter = function(frame)
-            GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
+            if not ns.UI_SafeSetGameTooltipOwner(frame, "ANCHOR_LEFT") then return end
             GameTooltip:SetClampedToScreen(true)
             UpdateTooltip(GameTooltip)
             GameTooltip:Show()
@@ -191,6 +191,12 @@ function WarbandNexus:InitializeMinimapButton()
             shiftPollFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
             shiftPollFrame:SetScript("OnEvent", function(self, _, key)
                 if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+                -- Missed OnLeave (button hidden while hovered): never re-drive a tooltip we no longer own.
+                local okOwner, owner = pcall(GameTooltip.GetOwner, GameTooltip)
+                if not okOwner or owner ~= frame then
+                    self:UnregisterEvent("MODIFIER_STATE_CHANGED")
+                    return
+                end
                 local now = IsShiftKeyDown()
                 if now ~= self._lastShift then
                     self._lastShift = now
@@ -206,7 +212,7 @@ function WarbandNexus:InitializeMinimapButton()
             shiftPollFrame:Hide()
             shiftPollFrame:UnregisterEvent("MODIFIER_STATE_CHANGED")
             shiftPollFrame:SetScript("OnEvent", nil)
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end,
     })
     

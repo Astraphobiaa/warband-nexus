@@ -222,7 +222,7 @@ local function EnsurePlansAchievementExpandCache(achievementID)
         return entry
     end
 
-    if achDesc and not (issecretvalue and issecretvalue(achDesc)) and achDesc ~= "" then
+    if not (issecretvalue and issecretvalue(achDesc)) and achDesc and achDesc ~= "" then
         local bodyHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
         entry.information = bodyHex .. achDesc .. "|r"
     end
@@ -988,12 +988,13 @@ function WarbandNexus:DrawPlansTab(parent)
                 self:ShowDailyPlanDialog()
             end,
             onEnter = function(btn)
-                GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
-                GameTooltip:SetText((ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 1, 1, 1)
-                GameTooltip:AddLine((ns.L and ns.L["ADD_QUEST_TOOLTIP"]) or "Track weekly Midnight objectives for this character.", 0.85, 0.85, 0.85, true)
-                GameTooltip:Show()
+                if ns.UI_SafeSetGameTooltipOwner(btn, "ANCHOR_BOTTOM") then
+                    GameTooltip:SetText((ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 1, 1, 1)
+                    GameTooltip:AddLine((ns.L and ns.L["ADD_QUEST_TOOLTIP"]) or "Track weekly Midnight objectives for this character.", 0.85, 0.85, 0.85, true)
+                    GameTooltip:Show()
+                end
             end,
-            onLeave = function() GameTooltip:Hide() end,
+            onLeave = function() ns.UI_SafeHideGameTooltip() end,
         })
         if addDailyBtn and addWeeklyBtn then
             ns.UI_ChainTitleToolbarControl(titleCard, addDailyBtn, addWeeklyBtn)
@@ -1024,29 +1025,26 @@ function WarbandNexus:DrawPlansTab(parent)
             preset = "default",
             text = (ns.L and ns.L["RESET_LABEL"]) or "Reset",
             onClick = function()
-                StaticPopupDialogs["WN_RESET_COMPLETED_PLANS"] = {
-                    text = (ns.L and ns.L["RESET_COMPLETED_CONFIRM"]) or "Are you sure you want to remove ALL completed plans?\n\nThis cannot be undone!",
-                    button1 = (ns.L and ns.L["YES_RESET"]) or "Yes, Reset",
-                    button2 = CANCEL or "Cancel",
-                    OnAccept = function()
+                -- Own dialog, not StaticPopupDialogs: our entries taint the shared StaticPopup frames.
+                ns.UI_ShowConfirmDialog({
+                    name = "WnResetCompletedPlansDialog",
+                    body = (ns.L and ns.L["RESET_COMPLETED_CONFIRM"]) or "Are you sure you want to remove ALL completed plans?\n\nThis cannot be undone!",
+                    confirmText = (ns.L and ns.L["YES_RESET"]) or "Yes, Reset",
+                    onConfirm = function()
                         if WarbandNexus.ResetCompletedPlans then
                             local count = WarbandNexus:ResetCompletedPlans()
                             WarbandNexus:Print(format((ns.L and ns.L["REMOVED_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
                         end
                     end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                    preferredIndex = 3,
-                }
-                StaticPopup_Show("WN_RESET_COMPLETED_PLANS")
+                })
             end,
             onEnter = function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText((ns.L and ns.L["REMOVE_COMPLETED_TOOLTIP"]) or "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!", 1, 1, 1, 1)
-                GameTooltip:Show()
+                if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+                    GameTooltip:SetText((ns.L and ns.L["REMOVE_COMPLETED_TOOLTIP"]) or "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!", 1, 1, 1, 1)
+                    GameTooltip:Show()
+                end
             end,
-            onLeave = function() GameTooltip:Hide() end,
+            onLeave = function() ns.UI_SafeHideGameTooltip() end,
         })
         if resetBtn and addDailyBtn then
             ns.UI_ChainTitleToolbarControl(titleCard, resetBtn, addDailyBtn)
@@ -1102,10 +1100,11 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnEnter", function(self)
             if originalOnEnter then originalOnEnter(self) end
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed", 1, 1, 1)
-            GameTooltip:AddLine((ns.L and ns.L["SHOW_COMPLETED_HELP"]) or "To-Do List and Weekly Progress: unchecked = plans still in progress; checked = completed plans only. Browse tabs: unchecked = uncollected browse (optionally only To-Do items if Show Planned is on); checked = include collected To-Do entries.", 0.75, 0.75, 0.75, true)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+                GameTooltip:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed", 1, 1, 1)
+                GameTooltip:AddLine((ns.L and ns.L["SHOW_COMPLETED_HELP"]) or "To-Do List and Weekly Progress: unchecked = plans still in progress; checked = completed plans only. Browse tabs: unchecked = uncollected browse (optionally only To-Do items if Show Planned is on); checked = include collected To-Do entries.", 0.75, 0.75, 0.75, true)
+                GameTooltip:Show()
+            end
         end)
         
         local originalOnLeave = nil
@@ -1117,7 +1116,7 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnLeave", function(self)
             if originalOnLeave then originalOnLeave(self) end
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
         
         -- "Show Planned" only affects browse subtabs; dimmed on To-Do / Weekly Progress but always toggleable.
@@ -1184,14 +1183,15 @@ function WarbandNexus:DrawPlansTab(parent)
             end
             local function ShowPlannedTooltip(owner)
                 if origPlannedEnter then origPlannedEnter(owner) end
-                GameTooltip:SetOwner(owner, "ANCHOR_TOP")
-                GameTooltip:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned", 1, 1, 1)
-                if IsPlansPlannedBrowseLocked() then
-                    GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_DISABLED_HERE"]) or "Does not filter the To-Do List or Weekly Progress. Toggle saves your preference for Mounts, Pets, Toys, and other browse tabs.", 0.72, 0.72, 0.76, true)
-                else
-                    GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_HELP"]) or "Browse tabs only: limit the list to items on your To-Do. Pair with Show Completed for still-needed vs already-finished planned items.", 0.75, 0.75, 0.75, true)
+                if ns.UI_SafeSetGameTooltipOwner(owner, "ANCHOR_TOP") then
+                    GameTooltip:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned", 1, 1, 1)
+                    if IsPlansPlannedBrowseLocked() then
+                        GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_DISABLED_HERE"]) or "Does not filter the To-Do List or Weekly Progress. Toggle saves your preference for Mounts, Pets, Toys, and other browse tabs.", 0.72, 0.72, 0.76, true)
+                    else
+                        GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_HELP"]) or "Browse tabs only: limit the list to items on your To-Do. Pair with Show Completed for still-needed vs already-finished planned items.", 0.75, 0.75, 0.75, true)
+                    end
+                    GameTooltip:Show()
                 end
-                GameTooltip:Show()
             end
             plannedCheckbox:SetScript("OnEnter", ShowPlannedTooltip)
 
@@ -1202,7 +1202,7 @@ function WarbandNexus:DrawPlansTab(parent)
             end
             plannedCheckbox:SetScript("OnLeave", function(self)
                 if origPlannedLeave then origPlannedLeave(self) end
-                GameTooltip:Hide()
+                ns.UI_SafeHideGameTooltip()
             end)
         end
 
@@ -1470,7 +1470,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     -- Apply search filter (My Plans global search, skip for daily_tasks)
     if category ~= "daily_tasks" then
         local activeSearch = ns._plansActiveSearch
-        if activeSearch and not (issecretvalue and issecretvalue(activeSearch)) and activeSearch ~= "" then
+        if not (issecretvalue and issecretvalue(activeSearch)) and activeSearch and activeSearch ~= "" then
             local query = activeSearch:lower()
             local searchFiltered = {}
             for i = 1, #plans do

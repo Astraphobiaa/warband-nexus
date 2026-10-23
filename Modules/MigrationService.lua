@@ -1367,7 +1367,7 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
         winner.specIcon = winner.specIcon or loser.specIcon
     end
     if (not winner.guildName or winner.guildName == "")
-        and loser.guildName and not (issecretvalue and issecretvalue(loser.guildName))
+        and not (issecretvalue and issecretvalue(loser.guildName)) and loser.guildName
         and loser.guildName ~= "" then
         winner.guildName = loser.guildName
     end
@@ -1918,7 +1918,7 @@ end
 local function CollectSubsidiaryKeys(db, into)
     if type(into) ~= "table" then return end
     local function note(k)
-        if k and not (issecretvalue and issecretvalue(k)) and k ~= "" then into[k] = true end
+        if not (issecretvalue and issecretvalue(k)) and k and k ~= "" then into[k] = true end
     end
     local g = db.global
     local cd = g.currencyData

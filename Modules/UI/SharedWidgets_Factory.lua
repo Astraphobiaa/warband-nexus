@@ -295,56 +295,57 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
     if showTooltip then
         row:SetScript("OnEnter", function(self)
             if not self:IsShown() then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count", 1, 1, 1)
-            local hint
-            if popupOnLeft and popupOnRight then
-                hint = (ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count."
-            elseif popupOnLeft then
-                hint = "Left-click to edit attempt count."
-            elseif popupOnRight then
-                hint = "Right-click to edit attempt count."
-            else
-                hint = (ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count."
-            end
-            local hintR, hintG, hintB = 0.7, 0.7, 0.7
-            if options.tooltipHintWhite then
-                hintR, hintG, hintB = 1, 1, 1
-            end
-            GameTooltip:AddLine(hint, hintR, hintG, hintB, true)
-            if self._wnTryType and self._wnTryID and ns.CollectibleSourceDB then
-                local itemID = WarbandNexus and WarbandNexus.GetItemIDForCollectible and WarbandNexus:GetItemIDForCollectible(self._wnTryType, self._wnTryID)
-                if itemID and ns.CollectibleSourceDB.GetDropRate then
-                    local rate = ns.CollectibleSourceDB.GetDropRate(itemID)
-                    if rate then
-                        local tries = (WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(self._wnTryType, self._wnTryID)) or 0
-                        local rateStr = ns.CollectibleSourceDB.FormatDropRate and ns.CollectibleSourceDB.FormatDropRate(rate)
-                        local cumP = (tries > 0 and ns.CollectibleSourceDB.GetCumulativeProbability) and ns.CollectibleSourceDB.GetCumulativeProbability(itemID, tries)
-                        local cumStr = cumP and ns.CollectibleSourceDB.FormatCumulativeProbability and ns.CollectibleSourceDB.FormatCumulativeProbability(cumP)
-                        GameTooltip:AddLine(" ")
-                        local dropChanceLabel = (ns.L and ns.L["DROP_CHANCE"]) or "Drop Chance"
-                        local cumLabel = (ns.L and ns.L["CUMULATIVE_CHANCE"]) or "Expected by now"
-                        if rateStr then
-                            GameTooltip:AddDoubleLine(dropChanceLabel .. ":", rateStr, 0.8, 0.8, 0.8, 1, 0.82, 0)
-                        end
-                        if cumStr then
-                            GameTooltip:AddDoubleLine(cumLabel .. ":", cumStr, 0.8, 0.8, 0.8, 0.3, 1, 0.3)
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+                GameTooltip:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count", 1, 1, 1)
+                local hint
+                if popupOnLeft and popupOnRight then
+                    hint = (ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count."
+                elseif popupOnLeft then
+                    hint = "Left-click to edit attempt count."
+                elseif popupOnRight then
+                    hint = "Right-click to edit attempt count."
+                else
+                    hint = (ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count."
+                end
+                local hintR, hintG, hintB = 0.7, 0.7, 0.7
+                if options.tooltipHintWhite then
+                    hintR, hintG, hintB = 1, 1, 1
+                end
+                GameTooltip:AddLine(hint, hintR, hintG, hintB, true)
+                if self._wnTryType and self._wnTryID and ns.CollectibleSourceDB then
+                    local itemID = WarbandNexus and WarbandNexus.GetItemIDForCollectible and WarbandNexus:GetItemIDForCollectible(self._wnTryType, self._wnTryID)
+                    if itemID and ns.CollectibleSourceDB.GetDropRate then
+                        local rate = ns.CollectibleSourceDB.GetDropRate(itemID)
+                        if rate then
+                            local tries = (WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(self._wnTryType, self._wnTryID)) or 0
+                            local rateStr = ns.CollectibleSourceDB.FormatDropRate and ns.CollectibleSourceDB.FormatDropRate(rate)
+                            local cumP = (tries > 0 and ns.CollectibleSourceDB.GetCumulativeProbability) and ns.CollectibleSourceDB.GetCumulativeProbability(itemID, tries)
+                            local cumStr = cumP and ns.CollectibleSourceDB.FormatCumulativeProbability and ns.CollectibleSourceDB.FormatCumulativeProbability(cumP)
+                            GameTooltip:AddLine(" ")
+                            local dropChanceLabel = (ns.L and ns.L["DROP_CHANCE"]) or "Drop Chance"
+                            local cumLabel = (ns.L and ns.L["CUMULATIVE_CHANCE"]) or "Expected by now"
+                            if rateStr then
+                                GameTooltip:AddDoubleLine(dropChanceLabel .. ":", rateStr, 0.8, 0.8, 0.8, 1, 0.82, 0)
+                            end
+                            if cumStr then
+                                GameTooltip:AddDoubleLine(cumLabel .. ":", cumStr, 0.8, 0.8, 0.8, 0.3, 1, 0.3)
+                            end
                         end
                     end
                 end
-            end
-            if WarbandNexus and WarbandNexus.FindNearestEligibleAlt and self._wnTryID then
-                local res = WarbandNexus:FindNearestEligibleAlt(self._wnTryID)
-                if res and res.bestAlt then
-                    local altFmt = (ns.L and ns.L["NEAREST_ELIGIBLE_ALT"]) or "Best Alt: %s (%s)"
-                    local altStr = string.format(altFmt, res.bestAlt.charName, res.bestAlt.distanceDesc or "Ready")
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine(altStr, 0.3, 0.9, 1, true)
+                if WarbandNexus and WarbandNexus.FindNearestEligibleAlt and self._wnTryID then
+                    local res = WarbandNexus:FindNearestEligibleAlt(self._wnTryID)
+                    if res and res.bestAlt then
+                        local altFmt = (ns.L and ns.L["NEAREST_ELIGIBLE_ALT"]) or "Best Alt: %s (%s)"
+                        local altStr = string.format(altFmt, res.bestAlt.charName, res.bestAlt.distanceDesc or "Ready")
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine(altStr, 0.3, 0.9, 1, true)
+                    end
                 end
+                GameTooltip:Show()
             end
-            GameTooltip:Show()
         end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
 
     end
 
@@ -467,18 +468,19 @@ function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, op
             body = (L and L["COLLECTIONS_TT_TRACK_ENABLE"])
                 or "Left-click to show progress in Blizzard objectives (up to 10 at once)."
         end
-        GameTooltip:SetOwner(b, "ANCHOR_TOP")
-        GameTooltip:ClearLines()
-        if ns.UI_GameTooltipSetRoleText then
-            ns.UI_GameTooltipSetRoleText(GameTooltip, title, "Bright")
-            ns.UI_GameTooltipAddRoleLine(GameTooltip, body, "Normal", true)
-        else
-            GameTooltip:SetText(title, 1, 1, 1)
-            GameTooltip:AddLine(body, 1, 1, 1, true)
+        if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_TOP") then
+            GameTooltip:ClearLines()
+            if ns.UI_GameTooltipSetRoleText then
+                ns.UI_GameTooltipSetRoleText(GameTooltip, title, "Bright")
+                ns.UI_GameTooltipAddRoleLine(GameTooltip, body, "Normal", true)
+            else
+                GameTooltip:SetText(title, 1, 1, 1)
+                GameTooltip:AddLine(body, 1, 1, 1, true)
+            end
+            GameTooltip:Show()
         end
-        GameTooltip:Show()
     end)
-    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    btn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
 
     btn:WnRefreshAchievementTrackPin()
     return btn
@@ -583,13 +585,14 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     wowheadBtn._wnDetailIconShell = whShell
     local loc = ns.L
     wowheadBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:ClearLines()
-        GameTooltip:SetText((loc and loc["WOWHEAD_LABEL"]) or "Wowhead", 1, 1, 1)
-        GameTooltip:AddLine((loc and loc["CLICK_TO_COPY_LINK"]) or "Left-click to copy the Wowhead link.", 1, 1, 1, true)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+            GameTooltip:ClearLines()
+            GameTooltip:SetText((loc and loc["WOWHEAD_LABEL"]) or "Wowhead", 1, 1, 1)
+            GameTooltip:AddLine((loc and loc["CLICK_TO_COPY_LINK"]) or "Left-click to copy the Wowhead link.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end
     end)
-    wowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    wowheadBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     wowheadBtn:Hide()
 
     local tryCountRow = nil
@@ -1736,11 +1739,9 @@ end
 function ns.UI.Factory:EnsureDropdownEscClose(menu)
     if not menu or menu._wnDropdownEscInstalled then return end
     menu._wnDropdownEscInstalled = true
-    if not InCombatLockdown() and menu.EnableKeyboard then
-        menu:EnableKeyboard(true)
-    end
-    if menu.SetPropagateKeyboardInput then
-        menu:SetPropagateKeyboardInput(false)
+    if not InCombatLockdown() then
+        if menu.EnableKeyboard then menu:EnableKeyboard(true) end
+        if menu.SetPropagateKeyboardInput then menu:SetPropagateKeyboardInput(false) end
     end
     menu:SetScript("OnKeyDown", function(self, key)
         if key ~= "ESCAPE" then return end

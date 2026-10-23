@@ -443,7 +443,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
                 usedSeasonProgressLine = true
                 local rawAmt = row.amountText:GetText()
                 amountLine = ""
-                if rawAmt and not (issecretvalue and issecretvalue(rawAmt)) then
+                if not (issecretvalue and issecretvalue(rawAmt)) and rawAmt then
                     amountLine = rawAmt
                 end
             end
@@ -460,7 +460,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
             usedSeasonProgressLine = true
             local rawAmt = row.amountText:GetText()
             amountLine = ""
-            if rawAmt and not (issecretvalue and issecretvalue(rawAmt)) then
+            if not (issecretvalue and issecretvalue(rawAmt)) and rawAmt then
                 amountLine = rawAmt
             end
         end
@@ -795,7 +795,7 @@ local currencyAggregateCache = { result = nil, currencies = nil, headers = nil, 
 local function GetCurrencyAggregateSnapshot(self, characters, currencyHeaders, searchText, showZero)
     local globalCurrencies = self:GetCurrenciesForUI()
     local c = currencyAggregateCache
-    if searchText and issecretvalue and issecretvalue(searchText) then
+    if issecretvalue and issecretvalue(searchText) then
         c.result = nil
         return AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero, globalCurrencies)
     end

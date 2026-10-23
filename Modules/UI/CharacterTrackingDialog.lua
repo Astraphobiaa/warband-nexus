@@ -109,8 +109,6 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
         return
     end
 
-    StaticPopupDialogs["WARBANDNEXUS_ADD_CHARACTER"] = nil
-
     local dialog = ShellContainer(UIParent, 480, 210, false, "WarbandNexusTrackingDialog")
     if not (ns.WindowManager and ns.WindowManager.RestorePosition and dialog.GetName
             and ns.WindowManager:RestorePosition(dialog, dialog:GetName())) then
@@ -180,20 +178,20 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
             charRealmRaw = norm
         elseif GetRealmName then
             charRealmRaw = GetRealmName() or ""
-            if issecretvalue and charRealmRaw and issecretvalue(charRealmRaw) then charRealmRaw = "" end
+            if issecretvalue and issecretvalue(charRealmRaw) then charRealmRaw = "" end
         end
     end
     charRealmRaw = charRealmRaw or ""
     local charRealm = (charRealmRaw ~= "" and ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(charRealmRaw)) or charRealmRaw
-    if charName and issecretvalue and issecretvalue(charName) then
+    if issecretvalue and issecretvalue(charName) then
         charName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
     end
-    if charRealm and issecretvalue and issecretvalue(charRealm) then
+    if issecretvalue and issecretvalue(charRealm) then
         charRealm = ""
     end
 
     local classColor = "|cffffcc00"
-    if charName and not (issecretvalue and issecretvalue(charName)) and ns.UI_GetClassColorHexForWarbandCharacter then
+    if not (issecretvalue and issecretvalue(charName)) and charName and ns.UI_GetClassColorHexForWarbandCharacter then
         local hex = ns.UI_GetClassColorHexForWarbandCharacter(charName)
         if hex and hex ~= "|cffaaaaaa" then
             classColor = hex

@@ -234,7 +234,7 @@ function ItemsRowCb.OnMouseUp(self, button)
     local item = self._wnItemsItem
     if item and button == "LeftButton" and IsShiftKeyDown() then
         local lk = item.itemLink or item.link
-        if lk and not (issecretvalue and issecretvalue(lk)) then
+        if not (issecretvalue and issecretvalue(lk)) and lk then
             ChatEdit_InsertLink(lk)
         end
     end
@@ -1532,7 +1532,7 @@ function WarbandNexus:DrawItemList(parent)
         local guildGold = nil
         if IsInGuild() then
             local guildName = GetGuildInfo("player")
-            if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
+            if issecretvalue and issecretvalue(guildName) then guildName = nil end
             if guildName and WarbandNexus.db.global.guildBank and WarbandNexus.db.global.guildBank[guildName] then
                 guildGold = WarbandNexus.db.global.guildBank[guildName].cachedGold
             end
@@ -2053,7 +2053,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             row.icon:SetTexture(ns.Utilities and ns.Utilities.ResolveItemRowIcon and ns.Utilities:ResolveItemRowIcon(item) or (item.iconFileID or 134400))
 
             local baseName = item.name
-            if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
+            if not baseName and not (issecretvalue and issecretvalue(item.link)) and item.link then
                 baseName = item.link:match("%[(.-)%]")
             end
             if not baseName and item.pending then

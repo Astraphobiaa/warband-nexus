@@ -279,7 +279,7 @@ function ReputationScanner.CaptureCollapsedHeaders()
                 hasAny = true
             end
             local name = data.name
-            if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+            if not (issecretvalue and issecretvalue(name)) and name and name ~= "" then
                 collapsed[name] = true
                 hasAny = true
             end
@@ -302,7 +302,7 @@ function ReputationScanner.RestoreCollapsedHeaders(collapsed)
             local shouldCollapse = false
             if data.factionID and collapsed[data.factionID] then
                 shouldCollapse = true
-            elseif data.name and not (issecretvalue and issecretvalue(data.name)) and collapsed[data.name] then
+            elseif not (issecretvalue and issecretvalue(data.name)) and data.name and collapsed[data.name] then
                 shouldCollapse = true
             end
             if shouldCollapse then
@@ -406,7 +406,7 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
         end
         
         -- Track WoD expansion header name for garrison follower reps
-        if completeData.name and not (issecretvalue and issecretvalue(completeData.name)) and completeData.name:find("Draenor") then
+        if not (issecretvalue and issecretvalue(completeData.name)) and completeData.name and completeData.name:find("Draenor") then
             lastWoDHeaderName = completeData.name
         end
 

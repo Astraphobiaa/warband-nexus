@@ -231,7 +231,7 @@ function ns.UIMapContentKind.FormatGeographySummary(mapID)
         local ok, info = pcall(C_Map.GetMapInfo, mid)
         if ok and info and info.name and info.name ~= "" then
             local nm = info.name
-            if not (issecretvalue and nm and issecretvalue(nm)) then
+            if not (issecretvalue and issecretvalue(nm)) then
                 display = nm
             end
         end

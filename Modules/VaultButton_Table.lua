@@ -42,12 +42,13 @@ function M.ReleaseSavedInstanceRows()
     S.savedRows = {}
 end
 
+--- ESC close through WindowManager; inserting into UISpecialFrames taints Blizzard's table.
 function M.AddEscCloseFrame(frameName)
-    if not frameName or not UISpecialFrames then return end
-    for i = 1, #UISpecialFrames do
-        if UISpecialFrames[i] == frameName then return end
-    end
-    table.insert(UISpecialFrames, frameName)
+    local frame = frameName and _G[frameName]
+    local WM = ns.WindowManager
+    if not frame or not WM then return end
+    WM:Register(frame, WM.PRIORITY.POPUP)
+    WM:InstallESCHandler(frame)
 end
 
 local HideTable, RefreshTable
@@ -310,29 +311,30 @@ function M.BuildTableFrame()
                 hover:SetPoint("TOPLEFT", hRow, "TOPLEFT", x, 0)
                 hover:EnableMouse(true)
                 hover:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:ClearLines()
-                    if tooltipKind == "item" and tooltipID then
-                        if GameTooltip.SetItemByID then
-                            GameTooltip:SetItemByID(tooltipID)
+                    if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+                        GameTooltip:ClearLines()
+                        if tooltipKind == "item" and tooltipID then
+                            if GameTooltip.SetItemByID then
+                                GameTooltip:SetItemByID(tooltipID)
+                            else
+                                GameTooltip:SetHyperlink("item:" .. tooltipID)
+                            end
+                        elseif tooltipKind == "currency" and tooltipID and GameTooltip.SetCurrencyByID then
+                            GameTooltip:SetCurrencyByID(tooltipID)
                         else
-                            GameTooltip:SetHyperlink("item:" .. tooltipID)
+                            if ns.UI_GameTooltipAddRoleLine then
+                                ns.UI_GameTooltipAddRoleLine(GameTooltip, tooltipTitle, "Bright")
+                            else
+                                GameTooltip:AddLine(tooltipTitle, 1, 1, 1)
+                            end
+                            if tooltipText then
+                                GameTooltip:AddLine(tooltipText, 0.75, 0.75, 0.75, true)
+                            end
                         end
-                    elseif tooltipKind == "currency" and tooltipID and GameTooltip.SetCurrencyByID then
-                        GameTooltip:SetCurrencyByID(tooltipID)
-                    else
-                        if ns.UI_GameTooltipAddRoleLine then
-                            ns.UI_GameTooltipAddRoleLine(GameTooltip, tooltipTitle, "Bright")
-                        else
-                            GameTooltip:AddLine(tooltipTitle, 1, 1, 1)
-                        end
-                        if tooltipText then
-                            GameTooltip:AddLine(tooltipText, 0.75, 0.75, 0.75, true)
-                        end
+                        GameTooltip:Show()
                     end
-                    GameTooltip:Show()
                 end)
-                hover:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                hover:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
             end
         else
             local fs = VBFontString(hRow, "small")

@@ -59,7 +59,7 @@ CollectionRules.MOUNT = {
         
         -- 12.0.5: isCollected is return value #11 (not #5)
         local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-        if issecretvalue and isCollected and issecretvalue(isCollected) then
+        if issecretvalue and issecretvalue(isCollected) then
             return "KNOWN"  -- Secret = treat as collected
         end
         return isCollected and "KNOWN" or "UNKNOWN"
@@ -76,7 +76,7 @@ CollectionRules.MOUNT = {
         -- 12.0.5: 13 return values; isUsable=#5, isCollected=#11
         local name, _, _, _, isUsable, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
         
-        if issecretvalue and name and issecretvalue(name) then
+        if issecretvalue and issecretvalue(name) then
             return {
                 canUse = false,
                 reason = (ns.L and ns.L["COLLECTION_RULE_INVALID_MOUNT"]) or "Invalid mount",
@@ -93,14 +93,14 @@ CollectionRules.MOUNT = {
         
         -- Guard secret values (Midnight 12.0+)
         local collected = false
-        if issecretvalue and isCollected and issecretvalue(isCollected) then
+        if issecretvalue and issecretvalue(isCollected) then
             collected = true
         elseif isCollected == true then
             collected = true
         end
         
         local canUse = false
-        if issecretvalue and isUsable and issecretvalue(isUsable) then
+        if issecretvalue and issecretvalue(isUsable) then
             canUse = false
         elseif isUsable == true then
             canUse = true
@@ -136,7 +136,7 @@ CollectionRules.PET = {
         end
         
         local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
-        if issecretvalue and numOwned and issecretvalue(numOwned) then
+        if issecretvalue and issecretvalue(numOwned) then
             return "KNOWN"
         end
         return (numOwned and numOwned > 0) and "KNOWN" or "UNKNOWN"
@@ -148,7 +148,7 @@ CollectionRules.PET = {
         
         local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
         local isCollected = false
-        if issecretvalue and numOwned and issecretvalue(numOwned) then
+        if issecretvalue and issecretvalue(numOwned) then
             isCollected = true
         elseif numOwned and numOwned > 0 then
             isCollected = true

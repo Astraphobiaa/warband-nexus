@@ -966,17 +966,19 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
         -- Vault toggle: click opens, click again closes
         local function OpenGreatVault()
+            if InCombatLockdown() then return end
+            -- Panel delegate (Show/HideUIPanel) instead of raw Show/Hide: keeps the Blizzard panel's
+            -- OnShow/OnHide out of our insecure execution.
             if WeeklyRewardsFrame and WeeklyRewardsFrame:IsShown() then
-                WeeklyRewardsFrame:Hide()
+                HideUIPanel(WeeklyRewardsFrame)
                 return
             end
-            if InCombatLockdown() then return end
             local U = ns.Utilities
             if U and U.SafeLoadAddOn then
                 U:SafeLoadAddOn("Blizzard_WeeklyRewards")
             end
             if WeeklyRewardsFrame then
-                WeeklyRewardsFrame:Show()
+                ShowUIPanel(WeeklyRewardsFrame)
                 if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
                     C_WeeklyRewards.OnUIInteract()
                 end

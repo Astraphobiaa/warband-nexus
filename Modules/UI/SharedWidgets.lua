@@ -2366,23 +2366,22 @@ local strupper = string.upper
 --- GameTooltip owner: horizontal flip so narrow columns (e.g. Collections Recent) open toward screen center.
 --- Does not call `GameTooltip_SetDefaultAnchor` (that path grows from owner top-right and often covers the next column).
 --- Call with `GameTooltip:ClearLines()` already done if you replace prior contents.
+--- Returns false (tooltip untouched) while a Blizzard widget tooltip is up; see ns.UI_SafeSetGameTooltipOwner.
 function ns.UI_SetGameTooltipSmartOwner(frame, xOffset, yOffset)
-    if not frame or not GameTooltip then return end
+    if not frame or not GameTooltip then return false end
     xOffset = xOffset or 0
     yOffset = yOffset or 0
     local left = frame.GetLeft and frame:GetLeft()
     local right = frame.GetRight and frame:GetRight()
     if not left or not right then
-        GameTooltip:SetOwner(frame, "ANCHOR_RIGHT", xOffset, yOffset)
-        return
+        return ns.UI_SafeSetGameTooltipOwner(frame, "ANCHOR_RIGHT", xOffset, yOffset)
     end
     local mid = (left + right) / 2
     local sw = GetScreenWidth and GetScreenWidth() or 1920
     if mid > sw * 0.52 then
-        GameTooltip:SetOwner(frame, "ANCHOR_LEFT", xOffset, yOffset)
-    else
-        GameTooltip:SetOwner(frame, "ANCHOR_RIGHT", xOffset, yOffset)
+        return ns.UI_SafeSetGameTooltipOwner(frame, "ANCHOR_LEFT", xOffset, yOffset)
     end
+    return ns.UI_SafeSetGameTooltipOwner(frame, "ANCHOR_RIGHT", xOffset, yOffset)
 end
 
 --- English class token (WARRIOR, MAGE, …) from a `db.global.characters` entry.

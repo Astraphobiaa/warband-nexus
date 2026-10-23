@@ -174,7 +174,7 @@ function SearchStateManager:GetQuery(tabId)
     
     local state = searchStates[tabId]
     local q = state and state.query or ""
-    if q and issecretvalue and issecretvalue(q) then return "" end
+    if issecretvalue and issecretvalue(q) then return "" end
     if not q or q == "" then return "" end
     return q
 end

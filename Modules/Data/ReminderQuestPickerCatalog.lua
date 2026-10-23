@@ -44,7 +44,7 @@ end
 local function ResolveTitle(entry)
     if not entry then return "?" end
     local title = entry.title
-    if title and not (issecretvalue and issecretvalue(title)) and title ~= "" then
+    if not (issecretvalue and issecretvalue(title)) and title and title ~= "" then
         return title
     end
     if entry.questID and RQC and RQC.ResolveQuestTitle then

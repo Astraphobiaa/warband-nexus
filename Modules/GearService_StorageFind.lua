@@ -51,7 +51,7 @@ local RequestGearStorageRedraw = D("RequestGearStorageRedraw")
 local function ScanTooltipForWarbandBind(itemLink, itemID)
     if not C_TooltipInfo then return nil end
     local tipData = nil
-    if itemLink and not (issecretvalue and issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
+    if not (issecretvalue and issecretvalue(itemLink)) and itemLink and C_TooltipInfo.GetHyperlink then
         local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
         if ok and data and data.lines then tipData = data end
     end
@@ -69,7 +69,7 @@ local function ScanTooltipForWarbandBind(itemLink, itemID)
 
     for li = 1, #tipData.lines do
         local lt = tipData.lines[li] and tipData.lines[li].leftText
-        if lt and not (issecretvalue and issecretvalue(lt)) and type(lt) == "string" then
+        if not (issecretvalue and issecretvalue(lt)) and lt and type(lt) == "string" then
             if lt:find(strWuE, 1, true) or lt:find("until equipped", 1, true) then
                 return "warbound_until_equipped"
             end
@@ -146,7 +146,7 @@ local function IsViewingLivePlayerGear(charKey)
     end
     if UnitGUID then
         local pg = UnitGUID("player")
-        if pg and not (issecretvalue and issecretvalue(pg)) and canon(pg) == view then
+        if not (issecretvalue and issecretvalue(pg)) and pg and canon(pg) == view then
             return true
         end
     end
@@ -872,7 +872,7 @@ function WarbandNexus:IsGearTabCharacterLoggedInPlayer(charKey)
     end
     if UnitGUID then
         local pg = UnitGUID("player")
-        if pg and not (issecretvalue and issecretvalue(pg)) and canon(pg) == sel then
+        if not (issecretvalue and issecretvalue(pg)) and pg and canon(pg) == sel then
             return true
         end
     end
@@ -943,7 +943,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             local iid = nil
             if selectedIsLoggedInPlayer and GetInventoryItemLink then
                 local link = GetInventoryItemLink("player", slotID)
-                if link and not (issecretvalue and issecretvalue(link)) then
+                if not (issecretvalue and issecretvalue(link)) and link then
                     pcall(function()
                         if C_Item and C_Item.GetItemInfoInstant then
                             iid = C_Item.GetItemInfoInstant(link)
@@ -977,7 +977,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         local mhEquipLoc = ""
         if selectedIsLoggedInPlayer and GetInventoryItemLink then
             local mhLink = GetInventoryItemLink("player", 16)
-            if mhLink and not (issecretvalue and issecretvalue(mhLink)) then
+            if not (issecretvalue and issecretvalue(mhLink)) and mhLink then
                 mhEquipLoc = GetEquipLoc(mhLink) or ""
             end
         else

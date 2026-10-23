@@ -236,7 +236,8 @@ function M.AppendGeneralPanel(ctx)
             if captureFrame.EnableKeyboard then
                 captureFrame:EnableKeyboard(false)
             end
-            if captureFrame.SetPropagateKeyboardInput then
+            -- StopListening can run in combat (panel hidden on PLAYER_REGEN_DISABLED): protected call.
+            if captureFrame.SetPropagateKeyboardInput and not InCombatLockdown() then
                 captureFrame:SetPropagateKeyboardInput(true)
             end
             captureFrame:Hide()
@@ -358,7 +359,7 @@ function M.AppendGeneralPanel(ctx)
         end
         Settings_ShowWrappedTooltip(self, t)
     end)
-    keybindBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    keybindBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
 
         -- Clear binding button
         local clearBtn = ns.UI.Factory:CreateButton(inner, SETTINGS_BTN_H, SETTINGS_BTN_H, false)
@@ -385,7 +386,7 @@ function M.AppendGeneralPanel(ctx)
     end)
         clearBtn:SetScript("OnLeave", function()
             clearIcon:SetVertexColor(0.9, 0.3, 0.3)
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
 
         cy = cy - SETTINGS_BTN_H - hdrGap

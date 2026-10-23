@@ -280,8 +280,10 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         globalName = "WarbandNexusUpdateBackdrop",
     })
     host:SetAllPoints()
-    host:EnableKeyboard(true)
-    host:SetPropagateKeyboardInput(false)
+    if not InCombatLockdown() then
+        host:EnableKeyboard(true)
+        host:SetPropagateKeyboardInput(false)
+    end
 
     local scrim = ToastFactory:CreateToastLayer(host, 1, 1)
     scrim:SetAllPoints()

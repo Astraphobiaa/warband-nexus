@@ -1266,7 +1266,7 @@ local function ResolvePveDelveCurrencyColumns(addon)
         anyEntry = true
         local rawName = entry and entry.name
         local lowerName = ""
-        if rawName and not (issecretvalue and issecretvalue(rawName)) then
+        if not (issecretvalue and issecretvalue(rawName)) and rawName then
             lowerName = string.lower(rawName)
         end
         if lowerName ~= "" then

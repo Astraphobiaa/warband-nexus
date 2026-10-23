@@ -421,7 +421,7 @@ function M.AppendNotificationsPanel(ctx)
         end)
         addTcChatBtn:SetScript("OnLeave", function(self)
             ApplySettingsAccentChromeIdle(self)
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
         addTcChatBtn:SetScript("OnClick", function()
             if ns.ChatOutput and ns.ChatOutput.AddTryCounterGroupToSelectedChatFrame then
@@ -748,8 +748,8 @@ function M.AppendNotificationsPanel(ctx)
         local function ApplyFromDialog()
             local xt = xBox:GetText()
             local yt = yBox:GetText()
-            if xt and issecretvalue and issecretvalue(xt) then return false end
-            if yt and issecretvalue and issecretvalue(yt) then return false end
+            if issecretvalue and issecretvalue(xt) then return false end
+            if issecretvalue and issecretvalue(yt) then return false end
             local x = tonumber(xt)
             local y = tonumber(yt)
             if not x then x = 0 end

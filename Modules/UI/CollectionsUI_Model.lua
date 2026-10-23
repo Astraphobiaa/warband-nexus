@@ -219,7 +219,7 @@ function M.ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDF
     local needsFanfare = false
     if C_MountJournal.NeedsFanfare then
         local nf = C_MountJournal.NeedsFanfare(mountID)
-        if not (issecretvalue and nf and issecretvalue(nf)) then
+        if not (issecretvalue and issecretvalue(nf)) then
             needsFanfare = nf == true
         end
     end
@@ -335,7 +335,7 @@ end
 function M.SafeGetMountCollected(mountID)
     if not C_MountJournal or not C_MountJournal.GetMountInfoByID then return false end
     local _, _, _, _, _, _, _, _, _, _, collected = C_MountJournal.GetMountInfoByID(mountID)
-    if issecretvalue and collected and issecretvalue(collected) then
+    if issecretvalue and issecretvalue(collected) then
         return false
     end
     return collected == true
@@ -346,10 +346,10 @@ function M.SafeGetMountInfoExtra(mountID)
         return nil, "", "", nil
     end
     local displayID, description, source, _, _, uiModelSceneID = C_MountJournal.GetMountInfoExtraByID(mountID)
-    if issecretvalue and displayID and issecretvalue(displayID) then displayID = nil end
-    if issecretvalue and description and issecretvalue(description) then description = "" end
-    if issecretvalue and source and issecretvalue(source) then source = "" end
-    if issecretvalue and uiModelSceneID and issecretvalue(uiModelSceneID) then uiModelSceneID = nil end
+    if issecretvalue and issecretvalue(displayID) then displayID = nil end
+    if issecretvalue and issecretvalue(description) then description = "" end
+    if issecretvalue and issecretvalue(source) then source = "" end
+    if issecretvalue and issecretvalue(uiModelSceneID) then uiModelSceneID = nil end
     return displayID, description or "", source or "", uiModelSceneID
 end
 
@@ -357,7 +357,7 @@ end
 function M.SafeGetPetCollected(speciesID)
     if not C_PetJournal or not C_PetJournal.GetNumCollectedInfo then return false end
     local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
-    if issecretvalue and numCollected and issecretvalue(numCollected) then
+    if issecretvalue and issecretvalue(numCollected) then
         return false
     end
     return numCollected and numCollected > 0
@@ -372,10 +372,10 @@ function M.SafeGetPetInfoExtra(speciesID)
             creatureDisplayID = C_PetJournal.GetDisplayIDByIndex(speciesID, 1)
         end
     end
-    if issecretvalue and creatureDisplayID and issecretvalue(creatureDisplayID) then creatureDisplayID = nil end
+    if issecretvalue and issecretvalue(creatureDisplayID) then creatureDisplayID = nil end
     local name, icon, _, _, source, description = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-    if issecretvalue and source and issecretvalue(source) then source = "" end
-    if issecretvalue and description and issecretvalue(description) then description = "" end
+    if issecretvalue and issecretvalue(source) then source = "" end
+    if issecretvalue and issecretvalue(description) then description = "" end
     return creatureDisplayID, description or "", source or ""
 end
 
@@ -425,12 +425,13 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
         addBtn:RegisterForClicks()
         local body = (L and L["COLLECTIONS_DETAIL_TT_ON_TODO"]) or "Left-click to remove from your To-Do list."
         addBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:ClearLines()
-            ShowThemedGameTooltip(todoTitle, body)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_LEFT") then
+                GameTooltip:ClearLines()
+                ShowThemedGameTooltip(todoTitle, body)
+                GameTooltip:Show()
+            end
         end)
-        addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        addBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         addBtn:SetScript("OnClick", nil)
     elseif disabled then
         addBtn:EnableMouse(false)
@@ -441,12 +442,13 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
     else
         local body = (L and L["COLLECTIONS_DETAIL_TT_ADD_TODO"]) or "Left-click to add to your To-Do list."
         addBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:ClearLines()
-            ShowThemedGameTooltip(todoTitle, body)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_LEFT") then
+                GameTooltip:ClearLines()
+                ShowThemedGameTooltip(todoTitle, body)
+                GameTooltip:Show()
+            end
         end)
-        addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        addBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         addBtn:EnableMouse(true)
         addBtn:RegisterForClicks("LeftButtonUp")
         if onClick then
@@ -1291,7 +1293,7 @@ function M.CreateModelViewer(parent, width, height)
         local isCollected = isCollectedFromCache
         if isCollected == nil and C_MountJournal and C_MountJournal.GetMountInfoByID then
             local _, _, _, _, _, _, _, _, _, _, collected = C_MountJournal.GetMountInfoByID(mountID)
-            if issecretvalue and collected and issecretvalue(collected) then
+            if issecretvalue and issecretvalue(collected) then
                 isCollected = false
             else
                 isCollected = collected == true
@@ -1718,7 +1720,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
     local function addAchievementRow(ach, label, currentAchievementID)
         if not ach or not ach.id then return end
         if issecretvalue and issecretvalue(ach.id) then return end
-        if ach.name and issecretvalue and issecretvalue(ach.name) then return end
+        if issecretvalue and issecretvalue(ach.name) then return end
         local row = CreateFrame("Frame", nil, content, "BackdropTemplate")
         row:SetPoint("TOP", lastAnchor, lastPoint, 0, lastY)
         row:SetPoint("LEFT", content, "LEFT", CONTENT_COLUMN_LEFT, 0)
@@ -1966,10 +1968,10 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
             addSection((ns.L and ns.L["ACHIEVEMENT_SERIES"]) or "Achievement Series", function()
                 for i = 1, #seriesIds do
                     local achID = seriesIds[i]
-                    if achID and not (issecretvalue and issecretvalue(achID)) then
+                    if not (issecretvalue and issecretvalue(achID)) and achID then
                         -- GetAchievementInfo: id, name, points, completed, month, day, year, description, flags, icon, ...
                         local ok, _, aName, aPoints, aCompleted, _, _, _, aDesc, _, aIcon = pcall(GetAchievementInfo, achID)
-                        if ok and aName and not (issecretvalue and issecretvalue(aName)) then
+                        if ok and not (issecretvalue and issecretvalue(aName)) and aName then
                             addAchievementRow({ id = achID, name = aName, icon = aIcon, points = aPoints, isCollected = aCompleted, description = aDesc }, nil, achievement.id)
                         end
                     end
@@ -2178,7 +2180,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
                 local name = (meta and meta.name) or ""
                 if not name and C_MountJournal and C_MountJournal.GetMountInfoByID then
                     local n = C_MountJournal.GetMountInfoByID(mountID)
-                    if n and not (issecretvalue and issecretvalue(n)) then name = n end
+                    if not (issecretvalue and issecretvalue(n)) and n then name = n end
                 end
                 if not name then name = tostring(mountID) end
                 if query == "" or SafeLower(name):find(query, 1, true) then
@@ -2188,7 +2190,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
                     local icon = (meta and meta.icon) or "Interface\\Icons\\Ability_Mount_RidingHorse"
                     if not icon and C_MountJournal and C_MountJournal.GetMountInfoByID then
                         local _, _, ic = C_MountJournal.GetMountInfoByID(mountID)
-                        if ic and not (issecretvalue and issecretvalue(ic)) then icon = ic end
+                        if not (issecretvalue and issecretvalue(ic)) and ic then icon = ic end
                     end
                     local sourceTypeInt = ResolveMountSourceTypeForBrowse(mountID, meta and meta.sourceType)
                     local catKey = classify(sourceTypeInt)
@@ -2490,7 +2492,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
                     local name = (meta and meta.name) or ""
                     if not name and C_PetJournal.GetPetInfoBySpeciesID then
                         local n = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-                        if n and not (issecretvalue and issecretvalue(n)) then name = n end
+                        if not (issecretvalue and issecretvalue(n)) and n then name = n end
                     end
                     if not name then name = tostring(speciesID) end
                     if query == "" or SafeLower(name):find(query, 1, true) then
@@ -2500,7 +2502,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
                         local icon = (meta and meta.icon) or "Interface\\Icons\\INV_Box_PetCarrier_01"
                         if not icon and C_PetJournal.GetPetInfoBySpeciesID then
                             local _, ic = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-                            if ic and not (issecretvalue and issecretvalue(ic)) then icon = ic end
+                            if not (issecretvalue and issecretvalue(ic)) and ic then icon = ic end
                         end
                         local sourceTypeIndex = ResolvePetSourceIndexForBrowse(speciesID, meta and meta.sourceTypeIndex)
                         local catKey = classify(sourceTypeIndex)

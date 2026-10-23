@@ -43,22 +43,23 @@ function M.CreateMenuCheckbox(parent, labelText, y, getValue, setValue, tooltipT
 
     if tooltipText and tooltipText ~= "" then
         function M.ShowTooltip(owner)
-            GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-            GameTooltip:ClearLines()
-            if ns.UI_GameTooltipAddRoleLine then
-                ns.UI_GameTooltipAddRoleLine(GameTooltip, labelText, "Bright")
-            else
-                GameTooltip:AddLine(labelText, 1, 1, 1)
+            if ns.UI_SafeSetGameTooltipOwner(owner, "ANCHOR_RIGHT") then
+                GameTooltip:ClearLines()
+                if ns.UI_GameTooltipAddRoleLine then
+                    ns.UI_GameTooltipAddRoleLine(GameTooltip, labelText, "Bright")
+                else
+                    GameTooltip:AddLine(labelText, 1, 1, 1)
+                end
+                local mr, mg, mb = 0.85, 0.85, 0.85
+                GameTooltip:AddLine(tooltipText, mr, mg, mb, true)
+                GameTooltip:Show()
             end
-            local mr, mg, mb = 0.85, 0.85, 0.85
-            GameTooltip:AddLine(tooltipText, mr, mg, mb, true)
-            GameTooltip:Show()
         end
         cb:SetScript("OnEnter", ShowTooltip)
-        cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        cb:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         label:EnableMouse(true)
         label:SetScript("OnEnter", ShowTooltip)
-        label:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        label:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     end
 
     -- ThemedCheckbox already has OnClick that toggles innerDot; chain our handler

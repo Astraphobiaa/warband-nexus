@@ -667,7 +667,7 @@ local function GetPlanDescriptionFormatted(plan)
         if sourceDetail and sourceDetail ~= "" then
             local icon = ""
             local IconMk = ns.UI_PlanSourceIconMarkup
-            if IconMk and sourceType and not (issecretvalue and issecretvalue(sourceType)) then
+            if IconMk and not (issecretvalue and issecretvalue(sourceType)) and sourceType then
                 local sl = string.lower(sourceType)
                 local szSm = (ns.UI_PLAN_SOURCE_ICON_SM) or math.floor(12 * 1.3 + 0.5)
                 if sl:match("quest") then
@@ -1128,7 +1128,7 @@ function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
             row(locMk14, "LOCATION_LABEL", "Location:", src.zone)
         end
     end
-    if #items == 0 and category ~= "title" and item.source and not (issecretvalue and issecretvalue(item.source)) then
+    if #items == 0 and category ~= "title" and not (issecretvalue and issecretvalue(item.source)) and item.source then
         if item.source ~= "" then
             local formatted = FormatPlanSourceCriteriaText(item.source)
             if formatted then

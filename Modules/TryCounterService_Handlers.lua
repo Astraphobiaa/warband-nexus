@@ -33,7 +33,7 @@ local function SendTryCounterCollectibleObtained(self, payload, sourceItemID)
     if not self or not self.SendMessage or not payload then return end
     if not payload.obtainedBy then
         local name = UnitName("player")
-        if name and not (issecretvalue and issecretvalue(name)) and name ~= "" then
+        if not (issecretvalue and issecretvalue(name)) and name and name ~= "" then
             payload.obtainedBy = name
         end
     end
@@ -85,7 +85,7 @@ function WarbandNexus:OnTryCounterEncounterStart(event, encounterID, encounterNa
 
     -- Snapshot instanceID for scope (ENCOUNTER_END may leak across instances if we ignore scope).
     local _, _, _, _, _, _, _, iid = GetInstanceInfo()
-    if iid and issecretvalue and issecretvalue(iid) then iid = nil end
+    if issecretvalue and issecretvalue(iid) then iid = nil end
 
     RT.currentEncounterCache.encounterID   = safeEncID
     RT.currentEncounterCache.encounterName = safeName
@@ -119,7 +119,15 @@ function WarbandNexus:OnTryCounterBossKill(event, encounterID, encounterName)
     local safeName  = (type(encounterName) == "string" and not (issecretvalue and issecretvalue(encounterName))
         and encounterName ~= "") and encounterName or nil
 
-    if not safeEncID and not safeName then return end
+    if not safeEncID and not safeName then
+        -- Both payload fields secret: still forward when a fresh ENCOUNTER_START snapshot exists;
+        -- OnTryCounterEncounterEnd promotes the cached IDs for nil END fields.
+        local c = RT.currentEncounterCache
+        if not (c.encounterID or c.encounterName) or c.startTime <= 0
+            or (GetTime() - c.startTime) > RT.ENCOUNTER_CACHE_TTL then
+            return
+        end
+    end
 
     -- World bosses: difficultyID 172 ("World Boss" → Normal). Delegate to ENCOUNTER_END handler
     -- so the full RT.recentKills + delayed-fallback pipeline runs uniformly. success=1 (BOSS_KILL
@@ -208,7 +216,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         local eid = RT.currentEncounterCache.encounterID
         if type(eid) ~= "number" or (issecretvalue and issecretvalue(eid)) then return nil, nil end
         local _, _, _, _, _, _, _, curTmpl = GetInstanceInfo()
-        if curTmpl and issecretvalue and issecretvalue(curTmpl) then curTmpl = nil end
+        if issecretvalue and issecretvalue(curTmpl) then curTmpl = nil end
         if RT.currentEncounterCache.instanceID and curTmpl and RT.currentEncounterCache.instanceID ~= curTmpl then
             return nil, nil
         end
@@ -234,8 +242,8 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     end
 
     -- Midnight 12.0: encounterID can be secret in dungeons; cannot use as table key or tostring().
-    if issecretvalue and encounterID and issecretvalue(encounterID) then
-        if encounterName and not (issecretvalue and issecretvalue(encounterName)) and RT.encounterNameToNpcs[encounterName] then
+    if issecretvalue and issecretvalue(encounterID) then
+        if not (issecretvalue and issecretvalue(encounterName)) and encounterName and RT.encounterNameToNpcs[encounterName] then
             npcIDs = RT.encounterNameToNpcs[encounterName]
             useNameFallback = true
             -- Normalize: resolve canonical encounter_<ID> key via the first matched NPC.
@@ -318,7 +326,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     local statRefreshScheduled = false
     local lootlessMissNpcID = nil
     local safeDiffID = difficultyID
-    if issecretvalue and safeDiffID and issecretvalue(safeDiffID) then safeDiffID = nil end
+    if issecretvalue and issecretvalue(safeDiffID) then safeDiffID = nil end
     for i = 1, #npcIDs do
         local npcID = npcIDs[i]
             if RT.tryCounterNpcEligible[npcID] and RT.npcDropDB[npcID] then
@@ -337,7 +345,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                     syntheticGUID = "Encounter-Fallback-" .. npcID .. "-" .. now
                 end
             else
-                syntheticGUID = "Encounter-" .. tostring(encounterID) .. "-" .. npcID .. "-" .. now
+                local keyEncID = encounterID
+                if issecretvalue and issecretvalue(keyEncID) then keyEncID = nil end
+                syntheticGUID = "Encounter-" .. tostring(keyEncID or "unknown") .. "-" .. npcID .. "-" .. now
             end
             RT.recentKills[syntheticGUID] = {
                 npcID = npcID,
@@ -414,8 +424,9 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
     wipe(RT.lootReady.slotData)
     for i = 1, RT.lootReady.numLoot do
         local hasItem = LootSlotHasItem and LootSlotHasItem(i)
+        if issecretvalue and issecretvalue(hasItem) then hasItem = true end
         local link = GetLootSlotLink and GetLootSlotLink(i)
-        if link and issecretvalue and issecretvalue(link) then link = nil end
+        if issecretvalue and issecretvalue(link) then link = nil end
         RT.lootReady.slotData[i] = { hasItem = not not hasItem, link = link }
     end
     RT.lootReady.mouseoverGUID = Fns.SafeGetLootedUnitGUID("mouseover")
@@ -510,7 +521,7 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
     local drops = RT.npcDropDB[npcID]
     if not drops then return false end
     local inInst = IsInInstance()
-    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+    if issecretvalue and issecretvalue(inInst) then inInst = nil end
     local encDiff = Fns.ResolveEncounterDifficultyForLootGating(inInst, killDifficulty, nil)
     local trackable = Fns.FilterDropsByDifficulty(drops, encDiff)
     if #trackable == 0 then return false end
@@ -772,7 +783,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     local npcID = RT.chatLootItemToNpc[itemID]
     if npcID and type(npcID) == "number" and Fns.ChatLootHasKillEvidenceForNpc(npcID) then
         local inInst = IsInInstance()
-        if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+        if issecretvalue and issecretvalue(inInst) then inInst = nil end
         local killDiff = Fns.ResolveChatPath2KillDifficulty(npcID, itemID, inInst)
         if Fns.ProcessChatLootEncounterForNpc(self, itemID, npcID, killDiff, now, nil) then
             return
@@ -785,7 +796,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
         local killGuid, killData = Fns.GetFreshEncounterKillForNpc(uniqueNpc)
         if killData then
             local diff = killData.difficultyID
-            if issecretvalue and diff and issecretvalue(diff) then diff = nil end
+            if issecretvalue and issecretvalue(diff) then diff = nil end
             if Fns.ProcessChatLootEncounterForNpc(self, itemID, uniqueNpc, diff, now, killGuid) then
                 return
             end
@@ -812,7 +823,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     and (now - killData.time) <= encTtl
                 if itemMatches and encFresh then
                     local diff = killData.difficultyID
-                    if issecretvalue and diff and issecretvalue(diff) then diff = nil end
+                    if issecretvalue and issecretvalue(diff) then diff = nil end
                     if Fns.ProcessChatLootEncounterForNpc(self, itemID, killData.npcID, diff, now, guid) then
                         return
                     end

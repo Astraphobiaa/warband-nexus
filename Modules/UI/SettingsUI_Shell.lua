@@ -397,17 +397,18 @@ function M.BuildCategoryNav(parent, width, activeId, onSelect)
         end)
         local tipDesc = M.PanelDescription(panelId)
         btn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if tipDesc and tipDesc ~= "" then
-                GameTooltip:SetText(label, 1, 1, 1)
-                GameTooltip:AddLine(tipDesc, 0.82, 0.82, 0.86, true)
-            else
-                GameTooltip:SetText(label, 1, 1, 1)
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+                if tipDesc and tipDesc ~= "" then
+                    GameTooltip:SetText(label, 1, 1, 1)
+                    GameTooltip:AddLine(tipDesc, 0.82, 0.82, 0.86, true)
+                else
+                    GameTooltip:SetText(label, 1, 1, 1)
+                end
+                GameTooltip:Show()
             end
-            GameTooltip:Show()
         end)
         btn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
 
         parent._wnSettingsNavButtons[i] = btn

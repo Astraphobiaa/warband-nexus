@@ -289,7 +289,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         -- Update text if modified
         if modified then
             local cur = self:GetText()
-            if cur and issecretvalue and issecretvalue(cur) then return end
+            if issecretvalue and issecretvalue(cur) then return end
             if text ~= cur then
                 local cursorPos = self:GetCursorPosition()
                 self:SetText(text)
@@ -675,8 +675,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     saveBtn:SetScript("OnClick", function()
         local title = titleInput:GetText()
         local description = descInput:GetText()
-        if title and issecretvalue and issecretvalue(title) then return end
-        if description and issecretvalue and issecretvalue(description) then
+        if issecretvalue and issecretvalue(title) then return end
+        if issecretvalue and issecretvalue(description) then
             description = nil
         end
         

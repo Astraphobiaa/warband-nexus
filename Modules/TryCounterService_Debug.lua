@@ -145,7 +145,7 @@ function Fns.LootDebugDescribeSlots(slotData, numLoot, addon)
                 elseif GetItemInfo then
                     itemName = select(1, GetItemInfo(itemID))
                 end
-                if itemName and issecretvalue and issecretvalue(itemName) then itemName = nil end
+                if issecretvalue and issecretvalue(itemName) then itemName = nil end
                 local label = itemName or ("item:" .. tostring(itemID))
                 local typ, tid, rep = nil, nil, false
                 if WN.IsDropSourceCollectible and WN:IsDropSourceCollectible("toy", itemID) then
@@ -154,7 +154,7 @@ function Fns.LootDebugDescribeSlots(slotData, numLoot, addon)
                     local mid
                     if C_MountJournal and C_MountJournal.GetMountFromItem then
                         mid = C_MountJournal.GetMountFromItem(itemID)
-                        if issecretvalue and mid and issecretvalue(mid) then mid = nil end
+                        if issecretvalue and issecretvalue(mid) then mid = nil end
                     end
                     if mid and WN.IsDropSourceCollectible and WN:IsDropSourceCollectible("mount", mid) then
                         typ, tid = "mount", mid
@@ -162,7 +162,7 @@ function Fns.LootDebugDescribeSlots(slotData, numLoot, addon)
                         typ, tid = "mount", itemID
                     elseif C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                         local _, _, _, _, _, _, _, _, _, _, _, _, sid = C_PetJournal.GetPetInfoByItemID(itemID)
-                        if issecretvalue and sid and issecretvalue(sid) then sid = nil end
+                        if issecretvalue and issecretvalue(sid) then sid = nil end
                         if sid and WN.IsDropSourceCollectible and WN:IsDropSourceCollectible("pet", sid) then
                             typ, tid = "pet", sid
                         end
@@ -186,12 +186,12 @@ end
 function WarbandNexus:TryCounterDebugInstanceProbe()
     if not Fns.IsTryCounterLootDebugEnabled(self) then return end
     local inInst = IsInInstance()
-    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+    if issecretvalue and issecretvalue(inInst) then inInst = nil end
     if not inInst then return end
 
     local name, instType = GetInstanceInfo()
-    if name and issecretvalue and issecretvalue(name) then name = nil end
-    if instType and issecretvalue and issecretvalue(instType) then instType = nil end
+    if issecretvalue and issecretvalue(name) then name = nil end
+    if issecretvalue and issecretvalue(instType) then instType = nil end
 
     local encDiff = Fns.ResolveEffectiveEncounterDifficultyID(true, nil)
     local diffLabel = (encDiff and Fns.ResolveDifficultyLabel(encDiff)) or "?"
@@ -210,7 +210,7 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
     C_Timer.After(0.75, function()
         if not WN or not Fns.IsTryCounterLootDebugEnabled(WN) then return end
         local inI = IsInInstance()
-        if issecretvalue and inI and issecretvalue(inI) then inI = nil end
+        if issecretvalue and issecretvalue(inI) then inI = nil end
         if not inI then return end
 
         Fns.TryCounterLoadEncounterJournal()
@@ -391,9 +391,9 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
                     elseif drop.type == "mount" then
                         if C_MountJournal and C_MountJournal.GetMountFromItem then
                             local mountID = C_MountJournal.GetMountFromItem(drop.itemID)
-                            if mountID and not (issecretvalue and issecretvalue(mountID)) then
+                            if not (issecretvalue and issecretvalue(mountID)) and mountID then
                                 local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                                if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                                if not (issecretvalue and issecretvalue(isCollected)) then
                                     collected = isCollected == true
                                 end
                             end
@@ -401,9 +401,9 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
                     elseif drop.type == "pet" then
                         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
                             local _, _, _, _, _, _, _, _, _, _, _, _, speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
-                            if speciesID and not (issecretvalue and issecretvalue(speciesID)) then
+                            if not (issecretvalue and issecretvalue(speciesID)) and speciesID then
                                 local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
-                                if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
+                                if not (issecretvalue and issecretvalue(numCollected)) then
                                     collected = numCollected and numCollected > 0
                                 end
                             end
@@ -411,7 +411,7 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
                     elseif drop.type == "toy" then
                         if PlayerHasToy then
                             local hasToy = PlayerHasToy(drop.itemID)
-                            if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                            if not (issecretvalue and issecretvalue(hasToy)) then
                                 collected = hasToy == true
                             end
                         end
@@ -513,8 +513,8 @@ function WarbandNexus:TryCounterDebugReport()
 
     -- 1. Instance / zone
     local inInst, instType = IsInInstance()
-    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
-    if issecretvalue and instType and issecretvalue(instType) then instType = nil end
+    if issecretvalue and issecretvalue(inInst) then inInst = nil end
+    if issecretvalue and issecretvalue(instType) then instType = nil end
     msg("Instance: inInstance=" .. safeStr(inInst) .. " type=" .. safeStr(instType))
     local name, typ, diffID, diffName, maxPlayers, dynamic, isDyn, instanceID = GetInstanceInfo()
     msg("  GetInstanceInfo: name=" .. safeStr(name) .. " instanceType=" .. safeStr(typ) .. " difficultyID=" .. safeStr(diffID) .. " instanceID=" .. safeStr(instanceID))
@@ -522,8 +522,8 @@ function WarbandNexus:TryCounterDebugReport()
     -- 2. Difficulty
     local raidDiff = GetRaidDifficultyID and GetRaidDifficultyID()
     local dungeonDiff = GetDungeonDifficultyID and GetDungeonDifficultyID()
-    if issecretvalue and raidDiff and issecretvalue(raidDiff) then raidDiff = nil end
-    if issecretvalue and dungeonDiff and issecretvalue(dungeonDiff) then dungeonDiff = nil end
+    if issecretvalue and issecretvalue(raidDiff) then raidDiff = nil end
+    if issecretvalue and issecretvalue(dungeonDiff) then dungeonDiff = nil end
     local raidLabel = (raidDiff and RT.DIFFICULTY_ID_TO_LABELS[raidDiff]) or "(unknown)"
     local dungeonLabel = (dungeonDiff and RT.DIFFICULTY_ID_TO_LABELS[dungeonDiff]) or "(unknown)"
     msg("Difficulty: raid=" .. safeStr(raidDiff) .. " (" .. raidLabel .. ") dungeon=" .. safeStr(dungeonDiff) .. " (" .. dungeonLabel .. ")")
@@ -571,7 +571,7 @@ function WarbandNexus:TryCounterDebugReport()
         if count >= 2 then break end
         count = count + 1
         local diffStr = data.difficultyID
-        if issecretvalue and diffStr and issecretvalue(diffStr) then diffStr = "(secret)" end
+        if issecretvalue and issecretvalue(diffStr) then diffStr = "(secret)" end
         if diffStr == nil then diffStr = "nil" elseif diffStr ~= "(secret)" then diffStr = tostring(diffStr) end
         msg("recentKills sample: npcID=" .. tostring(data.npcID) .. " isEncounter=" .. tostring(data.isEncounter) .. " difficultyID=" .. diffStr)
     end
@@ -584,6 +584,7 @@ function WarbandNexus:TryCounterDebugReport()
     if mapID and C_Map and C_Map.GetMapInfo then
         local info = C_Map.GetMapInfo(mapID)
         local parent = info and info.parentMapID
+        if issecretvalue and issecretvalue(parent) then parent = nil end
         if parent then
             msg("  parentMapID=" .. tostring(parent) .. " zoneDropDB[parent]=" .. (RT.zoneDropDB[parent] and "yes" or "no"))
         end
@@ -603,7 +604,7 @@ function WarbandNexus:TryCounterDebugReport()
         local sid = sampleStatIds[i]
         local val = GetStatistic(sid)
         local display = "(secret)"
-        if not (issecretvalue and val and issecretvalue(val)) then
+        if not (issecretvalue and issecretvalue(val)) then
             display = tostring(val)
         end
         msg("GetStatistic(" .. sid .. ")=" .. display)
@@ -718,7 +719,7 @@ function WarbandNexus:CheckTargetDrops()
                     local isCollected = false
                     if drop.type == "mount" then
                         local mountID = C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(drop.itemID)
-                        if mountID and not (issecretvalue and issecretvalue(mountID)) then
+                        if not (issecretvalue and issecretvalue(mountID)) and mountID then
                             local _, _, _, _, _, _, _, _, _, _, collected = C_MountJournal.GetMountInfoByID(mountID)
                             if not (issecretvalue and issecretvalue(collected)) then
                                 isCollected = (collected == true)
@@ -726,7 +727,7 @@ function WarbandNexus:CheckTargetDrops()
                         end
                     elseif drop.type == "pet" then
                         local speciesID = select(13, C_PetJournal.GetPetInfoByItemID(drop.itemID))
-                        if speciesID and not (issecretvalue and issecretvalue(speciesID)) then
+                        if not (issecretvalue and issecretvalue(speciesID)) and speciesID then
                             local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
                             if not (issecretvalue and issecretvalue(numCollected)) then
                                 isCollected = (numCollected and numCollected > 0)

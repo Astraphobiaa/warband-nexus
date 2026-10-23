@@ -212,7 +212,7 @@ function WarbandNexus:OpenRenameCustomSectionDialog(groupId, currentName)
     eb:SetPoint("TOPLEFT", editBg, "TOPLEFT", 8, -8)
     eb:SetPoint("BOTTOMRIGHT", editBg, "BOTTOMRIGHT", -8, 8)
     if eb.SetMaxLetters then eb:SetMaxLetters(32) end
-    if currentName and not (issecretvalue and issecretvalue(currentName)) then
+    if not (issecretvalue and issecretvalue(currentName)) and currentName then
         eb:SetText(tostring(currentName))
     end
     eb:SetAutoFocus(true)

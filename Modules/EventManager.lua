@@ -141,7 +141,7 @@ function WarbandNexus:OnItemLevelChanged()
         end
         if entry then
             local _, avgItemLevelEquipped = GetAverageItemLevel()
-            if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
+            if issecretvalue and issecretvalue(avgItemLevelEquipped) then return end
 
             -- Store the raw fractional value — the same convention SaveCurrentCharacterData
             -- writes. (Mixing floored and unfloored writes is what made ilvl displays flicker

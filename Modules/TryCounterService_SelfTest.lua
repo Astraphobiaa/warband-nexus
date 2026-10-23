@@ -1461,9 +1461,9 @@ function WarbandNexus:RunTryCounterSelfTest()
         local rules = RT.instanceBossSlotOutcomeRules or {}
         if #rules == 0 then error("no slot rules loaded") end
         local _, instType, diff, _, _, _, _, tmpl = GetInstanceInfo()
-        if issecretvalue and instType and issecretvalue(instType) then instType = nil end
-        if issecretvalue and diff and issecretvalue(diff) then diff = nil end
-        if issecretvalue and tmpl and issecretvalue(tmpl) then tmpl = nil end
+        if issecretvalue and issecretvalue(instType) then instType = nil end
+        if issecretvalue and issecretvalue(diff) then diff = nil end
+        if issecretvalue and issecretvalue(tmpl) then tmpl = nil end
         if not tmpl then
             lineWarn("live instance template unavailable (outside an instance, or secret) - check skipped")
             return
@@ -1625,7 +1625,7 @@ local C_Map = C_Map
 ---@return boolean|nil inInstance nil when the API returned a secret value
 local function safeInInstance()
     local inInstance = IsInInstance()
-    if issecretvalue and inInstance and issecretvalue(inInstance) then return nil end
+    if issecretvalue and issecretvalue(inInstance) then return nil end
     return inInstance
 end
 
@@ -1635,7 +1635,7 @@ local function mapLabel(mapID)
     if not mapID then return "unknown" end
     local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
     local name = info and info.name
-    if name and issecretvalue and issecretvalue(name) then name = nil end
+    if issecretvalue and issecretvalue(name) then name = nil end
     return format("%d (%s)", mapID, name or "?")
 end
 

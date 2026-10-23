@@ -272,7 +272,7 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                     if not realm or (issecretvalue and issecretvalue(realm)) then
                         realm = GetRealmName and GetRealmName()
                     end
-                    if realm and not (issecretvalue and issecretvalue(realm)) then
+                    if not (issecretvalue and issecretvalue(realm)) and realm then
                         stub.realm = realm
                     end
                 end

@@ -431,15 +431,16 @@ local function WireMainNavTabButtonUX(btn, tooltipTitle, tooltipHint)
     end
     if not tooltipTitle or tooltipTitle == "" then return end
     btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(tooltipTitle, 1, 1, 1)
-        if tooltipHint and tooltipHint ~= "" then
-            GameTooltip:AddLine(tooltipHint, 0.7, 0.7, 0.7, true)
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+            GameTooltip:SetText(tooltipTitle, 1, 1, 1)
+            if tooltipHint and tooltipHint ~= "" then
+                GameTooltip:AddLine(tooltipHint, 0.7, 0.7, 0.7, true)
+            end
+            GameTooltip:Show()
         end
-        GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
 end
 
@@ -1745,7 +1746,7 @@ function WarbandNexus:ShowMainWindow(requestedTabKey)
                             anyFixed = true
                         end
                         local text = btn.label:GetText()
-                        if text and not (issecretvalue and issecretvalue(text)) then
+                        if not (issecretvalue and issecretvalue(text)) and text then
                             btn.label:SetText(text)
                         end
                     end
@@ -2373,18 +2374,19 @@ function WarbandNexus:UpdateStatus()
                 end
             end)
             badge:SetScript("OnEnter", function(b)
-                GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
-                local tr, tg, tb = 1, 1, 1
-                if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
-                GameTooltip:SetText(tooltipText or "", tr, tg, tb)
-                if tooltipHint then
-                    local hr, hg, hb = 0.7, 0.7, 0.7
-                    if ns.UI_GetTooltipDescColor then hr, hg, hb = ns.UI_GetTooltipDescColor() end
-                    GameTooltip:AddLine(tooltipHint, hr, hg, hb, true)
+                if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_BOTTOM") then
+                    local tr, tg, tb = 1, 1, 1
+                    if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+                    GameTooltip:SetText(tooltipText or "", tr, tg, tb)
+                    if tooltipHint then
+                        local hr, hg, hb = 0.7, 0.7, 0.7
+                        if ns.UI_GetTooltipDescColor then hr, hg, hb = ns.UI_GetTooltipDescColor() end
+                        GameTooltip:AddLine(tooltipHint, hr, hg, hb, true)
+                    end
+                    GameTooltip:Show()
                 end
-                GameTooltip:Show()
             end)
-            badge:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            badge:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         end
     end
 

@@ -21,10 +21,10 @@ local PVE_LEVEL_AFTER_NAME_GAP = 2
 --- Name + realm stack in one column: width = max line width (not "name - realm" on one line).
 function ns.PvE_MeasureStackedNameColumnWidth(measureFs, nameStr, realmStr)
     if not measureFs then return 0 end
-    if issecretvalue and nameStr and issecretvalue(nameStr) then
+    if issecretvalue and issecretvalue(nameStr) then
         nameStr = "Unknown"
     end
-    if issecretvalue and realmStr and issecretvalue(realmStr) then
+    if issecretvalue and issecretvalue(realmStr) then
         realmStr = ""
     end
     measureFs:SetText(nameStr or "Unknown")
@@ -175,11 +175,12 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     favBtn:SetChecked(isFavorite)
     favBtn:SetScript("OnClick", function() end)
     favBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText((ns.L and ns.L["FAVORITE_EDIT_ON_CHARACTER_TAB"]) or "Change favorites on the Character tab.")
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then
+            GameTooltip:SetText((ns.L and ns.L["FAVORITE_EDIT_ON_CHARACTER_TAB"]) or "Change favorites on the Character tab.")
+            GameTooltip:Show()
+        end
     end)
-    favBtn:SetScript("OnLeave", GameTooltip_Hide)
+    favBtn:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
     favBtn:ClearAllPoints()
     favBtn:SetPoint("CENTER", charHeader, "LEFT", layout.favCenterX, 0)
     favBtn:Show()

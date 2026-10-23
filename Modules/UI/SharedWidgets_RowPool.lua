@@ -586,31 +586,32 @@ local function SetCollectionPlanSlotTooltip(btn, tip)
         return
     end
     btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_NONE")
-        GameTooltip:ClearAllPoints()
-        GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", 4, 6)
-        GameTooltip:ClearLines()
-        local wR, wG, wB = 1, 1, 1
-        if type(tip) == "table" then
-            if tip.title and tip.title ~= "" then
-                GameTooltip:SetText(tip.title, wR, wG, wB)
-            end
-            local lines = tip.lines
-            if type(lines) == "table" then
-                for i = 1, #lines do
-                    local line = lines[i]
-                    if line and line ~= "" then
-                        GameTooltip:AddLine(line, wR, wG, wB, true)
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_NONE") then
+            GameTooltip:ClearAllPoints()
+            GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", 4, 6)
+            GameTooltip:ClearLines()
+            local wR, wG, wB = 1, 1, 1
+            if type(tip) == "table" then
+                if tip.title and tip.title ~= "" then
+                    GameTooltip:SetText(tip.title, wR, wG, wB)
+                end
+                local lines = tip.lines
+                if type(lines) == "table" then
+                    for i = 1, #lines do
+                        local line = lines[i]
+                        if line and line ~= "" then
+                            GameTooltip:AddLine(line, wR, wG, wB, true)
+                        end
                     end
                 end
+            else
+                GameTooltip:SetText(tip, wR, wG, wB)
             end
-        else
-            GameTooltip:SetText(tip, wR, wG, wB)
+            GameTooltip:Show()
         end
-        GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
 end
 
@@ -801,7 +802,7 @@ local function LayoutCollectionListRowText(row, pad, gap, slotGap)
     local textX = CollectionRowTextLeftX(row, pad, gap, slotGap)
     local subText = row.subtitle and row.subtitle:GetText()
     local hasSub = row.subtitle and row.subtitle:IsShown()
-        and subText and not (issecretvalue and issecretvalue(subText))
+        and not (issecretvalue and issecretvalue(subText)) and subText
         and subText ~= ""
     row.label:ClearAllPoints()
     local metaAnchor = LayoutCollectionListRowMetaColumns(row, pad)

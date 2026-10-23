@@ -342,36 +342,37 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
     -- Tooltip on hover
     badge:EnableMouse(true)
     badge:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        if ns.UI_GameTooltipAddRoleLine then
-            ns.UI_GameTooltipAddRoleLine(GameTooltip, (ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", "Bright")
-        else
-            GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", 1, 1, 1)
-        end
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_USING"]) or "This tab is using:", 0.7, 0.7, 0.7)
-        GameTooltip:AddLine(dataSource, 1, 1, 0)
-        GameTooltip:AddLine(" ")
-        
-        if dataSource:find("Cache") then
-            GameTooltip:AddLine(ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) .. " " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
-        elseif dataSource:find("LEGACY") then
-            GameTooltip:AddLine("|cffffaa00⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
-            GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_NEEDS_MIGRATION"]) or "Needs migration to cache service", 0.7, 0.7, 0.7)
-        end
-        
-        -- Show current DB version
-        local WarbandNexus = ns.WarbandNexus
-        if WarbandNexus and WarbandNexus.db then
-            local dbVersion = WarbandNexus.db.global.dataVersion or 1
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_LEFT") then
+            if ns.UI_GameTooltipAddRoleLine then
+                ns.UI_GameTooltipAddRoleLine(GameTooltip, (ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", "Bright")
+            else
+                GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", 1, 1, 1)
+            end
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine(((ns.L and ns.L["GLOBAL_DB_VERSION"]) or "Global DB Version:") .. " " .. dbVersion, 0.5, 0.5, 1)
-        end
+            GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_USING"]) or "This tab is using:", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(dataSource, 1, 1, 0)
+            GameTooltip:AddLine(" ")
         
-        GameTooltip:Show()
+            if dataSource:find("Cache") then
+                GameTooltip:AddLine(ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) .. " " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
+            elseif dataSource:find("LEGACY") then
+                GameTooltip:AddLine("|cffffaa00⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
+                GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_NEEDS_MIGRATION"]) or "Needs migration to cache service", 0.7, 0.7, 0.7)
+            end
+        
+            -- Show current DB version
+            local WarbandNexus = ns.WarbandNexus
+            if WarbandNexus and WarbandNexus.db then
+                local dbVersion = WarbandNexus.db.global.dataVersion or 1
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine(((ns.L and ns.L["GLOBAL_DB_VERSION"]) or "Global DB Version:") .. " " .. dbVersion, 0.5, 0.5, 1)
+            end
+        
+            GameTooltip:Show()
+        end
     end)
     badge:SetScript("OnLeave", function()
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
 
     return badge

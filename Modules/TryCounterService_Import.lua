@@ -31,7 +31,7 @@ local LEGACY_MOUNT_TRACKER_GLOBAL = "Ra" .. "rity"
 function Fns.ResolveMountTryKeyFromItemId(itemId)
     if C_MountJournal and C_MountJournal.GetMountFromItem then
         local m = C_MountJournal.GetMountFromItem(itemId)
-        if m and not (issecretvalue and issecretvalue(m)) then
+        if not (issecretvalue and issecretvalue(m)) and m then
             local n = tonumber(m)
             if n and n > 0 then
                 return n

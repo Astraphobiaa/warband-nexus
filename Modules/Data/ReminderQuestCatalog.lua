@@ -32,7 +32,7 @@ function M.RecordDiscoveredWorldQuests(questRows)
         local id = q and tonumber(q.questID)
         if id and id > 0 then
             local title = q.title
-            if title and issecretvalue and issecretvalue(title) then title = nil end
+            if issecretvalue and issecretvalue(title) then title = nil end
             local row = wq[id]
             if not row then
                 wq[id] = {
@@ -258,7 +258,7 @@ function M.ResolveQuestTitle(questID)
     end
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then
         local ok, title = pcall(C_QuestLog.GetTitleForQuestID, id)
-        if ok and title and not (issecretvalue and issecretvalue(title)) then
+        if ok and not (issecretvalue and issecretvalue(title)) and title then
             return title
         end
     end

@@ -138,11 +138,12 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local perCharTooltip = L["GOLD_MANAGEMENT_CHAR_ONLY_DESC"] or "Use separate gold management settings for this character only. Other characters will use the shared profile settings."
     perCharCB:SetScript("OnEnter", function(self)
         local tr, tg, tb = TooltipTextRGB("Bright")
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(perCharTooltip, tr, tg, tb, 1)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+            GameTooltip:SetText(perCharTooltip, tr, tg, tb, 1)
+            GameTooltip:Show()
+        end
     end)
-    perCharCB:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    perCharCB:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     
     -- Per-char toggle: switch which settings table the UI edits
     -- db.char writes live in WarbandBankDepositService (2026-10-22).
@@ -224,9 +225,10 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
                 UpdateBorderColor(radio, radio.hoverBorderColor)
             end
             local tr, tg, tb = TooltipTextRGB("Bright")
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(description, tr, tg, tb, 1)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+                GameTooltip:SetText(description, tr, tg, tb, 1)
+                GameTooltip:Show()
+            end
         end)
         
         btn:SetScript("OnLeave", function(self)
@@ -234,7 +236,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
                 local radio = self.radioButton
                 UpdateBorderColor(radio, radio.defaultBorderColor)
             end
-            GameTooltip:Hide()
+            ns.UI_SafeHideGameTooltip()
         end)
         
         return RADIO_ROW_HEIGHT
@@ -319,11 +321,12 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local targetTooltip = L["GOLD_MANAGEMENT_HELPER"] or "Enter the amount of gold you want to keep on this character. The addon will notify you when you need to move gold."
     inputBox:SetScript("OnEnter", function(self)
         local tr, tg, tb = TooltipTextRGB("Bright")
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(targetTooltip, tr, tg, tb, 1)
-        GameTooltip:Show()
+        if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+            GameTooltip:SetText(targetTooltip, tr, tg, tb, 1)
+            GameTooltip:Show()
+        end
     end)
-    inputBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    inputBox:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     
     inputBox:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()

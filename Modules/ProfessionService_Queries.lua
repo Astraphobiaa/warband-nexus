@@ -692,7 +692,7 @@ function WarbandNexus:PrintProfessionVerify()
             if charData.knowledgeData then
                 for k, v in pairs(charData.knowledgeData) do
                     local expName = type(v) == "table" and v.expansionName
-                    if type(v) == "table" and v.professionName and expName and not (issecretvalue and issecretvalue(expName)) and expName:find("Midnight", 1, true) then
+                    if type(v) == "table" and v.professionName and not (issecretvalue and issecretvalue(expName)) and expName and expName:find("Midnight", 1, true) then
                         local sp = v.spentPoints or 0
                         local mx = v.maxPoints or 0
                         self:Print("  Knowledge " .. tostring(v.professionName) .. ": " .. sp .. " / " .. (mx > 0 and mx or "--"))
@@ -702,7 +702,7 @@ function WarbandNexus:PrintProfessionVerify()
             if charData.recipes then
                 for sl, r in pairs(charData.recipes) do
                     local rExp = type(r) == "table" and r.expansionName
-                    if type(r) == "table" and r.professionName and rExp and not (issecretvalue and issecretvalue(rExp)) and rExp:find("Midnight", 1, true) then
+                    if type(r) == "table" and r.professionName and not (issecretvalue and issecretvalue(rExp)) and rExp and rExp:find("Midnight", 1, true) then
                         self:Print("  Recipes " .. tostring(r.professionName) .. ": " .. tostring(r.knownCount or 0) .. " / " .. tostring(r.totalCount or 0) .. "  First craft: " .. tostring(r.firstCraftDoneCount or 0) .. " / " .. tostring(r.firstCraftTotalCount or 0))
                     end
                 end

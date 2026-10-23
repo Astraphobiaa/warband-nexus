@@ -66,7 +66,7 @@ function CommandService:HandleTryCountDebugCommand(addon, input)
         addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
         return
     end
-    if id and issecretvalue and issecretvalue(id) then
+    if issecretvalue and issecretvalue(id) then
         addon:Print("|cffff6600Invalid ID:|r Must be a number")
         return
     end
@@ -163,7 +163,7 @@ function CommandService:HandleSlashCommand(addon, input)
         -- subcommand is the SECOND return. Capturing a single value took "reminder" and
         -- matched nothing, so every /wn reminder call fell through to the help text.
         local _, sub = addon:GetArgs(input, 2)
-        if sub and issecretvalue and issecretvalue(sub) then sub = nil end
+        if issecretvalue and issecretvalue(sub) then sub = nil end
         sub = sub and sub:lower() or ""
         if sub == "status" or sub == "check" or sub == "debug" then
             if addon.PrintReminderDiagnostics then
@@ -335,7 +335,7 @@ function CommandService:HandleSlashCommand(addon, input)
 
     elseif cmd == "debug" then
         local _, sub, third = addon:GetArgs(input, 3)
-        if sub and not (issecretvalue and issecretvalue(sub)) then
+        if not (issecretvalue and issecretvalue(sub)) and sub then
             sub = sub:lower()
             if sub == "verbose" then
                 CommandService:HandleDebugVerboseToggle(addon)
@@ -840,7 +840,7 @@ function CommandService:HandleUiMapDebug(addon, input)
         for i = 1, #chain do addon:Print(chain[i]) end
 
         local okI, name, instType, difficultyID, _, _, _, _, instanceID = pcall(GetInstanceInfo)
-        if okI and name and not (issecretvalue and issecretvalue(name)) then
+        if okI and not (issecretvalue and issecretvalue(name)) and name then
             local safeInstType = instType
             if issecretvalue and issecretvalue(safeInstType) then safeInstType = "?" end
             local safeInstanceID = instanceID

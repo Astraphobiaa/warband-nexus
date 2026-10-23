@@ -106,7 +106,7 @@ local function ItemsUI_PopulateStorageRowDirect(row, item, rowIdx, rowWidth, loc
 
     local nameCache = ns.ItemsUI._storageNameCache
     local baseName = item.name
-    if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
+    if not baseName and not (issecretvalue and issecretvalue(item.link)) and item.link then
         baseName = item.link:match("%[(.-)%]")
     end
     if not baseName and item.pending then
@@ -708,7 +708,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             local gb = self.db.global.guildBank
             if gb then
                 for guildName, guildData in pairs(gb) do
-                    if guildName and not (issecretvalue and issecretvalue(guildName)) and guildData then
+                    if not (issecretvalue and issecretvalue(guildName)) and guildName and guildData then
                         -- Category keys built once per guild / type, not per matching item (2026-10-22).
                         local guildCategoryKey = "guild_" .. guildName
                         local guildTypeKeys = {}
@@ -2032,7 +2032,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
                     local function locTextForGuildStorageItem(item)
                         if not item then return "" end
-                        if item.tabName and not (issecretvalue and issecretvalue(item.tabName)) then
+                        if not (issecretvalue and issecretvalue(item.tabName)) and item.tabName then
                             return item.tabName
                         end
                         if item.tabIndex then
@@ -2211,7 +2211,7 @@ local function ApplyItemsSubTabGoldDisplay(goldDisplay, currentItemsSubTab)
         local guildGold = nil
         if IsInGuild() then
             local guildName = GetGuildInfo("player")
-            if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
+            if issecretvalue and issecretvalue(guildName) then guildName = nil end
             if guildName and WarbandNexus.db.global.guildBank and WarbandNexus.db.global.guildBank[guildName] then
                 guildGold = WarbandNexus.db.global.guildBank[guildName].cachedGold
             end

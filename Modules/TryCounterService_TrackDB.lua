@@ -53,7 +53,7 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
                 local drop = drops[d]
                 if drop and drop.type == "mount" and drop.itemID then
                     local mid = C_MountJournal.GetMountFromItem(drop.itemID)
-                    if mid and not (issecretvalue and issecretvalue(mid)) and mid == data.id then
+                    if not (issecretvalue and issecretvalue(mid)) and mid and mid == data.id then
                         pendingCount = pendingPreResetCounts["mount\0" .. tostring(drop.itemID)]
                         if pendingCount ~= nil then
                             pendingPreResetCounts["mount\0" .. tostring(drop.itemID)] = nil
@@ -456,7 +456,7 @@ function WarbandNexus:LookupItem(itemID, callback)
         -- Try to detect mount
         if C_MountJournal.GetMountFromItem then
             local mountID = C_MountJournal.GetMountFromItem(itemID)
-            if mountID and mountID > 0 then
+            if not (issecretvalue and issecretvalue(mountID)) and type(mountID) == "number" and mountID > 0 then
                 collectibleType = "mount"
             end
         end

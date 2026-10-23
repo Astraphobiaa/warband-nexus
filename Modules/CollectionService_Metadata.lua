@@ -350,14 +350,14 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             end
             if not icon then usedFallbackIcon = true end
             local _, description, source = C_MountJournal.GetMountInfoExtraByID(id)
-            if issecretvalue and sourceType and issecretvalue(sourceType) then sourceType = nil end
+            if issecretvalue and issecretvalue(sourceType) then sourceType = nil end
             if (not sourceType or sourceType == 0) and self.GetMountBrowseSourceType then
                 local resolved = self:GetMountBrowseSourceType(id)
                 if resolved and resolved > 0 then sourceType = resolved end
             end
             meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", sourceType = sourceType, description = description or "" }
             -- Current collected state (Midnight: isCollected may be secret)
-            if issecretvalue and isCollected and issecretvalue(isCollected) then
+            if issecretvalue and issecretvalue(isCollected) then
                 meta.isCollected = true
             else
                 meta.isCollected = isCollected == true
@@ -396,7 +396,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             local isCollected
             if PlayerHasToy then
                 local isCollectedRaw = PlayerHasToy(id)
-                if issecretvalue and isCollectedRaw and issecretvalue(isCollectedRaw) then
+                if issecretvalue and issecretvalue(isCollectedRaw) then
                     isCollected = true
                 else
                     isCollected = isCollectedRaw == true
@@ -457,7 +457,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     elseif collectionType == "title" then
         if not GetTitleName then return nil end
         local titleString = GetTitleName(id)
-        if titleString and not (issecretvalue and issecretvalue(titleString)) then
+        if not (issecretvalue and issecretvalue(titleString)) and titleString then
             meta = { name = titleString, icon = "Interface\\Icons\\INV_Scroll_11", source = "", description = "" }
         end
     end

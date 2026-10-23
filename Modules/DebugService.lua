@@ -169,7 +169,7 @@ function DebugService:PrintPvEData(addon)
     end
     if not tableKey then return end
     local name = UnitName("player")
-    if name and issecretvalue and issecretvalue(name) then name = nil end
+    if issecretvalue and issecretvalue(name) then name = nil end
     addon:Print("=== PvE Data for " .. (name or "?") .. " ===")
     
     local pveData = addon:CollectPvEData()

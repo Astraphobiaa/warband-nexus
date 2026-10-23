@@ -512,7 +512,7 @@ function Scan.InstallBagScanListener()
             local author = arg2
             if not message or type(message) ~= "string" then return end
             if issecretvalue and issecretvalue(message) then return end
-            if author and issecretvalue and issecretvalue(author) then return end
+            if issecretvalue and issecretvalue(author) then return end
             local playerName = UnitName("player")
             if not playerName or (issecretvalue and issecretvalue(playerName)) then return end
             local authorBase = author and author:match("^([^%-]+)") or author

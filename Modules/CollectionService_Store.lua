@@ -353,7 +353,7 @@ function WarbandNexus:BuildCollectionCache(opts)
             while mountIdx <= #mountIDs do
                 local mountID = mountIDs[mountIdx]
                 local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                if _issecretvalue and isCollected and _issecretvalue(isCollected) then
+                if _issecretvalue and _issecretvalue(isCollected) then
                     -- skip
                 elseif isCollected then
                     RT.collectionCache.owned.mounts[mountID] = true
@@ -379,7 +379,7 @@ function WarbandNexus:BuildCollectionCache(opts)
         local ok, err = pcall(function()
             if C_PetJournal and C_PetJournal.GetNumPets then
                 numPets = C_PetJournal.GetNumPets() or 0
-                if _issecretvalue and numPets and _issecretvalue(numPets) then
+                if _issecretvalue and _issecretvalue(numPets) then
                     numPets = 0
                 end
             end
@@ -395,8 +395,8 @@ function WarbandNexus:BuildCollectionCache(opts)
             local batchStart = debugprofilestop()
             while petIdx <= numPets do
                 local petID, speciesID, owned = C_PetJournal.GetPetInfoByIndex(petIdx)
-                local speciesSecret = _issecretvalue and speciesID and _issecretvalue(speciesID)
-                local ownedSecret = _issecretvalue and owned and _issecretvalue(owned)
+                local speciesSecret = _issecretvalue and _issecretvalue(speciesID)
+                local ownedSecret = _issecretvalue and _issecretvalue(owned)
                 if not speciesSecret and not ownedSecret and speciesID and owned then
                     RT.collectionCache.owned.pets[speciesID] = true
                 end
@@ -421,7 +421,7 @@ function WarbandNexus:BuildCollectionCache(opts)
         local ok, err = pcall(function()
             if C_ToyBox and C_ToyBox.GetNumToys then
                 numToys = C_ToyBox.GetNumToys() or 0
-                if _issecretvalue and numToys and _issecretvalue(numToys) then
+                if _issecretvalue and _issecretvalue(numToys) then
                     numToys = 0
                 end
             end
@@ -439,7 +439,7 @@ function WarbandNexus:BuildCollectionCache(opts)
                 local itemID = C_ToyBox.GetToyFromIndex(toyIdx)
                 if itemID and not (_issecretvalue and _issecretvalue(itemID)) then
                     local hasToy = PlayerHasToy and PlayerHasToy(itemID)
-                    if hasToy and not (_issecretvalue and _issecretvalue(hasToy)) then
+                    if not (_issecretvalue and _issecretvalue(hasToy)) and hasToy then
                         RT.collectionCache.owned.toys[itemID] = true
                     end
                 end

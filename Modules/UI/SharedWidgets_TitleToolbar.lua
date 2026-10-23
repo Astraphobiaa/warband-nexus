@@ -324,20 +324,21 @@ function ns.UI_CreateTitleToolbarHideLevelButton(parent, opts)
     end)
     btn:SetScript("OnEnter", function()
         if not GameTooltip then return end
-        GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
-        GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
-        local bodyR, bodyG, bodyB = 0.8, 0.8, 0.8
-        if ns.UI_GetTooltipDescColor then
-            bodyR, bodyG, bodyB = ns.UI_GetTooltipDescColor()
+        if ns.UI_SafeSetGameTooltipOwner(btn, "ANCHOR_BOTTOM") then
+            GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
+            local bodyR, bodyG, bodyB = 0.8, 0.8, 0.8
+            if ns.UI_GetTooltipDescColor then
+                bodyR, bodyG, bodyB = ns.UI_GetTooltipDescColor()
+            end
+            GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_TOGGLE", "Toggle filters: Level 80 / Level 90"), bodyR, bodyG, bodyB)
+            local profile = addon and addon.db and addon.db.profile
+            local cur = ns.UI_GetLowLevelHideThreshold(profile)
+            GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_CURRENT", "Current: %s"):format(ns.UI_GetLowLevelHideLabel(cur)), 0.4, 1, 0.4)
+            GameTooltip:Show()
         end
-        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_TOGGLE", "Toggle filters: Level 80 / Level 90"), bodyR, bodyG, bodyB)
-        local profile = addon and addon.db and addon.db.profile
-        local cur = ns.UI_GetLowLevelHideThreshold(profile)
-        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_CURRENT", "Current: %s"):format(ns.UI_GetLowLevelHideLabel(cur)), 0.4, 1, 0.4)
-        GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()
-        if GameTooltip then GameTooltip:Hide() end
+        if GameTooltip then ns.UI_SafeHideGameTooltip() end
     end)
 
     return btn, hideBtnText

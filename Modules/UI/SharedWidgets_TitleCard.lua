@@ -188,7 +188,7 @@ ns.UI_GetCharKey = function(char)
         and not (issecretvalue and (issecretvalue(n) or issecretvalue(r))) then
         return ns.Utilities:GetCharacterKey(n, r)
     end
-    if char._key and not (issecretvalue and issecretvalue(char._key)) then
+    if not (issecretvalue and issecretvalue(char._key)) and char._key then
         return char._key
     end
     return nil
@@ -203,7 +203,7 @@ function ns.UI_GetSubsidiaryCharKey(optionalCharKey)
         local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, optionalCharKey)
         if k then return k end
     end
-    if optionalCharKey and not (issecretvalue and issecretvalue(optionalCharKey))
+    if not (issecretvalue and issecretvalue(optionalCharKey)) and optionalCharKey
         and optionalCharKey ~= "" then
         if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
             return ns.Utilities:GetCanonicalCharacterKey(optionalCharKey) or optionalCharKey

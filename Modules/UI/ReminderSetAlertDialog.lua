@@ -313,11 +313,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         function f:ShowMutexTooltip(owner, tipText)
             if not owner or not tipText or tipText == "" then return end
-            if ns.UI_SetGameTooltipSmartOwner then
-                ns.UI_SetGameTooltipSmartOwner(owner, 0, 0)
-            else
-                GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-            end
+            if not ns.UI_SetGameTooltipSmartOwner(owner, 0, 0) then return end
             -- Midnight: SetText(text [, color, alpha, wrap]) — not legacy r,g,b,wrap floats.
             GameTooltip:SetText(tipText)
             GameTooltip:Show()
@@ -333,7 +329,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 f:ShowMutexTooltip(self, tip)
             end)
             widget:HookScript("OnLeave", function()
-                GameTooltip:Hide()
+                ns.UI_SafeHideGameTooltip()
             end)
         end
 
@@ -346,7 +342,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 f:ShowMutexTooltip(self, tip)
             end)
             host:HookScript("OnLeave", function()
-                GameTooltip:Hide()
+                ns.UI_SafeHideGameTooltip()
             end)
         end
 
@@ -902,7 +898,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     f.planTitleFs:SetPoint("LEFT", titleLeft, "RIGHT", 8, 0)
 
     local pts = plan.points
-    if pts and not (issecretvalue and issecretvalue(pts)) and tonumber(pts) and f.planPointsFs then
+    if not (issecretvalue and issecretvalue(pts)) and pts and tonumber(pts) and f.planPointsFs then
         f.planPointsFs:Show()
         local pf = (L and L["ACHIEVEMENT_POINTS_FORMAT"]) or (L and L["POINTS_FORMAT"]) or "%d pts"
         f.planPointsFs:SetText(string.format(pf, tonumber(pts)))

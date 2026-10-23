@@ -65,7 +65,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
             local sourceText = ""
             if C_MountJournal.GetMountInfoExtraByID then
                 local _, description, src = C_MountJournal.GetMountInfoExtraByID(mountID)
-                if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
+                if not (issecretvalue and issecretvalue(src)) and src then sourceText = src end
             end
             RT.collectionStore.mount[mountID] = {
                 id = mountID, name = name, icon = icon, source = sourceText, sourceType = sourceType, description = "",
@@ -130,7 +130,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
                         local itemLink
                         if GetItemInfo then
                             local _, link = GetItemInfo(mountItemID)
-                            if link and not (issecretvalue and issecretvalue(link)) and link ~= "" then itemLink = link end
+                            if not (issecretvalue and issecretvalue(link)) and link and link ~= "" then itemLink = link end
                         end
                         if not itemLink then
                             itemLink = (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. "[" .. (name or "Mount") .. "]|r"
@@ -215,7 +215,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
             local sourceText = ""
             if C_PetJournal.GetPetInfoBySpeciesID then
                 local _, _, _, _, src = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-                if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
+                if not (issecretvalue and issecretvalue(src)) and src then sourceText = src end
             end
             RT.collectionStore.pet[speciesID] = {
                 id = speciesID, name = name, icon = icon, source = sourceText, sourceTypeIndex = sourceTypeIndex, description = "",
@@ -250,14 +250,14 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     local notifyPetName = name
     if speciesID and C_PetJournal.GetPetInfoBySpeciesID then
         local sName = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-        if sName and not (issecretvalue and issecretvalue(sName)) and sName ~= "" then
+        if not (issecretvalue and issecretvalue(sName)) and sName and sName ~= "" then
             notifyPetName = sName
         end
     end
 
     -- Duplicate pet species (2/3, 3/3 etc.) — skip notification but data is already updated
     local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
-    if issecretvalue and numOwned and issecretvalue(numOwned) then numOwned = nil end
+    if issecretvalue and issecretvalue(numOwned) then numOwned = nil end
     if not skipNotification and numOwned and numOwned > 1 then
         skipNotification = true
         DebugPrint("|cff888888[WN CollectionService]|r SKIP: " .. notifyPetName .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")

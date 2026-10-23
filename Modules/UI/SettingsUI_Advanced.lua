@@ -413,7 +413,7 @@ function M.AppendAdvancedPanel(ctx)
     itemIDLabel:SetScript("OnEnter", function(self)
         Settings_ShowWrappedTooltip(self, (ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.")
     end)
-    itemIDLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    itemIDLabel:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     trackYOffset = trackYOffset - 22
     
     -- Item ID editbox + Lookup button on the SAME row
@@ -460,7 +460,7 @@ function M.AppendAdvancedPanel(ctx)
     lookupBtnText:SetTextColor(lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3])
     lookupBtn:SetScript("OnClick", function()
         local rawID = itemIDBox:GetText()
-        if rawID and issecretvalue and issecretvalue(rawID) then return end
+        if issecretvalue and issecretvalue(rawID) then return end
         local itemID = tonumber(rawID)
         if not itemID then return end
         ns._trackDBForm.itemID = itemID
@@ -491,7 +491,7 @@ function M.AppendAdvancedPanel(ctx)
             ApplySettingsChrome(lookupBtn, SettingsControlChrome(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
         end
         lookupBtnText:SetTextColor(lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3])
-        GameTooltip:Hide()
+        ns.UI_SafeHideGameTooltip()
     end)
     
     -- Advance past: editbox (30) + lookup result line (18) + gap (12)
@@ -536,8 +536,8 @@ function M.AppendAdvancedPanel(ctx)
                 local f = ns._trackDBForm
                 local rawItem = itemIDBox:GetText()
                 local rawSrc = sourceIDBox:GetText()
-                if (rawItem and issecretvalue and issecretvalue(rawItem))
-                    or (rawSrc and issecretvalue and issecretvalue(rawSrc)) then
+                if (issecretvalue and issecretvalue(rawItem))
+                    or (issecretvalue and issecretvalue(rawSrc)) then
                     return
                 end
                 local itemID = tonumber(rawItem)

@@ -216,8 +216,8 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
     
     local keystoneInfo = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
-    if keystoneInfo and issecretvalue and issecretvalue(keystoneInfo) then keystoneInfo = nil end
-    if keystoneLevel and issecretvalue and issecretvalue(keystoneLevel) then keystoneLevel = nil end
+    if issecretvalue and issecretvalue(keystoneInfo) then keystoneInfo = nil end
+    if issecretvalue and issecretvalue(keystoneLevel) then keystoneLevel = nil end
     local ksStore = self.db.global.pveCache.mythicPlus and self.db.global.pveCache.mythicPlus.keystones
     local existing = ksStore and ksStore[charKey] or nil
 
@@ -561,7 +561,7 @@ function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
             local dungeonName
             if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
                 dungeonName = C_ChallengeMode.GetMapUIInfo(run.mapChallengeModeID)
-                if issecretvalue and dungeonName and issecretvalue(dungeonName) then
+                if issecretvalue and issecretvalue(dungeonName) then
                     dungeonName = nil
                 end
             end

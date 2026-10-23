@@ -13,7 +13,7 @@ ns.ReminderMapContent = M
 local QUELTHALAS_HUB = 2537
 
 local function IsSecret(val)
-    return issecretvalue and val and issecretvalue(val)
+    return issecretvalue and issecretvalue(val)
 end
 
 local function SafeParentUIMapID(mid)
@@ -117,7 +117,7 @@ local function CollectQuestIDsOnMap(mapID, playerMap, seen, out, filterFn)
             for j = 1, #taskPOIs do
                 local qi = taskPOIs[j]
                 local qid = qi and (qi.questID or qi.questId)
-                if qid == nil or IsSecret(qid) then
+                if IsSecret(qid) or qid == nil then
                     qid = nil
                 end
                 if qid then
@@ -132,7 +132,7 @@ local function CollectQuestIDsOnMap(mapID, playerMap, seen, out, filterFn)
         if ok and type(mapQuests) == "table" then
             for _, qi in pairs(mapQuests) do
                 local qid = qi and qi.questID
-                if qid == nil or IsSecret(qid) then
+                if IsSecret(qid) or qid == nil then
                     qid = nil
                 end
                 if qid then

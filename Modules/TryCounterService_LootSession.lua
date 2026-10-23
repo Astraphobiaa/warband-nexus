@@ -140,7 +140,7 @@ local function ResolveTryCounterFishingSpell(spellID)
         return false
     end
     local iconID = spellInfo.iconID
-    if iconID and not (issecretvalue and issecretvalue(iconID)) and FISHING_SPELL_ICON_IDS[iconID] then
+    if not (issecretvalue and issecretvalue(iconID)) and iconID and FISHING_SPELL_ICON_IDS[iconID] then
         FISHING_SPELLS[spellID] = true
         return true
     end
@@ -153,8 +153,8 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
     if unit ~= "player" then return end
     if not Fns.IsTryCounterModuleEnabled() then return end
     -- Midnight 12.0: target/spellID can be secret values during instanced combat
-    if issecretvalue and target and issecretvalue(target) then target = nil end
-    if issecretvalue and spellID and issecretvalue(spellID) then
+    if issecretvalue and issecretvalue(target) then target = nil end
+    if issecretvalue and issecretvalue(spellID) then
         -- We cannot read the spellID. If it's fishing, we might be able to read the channel texture.
         -- UNIT_SPELLCAST_SENT fires slightly before the channel starts, so we might not have it yet.
         -- But we can rely on UNIT_SPELLCAST_CHANNEL_START to catch it.
@@ -202,13 +202,13 @@ function WarbandNexus:OnTryCounterSpellcastChannelStart(event, unit, castGUID, s
     local isFishing = false
     local validSpellID = spellID
 
-    if issecretvalue and spellID and issecretvalue(spellID) then
+    if issecretvalue and issecretvalue(spellID) then
         validSpellID = nil
         -- Secret value during instanced combat. We can't read spellID.
         -- Try to detect via UnitChannelInfo texture.
         if UnitChannelInfo then
             local _, _, texture = UnitChannelInfo("player")
-            if texture and not (issecretvalue and issecretvalue(texture)) and texture == 136245 then
+            if not (issecretvalue and issecretvalue(texture)) and texture and texture == 136245 then
                 isFishing = true
             end
         end
@@ -233,7 +233,7 @@ end
 ---@param spellID number
 function WarbandNexus:OnTryCounterSpellcastFailed(event, unit, castGUID, spellID)
     if unit ~= "player" then return end
-    if issecretvalue and spellID and issecretvalue(spellID) then return end
+    if issecretvalue and issecretvalue(spellID) then return end
     -- A pickpocket / gathering cast that fails opens no loot window, so LOOT_CLOSED never clears its
     -- skip flag and the next kill, catch or container would be dropped as profession loot.
     if spellID and not RT.lootSession.opened then
@@ -505,7 +505,7 @@ function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
 
     local slotKey = bagID * 100 + slotID
     local itemID = C_Container.GetContainerItemID(bagID, slotID)
-    if itemID and not (issecretvalue and issecretvalue(itemID)) then
+    if not (issecretvalue and issecretvalue(itemID)) and itemID then
         V.bagSlotItemCache[slotKey] = itemID
     else
         itemID = V.bagSlotItemCache[slotKey]
@@ -531,7 +531,7 @@ end
 
 function Fns.CollectFishingDropsForZone()
     local inInstance = IsInInstance()
-    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if issecretvalue and issecretvalue(inInstance) then inInstance = nil end
     if inInstance then return {}, true end
     local mapID = Fns.GetSafeMapID()
     local drops = {}
@@ -588,7 +588,7 @@ end
 
 Fns.IsInTrackableFishingZone = function()
     local inInstance = IsInInstance()
-    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if issecretvalue and issecretvalue(inInstance) then inInstance = nil end
     if inInstance then return false end
     local mapID = Fns.GetSafeMapID()
     if not mapID then return false end
@@ -768,8 +768,9 @@ Fns.CaptureLootSessionState = function()
         wipe(RT.lootSession.slotData)
         for i = 1, RT.lootSession.numLoot do
             local hasItem = LootSlotHasItem and LootSlotHasItem(i)
+            if issecretvalue and issecretvalue(hasItem) then hasItem = true end
             local link = GetLootSlotLink and GetLootSlotLink(i)
-            if link and issecretvalue and issecretvalue(link) then link = nil end
+            if issecretvalue and issecretvalue(link) then link = nil end
             RT.lootSession.slotData[i] = { hasItem = not not hasItem, link = link }
         end
     end
@@ -841,7 +842,7 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     -- unless API or structural bobber/pool says so (prevents false ProcessFishingLoot on Thorncap etc.).
     -- Tracked objectDropDB sources (Overflowing Dumpster, raid chests) always use NPC/object path.
     local inInstance = IsInInstance()
-    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if issecretvalue and issecretvalue(inInstance) then inInstance = nil end
     if not inInstance and Fns.LootSessionSourcesAreOnlyGameObjects(RT.lootSession.sourceGUIDs) and Fns.IsInTrackableFishingZone() then
         if not Fns.LootSessionHasTrackedObjectSource(RT.lootSession.sourceGUIDs) then
             local structFish = Fns.LootSourcesLookLikeFishingOnly(RT.lootSession.sourceGUIDs)
@@ -855,7 +856,7 @@ Fns.ClassifyLootSession = function(source, isFromItem)
 
     -- 2. CONTAINER: isFromItem flag (Blizzard API) or recent tracked container use
     local safeIsFromItem = isFromItem
-    if issecretvalue and safeIsFromItem and issecretvalue(safeIsFromItem) then safeIsFromItem = nil end
+    if issecretvalue and issecretvalue(safeIsFromItem) then safeIsFromItem = nil end
     if not safeIsFromItem then
         safeIsFromItem = V.lastContainerItemID and RT.containerDropDB[V.lastContainerItemID] and (now - V.lastContainerItemTime) < 15
     end
@@ -1075,8 +1076,8 @@ Fns.GetAllLootSourceGUIDs = function()
     local inRaidForGo = false
     do
         local okII, inI, instType = pcall(IsInInstance)
-        if okII and inI and not (issecretvalue and issecretvalue(inI)) and inI
-            and instType and not (issecretvalue and issecretvalue(instType)) and instType == "raid" then
+        if okII and not (issecretvalue and issecretvalue(inI)) and inI and inI
+            and not (issecretvalue and issecretvalue(instType)) and instType and instType == "raid" then
             inRaidForGo = true
         end
     end

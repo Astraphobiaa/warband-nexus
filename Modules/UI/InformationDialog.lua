@@ -370,16 +370,17 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
 
         local hint = (ns.L and ns.L["CLICK_TO_COPY_URL"]) or "Click to copy the link"
         btn:SetScript("OnEnter", function(selfBtn)
-            GameTooltip:SetOwner(selfBtn, "ANCHOR_RIGHT")
-            local tr, tg, tb = 1, 1, 1
-            if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
-            GameTooltip:SetText(tooltipText, tr, tg, tb)
-            local dr, dg, db = 0.6, 0.6, 0.6
-            if ns.UI_GetTooltipDescColor then dr, dg, db = ns.UI_GetTooltipDescColor() end
-            GameTooltip:AddLine(hint, dr, dg, db)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(selfBtn, "ANCHOR_RIGHT") then
+                local tr, tg, tb = 1, 1, 1
+                if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+                GameTooltip:SetText(tooltipText, tr, tg, tb)
+                local dr, dg, db = 0.6, 0.6, 0.6
+                if ns.UI_GetTooltipDescColor then dr, dg, db = ns.UI_GetTooltipDescColor() end
+                GameTooltip:AddLine(hint, dr, dg, db)
+                GameTooltip:Show()
+            end
         end)
-        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        btn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         btn:SetScript("OnClick", function(selfBtn)
             if ns.UI.Factory and ns.UI.Factory.ShowCopyURL then
                 ns.UI.Factory:ShowCopyURL(url, tooltipText, selfBtn)

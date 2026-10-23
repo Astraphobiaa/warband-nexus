@@ -46,19 +46,19 @@ COLLECTION_CONFIGS = {
             local name, spellID, icon, _, _, sourceType, _, isFactionSpecific, faction, shouldHideOnChar, isCollected, _mountIDRet, isSteadyFlight = C_MountJournal.GetMountInfoByID(mountID)
             if not name then return nil end
             -- Midnight 12.0: name or isCollected may be a secret value; guard against it
-            if issecretvalue and name and issecretvalue(name) then return nil end
+            if issecretvalue and issecretvalue(name) then return nil end
             if WarbandNexus.ShouldExcludeMountFromCollectionBrowse and WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID) then
                 return nil
             end
             local collected = false
-            if issecretvalue and isCollected and issecretvalue(isCollected) then
+            if issecretvalue and issecretvalue(isCollected) then
                 collected = true
             elseif isCollected == true then
                 collected = true
             end
             -- shouldHideOnChar may also be secret
             local hideOnChar = false
-            if issecretvalue and shouldHideOnChar and issecretvalue(shouldHideOnChar) then
+            if issecretvalue and issecretvalue(shouldHideOnChar) then
                 hideOnChar = false  -- If secret, assume visible (safe default)
             elseif shouldHideOnChar == true then
                 hideOnChar = true
@@ -67,7 +67,7 @@ COLLECTION_CONFIGS = {
             local creatureDisplayID, description, source = C_MountJournal.GetMountInfoExtraByID(mountID)
 
             local resolvedSourceType = sourceType
-            if issecretvalue and resolvedSourceType and issecretvalue(resolvedSourceType) then
+            if issecretvalue and issecretvalue(resolvedSourceType) then
                 resolvedSourceType = nil
             end
             if (not resolvedSourceType or resolvedSourceType == 0) and ns._mountIDToSourceIndex then
@@ -331,7 +331,7 @@ COLLECTION_CONFIGS = {
             -- If GetToyInfo returns nil for the itemID, the toy doesn't exist in the ToyBox database
             -- (internal/hidden/removed toy) — exclude it
             if not retItemID then return nil end
-            if issecretvalue and toyName and issecretvalue(toyName) then toyName = nil end
+            if issecretvalue and issecretvalue(toyName) then toyName = nil end
             -- If name is nil/empty and retItemID is also nil, this is a ghost entry — skip
             if not toyName or toyName == "" then
                 -- Try C_Item fallback for name
@@ -348,7 +348,7 @@ COLLECTION_CONFIGS = {
             local collected = false
             if PlayerHasToy then
                 local raw = PlayerHasToy(itemID)
-                if issecretvalue and raw and issecretvalue(raw) then collected = true
+                if issecretvalue and issecretvalue(raw) then collected = true
                 else collected = raw == true end
             end
             local sourceTypeIndex = ns._toyItemIDToSourceIndex and ns._toyItemIDToSourceIndex[itemID] or nil
@@ -479,8 +479,8 @@ COLLECTION_CONFIGS = {
                     name, hyperlink, sourceText = n, h, s
                 end
             end
-            if name and issecretvalue and issecretvalue(name) then name = nil end
-            if sourceText and issecretvalue and issecretvalue(sourceText) then sourceText = nil end
+            if issecretvalue and issecretvalue(name) then name = nil end
+            if issecretvalue and issecretvalue(sourceText) then sourceText = nil end
             
             -- Fallback 1: Try basic illusion info if API returns nil
             if not name or name == "" then

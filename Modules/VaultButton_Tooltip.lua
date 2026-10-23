@@ -296,13 +296,13 @@ function M.GetActiveTodoCountForChar(charName, charRealm)
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
         return 0
     end
-    if charName and issecretvalue and issecretvalue(charName) then
+    if issecretvalue and issecretvalue(charName) then
         return 0
     end
     if not charName or charName == "" then
         return 0
     end
-    if charRealm and issecretvalue and issecretvalue(charRealm) then
+    if issecretvalue and issecretvalue(charRealm) then
         charRealm = nil
     end
     local plans = WarbandNexus.db.global.plans
@@ -672,49 +672,50 @@ WNTooltipShow = function(anchor, data)
     if ns.UI_ShowTooltip and WarbandNexus and WarbandNexus.Tooltip then
         ns.UI_ShowTooltip(anchor, data)
     else
-        GameTooltip:SetOwner(anchor, data.anchor or "ANCHOR_RIGHT")
-        GameTooltip:ClearLines()
-        local tc = data.titleColor or { 1, 0.82, 0 }
-        if data.title then
-            GameTooltip:AddLine(data.title, tc[1], tc[2], tc[3])
-        end
-        if data.titleAffixPair then
-            local ap = data.titleAffixPair
-            local lc = ap.leftColor
-            if not lc and ns.UI_GetTextRoleRGB then
-                local lr, lg, lb = ns.UI_GetTextRoleRGB("Bright")
-                lc = { lr, lg, lb }
+        if ns.UI_SafeSetGameTooltipOwner(anchor, data.anchor or "ANCHOR_RIGHT") then
+            GameTooltip:ClearLines()
+            local tc = data.titleColor or { 1, 0.82, 0 }
+            if data.title then
+                GameTooltip:AddLine(data.title, tc[1], tc[2], tc[3])
             end
-            lc = lc or { 1, 1, 1 }
-            local rc = ap.rightColor
-            if not rc and ns.UI_GetSemanticGoldColor then
-                local gr, gg, gb = ns.UI_GetSemanticGoldColor()
-                rc = { gr, gg, gb }
+            if data.titleAffixPair then
+                local ap = data.titleAffixPair
+                local lc = ap.leftColor
+                if not lc and ns.UI_GetTextRoleRGB then
+                    local lr, lg, lb = ns.UI_GetTextRoleRGB("Bright")
+                    lc = { lr, lg, lb }
+                end
+                lc = lc or { 1, 1, 1 }
+                local rc = ap.rightColor
+                if not rc and ns.UI_GetSemanticGoldColor then
+                    local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+                    rc = { gr, gg, gb }
+                end
+                rc = rc or { 1, 0.82, 0 }
+                GameTooltip:AddDoubleLine(ap.left or "", ap.right or "", lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
             end
-            rc = rc or { 1, 0.82, 0 }
-            GameTooltip:AddDoubleLine(ap.left or "", ap.right or "", lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
-        end
-        if data.description then
-            GameTooltip:AddLine(data.description, 0.55, 0.57, 0.62)
-        end
-        if data.lines then
-            for _, line in ipairs(data.lines) do
-                if line.left or line.right then
-                    local lc, rc = line.leftColor or { 1, 1, 1 }, line.rightColor or { 1, 1, 1 }
-                    GameTooltip:AddDoubleLine(line.left or "", line.right or "",
-                        lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
-                else
-                    local c = line.color or { 1, 1, 1 }
-                    GameTooltip:AddLine(line.text or "", c[1], c[2], c[3], line.wrap == true)
+            if data.description then
+                GameTooltip:AddLine(data.description, 0.55, 0.57, 0.62)
+            end
+            if data.lines then
+                for _, line in ipairs(data.lines) do
+                    if line.left or line.right then
+                        local lc, rc = line.leftColor or { 1, 1, 1 }, line.rightColor or { 1, 1, 1 }
+                        GameTooltip:AddDoubleLine(line.left or "", line.right or "",
+                            lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+                    else
+                        local c = line.color or { 1, 1, 1 }
+                        GameTooltip:AddLine(line.text or "", c[1], c[2], c[3], line.wrap == true)
+                    end
                 end
             end
+            GameTooltip:Show()
         end
-        GameTooltip:Show()
     end
 end
 
 WNTooltipHide = function()
-    if ns.UI_HideTooltip then ns.UI_HideTooltip() else GameTooltip:Hide() end
+    if ns.UI_HideTooltip then ns.UI_HideTooltip() else ns.UI_SafeHideGameTooltip() end
 end
 
 -- Hover tooltip (current character summary)

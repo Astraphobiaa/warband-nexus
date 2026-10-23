@@ -2523,7 +2523,7 @@ MergeLegacyNpcs(ns.CollectibleSourceDB)
 -- label is recorded as pending, a load is requested while building, and the lookup retries it (2026-10-22).
 local function ContainerSourceLabel(containerItemID, requestLoad)
     local containerName = GetItemInfo and GetItemInfo(containerItemID)
-    if containerName and not (issecretvalue and issecretvalue(containerName)) and containerName ~= "" then
+    if not (issecretvalue and issecretvalue(containerName)) and containerName and containerName ~= "" then
         return "Contained in : " .. containerName, true
     end
     if requestLoad and C_Item and C_Item.RequestLoadItemDataByID then
@@ -2679,7 +2679,7 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
         local function addMount(itemID, sourceStr)
             if not itemID then return end
             local mID = C_MountJournal.GetMountFromItem(itemID)
-            if mID and not (issecretvalue and issecretvalue(mID)) and not idx[mID] then
+            if not (issecretvalue and issecretvalue(mID)) and mID and not idx[mID] then
                 idx[mID] = sourceStr
                 if currentContainer then pendingContainer[mID] = currentContainer end
             end
@@ -3049,7 +3049,7 @@ function ns.CollectibleSourceDB.GetItemIDForMount(mountID)
                     idx[drop.mountID] = drop.itemID
                 elseif C_MountJournal and C_MountJournal.GetMountFromItem then
                     local mID = C_MountJournal.GetMountFromItem(drop.itemID)
-                    if mID and not (issecretvalue and issecretvalue(mID)) then
+                    if not (issecretvalue and issecretvalue(mID)) and mID then
                         idx[mID] = drop.itemID
                     end
                 end

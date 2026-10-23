@@ -920,7 +920,7 @@ function ThemeAPI.FontStringRequiresColoredOutline(fs, text)
         local ok, t = pcall(fs.GetText, fs)
         if ok then text = t end
     end
-    if text and not (issecretvalue and issecretvalue(text)) and text ~= "" then
+    if not (issecretvalue and issecretvalue(text)) and text and text ~= "" then
         if ns.UI_TextHasColoredMarkup(text) then
             return true
         end

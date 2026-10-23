@@ -91,7 +91,7 @@ local function ResolveCompanionFactionIDFromDelves()
         and db.global.pveCache.delves
         and db.global.pveCache.delves.companion
         and db.global.pveCache.delves.companion.factionID
-    if cachedFactionID and not (issecretvalue and issecretvalue(cachedFactionID)) then
+    if not (issecretvalue and issecretvalue(cachedFactionID)) and cachedFactionID then
         cachedFactionID = tonumber(cachedFactionID)
         if cachedFactionID and cachedFactionID > 0 then
             return cachedFactionID
@@ -100,7 +100,7 @@ local function ResolveCompanionFactionIDFromDelves()
 
     if C_DelvesUI and C_DelvesUI.GetFactionForCompanion then
         local ok, factionID = pcall(C_DelvesUI.GetFactionForCompanion)
-        if ok and factionID and not (issecretvalue and issecretvalue(factionID)) then
+        if ok and not (issecretvalue and issecretvalue(factionID)) and factionID then
             factionID = tonumber(factionID)
             if factionID and factionID > 0 then
                 return factionID
@@ -300,7 +300,7 @@ local function GetWoDHeaderName()
         for i = 1, #db.headers do
             local h = db.headers[i]
             local hName = h and h.name
-            if hName and not (issecretvalue and issecretvalue(hName)) and hName:find("Draenor") then
+            if not (issecretvalue and issecretvalue(hName)) and hName and hName:find("Draenor") then
                 return hName
             end
         end
@@ -895,7 +895,7 @@ function ReputationCache:_ProcessSnapshotFaction(index, targetSnapshot, targetNa
     
     local fid = data.factionID
     local safeName = data.name
-    if issecretvalue and safeName and issecretvalue(safeName) then safeName = nil end
+    if issecretvalue and issecretvalue(safeName) then safeName = nil end
     
     if safeName and safeName ~= "" and not data.isHeader then
         targetNameToID[safeName] = fid
@@ -967,10 +967,10 @@ end
 function ReputationCache:_FinalizeSnapshot()
     if GetGuildInfo then
         local guildName = GetGuildInfo("player")
-        if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= ""
+        if not (issecretvalue and issecretvalue(guildName)) and guildName and guildName ~= ""
             and self._nameToID[guildName] then
             local guildLabel = GUILD
-            if guildLabel and not (issecretvalue and issecretvalue(guildLabel)) and guildLabel ~= ""
+            if not (issecretvalue and issecretvalue(guildLabel)) and guildLabel and guildLabel ~= ""
                 and guildLabel ~= guildName then
                 self._nameToID[guildLabel] = self._nameToID[guildName]
             end
@@ -1314,7 +1314,7 @@ function ReputationCache:RegisterEventListeners()
                 local okData, data = pcall(C_Reputation.GetFactionDataByIndex, i)
                 if not okData then data = nil end
                 local safeName = data and data.name
-                if issecretvalue and safeName and issecretvalue(safeName) then safeName = nil end
+                if issecretvalue and issecretvalue(safeName) then safeName = nil end
                 -- Exclude headers (they share names with actual factions, e.g. "Guild")
                 if data and data.factionID and data.factionID > 0 and safeName and safeName ~= "" and not data.isHeader then
                     ReputationCache._nameToID[safeName] = data.factionID
@@ -1326,10 +1326,10 @@ function ReputationCache:RegisterEventListeners()
             -- Re-apply guild alias after rebuild
             if GetGuildInfo then
                 local guildName = GetGuildInfo("player")
-                if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= ""
+                if not (issecretvalue and issecretvalue(guildName)) and guildName and guildName ~= ""
                     and ReputationCache._nameToID[guildName] then
                     local guildLabel = GUILD  -- Blizzard global: "Guild" (localized)
-                    if guildLabel and not (issecretvalue and issecretvalue(guildLabel)) and guildLabel ~= ""
+                    if not (issecretvalue and issecretvalue(guildLabel)) and guildLabel and guildLabel ~= ""
                         and guildLabel ~= guildName then
                         ReputationCache._nameToID[guildLabel] = ReputationCache._nameToID[guildName]
                     end
@@ -1481,7 +1481,7 @@ function ReputationCache:RegisterEventListeners()
         if factionID then
             local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID)
             factionName = factionData and factionData.name or nil
-            if issecretvalue and factionName and issecretvalue(factionName) then
+            if issecretvalue and issecretvalue(factionName) then
                 factionName = nil
             end
             if not factionName or factionName == "" then
@@ -1509,7 +1509,7 @@ function ReputationCache:RegisterEventListeners()
             local gfi = C_GossipInfo.GetFriendshipReputation(factionID)
             if gfi and gfi.friendshipFactionID and gfi.friendshipFactionID > 0 then
                 local st = gfi.standing
-                if not (issecretvalue and st and issecretvalue(st)) then
+                if not (issecretvalue and issecretvalue(st)) then
                     preGossipStanding = tonumber(st) or 0
                 end
             end
@@ -1725,7 +1725,7 @@ function ReputationCache:RegisterEventListeners()
             -- Resolve faction name for the pending key
             local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
             local factionName = (factionData and factionData.name) or FormatFactionFallbackName(majorFactionID)
-            if factionName and issecretvalue and issecretvalue(factionName) then
+            if issecretvalue and issecretvalue(factionName) then
                 factionName = FormatFactionFallbackName(majorFactionID)
             end
             
@@ -2716,7 +2716,7 @@ function ReputationCache:ProcessPendingChatNotifications()
                 local gfi = C_GossipInfo.GetFriendshipReputation(factionID)
                 if gfi and gfi.friendshipFactionID and gfi.friendshipFactionID > 0 then
                     local st = gfi.standing
-                    if not (issecretvalue and st and issecretvalue(st)) then
+                    if not (issecretvalue and issecretvalue(st)) then
                         local nowSt = tonumber(st) or 0
                         if nowSt > entry.preGossipStanding then
                             gainAmount = nowSt - entry.preGossipStanding
@@ -2793,7 +2793,7 @@ local function ReadCompanionRepValues(fid)
         local gfi = C_GossipInfo.GetFriendshipReputation(fid)
         if gfi and gfi.friendshipFactionID and gfi.friendshipFactionID > 0 then
             local st = gfi.standing
-            if not (issecretvalue and st and issecretvalue(st)) then
+            if not (issecretvalue and issecretvalue(st)) then
                 friend = tonumber(st)
             end
         end

@@ -241,7 +241,7 @@ local function ResolveMailItemTooltipData(item)
 
     local link = item.link
     local itemID = item.itemID
-    if link and issecretvalue and issecretvalue(link) then
+    if issecretvalue and issecretvalue(link) then
         link = nil
     end
 

@@ -148,8 +148,8 @@ local function SafeAchievementCountPair()
     if not GetNumCompletedAchievements then return 0, 0 end
     local ok, total, completed = pcall(GetNumCompletedAchievements)
     if not ok then return 0, 0 end
-    if total and issecretvalue and issecretvalue(total) then total = 0 end
-    if completed and issecretvalue and issecretvalue(completed) then completed = 0 end
+    if issecretvalue and issecretvalue(total) then total = 0 end
+    if issecretvalue and issecretvalue(completed) then completed = 0 end
     return tonumber(total) or 0, tonumber(completed) or 0
 end
 
@@ -1297,7 +1297,7 @@ function WarbandNexus:GetAllToysData()
             local collected = false
             if PlayerHasToy then
                 local raw = PlayerHasToy(d.id)
-                if issecretvalue and raw and issecretvalue(raw) then collected = true else collected = raw == true end
+                if issecretvalue and issecretvalue(raw) then collected = true else collected = raw == true end
             end
             out[#out + 1] = {
                 id = d.id,
@@ -1397,11 +1397,11 @@ function WarbandNexus:GetToysGroupedBySourceType()
             C_ToyBox.SetSourceTypeFilter(sourceIndex, true)
             if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
             local numFiltered = (C_ToyBox.GetNumFilteredToys and C_ToyBox.GetNumFilteredToys()) or 0
-            if issecretvalue and numFiltered and issecretvalue(numFiltered) then numFiltered = 0 end
+            if issecretvalue and issecretvalue(numFiltered) then numFiltered = 0 end
             local itemIDs = {}
             for j = 1, numFiltered do
                 local itemID = C_ToyBox.GetToyFromIndex(j)
-                if itemID and itemID > 0 and not (issecretvalue and issecretvalue(itemID)) then
+                if not (issecretvalue and issecretvalue(itemID)) and itemID and itemID > 0 then
                     if not itemIDToSource[itemID] then
                         itemIDToSource[itemID] = sourceIndex
                         itemIDs[#itemIDs + 1] = itemID
@@ -1537,10 +1537,10 @@ function WarbandNexus:EnsureMountSourceIndexMap()
             if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(false) end
             C_MountJournal.SetSourceFilter(sourceIndex, true)
             local numDisplayed = (C_MountJournal.GetNumDisplayedMounts and C_MountJournal.GetNumDisplayedMounts()) or 0
-            if issecretvalue and numDisplayed and issecretvalue(numDisplayed) then numDisplayed = 0 end
+            if issecretvalue and issecretvalue(numDisplayed) then numDisplayed = 0 end
             for j = 1, numDisplayed do
                 local _, _, _, _, _, _, _, _, _, _, _, mountID = C_MountJournal.GetDisplayedMountInfo(j)
-                if mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+                if not (issecretvalue and issecretvalue(mountID)) and mountID and mountID > 0 then
                     if not mountIDToSource[mountID] then
                         mountIDToSource[mountID] = sourceIndex
                     end
@@ -1575,7 +1575,7 @@ function WarbandNexus:GetMountBrowseSourceType(mountID)
     if not mountID then return nil end
     if C_MountJournal and C_MountJournal.GetMountInfoByID then
         local _, _, _, _, _, sourceType = C_MountJournal.GetMountInfoByID(mountID)
-        if sourceType and not (issecretvalue and issecretvalue(sourceType)) and sourceType > 0 then
+        if not (issecretvalue and issecretvalue(sourceType)) and sourceType and sourceType > 0 then
             return sourceType
         end
     end
@@ -1639,7 +1639,7 @@ function WarbandNexus:GetToysDataGroupedBySourceType()
             for i = 1, #group.itemIDs do
                 local itemID = group.itemIDs[i]
                 local _, toyName, icon = C_ToyBox.GetToyInfo(itemID)
-                if _issecretvalue and toyName and _issecretvalue(toyName) then toyName = nil end
+                if _issecretvalue and _issecretvalue(toyName) then toyName = nil end
                 local name = (toyName and toyName ~= "") and toyName or nil
                 if not name and store and store[itemID] and (store[itemID].name or "") ~= "" then
                     name = store[itemID].name
@@ -1659,7 +1659,7 @@ function WarbandNexus:GetToysDataGroupedBySourceType()
                 local collected = false
                 if PlayerHasToy then
                     local raw = PlayerHasToy(itemID)
-                    if _issecretvalue and raw and _issecretvalue(raw) then collected = true
+                    if _issecretvalue and _issecretvalue(raw) then collected = true
                     else collected = raw == true end
                 end
                 items[#items + 1] = {
@@ -1684,7 +1684,7 @@ end
 function WarbandNexus:GetToyTooltipForDisplay(itemID)
     if not itemID or not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
     local _, name, icon = C_ToyBox.GetToyInfo(itemID)
-    if issecretvalue and name and issecretvalue(name) then name = nil end
+    if issecretvalue and issecretvalue(name) then name = nil end
     if not name then name = "" end
     if not icon and (C_Item and C_Item.GetItemInfo) then
         local _, _, _, _, _, _, _, _, _, itemTexture = C_Item.GetItemInfo(itemID)
@@ -1693,7 +1693,7 @@ function WarbandNexus:GetToyTooltipForDisplay(itemID)
     local isCollected = false
     if PlayerHasToy then
         local raw = PlayerHasToy(itemID)
-        if issecretvalue and raw and issecretvalue(raw) then isCollected = true
+        if issecretvalue and issecretvalue(raw) then isCollected = true
         else isCollected = raw == true end
     end
     local tooltipData = nil
@@ -1837,7 +1837,7 @@ function WarbandNexus:GetCollectionCountsFromAPI()
                 end
                 if not hidden then
                     totalVisible = totalVisible + 1
-                    if issecretvalue and isCollected and issecretvalue(isCollected) then
+                    if issecretvalue and issecretvalue(isCollected) then
                         collectedCount = collectedCount + 1
                     elseif isCollected == true then
                         collectedCount = collectedCount + 1
@@ -1854,8 +1854,8 @@ function WarbandNexus:GetCollectionCountsFromAPI()
         local numJournalEntries, numCollectedPets = 0, 0
         if C_PetJournal.GetNumPets then
             numJournalEntries, numCollectedPets = C_PetJournal.GetNumPets()
-            if issecretvalue and numJournalEntries and issecretvalue(numJournalEntries) then numJournalEntries = 0 end
-            if issecretvalue and numCollectedPets and issecretvalue(numCollectedPets) then numCollectedPets = 0 end
+            if issecretvalue and issecretvalue(numJournalEntries) then numJournalEntries = 0 end
+            if issecretvalue and issecretvalue(numCollectedPets) then numCollectedPets = 0 end
         end
         data.pets.journalEntries = numJournalEntries or 0
         data.pets.collected = numCollectedPets or 0
@@ -2260,7 +2260,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnA
                     and ns.CharacterService:GetCharactersTablePersistKey(self))
                     or (ns.Utilities and ns.Utilities.GetCharacterStorageKey
                     and ns.Utilities:GetCharacterStorageKey(self))
-                if charKey and not (issecretvalue and issecretvalue(charKey)) then
+                if not (issecretvalue and issecretvalue(charKey)) and charKey then
                     local chars = self.db and self.db.global and self.db.global.characters
                     local row = chars and chars[charKey]
                     if not row and self.SaveCurrentCharacterData then
@@ -2286,16 +2286,16 @@ function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnA
     -- Check for chained/superceding achievements (e.g., 5/5 → 0/10)
     -- GetSupercedingAchievements returns the next achievement in the chain (store/cache write: gated)
     if storeOn and C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements then
-        if not (issecretvalue and achievementID and issecretvalue(achievementID)) then
+        if not (issecretvalue and issecretvalue(achievementID)) then
             local okSup, supercedingAchievements = pcall(C_AchievementInfo.GetSupercedingAchievements, achievementID)
             if okSup and supercedingAchievements and type(supercedingAchievements) == "table" and #supercedingAchievements > 0 then
                 for i = 1, #supercedingAchievements do
                     local nextAchievementID = supercedingAchievements[i]
-                    if nextAchievementID and not (issecretvalue and issecretvalue(nextAchievementID)) then
+                    if not (issecretvalue and issecretvalue(nextAchievementID)) and nextAchievementID then
                         -- Get achievement info with pcall protection
                         local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, nextAchievementID)
-                        local completedIsSecret = completed and issecretvalue and issecretvalue(completed)
-                        if success and name and not (issecretvalue and issecretvalue(name))
+                        local completedIsSecret = issecretvalue and issecretvalue(completed)
+                        if success and not (issecretvalue and issecretvalue(name)) and name
                             and not completedIsSecret and completed ~= true then
     DebugPrint("|cffffcc00[WN CollectionService]|r Found chained achievement: " .. tostring(name) .. " (ID: " .. tostring(nextAchievementID) .. ")")
                     
@@ -2303,7 +2303,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnA
                     local categoryID
                     if GetAchievementCategory then
                         local okCat, cat = pcall(GetAchievementCategory, nextAchievementID)
-                        if okCat and cat and not (issecretvalue and issecretvalue(cat)) then
+                        if okCat and not (issecretvalue and issecretvalue(cat)) and cat then
                             categoryID = cat
                         end
                     end
@@ -2323,7 +2323,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnA
                     end
                     
                     local safeDesc = description
-                    if safeDesc and issecretvalue and issecretvalue(safeDesc) then safeDesc = nil end
+                    if issecretvalue and issecretvalue(safeDesc) then safeDesc = nil end
                     
                     -- Add new chained achievement to cache directly (no full re-scan needed!)
                     if not collectionCache.uncollected.achievement then
@@ -2331,7 +2331,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnA
                     end
                     
                     local safePoints = points
-                    if safePoints and issecretvalue and issecretvalue(safePoints) then safePoints = nil end
+                    if issecretvalue and issecretvalue(safePoints) then safePoints = nil end
                     local safeIcon = (icon and not (issecretvalue and issecretvalue(icon))) and icon or nil
                     collectionCache.uncollected.achievement[nextAchievementID] = {
                         id = nextAchievementID,
@@ -2751,7 +2751,7 @@ function WarbandNexus:_DetectToy(itemID, itemName, itemIcon)
     -- Check if already owned (guard secret return)
     if PlayerHasToy then
         local has = PlayerHasToy(itemID)
-        if issecretvalue and has and issecretvalue(has) then return nil end
+        if issecretvalue and issecretvalue(has) then return nil end
         if has == true then return nil end
     end
     

@@ -296,7 +296,7 @@ local function CollectPlayerLocation()
         local okPos, pos = pcall(C_Map.GetPlayerMapPosition, uiMapID, "player")
         if okPos and pos and pos.GetXY then
             local x, y = pos:GetXY()
-            if x and y and not (issecretvalue and issecretvalue(x)) then
+            if not (issecretvalue and (issecretvalue(x) or issecretvalue(y))) and x and y then
                 mapX = math.floor(x * 10000) / 10000
                 mapY = math.floor(y * 10000) / 10000
             end
@@ -400,7 +400,7 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         
     elseif dataType == "itemLevel" then
         local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
-        if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
+        if issecretvalue and issecretvalue(avgItemLevelEquipped) then return end
         -- Raw fractional value (same convention as SaveCurrentCharacterData / OnItemLevelChanged);
         -- integer displays floor at render time.
         local newItemLevel = tonumber(avgItemLevelEquipped)
@@ -415,7 +415,7 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
             newGn, ambiguous = self:GetSafePlayerGuildName()
         elseif IsInGuild() then
             local gn = GetGuildInfo("player")
-            if gn and not (issecretvalue and issecretvalue(gn)) then
+            if not (issecretvalue and issecretvalue(gn)) and gn then
                 newGn = gn
             else
                 ambiguous = true
@@ -428,8 +428,8 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
     elseif dataType == "zone" then
         local newZone = GetZoneText()
         local newSubZone = GetSubZoneText()
-        if newZone and issecretvalue and issecretvalue(newZone) then newZone = nil end
-        if newSubZone and issecretvalue and issecretvalue(newSubZone) then newSubZone = nil end
+        if issecretvalue and issecretvalue(newZone) then newZone = nil end
+        if issecretvalue and issecretvalue(newSubZone) then newSubZone = nil end
         -- An empty / unread zone text keeps the stored zone (2026-10-22).
         if newZone and newZone ~= "" then
             charData.zoneName = newZone
@@ -699,12 +699,12 @@ CollectRestedData = function()
     local exhaustionID, restStateName, restStateFactor = nil, nil, nil
     if GetRestState then
         exhaustionID, restStateName, restStateFactor = GetRestState()
-        if issecretvalue and exhaustionID and issecretvalue(exhaustionID) then exhaustionID = nil end
-        if issecretvalue and restStateFactor and issecretvalue(restStateFactor) then restStateFactor = nil end
+        if issecretvalue and issecretvalue(exhaustionID) then exhaustionID = nil end
+        if issecretvalue and issecretvalue(restStateFactor) then restStateFactor = nil end
     end
 
     local rawRestedXP = (GetXPExhaustion and GetXPExhaustion()) or 0
-    if issecretvalue and rawRestedXP and issecretvalue(rawRestedXP) then rawRestedXP = 0 end
+    if issecretvalue and issecretvalue(rawRestedXP) then rawRestedXP = 0 end
     local currentRestedXP = rawRestedXP
     local currentXP = UnitXP("player") or 0
     if issecretvalue and issecretvalue(currentXP) then currentXP = 0 end
@@ -733,8 +733,8 @@ end
 function WarbandNexus:SaveMinimalCharacterData()
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()
-    if name and issecretvalue and issecretvalue(name) then return false end
-    if realm and issecretvalue and issecretvalue(realm) then return false end
+    if issecretvalue and issecretvalue(name) then return false end
+    if issecretvalue and issecretvalue(realm) then return false end
     
     if not name or name == "" or not realm or realm == "" then
         return false
@@ -764,7 +764,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     -- Get basic character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
-    if issecretvalue and level and issecretvalue(level) then return false end
+    if issecretvalue and issecretvalue(level) then return false end
     local totalCopper = SafeGetMoneyCopperFromEntry(existingEntry)
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")
@@ -974,8 +974,8 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()  -- Get realm name
-    if name and issecretvalue and issecretvalue(name) then return _saveProfEnd(false) end
-    if realm and issecretvalue and issecretvalue(realm) then return _saveProfEnd(false) end
+    if issecretvalue and issecretvalue(name) then return _saveProfEnd(false) end
+    if issecretvalue and issecretvalue(realm) then return _saveProfEnd(false) end
     
     -- Safety check
     if not name or name == "" or name == "Unknown" then
@@ -1007,7 +1007,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     -- Get character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
-    if issecretvalue and level and issecretvalue(level) then return _saveProfEnd(false) end
+    if issecretvalue and issecretvalue(level) then return _saveProfEnd(false) end
     -- ambiguous = in a guild but the name is not loaded yet (or secret); resolved below
     -- against the stored row so a login race does not erase the guild.
     local guildName, guildAmbiguous = nil, false
@@ -1131,7 +1131,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     -- Zero/secret readings (gear not streamed in yet at T+2s) keep the previous value.
     local itemLevel = (existingEntry and existingEntry.itemLevel) or 0
     local _, avgItemLevelEquipped = GetAverageItemLevel()
-    if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then
+    if issecretvalue and issecretvalue(avgItemLevelEquipped) then
         avgItemLevelEquipped = nil
     end
     avgItemLevelEquipped = tonumber(avgItemLevelEquipped)
@@ -1250,7 +1250,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
             or not existingEntry.guid or existingEntry.guid == "" then
             if ns.Utilities and ns.Utilities.SafeGuid then
                 local g = ns.Utilities:SafeGuid("player")
-                if g and not (issecretvalue and issecretvalue(g)) then
+                if not (issecretvalue and issecretvalue(g)) and g then
                     existingEntry.guid = g
                 end
             end
@@ -2181,8 +2181,13 @@ function WarbandNexus:CollectPvEData()
             local instanceName, lockoutID, resetTime, difficultyID, locked, extended, 
                   instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, 
                   encounterProgress, extendDisabled, instanceID = GetSavedInstanceInfo(i)
-            if issecretvalue and instanceName and issecretvalue(instanceName) then instanceName = nil end
-            if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
+            if issecretvalue and issecretvalue(instanceName) then instanceName = nil end
+            if issecretvalue and issecretvalue(difficultyName) then difficultyName = nil end
+            -- Secret booleans error on a truth test and secret numbers are dropped on save: scrub first.
+            lockoutID, resetTime = Utilities:SafeNumber(lockoutID), Utilities:SafeNumber(resetTime)
+            difficultyID, maxPlayers = Utilities:SafeNumber(difficultyID), Utilities:SafeNumber(maxPlayers)
+            numEncounters, encounterProgress = Utilities:SafeNumber(numEncounters), Utilities:SafeNumber(encounterProgress)
+            locked, extended, isRaid = Utilities:SafeBool(locked), Utilities:SafeBool(extended), Utilities:SafeBool(isRaid)
             
             if locked or extended then
                 table.insert(pve.lockouts, {
@@ -2443,8 +2448,11 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
             local numSaved = GetNumSavedInstances()
             for i = 1, numSaved do
                 local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(i)
-                if issecretvalue and name and issecretvalue(name) then name = nil end
-                if issecretvalue and difficultyName and issecretvalue(difficultyName) then difficultyName = nil end
+                if issecretvalue and issecretvalue(name) then name = nil end
+                if issecretvalue and issecretvalue(difficultyName) then difficultyName = nil end
+                id, reset, difficulty = Utilities:SafeNumber(id), Utilities:SafeNumber(reset), Utilities:SafeNumber(difficulty)
+                numEncounters, encounterProgress = Utilities:SafeNumber(numEncounters), Utilities:SafeNumber(encounterProgress)
+                locked, extended, isRaid = Utilities:SafeBool(locked), Utilities:SafeBool(extended), Utilities:SafeBool(isRaid)
                 if name and locked then
                     table.insert(pve.lockouts, {
                         name = name,
@@ -2647,8 +2655,8 @@ function WarbandNexus:ScanMythicKeystone()
     
     local mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
-    if mapID and issecretvalue and issecretvalue(mapID) then mapID = nil end
-    if keystoneLevel and issecretvalue and issecretvalue(keystoneLevel) then keystoneLevel = nil end
+    if issecretvalue and issecretvalue(mapID) then mapID = nil end
+    if issecretvalue and issecretvalue(keystoneLevel) then keystoneLevel = nil end
     local levelNum = keystoneLevel and tonumber(keystoneLevel) or nil
     local mapNum = mapID and tonumber(mapID) or nil
 
@@ -2657,7 +2665,7 @@ function WarbandNexus:ScanMythicKeystone()
     end
     
     local mapName = C_ChallengeMode and C_ChallengeMode.GetMapUIInfo(mapNum)
-    if mapName and issecretvalue and issecretvalue(mapName) then
+    if issecretvalue and issecretvalue(mapName) then
         mapName = nil
     end
 
@@ -3156,7 +3164,7 @@ function WarbandNexus:GetBankStatistics()
     
     -- ===== GUILD BANK (legacy format - scanned when guild bank is opened) =====
     local guildName = GetGuildInfo("player")
-    if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
+    if issecretvalue and issecretvalue(guildName) then guildName = nil end
     local guildData = nil
     if guildName and self.db.global.guildBank and self.db.global.guildBank[guildName] then
         guildData = self.db.global.guildBank[guildName]

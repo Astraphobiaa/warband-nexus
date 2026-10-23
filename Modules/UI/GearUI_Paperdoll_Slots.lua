@@ -65,7 +65,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         socketEntries = nil,
     }
     btn._needsDeferredInspect = false
-    if slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
+    if slotData and not (issecretvalue and issecretvalue(slotData.itemLink)) and slotData.itemLink then
         btn._needsDeferredInspect = true
     end
     local inspectRoot = inspectListHost or parent
@@ -308,7 +308,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                     if cid and cid > 0 then
                         if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
                             local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
-                            if ok and info and info.name and not (issecretvalue and issecretvalue(info.name)) and info.name ~= "" then
+                            if ok and info and not (issecretvalue and issecretvalue(info.name)) and info.name and info.name ~= "" then
                                 return info.name
                             end
                         end
@@ -536,7 +536,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
 
         self._slotDataRef = slotData
         self._needsDeferredInspect = false
-        if slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
+        if slotData and not (issecretvalue and issecretvalue(slotData.itemLink)) and slotData.itemLink then
             local st = self._gearInspectSt
             if not linkUnchanged or not st or not st.ready then
                 self._needsDeferredInspect = true

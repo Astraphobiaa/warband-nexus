@@ -629,12 +629,13 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         whBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
         whBtn:SetFrameLevel(card:GetFrameLevel() + 5)
         whBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead", 1, 0.82, 0)
-            GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6, true)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+                GameTooltip:AddLine((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead", 1, 0.82, 0)
+                GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6, true)
+                GameTooltip:Show()
+            end
         end)
-        whBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        whBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         local capturedType, capturedID = wowheadEntityType, wowheadID
         whBtn:SetScript("OnClick", function(self)
             if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
@@ -661,13 +662,14 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         linkBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
         local capPlan = plan
         linkBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            local L = ns.L
-            GameTooltip:AddLine((L and L["PLAN_CHAT_LINK_TITLE"]) or "Chat link", 1, 0.82, 0)
-            GameTooltip:AddLine((L and L["PLAN_CHAT_LINK_HINT"]) or "Click to insert into chat", 0.6, 0.6, 0.6, true)
-            GameTooltip:Show()
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_TOP") then
+                local L = ns.L
+                GameTooltip:AddLine((L and L["PLAN_CHAT_LINK_TITLE"]) or "Chat link", 1, 0.82, 0)
+                GameTooltip:AddLine((L and L["PLAN_CHAT_LINK_HINT"]) or "Click to insert into chat", 0.6, 0.6, 0.6, true)
+                GameTooltip:Show()
+            end
         end)
-        linkBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        linkBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         linkBtn:SetScript("OnClick", function()
             if WarbandNexus.InsertPlanChatLink then
                 WarbandNexus:InsertPlanChatLink(capPlan)
@@ -1555,7 +1557,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     -- ALWAYS prefer API description for achievements (ensures localization)
     if plan.achievementID then
         local success, _, _, _, _, _, _, _, achievementDescription = pcall(GetAchievementInfo, plan.achievementID)
-        if success and achievementDescription and not (issecretvalue and issecretvalue(achievementDescription)) and achievementDescription ~= "" then
+        if success and not (issecretvalue and issecretvalue(achievementDescription)) and achievementDescription and achievementDescription ~= "" then
             description = achievementDescription
         end
     end
@@ -1585,7 +1587,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     end
 
     -- Description: word-wrap to card width (no manual substring truncation â€” avoids false ellipsis when space remains)
-    if description and not (issecretvalue and issecretvalue(description)) and description ~= "" then
+    if not (issecretvalue and issecretvalue(description)) and description and description ~= "" then
         description = description:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
         card.fullDescription = description
 
@@ -1710,7 +1712,7 @@ function PlanCardFactory:CreateAchievementSimpleCard(card, plan, progress, nameT
 
     if achievementID then
         local success, _, _, _, _, _, _, _, achievementDescription = pcall(GetAchievementInfo, achievementID)
-        if success and achievementDescription and not (issecretvalue and issecretvalue(achievementDescription)) and achievementDescription ~= "" then
+        if success and not (issecretvalue and issecretvalue(achievementDescription)) and achievementDescription and achievementDescription ~= "" then
             description = achievementDescription
         end
     end
@@ -1742,7 +1744,7 @@ function PlanCardFactory:CreateAchievementSimpleCard(card, plan, progress, nameT
         local ri = WarbandNexus:GetAchievementRewardInfo(achievementID)
         if ri then displayReward = ri.title or ri.itemName end
     end
-    if displayReward and not (issecretvalue and issecretvalue(displayReward)) and displayReward ~= "" then
+    if not (issecretvalue and issecretvalue(displayReward)) and displayReward and displayReward ~= "" then
         local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
         if lastElement then
             rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -4)
@@ -2802,22 +2804,24 @@ function PlanCardFactory.CreateAddButton(parent, options)
             end
             local plannedTip = (ns.L and ns.L["PLANNED"]) or "On your To-Do list"
             addBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                local tr, tg, tb = TooltipTitleRGB()
-                GameTooltip:SetText(plannedTip, tr, tg, tb)
-                GameTooltip:Show()
+                if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_LEFT") then
+                    local tr, tg, tb = TooltipTitleRGB()
+                    GameTooltip:SetText(plannedTip, tr, tg, tb)
+                    GameTooltip:Show()
+                end
             end)
-            addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            addBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
             addBtn:SetScript("OnClick", nil)
         else
             local todoTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_ADD"]) or "Add to your To-Do list."
             addBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                local tr, tg, tb = TooltipTitleRGB()
-                GameTooltip:SetText(todoTip, tr, tg, tb)
-                GameTooltip:Show()
+                if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_LEFT") then
+                    local tr, tg, tb = TooltipTitleRGB()
+                    GameTooltip:SetText(todoTip, tr, tg, tb)
+                    GameTooltip:Show()
+                end
             end)
-            addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            addBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         end
     else
         local btnText = FontManager:CreateFontString(addBtn, "body", "OVERLAY")

@@ -168,7 +168,7 @@ end
 local UIMapType = Enum and Enum.UIMapType
 
 local function IsSecret(val)
-    return issecretvalue and val and issecretvalue(val)
+    return issecretvalue and issecretvalue(val)
 end
 
 local MAP_TREE_MAX_DEPTH = 48
@@ -222,7 +222,7 @@ local function gatherDescendantIds(rootID, into, depthOut)
                     for i = 1, #children do
                         local ch = children[i]
                         local rawCid = ch and (ch.mapID or ch.mapId)
-                        if rawCid == nil or IsSecret(rawCid) then
+                        if IsSecret(rawCid) or rawCid == nil then
                             rawCid = nil
                         end
                         local cid = rawCid and tonumber(rawCid)
@@ -517,7 +517,7 @@ local function collapseDuplicateNamesToSingleMainRow(entries, apiRoots)
                 end
             else
                 local okp, pinfo = pcall(C_Map.GetMapInfo, mainId)
-                if okp and pinfo and pinfo.name and not (issecretvalue and issecretvalue(pinfo.name))
+                if okp and pinfo and not (issecretvalue and issecretvalue(pinfo.name)) and pinfo.name
                     and pinfo.name ~= "" then
                     out[#out + 1] = {
                         id = mainId,
@@ -650,7 +650,7 @@ local function appendPickerGroupRows(rows, apiRoots, headerKey, kindTag, ids)
         if mid and mid > 0 then
             if #apiRoots == 0 or uiMapStructuredUnderRoots(mid, apiRoots) then
                 local ok, info = pcall(C_Map.GetMapInfo, mid)
-                if ok and info and info.name and not (issecretvalue and issecretvalue(info.name))
+                if ok and info and not (issecretvalue and issecretvalue(info.name)) and info.name
                     and info.name ~= "" then
                     local base = info.name
                     local disp = base
@@ -763,7 +763,7 @@ local function buildApiRowsForSection(sectionIndex)
             -- Stray cross-branch links (wrong continent / shared world layer before apiRoots).
         else
         local ok, info = pcall(C_Map.GetMapInfo, mid)
-        if ok and info and info.name and not (issecretvalue and issecretvalue(info.name)) and info.name ~= "" then
+        if ok and info and not (issecretvalue and issecretvalue(info.name)) and info.name and info.name ~= "" then
             if UIMapType and info.mapType == UIMapType.Zone then
                 zoneTypeInSubtree[mid] = true
             end
@@ -806,7 +806,7 @@ local function buildApiRowsForSection(sectionIndex)
                     -- Curated ID not under this expansion's roots (outdated / wrong list entry).
                 else
                 local ok2, info2 = pcall(C_Map.GetMapInfo, sid)
-                if ok2 and info2 and info2.name and not (issecretvalue and issecretvalue(info2.name))
+                if ok2 and info2 and not (issecretvalue and issecretvalue(info2.name)) and info2.name
                     and info2.name ~= "" then
                     local kind = UICK.Resolve(sid, info2)
                     if kind ~= "cosmic" and kind ~= "world" then
