@@ -1182,25 +1182,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "過濾「總遊戲時間」與「本�
 
 
 
-L["CHANGELOG_V370"] = [=[v3.7.0 (2026-10-23)
+L["CHANGELOG_V371"] = [=[v3.7.1 (2026-10-24)
 
-A large stability and performance update: faster tabs, a lighter login, character data that survives logouts, and a new Delve Nemesis column.
-
-Added:
-- Added a weekly Delve Nemesis column to the PvE tab.
-- Item levels now show one decimal.
+A stability update: fixes for Midnight secret value errors, cleaner handling of Blizzard alerts, and a corrected Delve Nemesis column.
 
 Updated:
-- Tabs open, switch and scroll much faster, and logging in is lighter.
-- Saved data is smaller: bag data is compressed again and duplicate collection and profession data is no longer stored.
-- Farming reputation now updates only the faction you gained instead of rescanning every faction.
-- Light mode text is now readable in Collections, PvE, Plans, status cards and tooltips.
+- Warband achievement popups now replace Blizzard's achievement, criteria and Traveler's Log alerts without touching Blizzard's alert system, so other Blizzard alerts are no longer affected.
+- Blizzard's "addon blocked an action" message is no longer hidden.
 
 Fixed:
-- Fixed character data (profession knowledge, keystones, weekly flags, lockouts, reputation) being lost or reset after logging out.
-- Fixed PvE cells not updating, the Great Vault tooltip error with 8 or more runs, and missing raid names in vault slots.
-- Fixed Collections achievement rows not opening the journal, Mount Journal filters being reset, and new collectible alerts being skipped.
-- Fixed double plan completion alerts, Traveler's Log alerts, raid try counts and many Midnight secret value errors.
+- Fixed "attempt to compare a secret number value" errors when moving from a map pin or NPC tooltip onto a Warband Nexus button.
+- Fixed many more Midnight secret value errors in instances, the try counter, loot tracking and tooltips.
+- Fixed the Delve Nemesis column not completing after killing the Nemesis summoned with the Scalebound Herald's Flute.
+- Fixed setting tooltips making later game tooltips too wide.
+- Fixed keyboard errors when a settings panel or menu closed during combat.
 
 CurseForge: Warband Nexus]=]
 
