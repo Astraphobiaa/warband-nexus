@@ -300,7 +300,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 9
+local MIGRATION_FAST_PATH_REVISION = 10
 
 --- Every step RunMigrations runs on the full path, in order. Each step is a MigrationService method
 --- taking (db) and guards itself (flag, stamp or version compare), so re-running one is a no-op.
@@ -345,6 +345,7 @@ local MIGRATION_STEPS = {
     "MigratePruneDeadProfileKeysV1",
     "FinalizeGuidOnlySubsidiaryV1",
     "MigrateFoldProfessionWeeklyMirrorV1",
+    "MigrateDropRecipeDuplicatesV1",
 }
 
 --- Cheap steps that also run on the fast path (2026-10-22). The first two compare a stored stamp with a
@@ -2203,6 +2204,46 @@ function MigrationService:MigrateFoldProfessionWeeklyMirrorV1(db)
         DebugPrint("|cff9370DB[Migration]|r foldProfessionWeeklyMirrorV1: dropped " .. removed .. " mirrored row(s)")
     end
     db.global.foldProfessionWeeklyMirrorV1 = true
+end
+
+--- Drop stored recipe data that only repeats other stored fields (2026-10-22):
+---   recipes[sl].knownRecipes  = recipeList's learned rows (dropped only where recipeList is present);
+---   recipes[sl].firstCraftCount = firstCraftDoneCount (dropped only on rows that have the new keys);
+---   professionData.bySkillLine[sl].recipes = the same counters again, with no reader.
+---@param db table AceDB root
+function MigrationService:MigrateDropRecipeDuplicatesV1(db)
+    if not db or not db.global or db.global.dropRecipeDuplicatesV1 then return end
+    local dropped = 0
+    for _, charData in pairs(db.global.characters or {}) do
+        if type(charData) == "table" then
+            if type(charData.recipes) == "table" then
+                for _, rd in pairs(charData.recipes) do
+                    if type(rd) == "table" then
+                        if rd.knownRecipes ~= nil and type(rd.recipeList) == "table" and #rd.recipeList > 0 then
+                            rd.knownRecipes = nil
+                            dropped = dropped + 1
+                        end
+                        if rd.firstCraftCount ~= nil and rd.firstCraftTotalCount ~= nil and rd.firstCraftDoneCount ~= nil then
+                            rd.firstCraftCount = nil
+                        end
+                    end
+                end
+            end
+            local bySkillLine = type(charData.professionData) == "table" and charData.professionData.bySkillLine
+            if type(bySkillLine) == "table" then
+                for _, bucket in pairs(bySkillLine) do
+                    if type(bucket) == "table" and bucket.recipes ~= nil then
+                        bucket.recipes = nil
+                        dropped = dropped + 1
+                    end
+                end
+            end
+        end
+    end
+    if dropped > 0 then
+        DebugPrint("|cff9370DB[Migration]|r dropRecipeDuplicatesV1: dropped " .. dropped .. " duplicate table(s)")
+    end
+    db.global.dropRecipeDuplicatesV1 = true
 end
 
 local function CollectionStoreIsAuthoritative(global)

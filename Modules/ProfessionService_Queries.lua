@@ -351,6 +351,33 @@ end
         ...
     }
 ]]
+-- recipeList table -> { [recipeID] = true } for its learned rows. Weak keys: a rescan or sanitize
+-- replaces the list table, so a stale set is never reused.
+local learnedSetByList = setmetatable({}, { __mode = "k" })
+
+---True when a stored recipe summary row has recipeID learned. Rows written since 2026-10-22 keep
+---only recipeList (learned flag per entry); older rows may still carry the knownRecipes set.
+---@param profData table charData.recipes[skillLineID]
+---@param recipeID number
+---@return boolean
+local function RecipeRowKnowsRecipe(profData, recipeID)
+    if type(profData) ~= "table" then return false end
+    local known = profData.knownRecipes
+    if type(known) == "table" then return known[recipeID] == true end
+    local list = profData.recipeList
+    if type(list) ~= "table" then return false end
+    local set = learnedSetByList[list]
+    if not set then
+        set = {}
+        for i = 1, #list do
+            local r = list[i]
+            if type(r) == "table" and r.learned == true and r.recipeID then set[r.recipeID] = true end
+        end
+        learnedSetByList[list] = set
+    end
+    return set[recipeID] == true
+end
+
 function WarbandNexus:GetCraftersForRecipe(recipeID)
     local result = {}
 
@@ -362,7 +389,7 @@ function WarbandNexus:GetCraftersForRecipe(recipeID)
     for charKey, charData in pairs(self.db.global.characters) do
         if charData.recipes then
             for skillLineID, profData in pairs(charData.recipes) do
-                if profData.knownRecipes and profData.knownRecipes[recipeID] then
+                if RecipeRowKnowsRecipe(profData, recipeID) then
                     -- Concentration keyed by skillLineID (same as recipes); fallback legacy by professionName
                     local concEntry = nil
                     if charData.concentration then

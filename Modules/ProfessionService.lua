@@ -1631,7 +1631,6 @@ local function CollectRecipeSummaryData()
     local firstCraftTotalCount = 0
     local firstCraftAvailableCount = 0
     local skillUpCount = 0
-    local knownRecipes = {}
     local recipeList = {}
     local rawRecipeCount = #recipeIDs
     local categoryCache = {}
@@ -1661,7 +1660,6 @@ local function CollectRecipeSummaryData()
 
                     if recipeInfo.learned == true then
                         knownCount = knownCount + 1
-                        knownRecipes[recipeID] = true
                     end
 
                     -- Store recipe detail for Info window display
@@ -1713,28 +1711,20 @@ local function CollectRecipeSummaryData()
         expansionName = expansionName,
         totalCount = totalCount,
         knownCount = knownCount,
-        firstCraftCount = firstCraftDoneCount, -- legacy key (now stores done count)
         firstCraftDoneCount = firstCraftDoneCount,
         firstCraftTotalCount = firstCraftTotalCount,
         firstCraftAvailableCount = firstCraftAvailableCount,
         skillUpCount = skillUpCount,
-        knownRecipes = knownRecipes,
         recipeList = recipeList,
         lastScan = time(),
     }
 
+    -- 2026-10-22: no stored duplicates. knownRecipes was recipeList's learned rows again (readers
+    -- derive it: ProfessionService_Queries RecipeRowKnowsRecipe), firstCraftCount repeated
+    -- firstCraftDoneCount, and bucket.recipes repeated these counters with no reader.
     local bucket = EnsureSkillLineBucket(charData, skillLineID, professionName, expansionName)
     if bucket then
-        bucket.recipes = {
-            totalCount = totalCount,
-            knownCount = knownCount,
-            firstCraftCount = firstCraftDoneCount, -- legacy key (now stores done count)
-            firstCraftDoneCount = firstCraftDoneCount,
-            firstCraftTotalCount = firstCraftTotalCount,
-            firstCraftAvailableCount = firstCraftAvailableCount,
-            skillUpCount = skillUpCount,
-            lastUpdate = time(),
-        }
+        bucket.recipes = nil
     end
     -- Keep weekly knowledge counters in sync after recipe scans.
     if PS.CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName) then

@@ -291,7 +291,8 @@ _G.C_TradeSkillUI = {
     IsTradeSkillReady = function() return tradeSkillReady end,
     GetProfessionChildSkillLineID = function() return 2906 end,
     GetAllRecipeIDs = function() return { 501, 502 } end,
-    GetRecipeInfo = function(id) return { recipeID = id, name = "Recipe " .. id, categoryID = 900, learned = true, firstCraft = false } end,
+    -- 502 stays unlearned so recipe rows carry both learned states (2026-10-22 slim recipe rows).
+    GetRecipeInfo = function(id) return { recipeID = id, name = "Recipe " .. id, categoryID = 900, learned = (id ~= 502), firstCraft = false } end,
     GetCategoryInfo = function() return { name = recipeCategoryName, parentCategoryID = 0 } end,
 }
 
@@ -363,6 +364,69 @@ do
     _G.C_TradeSkillUI.IsRecipeInSkillLine = nil
     tradeSkillReady = false
     recipeCategoryName = "Midnight"
+end
+
+print("Phase 11b: Recipe rows store no duplicates; crafter lookup derives learned recipes")
+do
+    local charData = WarbandNexus.db.global.characters["Player-01"]
+    charData.recipes = {}
+    tradeSkillReady = true
+    WarbandNexus:OnTradeSkillListUpdate()
+    WarbandNexus:FlushProfessionOnLogout()
+    tradeSkillReady = false
+    local rec = charData.recipes[2906]
+    assert_true(rec ~= nil and #rec.recipeList == 2, "scan stored both recipes in recipeList")
+    assert_eq(rec and rec.knownCount, 1, "one learned recipe counted")
+    assert_eq(rec and rec.knownRecipes, nil, "knownRecipes (copy of recipeList's learned rows) not stored")
+    assert_eq(rec and rec.firstCraftCount, nil, "legacy firstCraftCount (copy of firstCraftDoneCount) not stored")
+    local bucket = charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[2906]
+    assert_eq(bucket and bucket.recipes, nil, "bucket.recipes counter copy not stored")
+
+    local function crafterKeys(recipeID)
+        return #WarbandNexus:GetCraftersForRecipe(recipeID)
+    end
+    assert_eq(crafterKeys(501), 1, "crafter lookup finds the learned recipe from recipeList")
+    assert_eq(crafterKeys(502), 0, "crafter lookup skips the unlearned recipe")
+    -- A legacy row (knownRecipes only, no recipeList) still answers.
+    charData.recipes[2907] = { skillLineID = 2907, professionName = "Legacy", knownRecipes = { [777] = true } }
+    assert_eq(crafterKeys(777), 1, "legacy knownRecipes row still found")
+    charData.recipes[2907] = nil
+    -- Rescan replaces the list table: the derived set follows it.
+    rec.recipeList = { { recipeID = 501, learned = false }, { recipeID = 502, learned = true } }
+    assert_eq(crafterKeys(501), 0, "derived set rebuilt for a replaced recipeList (501 now unlearned)")
+    assert_eq(crafterKeys(502), 1, "derived set rebuilt for a replaced recipeList (502 now learned)")
+end
+
+print("Phase 11c: Migration drops recipe duplicates only where they are derivable")
+do
+    local fh = assert(io.open((os.getenv("WN_ROOT") or ".") .. "/Modules/MigrationService.lua", "rb"))
+    local src = fh:read("*a")
+    fh:close()
+    local body = src:match("(function MigrationService:MigrateDropRecipeDuplicatesV1%(db%).-\nend)\n")
+    assert_true(body ~= nil, "MigrateDropRecipeDuplicatesV1 defined")
+    if body then
+        local MS = assert(loadstring("local MigrationService, DebugPrint = {}, function() end\n" .. body .. "\nreturn MigrationService"))()
+        local db = { global = { characters = {
+            A = {
+                recipes = {
+                    [2906] = { recipeList = { { recipeID = 1, learned = true } }, knownRecipes = { [1] = true },
+                               firstCraftCount = 3, firstCraftDoneCount = 3, firstCraftTotalCount = 5 },
+                    [2907] = { knownRecipes = { [9] = true }, firstCraftCount = 4 },   -- legacy: no list, old schema
+                },
+                professionData = { bySkillLine = { [2906] = { recipes = { totalCount = 1 }, weeklyKnowledge = {} } } },
+            },
+        } } }
+        MS:MigrateDropRecipeDuplicatesV1(db)
+        local A = db.global.characters.A
+        assert_eq(A.recipes[2906].knownRecipes, nil, "knownRecipes dropped where recipeList holds it")
+        assert_eq(A.recipes[2906].firstCraftCount, nil, "firstCraftCount dropped on a new-schema row")
+        assert_eq(A.recipes[2906].firstCraftDoneCount, 3, "firstCraftDoneCount kept")
+        assert_true(A.recipes[2907].knownRecipes ~= nil, "knownRecipes kept on a row without recipeList")
+        assert_eq(A.recipes[2907].firstCraftCount, 4, "legacy firstCraftCount kept (weekly knowledge fallback reads it)")
+        assert_eq(A.professionData.bySkillLine[2906].recipes, nil, "bucket.recipes dropped")
+        assert_true(A.professionData.bySkillLine[2906].weeklyKnowledge ~= nil, "rest of the bucket kept")
+        assert_eq(db.global.dropRecipeDuplicatesV1, true, "migration stamped")
+    end
 end
 
 print("Phase 12: Login concentration refresh keeps stored values while currency data is not ready")
