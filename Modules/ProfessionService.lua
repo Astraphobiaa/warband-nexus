@@ -1667,7 +1667,8 @@ local function CollectRecipeSummaryData()
                         recipeID = recipeID,
                         name = SafeAPIString(recipeInfo.name) or ("Recipe " .. recipeID),
                         icon = recipeInfo.icon,
-                        learned = recipeInfo.learned == true,
+                        -- Only true is stored (2026-10-22): readers test truthiness, nil == unlearned.
+                        learned = (recipeInfo.learned == true) or nil,
                     }
 
                     -- First Craft (Current / Total): total = only recipes that actually have a first-craft bonus (matches other addons e.g. 72 not 88).

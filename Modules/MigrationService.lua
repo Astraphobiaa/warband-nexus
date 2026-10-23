@@ -300,7 +300,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 10
+local MIGRATION_FAST_PATH_REVISION = 11
 
 --- Every step RunMigrations runs on the full path, in order. Each step is a MigrationService method
 --- taking (db) and guards itself (flag, stamp or version compare), so re-running one is a no-op.
@@ -346,6 +346,7 @@ local MIGRATION_STEPS = {
     "FinalizeGuidOnlySubsidiaryV1",
     "MigrateFoldProfessionWeeklyMirrorV1",
     "MigrateDropRecipeDuplicatesV1",
+    "MigrateDropFalseRecipeLearnedV1",
 }
 
 --- Cheap steps that also run on the fast path (2026-10-22). The first two compare a stored stamp with a
@@ -2244,6 +2245,35 @@ function MigrationService:MigrateDropRecipeDuplicatesV1(db)
         DebugPrint("|cff9370DB[Migration]|r dropRecipeDuplicatesV1: dropped " .. dropped .. " duplicate table(s)")
     end
     db.global.dropRecipeDuplicatesV1 = true
+end
+
+--- Remove learned = false from stored recipeList entries (2026-10-22): the writer now stores only
+--- learned = true and every reader treats a missing flag as unlearned.
+---@param db table AceDB root
+function MigrationService:MigrateDropFalseRecipeLearnedV1(db)
+    if not db or not db.global or db.global.dropFalseRecipeLearnedV1 then return end
+    local stripped = 0
+    for _, charData in pairs(db.global.characters or {}) do
+        local recipes = type(charData) == "table" and charData.recipes
+        if type(recipes) == "table" then
+            for _, rd in pairs(recipes) do
+                local list = type(rd) == "table" and rd.recipeList
+                if type(list) == "table" then
+                    for i = 1, #list do
+                        local r = list[i]
+                        if type(r) == "table" and r.learned == false then
+                            r.learned = nil
+                            stripped = stripped + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if stripped > 0 then
+        DebugPrint("|cff9370DB[Migration]|r dropFalseRecipeLearnedV1: stripped " .. stripped .. " flag(s)")
+    end
+    db.global.dropFalseRecipeLearnedV1 = true
 end
 
 local function CollectionStoreIsAuthoritative(global)

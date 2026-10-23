@@ -381,6 +381,10 @@ do
     assert_eq(rec and rec.firstCraftCount, nil, "legacy firstCraftCount (copy of firstCraftDoneCount) not stored")
     local bucket = charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[2906]
     assert_eq(bucket and bucket.recipes, nil, "bucket.recipes counter copy not stored")
+    local byID = {}
+    for i = 1, #(rec and rec.recipeList or {}) do byID[rec.recipeList[i].recipeID] = rec.recipeList[i] end
+    assert_eq(byID[501] and byID[501].learned, true, "learned recipe keeps learned = true")
+    assert_true(byID[502] ~= nil and rawget(byID[502], "learned") == nil, "unlearned recipe stores no learned flag (not false)")
 
     local function crafterKeys(recipeID)
         return #WarbandNexus:GetCraftersForRecipe(recipeID)
@@ -426,6 +430,39 @@ do
         assert_eq(A.professionData.bySkillLine[2906].recipes, nil, "bucket.recipes dropped")
         assert_true(A.professionData.bySkillLine[2906].weeklyKnowledge ~= nil, "rest of the bucket kept")
         assert_eq(db.global.dropRecipeDuplicatesV1, true, "migration stamped")
+    end
+end
+
+print("Phase 11d: Migration strips stored learned = false; Info window sort treats nil as unlearned")
+do
+    local fh = assert(io.open((os.getenv("WN_ROOT") or ".") .. "/Modules/MigrationService.lua", "rb"))
+    local src = fh:read("*a")
+    fh:close()
+    local body = src:match("(function MigrationService:MigrateDropFalseRecipeLearnedV1%(db%).-\nend)\n")
+    assert_true(body ~= nil, "MigrateDropFalseRecipeLearnedV1 defined")
+    if body then
+        local MS = assert(loadstring("local MigrationService, DebugPrint = {}, function() end\n" .. body .. "\nreturn MigrationService"))()
+        local list = { { recipeID = 1, learned = true }, { recipeID = 2, learned = false }, { recipeID = 3 } }
+        local db = { global = { characters = { A = { recipes = { [2906] = { recipeList = list } } } } } }
+        MS:MigrateDropFalseRecipeLearnedV1(db)
+        assert_eq(list[1].learned, true, "learned = true kept")
+        assert_eq(rawget(list[2], "learned"), nil, "learned = false stripped")
+        assert_eq(#list, 3, "no entry removed")
+        assert_eq(db.global.dropFalseRecipeLearnedV1, true, "migration stamped")
+    end
+
+    -- Info window comparator: rows with learned = false (old) and nil (new) sort as the same group.
+    local fh2 = assert(io.open((os.getenv("WN_ROOT") or ".") .. "/Modules/UI/ProfessionInfoWindow.lua", "rb"))
+    local win = fh2:read("*a")
+    fh2:close()
+    local cmpSrc = win:match("table%.sort%(sorted, (function%(a, b%)\n.-\n%s+end)%)")
+    assert_true(cmpSrc ~= nil, "Info window recipe comparator found")
+    if cmpSrc then
+        local cmp = assert(loadstring("local SafeLower = string.lower\nreturn " .. cmpSrc))()
+        local rows = { { name = "b", learned = false }, { name = "a" }, { name = "c", learned = true }, { name = "d" } }
+        table.sort(rows, cmp)
+        assert_eq(rows[1].name, "c", "learned recipe sorts first")
+        assert_eq(rows[2].name .. rows[3].name .. rows[4].name, "abd", "nil and false unlearned rows sort together by name")
     end
 end
 

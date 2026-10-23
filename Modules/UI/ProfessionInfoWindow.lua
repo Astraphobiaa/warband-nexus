@@ -867,7 +867,9 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                         end
                     end
                     table.sort(sorted, function(a, b)
-                        if a.learned ~= b.learned then return a.learned end
+                        -- learned is true or absent (nil) since 2026-10-22; older rows may still hold false.
+                        local aL, bL = a.learned == true, b.learned == true
+                        if aL ~= bL then return aL end
                         return SafeLower(a.name) < SafeLower(b.name)
                     end)
 
