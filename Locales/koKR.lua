@@ -1182,23 +1182,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "총 플레이 시간·이 레벨 플�
 
 
 
-L["CHANGELOG_V361"] = [=[v3.6.1 (2026-10-17)
+L["CHANGELOG_V370"] = [=[v3.7.0 (2026-10-23)
 
-A Tormented Soul tracker in the PvE tab, cleaner Characters and PvE layouts, and fixes for favorites and collapsing sections.
+A large stability and performance update: faster tabs, a lighter login, character data that survives logouts, and a new Delve Nemesis column.
 
 Added:
-- Added a Tormented Soul column to the PvE tab that shows, per character, whether this week's Tormented Soul is still available, waiting for your next Nightmare hunt, or done.
-- Added a "Show Realm Name" option to hide the realm line under character names in the Characters tab.
-- Added Filter > Display options in the PvE tab to hide the Level and Item Level columns for a narrower table.
+- Added a weekly Delve Nemesis column to the PvE tab.
+- Item levels now show one decimal.
 
 Updated:
-- Starring a character now moves it out of its custom section into Favorites, and unstarring returns it to Characters.
-- PvE crest column headers now name each crest tier (Adventurer to Myth) instead of showing "Crest" five times.
-- The PvE weekly columns (Bounty, Nightmare, Soul, Vaults, Status) now share an even, readable width.
+- Tabs open, switch and scroll much faster, and logging in is lighter.
+- Saved data is smaller: bag data is compressed again and duplicate collection and profession data is no longer stored.
+- Farming reputation now updates only the faction you gained instead of rescanning every faction.
+- Light mode text is now readable in Collections, PvE, Plans, status cards and tooltips.
 
 Fixed:
-- Fixed sections below a collapsed or expanded section in the Characters tab sometimes disappearing until the window was reopened.
-- Fixed the missing icon on the A Nightmarish Task column in the PvE tab.
+- Fixed character data (profession knowledge, keystones, weekly flags, lockouts, reputation) being lost or reset after logging out.
+- Fixed PvE cells not updating, the Great Vault tooltip error with 8 or more runs, and missing raid names in vault slots.
+- Fixed Collections achievement rows not opening the journal, Mount Journal filters being reset, and new collectible alerts being skipped.
+- Fixed double plan completion alerts, Traveler's Log alerts, raid try counts and many Midnight secret value errors.
 
 CurseForge: Warband Nexus]=]
 
