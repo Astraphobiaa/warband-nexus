@@ -5,7 +5,6 @@
 
     Layers: persistent DB (notifiedCollectibles) | bag-detect TTL | session ring (id/name cooldown)
     Achievement toast ack: WasAchievementToastDisplayed / MarkAchievementToastDisplayed (toast actually shown)
-    Replace-mode fallback: ScheduleAchievementToastFallback when AddAlert does not fire after ACHIEVEMENT_EARNED
 ]]
 
 local _, ns = ...
@@ -258,47 +257,6 @@ local function MarkAchievementToastDisplayed(achievementID)
     achievementToastDisplayed[achievementID] = true
 end
 
--- Replace mode: ACHIEVEMENT_EARNED may fire without a matching AddAlert; fallback after short delay.
-local pendingAchievementToast = {}
-local ACHIEVEMENT_TOAST_FALLBACK_SEC = 1.25
-
----@param achievementID number
-local function ClearPendingAchievementToast(achievementID)
-    if achievementID then
-        pendingAchievementToast[achievementID] = nil
-    end
-end
-
----@param achievementID number
-local function ScheduleAchievementToastFallback(achievementID)
-    if not achievementID or type(achievementID) ~= "number" then return end
-    if issecretvalue and issecretvalue(achievementID) then return end
-    local NP = ns.NotificationPresentation
-    if not NP or not NP.UseWarbandAchievementPopups() then return end
-    pendingAchievementToast[achievementID] = true
-    C_Timer.After(ACHIEVEMENT_TOAST_FALLBACK_SEC, function()
-        if not pendingAchievementToast[achievementID] then return end
-        local addon = WarbandNexus
-        if not addon then
-            pendingAchievementToast[achievementID] = nil
-            return
-        end
-        if WasAchievementToastDisplayed(achievementID) or WasAlreadyNotified("achievement", achievementID) then
-            pendingAchievementToast[achievementID] = nil
-            return
-        end
-        local shown = addon.ShowAchievementNotification and addon:ShowAchievementNotification(achievementID)
-        if shown then
-            pendingAchievementToast[achievementID] = nil
-            return
-        end
-        pendingAchievementToast[achievementID] = nil
-        if addon.InvokeBlizzardAchievementAddAlert then
-            addon:InvokeBlizzardAchievementAddAlert(achievementID)
-        end
-    end)
-end
-
 local Notify = {
     NOTIFICATION_COOLDOWN = NOTIFICATION_COOLDOWN,
     NAME_DEBOUNCE_COOLDOWN = NAME_DEBOUNCE_COOLDOWN,
@@ -315,8 +273,6 @@ local Notify = {
     MarkAsNotified = MarkAsNotified,
     WasAchievementToastDisplayed = WasAchievementToastDisplayed,
     MarkAchievementToastDisplayed = MarkAchievementToastDisplayed,
-    ClearPendingAchievementToast = ClearPendingAchievementToast,
-    ScheduleAchievementToastFallback = ScheduleAchievementToastFallback,
     ACHIEVEMENT_TOAST_FALLBACK_SEC = ACHIEVEMENT_TOAST_FALLBACK_SEC,
     CollectiblePayloadObtainedBy = CollectiblePayloadObtainedBy,
     MarkPetNameBagCooldown = function(itemName)

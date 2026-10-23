@@ -6,8 +6,9 @@
       WN_COLLECTIBLE_OBTAINED dispatch -> OnCollectibleObtained -> Notify -> ShowModalNotification (queue max 6)
       WN_PLAN_COMPLETED / WN_VAULT_* / WN_QUEST_COMPLETED -> handler -> Notify
       WN_SHOW_REMINDER_TOAST -> OnShowReminderToast
-      Achievement lane (binary): ns.NotificationPresentation — Warband popups ON -> AddAlert hook + WN toast;
-        OFF -> native Blizzard AddAlert only (suppressToast on WN_COLLECTIBLE_OBTAINED for achievements)
+      Achievement lane (binary): ns.NotificationPresentation — Warband popups ON -> Blizzard AlertFrame
+        events unregistered + WN toast from ACHIEVEMENT_EARNED / CRITERIA_EARNED / PERKS_ACTIVITY_COMPLETED;
+        OFF -> native Blizzard alerts only (suppressToast on WN_COLLECTIBLE_OBTAINED for achievements)
       Currency/reputation: ChatMessageService only (not toast lane)
 
     WN_FACTORY: Changelog popup scroll-child + themed close use `ns.UI.Factory` / ApplyVisuals; toast layering
@@ -446,7 +447,7 @@ local function BuildCollectibleLootToastDedupeKey(data)
     if t == "mount" then
         if C_MountJournal and C_MountJournal.GetMountFromItem and type(id) == "number" then
             local mid = C_MountJournal.GetMountFromItem(id)
-            if mid and not (issecretvalue and issecretvalue(mid)) and type(mid) == "number" and mid > 0 then
+            if not (issecretvalue and issecretvalue(mid)) and mid and type(mid) == "number" and mid > 0 then
                 id = mid
             end
         end
@@ -454,7 +455,7 @@ local function BuildCollectibleLootToastDedupeKey(data)
     end
     if t == "pet" and C_PetJournal and C_PetJournal.GetPetInfoByItemID and type(id) == "number" then
         local speciesID = select(13, C_PetJournal.GetPetInfoByItemID(id))
-        if speciesID and not (issecretvalue and issecretvalue(speciesID)) and type(speciesID) == "number" and speciesID > 0 then
+        if not (issecretvalue and issecretvalue(speciesID)) and speciesID and type(speciesID) == "number" and speciesID > 0 then
             id = speciesID
         end
         return "pet\0" .. tostring(id)
@@ -569,9 +570,9 @@ local ACTION_TEXT = {
 ---@return table config Ready to pass to ShowModalNotification
 function WarbandNexus:BuildNotificationConfig(notifType, name, icon, overrides)
     local safeIcon = icon
-    if safeIcon and issecretvalue and issecretvalue(safeIcon) then safeIcon = nil end
+    if issecretvalue and issecretvalue(safeIcon) then safeIcon = nil end
     local safeName = name
-    if safeName and issecretvalue and issecretvalue(safeName) then safeName = nil end
+    if issecretvalue and issecretvalue(safeName) then safeName = nil end
     local resolvedIcon = safeIcon or CATEGORY_ICONS[notifType] or DEFAULT_NOTIFICATION_ICON
     local chrome = ToastChrome.Resolve(notifType)
     local config = {
@@ -695,11 +696,13 @@ function ns.UI_OpenAchievementInJournal(achievementID)
         return
     end
     -- Selecting alone does not raise the panel — Blizzard always shows it first.
+    -- ShowUIPanel goes through Blizzard's secure panel delegate, so the panel's OnShow does not run
+    -- in our execution; the Toggle helper is only a fallback.
     if not frame:IsShown() then
-        if type(AchievementFrame_ToggleAchievementFrame) == "function" then
-            pcall(AchievementFrame_ToggleAchievementFrame)
-        elseif type(ShowUIPanel) == "function" then
+        if type(ShowUIPanel) == "function" then
             pcall(ShowUIPanel, frame)
+        elseif type(AchievementFrame_ToggleAchievementFrame) == "function" then
+            pcall(AchievementFrame_ToggleAchievementFrame)
         end
     end
     -- OpenAchievementFrameToAchievement no longer exists in FrameXML; mirror
@@ -742,7 +745,7 @@ local function NM_OpenToastTarget(toast)
     -- Tab is hidden when the log is unavailable (Blizzard gates it the same way).
     if C_PlayerInfo and C_PlayerInfo.IsTravelersLogAvailable then
         local okAvail, available = pcall(C_PlayerInfo.IsTravelersLogAvailable)
-        if okAvail and available == false then return end
+        if okAvail and not (issecretvalue and issecretvalue(available)) and available == false then return end
     end
     if not Utilities:CheckAddOnLoaded("Blizzard_EncounterJournal") then
         Utilities:SafeLoadAddOn("Blizzard_EncounterJournal")
@@ -1644,37 +1647,6 @@ end
     Central event listener for all notification types
 ============================================================================]]
 
-local function ScheduleAlertSuppressionRetries(addon)
-    if not addon or not addon.ApplyBlizzardAchievementAlertSuppression then return end
-    local delays = { 0.5, 2.0, 5.0 }
-    for i = 1, #delays do
-        C_Timer.After(delays[i], function()
-            if addon.ApplyBlizzardAchievementAlertSuppression then
-                addon:ApplyBlizzardAchievementAlertSuppression()
-            end
-        end)
-    end
-end
-
---- Watched (never loaded) on ADDON_LOADED to re-apply suppression. Achievement / Criteria /
---- MonthlyActivity alert systems all live in always-loaded Blizzard_FrameXML/Mainline/
---- AlertFrameSystems.lua, so no load-on-demand addon is needed to suppress them. The former
---- SharedXML (always loaded), AdventureGuide, MonthlyActivities, PerksActivities and TradingPostUI
---- entries are gone: the last four do not exist as addons in 12.1.5 (wow-ui-source live 70448, 2026-10-22).
-local ALERT_SOURCE_ADDONS = {
-    "Blizzard_AchievementUI",
-}
-
-local function IsAlertSourceAddOn(loadedAddon)
-    if not loadedAddon or loadedAddon == "" then return false end
-    for i = 1, #ALERT_SOURCE_ADDONS do
-        if loadedAddon == ALERT_SOURCE_ADDONS[i] then
-            return true
-        end
-    end
-    return false
-end
-
 ---Initialize event-driven notification system
 function WarbandNexus:InitializeNotificationListeners()
     -- Register for custom notification events
@@ -1749,43 +1721,10 @@ function WarbandNexus:InitializeNotificationListeners()
         -- No action needed for already-visible notifications (they auto-dismiss)
     end)
     
-    -- Suppress Blizzard achievement/criteria popups when Warband achievement popups are ON
+    -- Suppress Blizzard achievement/criteria/Traveler's Log alerts the WN lanes replace (event-level, taint-free).
     self:ApplyBlizzardAchievementAlertSuppression()
-    C_Timer.After(0, function()
-        if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
-            WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-            ScheduleAlertSuppressionRetries(WarbandNexus)
-        end
-    end)
-    -- Blizzard event re-application uses a module-local raw frame, NOT AceEvent on the
-    -- addon object: Core owns ADDON_LOADED / PLAYER_ENTERING_WORLD there, and AceEvent
-    -- allows one handler per event per object — registering here silently replaced Core's
-    -- handlers (which killed the guild-bank UI hook installed via Core's OnAddonLoaded).
-    -- PLAYER_LOGIN is intentionally not watched: it fired before this init runs, and the
-    -- direct ApplyBlizzardAchievementAlertSuppression() calls above already cover login.
-    if not self._alertSuppressionEventFrame then
-        local suppressionFrame = CreateFrame("Frame")
-        suppressionFrame:RegisterEvent("ADDON_LOADED")
-        suppressionFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        suppressionFrame:SetScript("OnEvent", function(_, event, loadedAddon)
-            if event == "ADDON_LOADED" then
-                if IsAlertSourceAddOn(loadedAddon) and WarbandNexus
-                    and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
-                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-                    ScheduleAlertSuppressionRetries(WarbandNexus)
-                end
-            else -- PLAYER_ENTERING_WORLD
-                C_Timer.After(0, function()
-                    if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
-                        WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-                        ScheduleAlertSuppressionRetries(WarbandNexus)
-                    end
-                end)
-            end
-        end)
-        self._alertSuppressionEventFrame = suppressionFrame
-    end
     self:RegisterEvent("CRITERIA_EARNED", "OnCriteriaEarned")
+    self:RegisterEvent("PERKS_ACTIVITY_COMPLETED", "OnPerksActivityCompleted")
 end
 
 ---Shorten Blizzard's long criteria description to a display name (e.g. "Player Has Opened all X" -> "X").
@@ -1853,51 +1792,6 @@ function WarbandNexus:CanShowToast(channel, lootType)
     return true
 end
 
----Normalize AddAlert first arg (number, numeric string, or alert payload table).
-local function ResolveAchievementAlertID(a1)
-    if type(a1) == "number" then return a1 end
-    if type(a1) == "string" then return tonumber(a1) end
-    if type(a1) == "table" then
-        local id = a1.achievementID or a1.id
-        if type(id) == "number" then return id end
-        if type(id) == "string" then return tonumber(id) end
-    end
-    return nil
-end
-
----Criteria index or display string from AddAlert / CRITERIA_EARNED (table payloads included).
-local function ResolveAchievementAlertCriteria(a1, a2, ...)
-    if type(a1) == "table" then
-        local s = a1.criteriaString or a1.description or a1.text or a1.name
-        if type(s) == "string" and not (issecretvalue and issecretvalue(s)) and s ~= "" then
-            return s
-        end
-        local idx = a1.criteriaIndex or a1.index
-        if type(idx) == "number" then return idx end
-    end
-    if type(a2) == "string" and ((issecretvalue and issecretvalue(a2)) or a2 ~= "") then
-        if issecretvalue and issecretvalue(a2) then return nil end
-        return a2
-    end
-    if type(a2) == "number" then return a2 end
-    if type(a2) == "table" then
-        local s = a2.criteriaString or a2.description or a2.text or a2.name
-        if type(s) == "string" and not (issecretvalue and issecretvalue(s)) and s ~= "" then
-            return s
-        end
-        local idx = a2.criteriaIndex or a2.index
-        if type(idx) == "number" then return idx end
-    end
-    local n = select("#", ...)
-    for i = 1, n do
-        local v = select(i, ...)
-        if type(v) == "string" and not (issecretvalue and issecretvalue(v)) and v ~= "" then
-            return v
-        end
-    end
-    return nil
-end
-
 ---ProgressAlertSystem payloads (Traveler's Log, etc.) — no achievementID required.
 local function ResolveProgressAlertPayload(a1, a2, ...)
     local function safeStr(v)
@@ -1930,7 +1824,7 @@ local function ResolveProgressAlertPayload(a1, a2, ...)
     if type(a1) == "table" then
         return fromTable(a1)
     end
-    -- MonthlyActivityAlertSystem:AddAlert(perksActivityID): resolve the activity (12.1.5 API:
+    -- PERKS_ACTIVITY_COMPLETED(perksActivityID): resolve the activity (12.1.5 API:
     -- C_PerksActivities.GetPerksActivityInfo(id) -> PerksActivityInfo? with activityName).
     if type(a1) == "number" and not (issecretvalue and issecretvalue(a1))
         and C_PerksActivities and C_PerksActivities.GetPerksActivityInfo then
@@ -2015,7 +1909,7 @@ local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
         if issecretvalue and issecretvalue(criteriaHint) then return nil end
         for i = 1, numCriteria do
             local name = GetAchievementCriteriaInfo(achievementID, i)
-            if name and not (issecretvalue and issecretvalue(name)) and name == criteriaHint then
+            if not (issecretvalue and issecretvalue(name)) and name and name == criteriaHint then
                 criteriaIndex = i
                 break
             end
@@ -2042,7 +1936,7 @@ local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
     local linkedIcon = nil
     if linkedID then
         local okInfo, _, _, _, _, _, _, _, _, _, icon = pcall(GetAchievementInfo, linkedID) -- icon = 10th
-        if okInfo and icon and not (issecretvalue and issecretvalue(icon)) then
+        if okInfo and not (issecretvalue and issecretvalue(icon)) and icon then
             linkedIcon = icon
         end
     end
@@ -2092,24 +1986,14 @@ local function TryDispatchCriteriaProgressToast(achievementID, criteriaIndex)
     return false
 end
 
----When WN criteria lane is active, never fall back to Blizzard criteria/progress alert frames.
-local function FinishCriteriaProgressAddAlert(orig, sys, origA1, origA2, achievementID, criteriaHint, rest)
-    if TryDispatchCriteriaProgressToast(achievementID, criteriaHint) then
-        return
-    end
-    if NP.UseWarbandCriteriaProgressPopups() then
-        return
-    end
-    pcall(orig, sys, origA1, origA2, unpack(rest))
-end
-
 ---Wiki: CRITERIA_EARNED achievementID, description, achievementAlreadyEarnedOnAccount
 function WarbandNexus:OnCriteriaEarned(_, achievementID, description, achievementAlreadyEarnedOnAccount)
     if not NP.UseWarbandAchievementPopups() and not NP.UseWarbandCriteriaProgressPopups() then return end
     if not achievementID or type(achievementID) ~= "number" then return end
     if issecretvalue and issecretvalue(achievementID) then return end
+    if issecretvalue and issecretvalue(achievementAlreadyEarnedOnAccount) then achievementAlreadyEarnedOnAccount = nil end
     if achievementAlreadyEarnedOnAccount then return end
-    if description and issecretvalue and issecretvalue(description) then
+    if issecretvalue and issecretvalue(description) then
         description = nil
     end
     C_Timer.After(0, function()
@@ -2124,316 +2008,6 @@ function WarbandNexus:OnCriteriaEarned(_, achievementID, description, achievemen
         if not NP.UseWarbandCriteriaProgressPopups() then return end
         TryDispatchCriteriaProgressToast(achievementID, description)
     end)
-end
-
-local wnAddAlertWrappers = setmetatable({}, { __mode = "k" })
-
-local function MarkWnAddAlertWrapper(fn)
-    if type(fn) == "function" then
-        wnAddAlertWrappers[fn] = true
-    end
-end
-
-local function IsWnAddAlertWrapper(fn)
-    return type(fn) == "function" and wnAddAlertWrappers[fn] == true
-end
-
---- Traveler's Log alert systems re-routed to the WN criteria lane. 12.1.5 has only
---- MonthlyActivityAlertSystem (Blizzard_FrameXML/Mainline/AlertFrameSystems.lua:1451, always loaded;
---- AddAlert(perksActivityID)); the old ProgressAlertSystem / MonthlyActivitiesAlertSystem /
---- PerksActivitiesAlertSystem names never existed there, so the lane never engaged (2026-10-22).
-local PROGRESS_ALERT_SYSTEM_GLOBALS = {
-    "MonthlyActivityAlertSystem",
-}
-
-local function SafeAlertFrameText(region)
-    if not region or not region.GetText then return nil end
-    local ok, text = pcall(region.GetText, region)
-    if issecretvalue and issecretvalue(text) then return nil end
-    if not ok or type(text) ~= "string" or text == "" then return nil end
-    return text
-end
-
----Scrape title/body from Blizzard progress alert frames when AddAlert hook is unavailable.
-local function ScrapeProgressAlertFrameText(frame)
-    if not frame then return nil, nil end
-    local lines = {}
-    local function collectRegion(region)
-        if not region then return end
-        if region.IsObjectType and region:IsObjectType("FontString") then
-            local text = SafeAlertFrameText(region)
-            if text then lines[#lines + 1] = text end
-            return
-        end
-        if region.GetRegions then
-            local ok, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z =
-                pcall(region.GetRegions, region)
-            if ok then
-                local regions = { a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z }
-                for ri = 1, #regions do
-                    collectRegion(regions[ri])
-                end
-            end
-        end
-    end
-    collectRegion(frame)
-    if frame.GetChildren then
-        local ok, c1, c2, c3, c4, c5, c6, c7, c8 = pcall(frame.GetChildren, frame)
-        if ok then
-            local children = { c1, c2, c3, c4, c5, c6, c7, c8 }
-            for ci = 1, #children do
-                collectRegion(children[ci])
-            end
-        end
-    end
-    local named = { "Header", "Label", "Name", "Text", "Title", "TopText", "BottomText" }
-    for ni = 1, #named do
-        local child = frame[named[ni]]
-        if child then
-            if child.IsObjectType and child:IsObjectType("FontString") then
-                local text = SafeAlertFrameText(child)
-                if text then lines[#lines + 1] = text end
-            elseif child.GetText then
-                local text = SafeAlertFrameText(child)
-                if text then lines[#lines + 1] = text end
-            end
-        end
-    end
-    if #lines == 0 then return nil, nil end
-    if #lines == 1 then return nil, lines[1] end
-    return lines[1], lines[2]
-end
-
-local function MirrorAndSuppressProgressAlertFrame(frame)
-    if not frame or not NP.UseWarbandCriteriaProgressPopups() then return end
-    if frame._wnProgMirrorPending then return end
-    local title, text = ScrapeProgressAlertFrameText(frame)
-    local function buildMirrorPayload(mTitle, mText)
-        local payload = { title = mTitle, text = mText }
-        if frame and frame.GetName then
-            local ok, name = pcall(frame.GetName, frame)
-            if ok and type(name) == "string" and (name:find("MonthlyActiv", 1, true) or name:find("Traveler", 1, true)) then
-                payload.iconAtlas = TRAVELERS_LOG_PROGRESS_ICON_ATLAS
-            end
-        end
-        return payload
-    end
-    if title or text then
-        TryDispatchProgressAlertToast(buildMirrorPayload(title, text))
-    else
-        frame._wnProgMirrorPending = true
-        C_Timer.After(0, function()
-            frame._wnProgMirrorPending = nil
-            if not frame.IsShown or not frame:IsShown() then return end
-            local retryTitle, retryText = ScrapeProgressAlertFrameText(frame)
-            if retryTitle or retryText then
-                TryDispatchProgressAlertToast(buildMirrorPayload(retryTitle, retryText))
-            end
-        end)
-    end
-    if frame.Hide then
-        frame:Hide()
-    end
-end
-
-local function FrameLooksLikeProgressAlert(frame)
-    if not frame or not frame.GetName then return false end
-    local ok, name = pcall(frame.GetName, frame)
-    if not ok or type(name) ~= "string" or name == "" then return false end
-    if name:find("ProgressAlert", 1, true) then return true end
-    if name:find("MonthlyActiv", 1, true) then return true end
-    if name:find("PerksActiv", 1, true) then return true end
-    if name:find("Traveler", 1, true) then return true end
-    return false
-end
-
-local function ScanAlertFrameForProgressAlerts()
-    if not NP.UseWarbandCriteriaProgressPopups() then return end
-    local alertFrame = _G.AlertFrame
-    if not alertFrame or not alertFrame.GetNumChildren then return end
-    local ok, n = pcall(alertFrame.GetNumChildren, alertFrame)
-    if not ok or not n or n < 1 then return end
-    for i = 1, n do
-        local child = select(i, alertFrame:GetChildren())
-        if child and child.IsShown and child:IsShown() and FrameLooksLikeProgressAlert(child) then
-            MirrorAndSuppressProgressAlertFrame(child)
-        end
-    end
-end
-
--- No load-on-demand addon is force-loaded here any more (2026-10-22): every system captured below
--- is defined by base-UI FrameXML, so login no longer pulls in Blizzard_AchievementUI.
-local function CaptureBlizzardAddAlertHandlers(addon)
-    if AchievementAlertSystem and type(AchievementAlertSystem.AddAlert) == "function" then
-        local fn = AchievementAlertSystem.AddAlert
-        if not IsWnAddAlertWrapper(fn) then
-            addon._blizzAchievementAddAlert = fn
-        end
-    end
-    if CriteriaAlertSystem and type(CriteriaAlertSystem.AddAlert) == "function" then
-        local fn = CriteriaAlertSystem.AddAlert
-        if not IsWnAddAlertWrapper(fn) then
-            addon._blizzCriteriaAddAlert = fn
-        end
-    end
-    addon._blizzProgressAddAlertOrig = addon._blizzProgressAddAlertOrig or {}
-    for i = 1, #PROGRESS_ALERT_SYSTEM_GLOBALS do
-        local globalName = PROGRESS_ALERT_SYSTEM_GLOBALS[i]
-        local sys = _G[globalName]
-        if sys and type(sys.AddAlert) == "function" then
-            local fn = sys.AddAlert
-            if not IsWnAddAlertWrapper(fn) then
-                addon._blizzProgressAddAlertOrig[globalName] = fn
-            end
-        end
-    end
-end
-
-local function InstallBlizzardAlertFrameHideHooks()
-    local max = _G.MAX_ACHIEVEMENT_ALERTS or 4
-    for i = 1, max do
-        local achF = _G["AchievementAlertFrame" .. i]
-        if achF and not achF._wnAchAlertHideHooked then
-            achF:HookScript("OnShow", function(self)
-                if self.Hide and NP.UseWarbandAchievementPopups() then
-                    self:Hide()
-                end
-            end)
-            achF._wnAchAlertHideHooked = true
-        end
-        local critF = _G["CriteriaAlertFrame" .. i]
-        if critF and not critF._wnCritAlertHideHooked then
-            critF:HookScript("OnShow", function(self)
-                -- Only hide criteria bars when WN criteria lane is active; leave Blizzard
-                -- criteria alerts visible when Criteria Progress Toast is off.
-                if self.Hide and NP.UseWarbandCriteriaProgressPopups() then
-                    self:Hide()
-                end
-            end)
-            critF._wnCritAlertHideHooked = true
-        end
-    end
-    local cf = _G.CriteriaAlertFrame
-    if cf and not cf._wnCritAlertHideHooked then
-        cf:HookScript("OnShow", function(self)
-            if self.Hide and NP.UseWarbandCriteriaProgressPopups() then
-                self:Hide()
-            end
-        end)
-        cf._wnCritAlertHideHooked = true
-    end
-    for i = 1, max do
-        local progF = _G["ProgressAlertFrame" .. i]
-        if progF and not progF._wnProgAlertHideHooked then
-            progF:HookScript("OnShow", function(self)
-                MirrorAndSuppressProgressAlertFrame(self)
-            end)
-            progF._wnProgAlertHideHooked = true
-        end
-    end
-    local progRoot = _G.ProgressAlertFrame
-    if progRoot and not progRoot._wnProgAlertHideHooked then
-        progRoot:HookScript("OnShow", function(self)
-            MirrorAndSuppressProgressAlertFrame(self)
-        end)
-        progRoot._wnProgAlertHideHooked = true
-    end
-    local alertFrame = _G.AlertFrame
-    if alertFrame and not alertFrame._wnProgressAlertScanHooked then
-        alertFrame:HookScript("OnShow", function()
-            ScanAlertFrameForProgressAlerts()
-        end)
-        alertFrame._wnProgressAlertScanHooked = true
-    end
-end
-
-local function BuildAchievementAddAlertReplacement(orig)
-    return function(sys, a1, a2, ...)
-        if not NP.UseWarbandAchievementPopups() then
-            return orig(sys, a1, a2, ...)
-        end
-        local achievementID = ResolveAchievementAlertID(a1)
-        if not achievementID then
-            return orig(sys, a1, a2, ...)
-        end
-        local hasExtra = (a2 ~= nil) or (select("#", ...) > 0)
-        if not hasExtra then
-            local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
-                and WarbandNexus:ShowAchievementNotification(achievementID)
-            if not shown then
-                -- WN toast will not appear (notifications off / dedup) — fall back to
-                -- Blizzard's popup instead of swallowing the alert entirely.
-                return orig(sys, a1, a2, ...)
-            end
-            return
-        end
-        local origA1, origA2 = a1, a2
-        local arg1 = achievementID
-        local criteriaHint = ResolveAchievementAlertCriteria(a1, a2, ...)
-        local rest = { ... }
-        C_Timer.After(0, function()
-            if not NP.UseWarbandAchievementPopups() then
-                pcall(orig, sys, origA1, origA2, unpack(rest))
-                return
-            end
-            local route, routeID = NM_ResolveAchievementAlertRoute(arg1, criteriaHint)
-            if route == "earned" then
-                local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
-                    and WarbandNexus:ShowAchievementNotification(routeID)
-                if not shown then
-                    pcall(orig, sys, origA1, origA2, unpack(rest))
-                end
-                return
-            end
-            FinishCriteriaProgressAddAlert(orig, sys, origA1, origA2, arg1, criteriaHint, rest)
-        end)
-    end
-end
-
-local function BuildCriteriaAddAlertReplacement(orig)
-    return function(sys, a1, a2, ...)
-        if not NP.UseWarbandAchievementPopups() then
-            return orig(sys, a1, a2, ...)
-        end
-        local achievementID = ResolveAchievementAlertID(a1)
-        if not achievementID then
-            return orig(sys, a1, a2, ...)
-        end
-        local origA1, origA2 = a1, a2
-        local arg1 = achievementID
-        local criteriaHint = ResolveAchievementAlertCriteria(a1, a2, ...)
-        local rest = { ... }
-        C_Timer.After(0, function()
-            if not NP.UseWarbandAchievementPopups() then
-                pcall(orig, sys, origA1, origA2, unpack(rest))
-                return
-            end
-            local route, routeID = NM_ResolveAchievementAlertRoute(arg1, criteriaHint)
-            if route == "earned" then
-                local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
-                    and WarbandNexus:ShowAchievementNotification(routeID)
-                if not shown then
-                    pcall(orig, sys, origA1, origA2, unpack(rest))
-                end
-                return
-            end
-            FinishCriteriaProgressAddAlert(orig, sys, origA1, origA2, arg1, criteriaHint, rest)
-        end)
-    end
-end
-
-local function BuildProgressAddAlertReplacement(orig)
-    return function(sys, a1, a2, ...)
-        if not NP.UseWarbandCriteriaProgressPopups() then
-            return orig(sys, a1, a2, ...)
-        end
-        local payload = NormalizeProgressAlertPayload(ResolveProgressAlertPayload(a1, a2, ...))
-        if not payload then
-            return orig(sys, a1, a2, ...)
-        end
-        TryDispatchProgressAlertToast(payload)
-        -- WN criteria lane active: suppress Blizzard progress alert frames (never call orig).
-    end
 end
 
 ---Show toast for progressive achievements (e.g. Treasures of X, multi-step): one step completed = "Achievement Progress" title + criteria name only.
@@ -2472,7 +2046,7 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
     if wantName and numCriteria and numCriteria > 0 then
         for i = 1, numCriteria do
             local name = GetAchievementCriteriaInfo(achievementID, i)
-            if issecretvalue and name and issecretvalue(name) then name = nil end
+            if issecretvalue and issecretvalue(name) then name = nil end
             if name and name == wantName then criteriaIndex = i break end
         end
     end
@@ -2488,7 +2062,7 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
             criteriaName = displayNameFromEvent or ""
             if criteriaName == "" then
                 local name = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
-                if issecretvalue and name and issecretvalue(name) then name = nil end
+                if issecretvalue and issecretvalue(name) then name = nil end
                 criteriaName = (name and name ~= "" and name) and ShortenCriteriaDisplayName(name) or (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria"
             end
         else
@@ -2496,7 +2070,7 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
                 local name, _, comp = GetAchievementCriteriaInfo(achievementID, i)
                 if comp then completedCount = completedCount + 1 end
                 if not criteriaName or criteriaName == "" then
-                    if issecretvalue and name and issecretvalue(name) then name = nil end
+                    if issecretvalue and issecretvalue(name) then name = nil end
                     criteriaName = (name and name ~= "" and name) and ShortenCriteriaDisplayName(name) or ""
                 end
             end
@@ -2566,101 +2140,70 @@ function WarbandNexus:ShowGenericProgressNotification(payload)
     return self:ShowModalNotification(config) == true
 end
 
----Swap or restore Blizzard AddAlert based on Warband achievement popups (live db read on each call).
+--- Blizzard AlertFrame events each WN lane replaces. AlertFrame:UnregisterEvent is a C call: unlike
+--- swapping AlertSystem.AddAlert (or hiding pooled alert frames) it leaves no Lua taint in Blizzard's
+--- alert pipeline, which also drives instance loot alerts that carry secret values.
+--- Blizzard shows its own alert exactly when the matching WN toast cannot (lane or sub-toggle off).
+local SUPPRESSIBLE_ALERT_EVENTS = {
+    { event = "ACHIEVEMENT_EARNED", lane = "achievement" },
+    { event = "CRITERIA_EARNED", lane = "progress" },
+    { event = "PERKS_ACTIVITY_COMPLETED", lane = "progress" },
+}
+local suppressedAlertEvents = {}
+
+---Unregister / re-register Blizzard AlertFrame events from the live notification settings.
 function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-    CaptureBlizzardAddAlertHandlers(self)
-    local useWarbandPopups = NP.UseWarbandAchievementPopups()
-
-    if AchievementAlertSystem and type(self._blizzAchievementAddAlert) == "function" then
-        if useWarbandPopups then
-            local wrapper = BuildAchievementAddAlertReplacement(self._blizzAchievementAddAlert)
-            MarkWnAddAlertWrapper(wrapper)
-            AchievementAlertSystem.AddAlert = wrapper
-        else
-            AchievementAlertSystem.AddAlert = self._blizzAchievementAddAlert
+    local alertFrame = _G.AlertFrame
+    if not alertFrame or type(alertFrame.UnregisterEvent) ~= "function" then return end
+    local suppressAchievement = NP.CanShowWarbandAchievementEarnedToast()
+    local suppressProgress = NP.CanShowWarbandCriteriaProgressToast()
+    for i = 1, #SUPPRESSIBLE_ALERT_EVENTS do
+        local entry = SUPPRESSIBLE_ALERT_EVENTS[i]
+        local suppress = (entry.lane == "achievement") and suppressAchievement or suppressProgress
+        if suppress and not suppressedAlertEvents[entry.event] then
+            alertFrame:UnregisterEvent(entry.event)
+            suppressedAlertEvents[entry.event] = true
+        elseif not suppress and suppressedAlertEvents[entry.event] then
+            -- Only ever re-register what we unregistered; never touch Blizzard's set otherwise.
+            alertFrame:RegisterEvent(entry.event)
+            suppressedAlertEvents[entry.event] = nil
         end
-    end
-
-    if CriteriaAlertSystem and type(self._blizzCriteriaAddAlert) == "function" then
-        if useWarbandPopups then
-            local wrapperCrit = BuildCriteriaAddAlertReplacement(self._blizzCriteriaAddAlert)
-            MarkWnAddAlertWrapper(wrapperCrit)
-            CriteriaAlertSystem.AddAlert = wrapperCrit
-        else
-            CriteriaAlertSystem.AddAlert = self._blizzCriteriaAddAlert
-        end
-    end
-
-    local useCriteriaLane = NP.UseWarbandCriteriaProgressPopups()
-    self._blizzProgressAddAlertOrig = self._blizzProgressAddAlertOrig or {}
-    for i = 1, #PROGRESS_ALERT_SYSTEM_GLOBALS do
-        local globalName = PROGRESS_ALERT_SYSTEM_GLOBALS[i]
-        local sys = _G[globalName]
-        if sys and type(sys.AddAlert) == "function" then
-            local orig = self._blizzProgressAddAlertOrig[globalName]
-            if type(orig) ~= "function" then
-                local fn = sys.AddAlert
-                if not IsWnAddAlertWrapper(fn) then
-                    orig = fn
-                    self._blizzProgressAddAlertOrig[globalName] = orig
-                end
-            end
-            if useCriteriaLane and type(orig) == "function" then
-                local wrapperProg = BuildProgressAddAlertReplacement(orig)
-                MarkWnAddAlertWrapper(wrapperProg)
-                sys.AddAlert = wrapperProg
-            elseif type(orig) == "function" then
-                sys.AddAlert = orig
-            end
-        end
-    end
-
-    if useWarbandPopups or useCriteriaLane then
-        InstallBlizzardAlertFrameHideHooks()
-        C_Timer.After(0.5, InstallBlizzardAlertFrameHideHooks)
-        C_Timer.After(2, InstallBlizzardAlertFrameHideHooks)
     end
 end
 
----Ensure the current presentation toggle is applied (test + live share one AddAlert path).
+---PERKS_ACTIVITY_COMPLETED (Traveler's Log step) -> WN progress toast; Blizzard's alert is
+---unregistered while this lane can show.
+function WarbandNexus:OnPerksActivityCompleted(_, perksActivityID)
+    if not NP.CanShowWarbandCriteriaProgressToast() then return end
+    if issecretvalue and issecretvalue(perksActivityID) then return end
+    TryDispatchProgressAlertToast(ResolveProgressAlertPayload(perksActivityID))
+end
+
+---Ensure the current presentation toggle is applied before a test fires.
 TestLootEnsureAchievementAlertUI = function(addon)
     if addon and addon.ApplyBlizzardAchievementAlertSuppression then
         addon:ApplyBlizzardAchievementAlertSuppression()
     end
 end
 
+---Test: drive the same handlers the live ACHIEVEMENT_EARNED / CRITERIA_EARNED events use.
+---Never calls Blizzard's AlertSystem:AddAlert from our code (that taints the alert pipeline).
 TestLootFireAchievementAddAlert = function(addon, achievementID, criteriaIndex)
     TestLootEnsureAchievementAlertUI(addon)
+    if not NP.UseWarbandAchievementPopups() then
+        addon:Print("|cffff8800Warband achievement popups OFF: Blizzard alerts are native-only and are not simulated (avoids taint).|r")
+        return false, "native lane"
+    end
     if criteriaIndex ~= nil then
-        if CriteriaAlertSystem and CriteriaAlertSystem.AddAlert then
-            return pcall(CriteriaAlertSystem.AddAlert, CriteriaAlertSystem, achievementID, criteriaIndex)
-        end
-        if not AchievementAlertSystem or not AchievementAlertSystem.AddAlert then
-            addon:Print("|cffff8800CriteriaAlertSystem not loaded. Try /reload.|r")
-            return false, "no system"
-        end
-        return pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID, criteriaIndex)
+        return pcall(addon.OnCriteriaEarned, addon, "CRITERIA_EARNED", achievementID, criteriaIndex, false)
     end
-    if not AchievementAlertSystem or not AchievementAlertSystem.AddAlert then
-        addon:Print("|cffff8800AchievementAlertSystem not loaded. Try /reload.|r")
-        return false, "no system"
-    end
-    return pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID)
+    return pcall(addon.ShowAchievementNotification, addon, achievementID)
 end
 
 -- Production helpers the test satellite (NotificationManager_Tests.lua) reuses.
 ns.NotificationManagerHooks.TestLootEnsureAchievementAlertUI = TestLootEnsureAchievementAlertUI
 ns.NotificationManagerHooks.TestLootFireAchievementAddAlert = TestLootFireAchievementAddAlert
 ns.NotificationManagerHooks.TRAVELERS_LOG_PROGRESS_ICON_ATLAS = TRAVELERS_LOG_PROGRESS_ICON_ATLAS
-
----Production Blizzard achievement alert fallback (when Warband popups cannot show a toast).
-function WarbandNexus:InvokeBlizzardAchievementAddAlert(achievementID, criteriaIndex)
-    if not achievementID or type(achievementID) ~= "number" then return false end
-    if issecretvalue and issecretvalue(achievementID) then return false end
-    TestLootEnsureAchievementAlertUI(self)
-    local ok = TestLootFireAchievementAddAlert(self, achievementID, criteriaIndex)
-    return ok == true
-end
 
 ---Blizzard hooked progressive achievement / criteria AddAlert routes here (never calls ShowCriteriaProgressNotification directly â€” avoids stacking duplicate Alerts with WN_REMINDER lane).
 function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
@@ -2776,9 +2319,6 @@ local function MarkCollectibleToastAcknowledged(data)
         if CollectNotify.MarkAchievementToastDisplayed then
             CollectNotify.MarkAchievementToastDisplayed(id)
         end
-        if CollectNotify.ClearPendingAchievementToast then
-            CollectNotify.ClearPendingAchievementToast(id)
-        end
         if CollectNotify.MarkAsNotified then
             CollectNotify.MarkAsNotified(t, id)
         end
@@ -2797,7 +2337,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     if data.suppressToast then return end
     -- Achievement can have nil/empty name (hidden achievements); use fallback for display
     local displayName = data.name
-    if displayName and issecretvalue and issecretvalue(displayName) then return end
+    if issecretvalue and issecretvalue(displayName) then return end
     if (not displayName or displayName == "") and data.type == "achievement" then
         displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
     end
@@ -3008,7 +2548,7 @@ function WarbandNexus:ShowExpiringMailReminder()
     end
     -- Name the owner so an alt's inbox is actionable from the toast alone.
     local title = (L and L["MAIL_REMINDER_TITLE"]) or "Mail Expiring Soon!"
-    if soonestName and not (issecretvalue and issecretvalue(soonestName)) and soonestName ~= "" then
+    if not (issecretvalue and issecretvalue(soonestName)) and soonestName and soonestName ~= "" then
         title = title .. " - " .. soonestName
     end
 

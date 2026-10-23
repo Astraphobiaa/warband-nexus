@@ -747,63 +747,20 @@ function WarbandNexus:OnInitialize()
         self:PruneCollectionsRecentObtained()
     end
     
-    -- TAINT SUPPRESSION: ADDON_ACTION_FORBIDDEN popup prevention
-    -- Strategy: hooksecurefunc (post-hook, taint-safe) + event-based hide.
-    -- NEVER replace StaticPopup_Show directly — that taints the entire popup
-    -- system and breaks Blizzard UI (PurchaseBankTab, UpgradeItem, etc.).
-    if not self._taintSuppressInstalled then
-        self._taintSuppressInstalled = true
-
-        -- Post-hook: runs AFTER StaticPopup_Show without tainting it.
-        -- The popup briefly appears, then we hide it on the same frame.
-        hooksecurefunc("StaticPopup_Show", function(which, text_arg1)
-            if which == "ADDON_ACTION_FORBIDDEN" and text_arg1 == ADDON_NAME then
-                -- Find and hide the popup we just created
-                for i = 1, STATICPOPUP_NUMDIALOGS or 4 do
-                    local popup = _G["StaticPopup" .. i]
-                    if popup and popup:IsShown() then
-                        local txt = popup.text and popup.text.GetText and popup.text:GetText() or ""
-                        if not (issecretvalue and issecretvalue(txt)) then
-                            if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
-                                popup:Hide()
-                                ns.DebugChatPrint("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup")
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-
-        -- Event-based safety net: catches any popups the post-hook missed
-        local taintFrame = CreateFrame("Frame")
-        taintFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
-        taintFrame:SetScript("OnEvent", function(frame, event, addonName, blockedFunc)
+    -- ADDON_ACTION_FORBIDDEN: debug log only. Blizzard's popup is left alone: hiding StaticPopups from
+    -- our code taints the shared popup frames and hides real taint bugs that must be fixed at the source.
+    if not self._actionForbiddenLogInstalled then
+        self._actionForbiddenLogInstalled = true
+        local forbiddenLogFrame = CreateFrame("Frame")
+        forbiddenLogFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+        forbiddenLogFrame:SetScript("OnEvent", function(_, _, addonName, blockedFunc)
             if not addonName or (issecretvalue and issecretvalue(addonName)) then return end
-            if addonName == ADDON_NAME then
-                local blockedLabel = blockedFunc
-                if issecretvalue and blockedLabel and issecretvalue(blockedLabel) then
-                    blockedLabel = "<secret>"
-                else
-                    blockedLabel = tostring(blockedFunc)
-                end
-                ns.DebugChatPrint("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN event: " .. blockedLabel)
-                C_Timer.After(0.05, function()
-                    for i = 1, STATICPOPUP_NUMDIALOGS or 4 do
-                        local popup = _G["StaticPopup" .. i]
-                        if popup and popup:IsShown() then
-                            local txt = popup.text and popup.text.GetText and popup.text:GetText() or ""
-                            if not (issecretvalue and issecretvalue(txt)) then
-                                if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
-                                    popup:Hide()
-                                    ns.DebugChatPrint("|cff9370DB[WN Taint]|r Safety net: hid popup #" .. i)
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end)
+            if addonName ~= ADDON_NAME then return end
+            local blockedLabel = "<secret>"
+            if not (issecretvalue and issecretvalue(blockedFunc)) then
+                blockedLabel = tostring(blockedFunc)
             end
+            ns.DebugChatPrint("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN: " .. blockedLabel)
         end)
     end
     
@@ -1302,6 +1259,10 @@ function WarbandNexus:OnProfileChanged()
         ns.Profiler:ApplyPersistedSettings(self.db.profile)
     end
     self:ResyncModulesAfterProfileChange()
+    -- Notification settings are per profile: re-derive which Blizzard alert events stay unregistered.
+    if self.ApplyBlizzardAchievementAlertSuppression then
+        self:ApplyBlizzardAchievementAlertSuppression()
+    end
     if self.SendMessage then
         self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
     end

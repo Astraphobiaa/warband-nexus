@@ -2,8 +2,8 @@
     Warband Nexus — notification presentation (achievement / criteria lane only)
 
     Binary fork (Settings: "Warband achievement popups", db.hideBlizzardAchievementAlert):
-      ON  -> WN ShowModalNotification; Blizzard AddAlert intercepted; native frames hidden.
-      OFF -> Native Blizzard AddAlert + alert frames only; WN achievement/criteria toasts never shown
+      ON  -> WN ShowModalNotification; matching Blizzard AlertFrame events unregistered (no AddAlert swap).
+      OFF -> Native Blizzard alerts only; WN achievement/criteria toasts never shown
              (WN_COLLECTIBLE_OBTAINED may still fire with suppressToast for try-counter / recent ring).
 
     Mount, vault, plan, reminder, and try-counter drop toasts are always WN-themed (no Blizzard lane).

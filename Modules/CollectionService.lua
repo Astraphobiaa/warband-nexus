@@ -6,9 +6,9 @@
 
     NOTIFICATION FLOW (toast lane; display in NotificationManager):
       NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED / bag scan -> dedup -> WN_COLLECTIBLE_OBTAINED
-      ACHIEVEMENT_EARNED + Warband achievement popups ON -> AddAlert hook (ShowAchievementNotification)
-        + ScheduleAchievementToastFallback if AddAlert never fires
-      ACHIEVEMENT_EARNED + Warband popups OFF -> Blizzard AddAlert only (suppressToast on WN_COLLECTIBLE_OBTAINED)
+      ACHIEVEMENT_EARNED + WN earned toast can show -> ShowAchievementNotification (Blizzard's
+        ACHIEVEMENT_EARNED alert is unregistered on AlertFrame meanwhile)
+      ACHIEVEMENT_EARNED otherwise -> Blizzard alert only (suppressToast on WN_COLLECTIBLE_OBTAINED)
     Currency/reputation: ChatMessageService only (not WN_COLLECTIBLE_OBTAINED).
 
     WN_NONUI_UI: `bagScanFrame` (and similar) are background event hosts (`CreateFrame`); Browse UI stays in Modules/UI.
@@ -2207,9 +2207,22 @@ function WarbandNexus:DebugForceCollectionRebuild(full)
     end)
 end
 
+---Mirror of Blizzard's local ShouldToastAchievement (AlertFrames.lua): repeat completions on the
+---account only toast for guild achievements or ACHIEVEMENT_FLAGS_TOAST_ON_REPEAT_COMPLETION.
+local function ShouldToastAchievementLikeBlizzard(achievementID, alreadyEarnedOnAccount)
+    if issecretvalue and issecretvalue(alreadyEarnedOnAccount) then return true end
+    if not alreadyEarnedOnAccount then return true end
+    local ok, _, _, _, _, _, _, _, _, flags, _, _, isGuild = pcall(GetAchievementInfo, achievementID)
+    if not ok or (issecretvalue and (issecretvalue(flags) or issecretvalue(isGuild))) then return false end
+    if isGuild then return true end
+    local repeatFlag = _G.ACHIEVEMENT_FLAGS_TOAST_ON_REPEAT_COMPLETION
+    return type(flags) == "number" and type(repeatFlag) == "number" and bit.band(flags, repeatFlag) ~= 0
+end
+
 ---Handle ACHIEVEMENT_EARNED event
 ---Removes completed achievement from cache and handles chained achievements
-function WarbandNexus:OnAchievementEarned(event, achievementID)
+function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnAccount)
+    if issecretvalue and issecretvalue(achievementID) then return end
     if not achievementID then return end
     
     DebugPrint("|cff00ff00[WN CollectionService]|r Achievement earned: " .. achievementID)
@@ -2370,22 +2383,18 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "achievement")
     end
     -- Emit collectible toast only for a genuinely new completion (store already had .collected skips spam).
-    -- AddAlert hook may still run; MarkAsNotified here prevents duplicate toast when priorCollected.
-    -- Toast: Warband achievement popups ON uses AddAlert replacement; OFF uses Blizzard AddAlert only.
+    -- Toast: when the WN earned toast can show, Blizzard's alert event is unregistered and WN is the
+    -- alert; otherwise Blizzard's native alert shows (same gate as ApplyBlizzardAchievementAlertSuppression).
     local useWarbandPopups = ns.NotificationPresentation
-        and ns.NotificationPresentation.UseWarbandAchievementPopups()
+        and ns.NotificationPresentation.CanShowWarbandAchievementEarnedToast()
     if priorAchievementCollected then
         Notify.MarkAsNotified("achievement", achievementID)
         Notify.MarkAsPermanentlyNotified("achievement", achievementID)
         DebugPrint("|cff888888[WN CollectionService]|r Skip achievement toast (already completed in collection store)")
     elseif useWarbandPopups then
-        -- Defer toast to NotificationManager's AddAlert hook (ShowAchievementNotification).
-        -- Do NOT MarkAsNotified here: ACHIEVEMENT_EARNED often fires before AddAlert; pre-marking
-        -- makes ShowAchievementNotification return true (handled) without showing, while the hook
-        -- swallows Blizzard's frame — user sees no popup at all.
-        DebugPrint("|cff888888[WN CollectionService]|r Defer achievement toast to AddAlert replacement")
-        if Notify.ScheduleAchievementToastFallback then
-            Notify.ScheduleAchievementToastFallback(achievementID)
+        -- Do NOT MarkAsNotified first: ShowAchievementNotification treats a session mark as "handled".
+        if ShouldToastAchievementLikeBlizzard(achievementID, alreadyEarnedOnAccount) then
+            self:ShowAchievementNotification(achievementID)
         end
     elseif not Notify.WasRecentlyNotified("achievement", achievementID) then
         Notify.MarkAsNotified("achievement", achievementID)
@@ -2415,8 +2424,8 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     end
 end
 
----Called from AddAlert hook when Warband achievement popups are ON.
----@return boolean shown false when the WN toast will NOT appear — the AddAlert hook then falls back to the Blizzard popup
+---Earned-achievement WN toast (ACHIEVEMENT_EARNED, linked criteria rows, tests).
+---@return boolean shown false when the WN toast will NOT appear
 function WarbandNexus:ShowAchievementNotification(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return false end
     if issecretvalue and issecretvalue(achievementID) then return false end

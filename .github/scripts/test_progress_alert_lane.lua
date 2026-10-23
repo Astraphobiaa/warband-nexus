@@ -1,9 +1,10 @@
 #!/usr/bin/env lua
 --[[
-    Regression test (static): the Traveler's Log alert lane hooks the alert system 12.1.5 has.
+    Regression test (static): the Traveler's Log alert lane uses the event 12.1.5 has.
 
-    The WN criteria-progress lane wraps a Blizzard alert system's AddAlert to show Traveler's Log
-    progress as a WN toast. It looked for ProgressAlertSystem / MonthlyActivitiesAlertSystem /
+    The WN criteria-progress lane shows Traveler's Log progress as a WN toast. It used to wrap a
+    Blizzard alert system's AddAlert (now replaced by PERKS_ACTIVITY_COMPLETED + AlertFrame
+    UnregisterEvent, which leaves no taint). It looked for ProgressAlertSystem / MonthlyActivitiesAlertSystem /
     PerksActivitiesAlertSystem, none of which exist in 12.1.5 (wow-ui-source live,
     Blizzard_FrameXML/Mainline/AlertFrameSystems.lua defines MonthlyActivityAlertSystem, whose
     AddAlert takes a perksActivityID), so the lane never engaged. The list now names the real system,
@@ -21,14 +22,16 @@ local function check(cond, msg)
     else failed = failed + 1; print("  FAIL " .. msg) end
 end
 
-local listBody = src:match("local PROGRESS_ALERT_SYSTEM_GLOBALS = {(.-)}")
-check(listBody ~= nil, "alert system list defined")
-check(listBody and listBody:find('"MonthlyActivityAlertSystem"', 1, true) ~= nil, "list names MonthlyActivityAlertSystem")
-check(listBody and listBody:find("MonthlyActivitiesAlertSystem", 1, true) == nil and listBody:find("PerksActivitiesAlertSystem", 1, true) == nil,
-    "names that do not exist in 12.1.5 are gone")
-local defAt = src:find("local PROGRESS_ALERT_SYSTEM_GLOBALS = {", 1, true)
-local useAt = src:find("#PROGRESS_ALERT_SYSTEM_GLOBALS", 1, true)
-check(defAt and useAt and defAt < useAt, "list defined before its first use")
+-- Event-driven lane: PERKS_ACTIVITY_COMPLETED feeds the WN toast; Blizzard's AlertFrame event is
+-- unregistered instead of swapping MonthlyActivityAlertSystem.AddAlert (which tainted the pipeline).
+check(src:find('self:RegisterEvent("PERKS_ACTIVITY_COMPLETED", "OnPerksActivityCompleted")', 1, true) ~= nil,
+    "PERKS_ACTIVITY_COMPLETED registered on the addon")
+check(src:find("TryDispatchProgressAlertToast(ResolveProgressAlertPayload(perksActivityID))", 1, true) ~= nil,
+    "perks activity id routed to the WN progress toast")
+check(src:find('{ event = "PERKS_ACTIVITY_COMPLETED", lane = "progress" }', 1, true) ~= nil,
+    "Blizzard's PERKS_ACTIVITY_COMPLETED alert is suppressed on the progress lane")
+check(src:find("AlertSystem%.AddAlert%s*=") == nil and src:find("sys%.AddAlert%s*=") == nil,
+    "no Blizzard AddAlert function is replaced")
 local resolver = src:match("local function ResolveProgressAlertPayload%(a1, a2, %.%.%.%)(.-)\nend\n")
 check(resolver and resolver:find("C_PerksActivities.GetPerksActivityInfo", 1, true) ~= nil, "numeric activity id resolved through the perks API")
 check(resolver and resolver:find('if type(a1) == "number" and not (issecretvalue and issecretvalue(a1))', 1, true) ~= nil,

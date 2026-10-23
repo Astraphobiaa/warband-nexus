@@ -3,13 +3,14 @@
     Regression test: login no longer force-loads Blizzard load-on-demand addons.
 
     Part 1 drives the shipped NotificationManager.lua under wow_stub.lua. Every
-    ApplyBlizzardAchievementAlertSuppression() pass (login, T+0 / 0.5 / 2 / 5 retries,
-    PLAYER_ENTERING_WORLD, settings toggles, the production Blizzard fallback) used to call
+    ApplyBlizzardAchievementAlertSuppression() pass (login, retries, PLAYER_ENTERING_WORLD,
+    settings toggles, the production Blizzard fallback) used to call
     LoadAddOn on six names -- Blizzard_AchievementUI plus four addons that do not exist in
     12.1.5 -- whether or not Warband achievement popups were on. AchievementAlertSystem,
     CriteriaAlertSystem and MonthlyActivityAlertSystem are defined in the always-loaded
     Blizzard_FrameXML/Mainline/AlertFrameSystems.lua (wow-ui-source live 12.1.5.70448), so the
-    stub defines them up front exactly like the base UI does, and suppression must still attach.
+    stub defines them up front exactly like the base UI does. Suppression now unregisters the
+    matching AlertFrame events (no AddAlert swap, no taint) and must never load an addon.
 
     Part 2 drives the shipped AchievementFrameIntegration.lua: PLAYER_LOGIN used to load
     Blizzard_AchievementUI to warm the journal hooks. The hooks now attach when the player first
@@ -100,6 +101,12 @@ local origAch, origCrit, origMonthly
 AchievementAlertSystem, origAch = MakeSystem("achievement")
 CriteriaAlertSystem, origCrit = MakeSystem("criteria")
 MonthlyActivityAlertSystem, origMonthly = MakeSystem("monthly")
+-- Blizzard_FrameXML AlertFrame: suppression unregisters its events (C call, no Lua taint).
+local alertEvents = { ACHIEVEMENT_EARNED = true, CRITERIA_EARNED = true, PERKS_ACTIVITY_COMPLETED = true }
+AlertFrame = {
+    UnregisterEvent = function(_, ev) alertEvents[ev] = false end,
+    RegisterEvent = function(_, ev) alertEvents[ev] = true end,
+}
 
 -- ---------- addon shell ----------
 local ns = {}
@@ -150,39 +157,42 @@ WarbandNexus:InitializeNotificationListeners()
 stub.Advance(0.6)
 stub.Fire("PLAYER_ENTERING_WORLD")
 stub.Advance(6)
-assert_eq(loadCalls, 0, "setting off: login + retries + PLAYER_ENTERING_WORLD call LoadAddOn zero times")
+assert_eq(loadCalls, 0, "setting off: login + PLAYER_ENTERING_WORLD call LoadAddOn zero times")
 check(not loaded.Blizzard_AchievementUI, "setting off: Blizzard_AchievementUI stays unloaded")
-check(AchievementAlertSystem.AddAlert == origAch, "setting off: AchievementAlertSystem.AddAlert is Blizzard's")
-check(CriteriaAlertSystem.AddAlert == origCrit, "setting off: CriteriaAlertSystem.AddAlert is Blizzard's")
+check(alertEvents.ACHIEVEMENT_EARNED and alertEvents.CRITERIA_EARNED and alertEvents.PERKS_ACTIVITY_COMPLETED,
+    "setting off: Blizzard AlertFrame keeps all its alert events")
 
 -- Player turns Warband achievement popups ON later (SettingsUI setter: write db, re-apply).
-local wnToasts = 0
-WarbandNexus.ShowAchievementNotification = function() wnToasts = wnToasts + 1; return true end
 notifDb.hideBlizzardAchievementAlert = true
 WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
 stub.Advance(3)
 assert_eq(loadCalls, 0, "turned on later: still zero LoadAddOn calls")
-check(AchievementAlertSystem.AddAlert ~= origAch, "turned on later: AchievementAlertSystem.AddAlert is wrapped")
-check(CriteriaAlertSystem.AddAlert ~= origCrit, "turned on later: CriteriaAlertSystem.AddAlert is wrapped")
-blizzShown = {}
-AchievementAlertSystem:AddAlert(6)
-assert_eq(wnToasts, 1, "turned on later: an earned alert becomes a WN toast")
-assert_eq(#blizzShown, 0, "turned on later: Blizzard's achievement alert is suppressed")
+check(alertEvents.ACHIEVEMENT_EARNED == false, "turned on later: ACHIEVEMENT_EARNED unregistered on AlertFrame")
+check(alertEvents.CRITERIA_EARNED == false, "turned on later: CRITERIA_EARNED unregistered on AlertFrame")
+check(alertEvents.PERKS_ACTIVITY_COMPLETED == false, "turned on later: PERKS_ACTIVITY_COMPLETED unregistered on AlertFrame")
+-- The taint-free design never swaps Blizzard's AddAlert functions.
+check(AchievementAlertSystem.AddAlert == origAch, "turned on later: AchievementAlertSystem.AddAlert untouched")
+check(CriteriaAlertSystem.AddAlert == origCrit, "turned on later: CriteriaAlertSystem.AddAlert untouched")
+check(MonthlyActivityAlertSystem.AddAlert == origMonthly, "turned on later: MonthlyActivityAlertSystem.AddAlert untouched")
 
--- Production Blizzard fallback (CollectionService_NotifyDedup) used to load the six addons too.
-WarbandNexus:InvokeBlizzardAchievementAddAlert(6)
-assert_eq(loadCalls, 0, "Blizzard fallback path: zero LoadAddOn calls")
-
--- Journal opened later by the player: re-apply keeps the wrapper.
+-- Journal opened later by the player: suppression state is unaffected.
 SimulateAddOnLoaded("Blizzard_AchievementUI")
 stub.Advance(6)
-check(AchievementAlertSystem.AddAlert ~= origAch, "after Blizzard_AchievementUI loads: wrapper kept")
+check(alertEvents.ACHIEVEMENT_EARNED == false, "after Blizzard_AchievementUI loads: still unregistered")
 
--- Turned back OFF: originals restored.
+-- Criteria toast toggled off: Blizzard keeps criteria + Traveler's Log alerts, WN keeps the earned lane.
+notifDb.showCriteriaProgressNotifications = false
+WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+check(alertEvents.CRITERIA_EARNED and alertEvents.PERKS_ACTIVITY_COMPLETED, "criteria lane off: Blizzard criteria/progress events re-registered")
+check(alertEvents.ACHIEVEMENT_EARNED == false, "criteria lane off: earned lane still WN")
+notifDb.showCriteriaProgressNotifications = true
+
+-- Turned back OFF: every event we unregistered is registered again.
 notifDb.hideBlizzardAchievementAlert = false
 WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-check(AchievementAlertSystem.AddAlert == origAch, "turned off: AchievementAlertSystem.AddAlert restored")
-check(CriteriaAlertSystem.AddAlert == origCrit, "turned off: CriteriaAlertSystem.AddAlert restored")
+check(alertEvents.ACHIEVEMENT_EARNED and alertEvents.CRITERIA_EARNED and alertEvents.PERKS_ACTIVITY_COMPLETED,
+    "turned off: all Blizzard alert events registered again")
+assert_eq(loadCalls, 0, "part 1: zero LoadAddOn calls overall")
 assert_eq(#stub.errors, 0, "part 1: no errors in timers / event handlers" .. (stub.errors[1] and (" -- " .. stub.errors[1]) or ""))
 
 -- ---------- Part 2: achievement journal integration ----------

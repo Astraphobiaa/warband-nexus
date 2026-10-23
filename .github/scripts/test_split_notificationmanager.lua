@@ -3,7 +3,7 @@
     Regression test: NotificationManager.lua split (test / QA commands -> NotificationManager_Tests.lua).
 
     Static: the main file stays under the 4000-line / 120 top-level-local budget, the satellite is
-    listed in the TOC right after NotificationManager.lua (it reuses the main file's AddAlert helpers)
+    listed in the TOC right after NotificationManager.lua (it reuses the main file's test helpers)
     and asserts the shared table it reads.
     Runtime: under wow_stub.lua the satellite loads after the main file, every moved public command is
     on WarbandNexus, and the moved code reaches the helpers / tables the main file still owns.
@@ -120,17 +120,25 @@ local moved = {
 for i = 1, #moved do
     check(type(WarbandNexus[moved[i]]) == "function", "WarbandNexus:" .. moved[i] .. " reachable")
 end
-local kept = { "InvokeBlizzardAchievementAddAlert", "ApplyBlizzardAchievementAlertSuppression",
+local kept = { "OnPerksActivityCompleted", "ApplyBlizzardAchievementAlertSuppression",
     "ShowModalNotification", "OnVaultSlotCompleted" }
 for i = 1, #kept do
     check(type(WarbandNexus[kept[i]]) == "function", "WarbandNexus:" .. kept[i] .. " still in the main file")
 end
 
 if loadedAll then
-    -- Earn test fires Blizzard AddAlert through the main file's TestLootFireAchievementAddAlert.
+    -- Earn test never calls Blizzard's AddAlert (taint); with Warband popups ON it drives the WN handler.
     addAlertCalls = {}
     WarbandNexus:TestAchievementAlertEarn(6)
-    check(#addAlertCalls == 1 and addAlertCalls[1][1] == 6, "/wn notif earn reaches AchievementAlertSystem:AddAlert(6)")
+    check(#addAlertCalls == 0, "/wn notif earn (popups off) does not call AchievementAlertSystem:AddAlert")
+    local shownID
+    local prevShow = WarbandNexus.ShowAchievementNotification
+    WarbandNexus.ShowAchievementNotification = function(_, id) shownID = id; return true end
+    notifDb.hideBlizzardAchievementAlert = true
+    WarbandNexus:TestAchievementAlertEarn(6)
+    notifDb.hideBlizzardAchievementAlert = false
+    WarbandNexus.ShowAchievementNotification = prevShow
+    check(#addAlertCalls == 0 and shownID == 6, "/wn notif earn (popups on) reaches ShowAchievementNotification(6)")
 
     -- Traveler's Log test reaches the WN toast with the main file's icon atlas.
     local progressPayload
