@@ -391,6 +391,13 @@ do
     end
     assert_eq(crafterKeys(501), 1, "crafter lookup finds the learned recipe from recipeList")
     assert_eq(crafterKeys(502), 0, "crafter lookup skips the unlearned recipe")
+    -- Profession window closed / trade skill API unavailable: everything shown comes from storage.
+    local savedTS = _G.C_TradeSkillUI
+    _G.C_TradeSkillUI = nil
+    assert_eq(crafterKeys(501), 1, "crafter lookup works with no trade skill API (window closed)")
+    assert_eq(rec.recipeList[1].name ~= nil and rec.recipeList[2].name ~= nil, true, "recipe names are stored, not looked up")
+    assert_eq(rec.totalCount, 2, "recipe counts are stored, not looked up")
+    _G.C_TradeSkillUI = savedTS
     -- A legacy row (knownRecipes only, no recipeList) still answers.
     charData.recipes[2907] = { skillLineID = 2907, professionName = "Legacy", knownRecipes = { [777] = true } }
     assert_eq(crafterKeys(777), 1, "legacy knownRecipes row still found")
