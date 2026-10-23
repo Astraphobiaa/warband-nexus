@@ -1412,7 +1412,7 @@ function WarbandNexus:UpdateDelvesData(charKey)
         SetWeeklyFlag("nightmareTaskComplete", SafeIsQuestFlaggedCompleted(nightmareID))
         local purgingID = Constants.PVE_PURGING_VAULTS_WEEKLY_QUEST_ID or 95520
         SetWeeklyFlag("purgingVaultsComplete", SafeIsQuestFlaggedCompleted(purgingID))
-        local nemesisID = Constants.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID or 92888
+        local nemesisID = Constants.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID or 92887
         SetWeeklyFlag("delveNemesisComplete", SafeIsQuestFlaggedCompleted(nemesisID))
         -- Tormented Soul aura snapshot (alts read this; logged-in row also queries live).
         local tsChar = delves.characters[charKey]

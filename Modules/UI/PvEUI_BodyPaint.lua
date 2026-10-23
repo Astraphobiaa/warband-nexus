@@ -2040,7 +2040,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 "PVE_COL_PURGING_VAULTS", "Purging the Vaults", PVE_PURGING_VAULTS_ICON, EM_DASH, DIM_COLOR)
             colValuesByKey.delve_nemesis = BuildPvEWeeklyQuestCell(L,
                 delveChar.delveNemesisComplete, isCurrentChar,
-                (wnConst and wnConst.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID) or 92888,
+                (wnConst and wnConst.PVE_DELVE_NEMESIS_WEEKLY_QUEST_ID) or 92887,
                 "PVE_COL_DELVE_NEMESIS", "Delve Nemesis", PVE_DELVE_NEMESIS_ICON, EM_DASH, DIM_COLOR)
             local voidcoreData = L.WarbandNexus:GetCurrencyData(L.PVE_VOIDCORE_ID, charKey)
             local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
