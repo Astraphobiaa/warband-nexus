@@ -9,6 +9,7 @@ Collectible drops can now play a sound of your choice, and try counter attempts 
 
 ### Fixed
 
+- Fixed a Lua error when destroying items with TradeSkillMaster, and anywhere else an addon or macro passes a bag and slot as text instead of numbers.
 - Fixed a second attempt being counted when you reloaded or logged back in and reopened a corpse you had already looted.
 - Fixed attempts being skipped for up to 45 seconds after obtaining a repeatable drop, so kills in that window count again.
 - Fixed battle pets showing a bare attempt count with no drop chance, while mounts showed their odds.
