@@ -44,7 +44,11 @@ end
 ---@param addon table WarbandNexus
 ---@param input string Raw slash payload after /wn
 function CommandService:HandleTryCountDebugCommand(addon, input)
-    local _, subCmd, collectibleType, id = addon:GetArgs(input, 4)
+    -- `input` still carries the command word, so the type is arg2 and the id arg3.
+    -- Reading them as arg3/arg4 made the documented "/wn trycount item 226683" always fall
+    -- through to the usage text below — the command could never print a count.
+    local _, subCmd, id = addon:GetArgs(input, 3)
+    local collectibleType = subCmd
     local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
     if subLower == "sync-stats" or subLower == "syncstats" then
         if addon.ForceTryCounterStatisticsSync then
@@ -57,8 +61,9 @@ function CommandService:HandleTryCountDebugCommand(addon, input)
     if not collectibleType or not id then
         addon:Print("|cffff6600Usage:|r /wn trycount <type> <id>")
         addon:Print("|cff888888Example:|r /wn trycount item 226683")
-        addon:Print("|cff888888Types:|r item, mount, pet, toy")
-        addon:Print("|cff888888Sync:|r /wn tc sync-stats  (re-read WoW Statistics for this character)")
+        addon:Print("|cff888888Types:|r item, mount, pet, toy, illusion")
+        addon:Print("|cff888888Sync:|r /wn tc sync-stats  (re-read Statistics, updates try counts)")
+        addon:Print("|cff888888Test:|r /wn tc test  (full run)  |cff888888Diag:|r /wn tc fishing, /wn tc report, /wn check")
         return
     end
 
@@ -378,25 +383,50 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "tc" or cmd == "trycount" then
         local _, subCmd = addon:GetArgs(input, 2)
         local subLower = SafeSlashLower(subCmd)
+        -- One command runs everything: probe suite + Sylvanas chest probes + live fishing triage,
+        -- with a single combined verdict. The Sylvanas probes used to need their own scope word
+        -- and were easy to forget — they are also the ones CI never runs.
         if subLower == "test" then
-            local _, _, scope = addon:GetArgs(input, 3)
-            local scopeLower = SafeSlashLower(scope)
-            if scopeLower == "sylvanas" then
-                if addon.RunTryCounterSylvanasSelfTest then
-                    addon:RunTryCounterSylvanasSelfTest()
-                else
-                    addon:Print("|cffff6600[WN]|r Sylvanas self-test not loaded.")
-                end
-            elseif addon.RunTryCounterSelfTest then
-                addon:RunTryCounterSelfTest()
+            if addon.RunTryCounterFullTest then
+                addon:RunTryCounterFullTest()
             else
                 addon:Print("|cffff6600[WN]|r Try Counter module not loaded.")
             end
             return
         end
+        -- Encounter Journal sweep: discovers mount/pet/toy boss drops for every expansion the
+        -- client knows, keyed by DungeonEncounterID. Opt-in, because it drives the player's
+        -- journal state while it runs.
+        if subLower == "scan" then
+            if addon.ScanEncounterJournalSources then
+                addon:ScanEncounterJournalSources()
+            else
+                addon:Print("|cffff6600[WN]|r Journal scan not loaded.")
+            end
+            return
+        end
+        if subLower == "scanstop" then
+            if addon.StopEncounterJournalScan then
+                addon:StopEncounterJournalScan()
+            else
+                addon:Print("|cffff6600[WN]|r Journal scan not loaded.")
+            end
+            return
+        end
+        -- TryCounterDebugReport shipped with a doc comment pointing at a "/wn trydebug" command
+        -- that was never dispatched, so the one diagnostic showing loot-source GUIDs, recentKills
+        -- and zoneDropDB state was unreachable.
+        if subLower == "report" then
+            if addon.TryCounterDebugReport then
+                addon:TryCounterDebugReport()
+            else
+                addon:Print("|cffff6600[WN]|r Try counter debug report not loaded.")
+            end
+            return
+        end
         -- The fishing triage shipped in TryCounterService_SelfTest but was never dispatched,
         -- so "/wn tc fishing" fell through to the trycount usage help.
-        if subLower == "fishing" or subLower == "fish" then
+        if subLower == "fishing" then
             if addon.PrintFishingTryCounterDiagnostics then
                 addon:PrintFishingTryCounterDiagnostics()
             else
@@ -598,14 +628,14 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "trycounterdebug" or cmd == "lootdebug" then
+    elseif cmd == "lootdebug" then
         if not addon.db or not addon.db.profile then
             addon:Print("|cffff6600[WN] Could not toggle: profile not ready.|r")
             return
         end
         addon.db.profile.debugTryCounterLoot = not addon.db.profile.debugTryCounterLoot
         if addon.db.profile.debugTryCounterLoot then
-            addon:Print("|cff00ff00[WN] Try counter loot debug ENABLED. Open any loot (dumpster, chest, corpse) — you should see [WN-TryCounter] lines in chat.|r")
+            addon:Print("|cff00ff00[WN] Try counter loot debug ENABLED. Open any loot (dumpster, chest, corpse) — you should see [WN-TC] lines in chat.|r")
         else
             addon:Print("|cffff8800[WN] Try counter loot debug DISABLED.|r")
         end
@@ -735,7 +765,7 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "check" or cmd == "loot" or cmd == "drops" then
+    elseif cmd == "check" then
         if addon.CheckTargetDrops then
             addon:CheckTargetDrops()
         else

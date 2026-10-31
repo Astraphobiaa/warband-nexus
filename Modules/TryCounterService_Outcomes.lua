@@ -23,6 +23,10 @@ local mergedLootTryCountedAt = RT.mergedLootTryCountedAt
 local lootReady = RT.lootReady
 
 local MERGED_LOOT_TRY_DEDUP_TTL = TC.MERGED_LOOT_TRY_DEDUP_TTL or 600
+-- Ceiling for a deferred session whose own LOOT_CLOSED never arrived. Generous on purpose: a
+-- legitimate finalize follows its LOOT_OPENED within seconds, so this only catches sessions
+-- stranded by a cinematic / taxi / phase change.
+local DEFERRED_LOOT_SESSION_MAX_AGE = 60
 
 local GetLootSlotLink = GetLootSlotLink
 local GetTime = GetTime
@@ -170,6 +174,31 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
     end
     if #missed == 0 then return false end
 
+    -- Already paid for in an earlier session (survives a reload). Returning false only declines the
+    -- INCREMENT — the caller still stages the session, so slots are still read and the obtain is
+    -- still detected and announced.
+    if Fns.WasLootAttemptAlreadyCounted
+        and Fns.WasLootAttemptAlreadyCounted(ctx.dedupGUID, ctx.allSourceGUIDs) then
+        Fns.TryCounterAnnounceDebug("early-miss: corpse already counted in an earlier session")
+        return false
+    end
+
+    -- Merged open-world loot: one corpse set counts one wave. This guard existed only in
+    -- ApplyNpcLootOutcomes, which returns at its `earlyMissApplied` branch before ever reaching
+    -- it — so on the deferred and closed routes (i.e. the normal path) it never ran, and
+    -- reopening a merged window re-counted every corpse. Decline here; the finalize pass
+    -- re-evaluates with its own copy of the same check.
+    local mergeFp = nil
+    if ctx.matchedNpcID and not ctx.matchedEncounterID and not ctx.lastMatchedObjectID
+        and not (drops and Fns.NpcEntryHasStatisticIds(drops))
+        and ctx.allSourceGUIDs and #ctx.allSourceGUIDs > 0 then
+        mergeFp = tostring(ctx.matchedNpcID) .. "\1" .. Fns.BuildSortedSourceFingerprint(ctx.allSourceGUIDs)
+        local tMerge = mergedLootTryCountedAt[mergeFp]
+        if tMerge and (now - tMerge) < MERGED_LOOT_TRY_DEDUP_TTL then
+            return false
+        end
+    end
+
     local kind = ctx.kind or "npc"
     if kind == "fishing" then
         V.lastTryCountSourceKey = "fishing_open"
@@ -198,6 +227,10 @@ function Fns.ApplyEarlyLootAttemptIncrement(ctx)
         sync = true,
         attemptTimes = attemptTimes,
     })
+    if mergeFp then mergedLootTryCountedAt[mergeFp] = GetTime() end
+    if Fns.MarkLootAttemptCountedForGuids then
+        Fns.MarkLootAttemptCountedForGuids(ctx.dedupGUID, ctx.allSourceGUIDs)
+    end
     local committedKey = tryCountSourceKey
     Fns.NotifyLootTryOutcomeCommitted(committedKey, ctx.matchedNpcID or ctx.slotBossNpcID)
     Fns.MarkLootSourceGuidsProcessed(ctx.dedupGUID, ctx.allSourceGUIDs, nil)
@@ -248,6 +281,20 @@ function Fns.FinalizeDeferredLootSessionOutcome(self)
     -- slots could mark a drop "found" that was never seen here and wrongly reset its try counter.
     local sameWindow = (pending.lootOpenSerial == nil)
         or (pending.lootOpenSerial == (RT.lootOpenSerial or 0))
+
+    -- `stagedAt` was recorded but never read. A session whose own LOOT_CLOSED never arrived stayed
+    -- queued until some unrelated window closed, and was then finalized with found = {} — every
+    -- trackable drop scored as a miss, i.e. a phantom +1 on an NPC the player had long left.
+    -- Discard only when it is BOTH from an older window AND stale: a loot window the player simply
+    -- left open keeps the same serial and stays valid however long it sits.
+    local stagedAt = pending.stagedAt
+    if not sameWindow and type(stagedAt) == "number"
+        and (GetTime() - stagedAt) > DEFERRED_LOOT_SESSION_MAX_AGE then
+        Fns.TryCounterAnnounceDebug("finalize: dropped stranded pending (age=%.1fs, staged serial=%s, now=%s)",
+            GetTime() - stagedAt, tostring(pending.lootOpenSerial), tostring(RT.lootOpenSerial))
+        return
+    end
+
     local found
     if sameWindow then
         found = Fns.BuildNpcLootFoundMap(pending.trackable, RT.lootSession.numLoot, RT.lootSession.slotData)
@@ -512,10 +559,20 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
         end
     end
     dropsToIncrement = lootMiss
+    -- Same reload guard as the early path: suppress only the +1, never the outcome handling above
+    -- (found/obtain already ran).
+    if #dropsToIncrement > 0 and Fns.WasLootAttemptAlreadyCounted
+        and Fns.WasLootAttemptAlreadyCounted(dedupGUID, allSourceGUIDs) then
+        Fns.TryCounterAnnounceDebug("npc outcomes: corpse already counted in an earlier session")
+        dropsToIncrement = {}
+    end
     Fns.TryCounterLootDebugDropLines(self, "NPC", dropsToIncrement, farmCorpseMult)
     if #dropsToIncrement > 0 then
         Fns.ProcessMissedDrops(dropsToIncrement, statIds, { attemptTimes = farmCorpseMult })
         Fns.NotifyLootTryOutcomeCommitted(tryCountSourceKey, matchedNpcID)
+        if Fns.MarkLootAttemptCountedForGuids then
+            Fns.MarkLootAttemptCountedForGuids(dedupGUID, allSourceGUIDs)
+        end
     end
     if mergeFp and willIncrementMisses then
         mergedLootTryCountedAt[mergeFp] = GetTime()
@@ -544,6 +601,10 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
         local drop = trackable[i]
         if found[drop.itemID] and drop.repeatable then
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+            -- Deliberately NOT gated on IsObtainOutcomeApplied: that mark is a plain 45s TTL
+            -- on (type, key) with no cast identity, and fishing casts are ~5-10s apart, so a
+            -- second genuine catch of a repeatable inside the window would be swallowed.
+            -- Cross-route duplicates here stay covered by the 2s chat debounce, as before.
             if tryKey then
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = preResetForDrop(drop)
@@ -577,7 +638,10 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
         elseif found[drop.itemID] and not drop.repeatable then
             if drop.type == "item" then Fns.MarkItemObtained(drop.itemID) end
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
-            if tryKey then
+            -- One-time catch: a second obtain for the same key is never legitimate, so the
+            -- obtain-once guard the NPC / container / slot-boss routes carry applies cleanly
+            -- here. Without it the CHAT_MSG_LOOT fishing branch could announce the catch twice.
+            if tryKey and not Fns.IsObtainOutcomeApplied(tcType, tryKey, drop) then
                 Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = preResetForDrop(drop)
                 -- One-time catch: the counter freezes at "tries to obtain" (NPC path semantics).
@@ -597,6 +661,7 @@ function Fns.ApplyFishingLootOutcomes(self, opts)
                     type = tcType, id = tryKey, name = itemName or drop.name or "Unknown", icon = itemIcon,
                     preResetTryCount = preResetCount, fromTryCounter = true,
                 }, drop.itemID)
+                Fns.MarkObtainOutcomeApplied(tcType, tryKey, drop)
             end
         end
     end
@@ -755,7 +820,20 @@ function Fns.ApplySlotBossLootOutcomes(self, opts)
         return
     end
 
-    if Fns.ShouldUseStatisticsOnlyMiss(missed, drops and drops.statisticIds) then
+    -- Per drop, not per array: ShouldUseStatisticsOnlyMiss is true as soon as ANY drop
+    -- resolves stat ids, so a boss row mixing stat-backed and plain drops suppressed every
+    -- miss here — the plain ones have no statistic to seed from either, so they vanished.
+    -- ApplyNpcLootOutcomes already filters one drop at a time; this mirrors it.
+    local slotStatIds = drops and drops.statisticIds or nil
+    local lootMiss = {}
+    for mi = 1, #missed do
+        local d = missed[mi]
+        if not Fns.ShouldUseStatisticsOnlyMiss({ d }, slotStatIds) then
+            lootMiss[#lootMiss + 1] = d
+        end
+    end
+    missed = lootMiss
+    if #missed == 0 then
         V.lastTryCountSourceKey = slotOutcomeSourceKey
         V.lastTryCountSourceTime = now
         V.lastTryCountLootSourceGUID = allSourceGUIDs[1]

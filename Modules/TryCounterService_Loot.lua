@@ -80,7 +80,10 @@ function Fns.CountCorpsesForMissedDropItems(allSourceGUIDs, itemIdSet, candidate
     local n = 0
     for i = 1, #allSourceGUIDs do
         local g = allSourceGUIDs[i]
-        if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and not seen[g] then
+        -- Skip corpses a previous session already charged an attempt for (see
+        -- CountCorpsesSharingDropTable): a merged window must only pay for its NEW sources.
+        if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and not seen[g]
+            and not RT.processedGUIDs[g] then
             seen[g] = true
             if not g:match("^GameObject") then
                 local ok = false

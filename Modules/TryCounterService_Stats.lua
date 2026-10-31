@@ -271,7 +271,11 @@ function Fns.ReseedStatisticsForDrops(drops, resolvedDropStatIds)
                     if tryKey and tcType then
                         Fns.WriteStatisticSnapshotIfReadable(charSnapshot, tryKey, thisCharTotal, hadReadable)
                         local globalTotal = Fns.SumStatisticSnapshotsGlobal(snapshots, tryKey)
-                        Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable)
+                        -- Pass `drop`: the skipStatSeed pre-filter above only covers mount/pet/toy,
+                        -- so for an `item` (or illusion) row the frozen-count guard inside
+                        -- ApplyTryCountFromStatisticTotals was skipped and a collected one-time
+                        -- drop's "tries to obtain" could be raised to the still-growing kill stat.
+                        Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadReadable, drop)
                         local newCount = WarbandNexus:GetTryCount(tcType, tryKey) or 0
 
                         if drop.type == "item" and drop.questStarters then
@@ -938,6 +942,9 @@ function WarbandNexus:ForceTryCounterStatisticsSync()
     Fns.SeedFromStatistics({ pruneOrphans = true })
     Fns.ScheduleDeferredRarityMountMaxSync(2)
     if self.Print then
-        self:Print("|cff9370DB[WN]|r Statistics sync started for this character.")
+        -- Says what it did, not "started": the seed above already ran synchronously and it WRITES
+        -- (statisticSnapshots rewrite + orphan prune). Only the Rarity max sync is still deferred.
+        self:Print("|cff9370DB[WN]|r Statistics re-read and try counts updated"
+            .. " (snapshots rewritten, orphan keys pruned). Rarity max sync follows shortly.")
     end
 end

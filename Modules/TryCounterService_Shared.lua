@@ -17,6 +17,10 @@ ns.TryCounter = TC
 TC.VALID_TYPES = { mount = true, pet = true, toy = true, illusion = true, item = true }
 TC.RECENT_KILL_TTL = 15
 TC.PROCESSED_GUID_TTL = 300
+-- Corpses whose attempt was already committed, persisted across a reload. Same TTL as
+-- PROCESSED_GUID_TTL; capped so an AoE farm cannot grow SavedVariables without bound.
+TC.COUNTED_LOOT_GUID_TTL = 300
+TC.COUNTED_LOOT_GUID_MAX = 400
 TC.MERGED_LOOT_TRY_DEDUP_TTL = 600
 TC.CLEANUP_INTERVAL = 60
 TC.ENCOUNTER_OBJECT_TTL = 300

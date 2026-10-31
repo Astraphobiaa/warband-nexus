@@ -529,7 +529,11 @@ function WarbandNexus:TryCounterDebugReport()
     msg("Difficulty: raid=" .. safeStr(raidDiff) .. " (" .. raidLabel .. ") dungeon=" .. safeStr(dungeonDiff) .. " (" .. dungeonLabel .. ")")
 
     -- 3. Loot window
+    -- Guard before the concat and the numeric-for bound: every other API read in this function
+    -- goes through safeStr, this one did not — and the report is now reachable from a slash command.
     local numLoot = GetNumLootItems and GetNumLootItems() or 0
+    if issecretvalue and issecretvalue(numLoot) then numLoot = 0 end
+    numLoot = tonumber(numLoot) or 0
     msg("Loot window: " .. numLoot .. " slots")
     for slot = 1, numLoot do
         local sources = GetLootSourceInfo and { GetLootSourceInfo(slot) } or {}
@@ -670,7 +674,15 @@ function WarbandNexus:CheckTargetDrops()
         
         local drops = RT.npcDropDB[npcID]
         if drops then
-            msg("|cff00ff00✓ This NPC has tracked drops!|r")
+            -- Being in npcDropDB is not enough: every live resolver also requires
+            -- tryCounterNpcEligible, so without this the green tick promised counting on NPCs the
+            -- loot path would never count.
+            if RT.tryCounterNpcEligible and RT.tryCounterNpcEligible[npcID] then
+                msg("|cff00ff00✓ This NPC has tracked drops!|r")
+            else
+                msg("|cffff8800! In the drop DB, but NOT try-counter eligible|r")
+                msg("|cff888888   Drops below are listed for reference; attempts are not counted here.|r")
+            end
             msg("")
             
             -- Check if it's a boss with encounter mapping
@@ -745,11 +757,12 @@ function WarbandNexus:CheckTargetDrops()
                     else
                         msg("   Status: |cffff8800✗ Not collected|r")
                         
-                        -- Show try count if not collected
-                        local tryCount = self:GetTryCount(drop.type, drop.itemID)
-                        if tryCount > 0 then
-                            msg("   Attempts: |cffffff00" .. tryCount .. "|r")
-                        end
+                        -- Resolve the key the way the loot path does: GetTryCount(drop.type,
+                        -- drop.itemID) ignores tryCountReflectsTo, so for a reflecting item drop
+                        -- this printed the item's count while the product increments the mount key.
+                        local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+                        local tryCount = (tryKey and self:GetTryCount(tcType, tryKey)) or 0
+                        msg("   Attempts: |cffffff00" .. tryCount .. "|r")
                     end
                     
                     -- Show yields if any

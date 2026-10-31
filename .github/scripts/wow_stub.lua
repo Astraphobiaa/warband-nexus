@@ -131,6 +131,15 @@ M.world = {
     ownedPets = {},
     ownedToys = {},
     bagCounts = {},        -- [itemID] = count, backs C_Item.GetItemCount
+    itemClass = {},        -- [itemID] = { classID, subClassID }, backs GetItemInfoInstant
+    -- Encounter Journal, backing the EJ_* block below:
+    --   journal.order     = { { instanceID, isRaid }, ... } in EJ_GetInstanceByIndex order
+    --   journal.instances = { [instanceID] = {
+    --       diffs      = { difficultyID, ... }   what InstanceHasDifficultyID reports
+    --       encounters = { { jid = journalEncounterID, did = dungeonEncounterID }, ... }
+    --       loot       = { [difficultyID] = { itemID, ... } or "STALE" }
+    --   } }
+    journal = { order = {}, instances = {} },
 }
 
 env.IsInInstance = function() return M.world.inInstance, M.world.instanceType end
@@ -234,7 +243,13 @@ env.PlayerHasToy = function(id) return M.world.ownedToys[id] == true end
 env.C_TransmogCollection = { PlayerHasTransmogByItemInfo = function() return false end }
 env.C_Item = {
     GetItemInfo = function(id) return "Item" .. tostring(id), "|Hitem:" .. tostring(id) .. "::::::::::::::::|h[Item" .. tostring(id) .. "]|h" end,
-    GetItemInfoInstant = function(id) return id end,
+    -- Real returns: itemID, itemType, itemSubType, itemEquipLoc, icon, classID, subClassID.
+    -- world.itemClass lets a test declare a collectible (Miscellaneous 15: mount 5, pet 2).
+    GetItemInfoInstant = function(id)
+        local c = M.world.itemClass and M.world.itemClass[id]
+        if not c then return id end
+        return id, nil, nil, nil, nil, c[1], c[2]
+    end,
     -- (itemInfo, includeBank, includeUses, includeReagentBank, includeAccountBank).
     -- The stub ignores the scope flags: bagCounts models "the player holds it somewhere".
     GetItemCount = function(id) return M.world.bagCounts[id] or 0 end,
@@ -247,6 +262,105 @@ env.C_Container = {
     GetContainerNumSlots = function() return 0 end,
     GetContainerItemInfo = function() return nil end,
 }
+-- ---------- Encounter Journal ----------
+-- Enough surface for TryCounterService_JournalScan to walk tier -> instance -> difficulty ->
+-- encounter -> loot for real. The loot list is keyed by difficulty because that is the behaviour
+-- the scan depends on: the journal shows what drops at the difficulty currently selected.
+env.DifficultyUtil = { ID = {
+    DungeonNormal = 1, DungeonHeroic = 2, DungeonMythic = 23, DungeonChallenge = 8,
+    DungeonTimewalker = 24, RaidLFR = 7, Raid10Normal = 3, Raid10Heroic = 5,
+    Raid25Normal = 4, Raid25Heroic = 6, RaidWorld = 172, PrimaryRaidLFR = 17,
+    PrimaryRaidNormal = 14, PrimaryRaidHeroic = 15, PrimaryRaidMythic = 16,
+    RaidTimewalker = 33, Raid40 = 9,
+} }
+
+local ej = { tier = 1, instanceID = nil, difficulty = 14, encounter = nil, filterClass = 0,
+             filterSpec = 0, slotFilter = 0 }
+M.ej = ej   -- test-visible: ej.visits records every (instance, difficulty, encounter) read
+ej.visits = {}
+
+local function ejInstance() return M.world.journal.instances[ej.instanceID] end
+
+--- The raw loot entry for the selected encounter at the selected difficulty. Either a plain
+--- array of itemIDs, the string "STALE" (never arrives), or { staleFor = n, items = {...} }
+--- which reports out-of-date for the next n checks and then delivers -- the real client's
+--- behaviour when a difficulty change sends the list back to the server.
+local function ejRaw()
+    local inst = ejInstance()
+    if not inst or not ej.encounter then return nil end
+    return inst.loot and inst.loot[ej.difficulty]
+end
+local function ejItems()
+    local raw = ejRaw()
+    if type(raw) ~= "table" then return nil end
+    if raw.items then return raw.items end
+    return raw
+end
+
+env.EJ_GetNumTiers = function() return 1 end
+env.EJ_SelectTier = function(t) ej.tier = t return true end
+env.EJ_GetCurrentTier = function() return ej.tier end
+env.EJ_GetDifficulty = function() return ej.difficulty end
+env.EJ_SetDifficulty = function(d) ej.difficulty = d end
+env.EJ_GetLootFilter = function() return ej.filterClass, ej.filterSpec end
+env.EJ_SetLootFilter = function(c, sp) ej.filterClass, ej.filterSpec = c, sp end
+env.EJ_IsValidInstanceDifficulty = function() return true end
+env.EJ_IsLootListOutOfDate = function()
+    local raw = ejRaw()
+    if raw == "STALE" then return true end
+    if type(raw) == "table" and (raw.staleFor or 0) > 0 then
+        raw.staleFor = raw.staleFor - 1
+        return true
+    end
+    return false
+end
+
+env.EJ_GetInstanceByIndex = function(index, isRaid)
+    local order = M.world.journal.order
+    local n = 0
+    for i = 1, #order do
+        if order[i][2] == isRaid then
+            n = n + 1
+            if n == index then return order[i][1] end
+        end
+    end
+    return nil
+end
+env.EJ_SelectInstance = function(id) ej.instanceID = id; ej.encounter = nil end
+env.EJ_GetEncounterInfoByIndex = function(index, instanceID)
+    local inst = M.world.journal.instances[instanceID]
+    local e = inst and inst.encounters and inst.encounters[index]
+    if not e then return nil end
+    -- name, description, journalEncounterID(3), rootSectionID, link, journalInstanceID,
+    -- dungeonEncounterID(7), instanceID
+    return "Boss", "", e.jid, 0, nil, instanceID, e.did, instanceID
+end
+env.EJ_SelectEncounter = function(jid) ej.encounter = jid return true end
+env.EJ_GetNumLoot = function()
+    local l = ejItems()
+    if type(l) ~= "table" then return 0 end
+    ej.visits[#ej.visits + 1] = tostring(ej.instanceID) .. "@" .. tostring(ej.difficulty)
+        .. ":" .. tostring(ej.encounter)
+    return #l
+end
+
+env.C_EncounterJournal = {
+    GetLootInfoByIndex = function(i)
+        local l = ejItems()
+        if type(l) ~= "table" then return nil end
+        return { itemID = l[i] }
+    end,
+    InstanceHasDifficultyID = function(d)
+        local inst = ejInstance()
+        if not inst or not inst.diffs then return false end
+        for i = 1, #inst.diffs do if inst.diffs[i] == d then return true end end
+        return false
+    end,
+    GetSlotFilter = function() return ej.slotFilter end,
+    SetSlotFilter = function(f) ej.slotFilter = f end,
+    ResetSlotFilter = function() ej.slotFilter = 0 end,
+}
+
 env.C_AchievementInfo = {}
 env.C_DelvesUI = { GetCurrentDelvesSeasonNumber = function() return 2 end }
 env.C_CurrencyInfo = { GetCurrencyInfo = function() return nil end }

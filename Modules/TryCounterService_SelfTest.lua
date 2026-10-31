@@ -92,11 +92,11 @@ local function withRestoredState(fn)
     V.lastTryCountSourceTime = 0
     local ok, err = pcall(fn)
     restoreState(snap)
+    -- Restore LAST: ClearTryCounterTransientKillMarks used to run after this and wiped the very
+    -- marks the restore had just put back, so a probe run mid-farm left the live same-kill and
+    -- AoE dedup empty and the next real loot window could count twice.
     if Fns.RestoreTryCounterSelfTestDedupState and dedupSnap then
         Fns.RestoreTryCounterSelfTestDedupState(dedupSnap)
-    end
-    if Fns.ClearTryCounterTransientKillMarks then
-        Fns.ClearTryCounterTransientKillMarks()
     end
     if Fns.ClearTryCounterGatherCastGuard then
         Fns.ClearTryCounterGatherCastGuard()
@@ -107,30 +107,101 @@ local function withRestoredState(fn)
     if not ok then error(err) end
 end
 
+
+-- ── Result sink ──────────────────────────────────────────────────────────────
+-- /wn tc test renders into a window when the UI layer is loaded; chat stays the fallback.
+-- Duplicate labels are dropped: a probe label repeated across suites says nothing new.
+local resultSink, resultSeen = nil, nil
+
+local function SinkActive() return resultSink ~= nil end
+
+local function SinkStart()
+    resultSink, resultSeen = {}, {}
+end
+
+local SINK_PREFIX = {
+    pass    = "|cff00ff00[WN-TC-Test] PASS|r ",
+    fail    = "|cffff0000[WN-TC-Test] FAIL|r ",
+    warn    = "|cffffcc00[WN-TC-Test] WARN|r ",
+    skip    = "|cff888888[WN-TC-Test] SKIP|r ",
+    section = "|cff9370DB[WN-TC-Test]|r - ",
+}
+
+---Print captured rows in the same shape the suites would have printed them.
+local function SinkFlush(WN, rows)
+    for i = 1, #rows do
+        local r = rows[i]
+        local tail = (r.status == "fail" and r.err) and (": " .. tostring(r.err)) or ""
+        WN:Print((SINK_PREFIX[r.status] or "") .. tostring(r.label) .. tail)
+    end
+end
+
+local function SinkTake()
+    local rows = resultSink
+    resultSink, resultSeen = nil, nil
+    return rows or {}
+end
+
+---@return boolean true when the line was captured (caller must not print it)
+local function SinkEmit(status, label, err)
+    if not resultSink then return false end
+    if status ~= "section" then
+        -- Keyed on status too: the same label can PASS in the probe suite and FAIL in the
+        -- Sylvanas one, and dropping the second left the summary claiming failures with no
+        -- failing row to show for them.
+        local seenKey = status .. "\0" .. label
+        if resultSeen[seenKey] then return true end
+        resultSeen[seenKey] = true
+    end
+    resultSink[#resultSink + 1] = { status = status, label = label, err = err and tostring(err) or nil }
+    return true
+end
+
 local function runSelfTestHarness(WN, title, fn)
     local pass, fail, warn = 0, 0, 0
     local failedLabels = {}
     local function linePass(label)
         pass = pass + 1
-        WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label)
+        if not SinkEmit("pass", label) then WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label) end
     end
     local function lineFail(label, err)
         fail = fail + 1
         failedLabels[#failedLabels + 1] = { label = label, err = err }
-        local tail = err and (": " .. tostring(err)) or ""
-        WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
+        if not SinkEmit("fail", label, err) then
+            local tail = err and (": " .. tostring(err)) or ""
+            WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
+        end
     end
+    -- A probe that warns and returns verified nothing. It used to be counted as PASS, so the
+    -- summary advertised coverage the run never had (the alias-key probe self-skips on a cold
+    -- mount journal, for one). Track it separately and report it as SKIP.
+    local skip, warnedInProbe = 0, false
     local function lineWarn(label)
         warn = warn + 1
-        WN:Print("|cffffcc00[WN-TC-Test] WARN|r " .. label)
+        warnedInProbe = true
+        if not SinkEmit("warn", label) then WN:Print("|cffffcc00[WN-TC-Test] WARN|r " .. label) end
+    end
+    local function lineSkip(label)
+        skip = skip + 1
+        if not SinkEmit("skip", label) then WN:Print("|cff888888[WN-TC-Test] SKIP|r " .. label) end
     end
     local function section(st)
-        WN:Print("|cff9370DB[WN-TC-Test]|r — " .. st)
+        if not SinkEmit("section", st) then WN:Print("|cff9370DB[WN-TC-Test]|r — " .. st) end
     end
     local function probe(label, pfn)
+        warnedInProbe = false
         local ok, err = pcall(pfn)
-        if ok then linePass(label) else lineFail(label, err) end
+        if not ok then
+            lineFail(label, err)
+        elseif warnedInProbe then
+            lineSkip(label)
+        else
+            linePass(label)
+        end
     end
+    -- Suite-level snapshot: the clears below touch the LIVE dedup tables, so without this a run
+    -- started mid-farm left them empty for the next real loot window.
+    local suiteDedupSnap = Fns.SnapshotTryCounterSelfTestDedupState and Fns.SnapshotTryCounterSelfTestDedupState()
     if Fns.ClearTryCounterTransientKillMarks then
         Fns.ClearTryCounterTransientKillMarks()
     end
@@ -138,9 +209,13 @@ local function runSelfTestHarness(WN, title, fn)
         Fns.ClearTryCounterGatherCastGuard()
     end
     WN:Print("|cff9370DB[WN-TC-Test]|r " .. title)
-    fn(section, probe, lineWarn)
+    local suiteOk, suiteErr = pcall(fn, section, probe, lineWarn)
+    if Fns.RestoreTryCounterSelfTestDedupState and suiteDedupSnap then
+        Fns.RestoreTryCounterSelfTestDedupState(suiteDedupSnap)
+    end
+    if not suiteOk then error(suiteErr) end
     if fail == 0 then
-        WN:Print(format("|cff00ff00[WN-TC-Test] OK|r %d passed, %d warnings.", pass, warn))
+        WN:Print(format("|cff00ff00[WN-TC-Test] OK|r %d passed, %d skipped, %d warnings.", pass, skip, warn))
     else
         WN:Print("|cffff0000[WN-TC-Test]|r Failed checks (recap):")
         for i = 1, #failedLabels do
@@ -148,36 +223,54 @@ local function runSelfTestHarness(WN, title, fn)
             local tail = entry.err and (": " .. tostring(entry.err)) or ""
             WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. entry.label .. tail)
         end
-        WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d warnings.", pass, fail, warn))
+        WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d skipped, %d warnings.", pass, fail, skip, warn))
     end
+    return pass, fail, skip, warn
 end
 
 function WarbandNexus:RunTryCounterSelfTest()
     local WN = self
     local pass, fail, warn = 0, 0, 0
+    local skip, warnedInProbe = 0, false
     local failedLabels = {}
     local samples = Fns.GetSelfTestSampleIds and Fns.GetSelfTestSampleIds() or {}
 
     local function linePass(label)
         pass = pass + 1
-        WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label)
+        if not SinkEmit("pass", label) then WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label) end
     end
     local function lineFail(label, err)
         fail = fail + 1
         failedLabels[#failedLabels + 1] = { label = label, err = err }
-        local tail = err and (": " .. tostring(err)) or ""
-        WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
+        if not SinkEmit("fail", label, err) then
+            local tail = err and (": " .. tostring(err)) or ""
+            WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
+        end
     end
+    -- See runSelfTestHarness: a probe that warns and returns verified nothing, so it reports SKIP
+    -- rather than inflating the passed count.
     local function lineWarn(label)
         warn = warn + 1
-        WN:Print("|cffffcc00[WN-TC-Test] WARN|r " .. label)
+        warnedInProbe = true
+        if not SinkEmit("warn", label) then WN:Print("|cffffcc00[WN-TC-Test] WARN|r " .. label) end
+    end
+    local function lineSkip(label)
+        skip = skip + 1
+        if not SinkEmit("skip", label) then WN:Print("|cff888888[WN-TC-Test] SKIP|r " .. label) end
     end
     local function section(title)
-        WN:Print("|cff9370DB[WN-TC-Test]|r — " .. title)
+        if not SinkEmit("section", title) then WN:Print("|cff9370DB[WN-TC-Test]|r — " .. title) end
     end
     local function probe(label, fn)
+        warnedInProbe = false
         local ok, err = pcall(fn)
-        if ok then linePass(label) else lineFail(label, err) end
+        if not ok then
+            lineFail(label, err)
+        elseif warnedInProbe then
+            lineSkip(label)
+        else
+            linePass(label)
+        end
     end
     local function requireFn(name)
         local fn = WN[name]
@@ -1135,6 +1228,27 @@ function WarbandNexus:RunTryCounterSelfTest()
     end)
     if samples.containerID then
         probe("ProcessContainerLoot: defers on opened", function()
+            -- samples.containerID is the first key of a pairs() walk over containerDropDB, so the
+            -- container picked differs between sessions. ProcessContainerLoot returns before
+            -- staging when every non-repeatable drop of that container is already collected —
+            -- correct product behaviour. Warn and skip rather than report a FAIL that depends on
+            -- which container the hash order happened to hand us and what the player owns.
+            local cdata = RT.containerDropDB and RT.containerDropDB[samples.containerID]
+            local cdrops = cdata and (cdata.drops or cdata)
+            local trackableCount = 0
+            if type(cdrops) == "table" then
+                for i = 1, #cdrops do
+                    local d = cdrops[i]
+                    if d and (d.repeatable or not Fns.IsCollectibleCollected(d)) then
+                        trackableCount = trackableCount + 1
+                    end
+                end
+            end
+            if trackableCount == 0 then
+                lineWarn("sample container " .. tostring(samples.containerID)
+                    .. " has no uncollected drops on this character — defer probe skipped")
+                return
+            end
             withRestoredState(function()
                 V.lastContainerItemID = samples.containerID
                 V.lastContainerItemTime = GetTime()
@@ -1501,13 +1615,23 @@ function WarbandNexus:RunTryCounterSelfTest()
     if Fns.FlushDeferredTryCounterIncrementAnnounces then
         Fns.FlushDeferredTryCounterIncrementAnnounces()
     end
-    WN:SetTryCount("item", FAKE_ITEM_ID, savedFakeCount or 0)
+    -- mechID is a REAL item: restore the player's value.
     WN:SetTryCount("item", mechID, savedMechCount or 0)
+    -- The probe ids are synthetic and can never be a legitimate count, so REMOVE them instead of
+    -- writing them back. SetTryCount cannot delete a key (0 is a value), which is why an
+    -- interrupted run left tryCounts.item[987654321] behind and every later run faithfully
+    -- restored it. Clearing here also cleans up residue from earlier builds.
+    local tcItems = WN.db and WN.db.global and WN.db.global.tryCounts and WN.db.global.tryCounts.item
+    if tcItems then
+        tcItems[FAKE_ITEM_ID] = nil
+        tcItems[FAKE_ITEM_ID + 1] = nil   -- chat-route probe id (FAKE_ITEM_ID + 1)
+    end
 
     if fail == 0 then
         WN:Print(format(
-            "|cff00ff00[WN-TC-Test] OK|r %d passed, %d warnings. Routes: object, rare, container, fishing, raid, encounter, chat.",
-            pass, warn))
+            "|cff00ff00[WN-TC-Test] OK|r %d passed, %d skipped, %d warnings.%s",
+            pass, skip, warn,
+            skip == 0 and " Routes: object, rare, container, fishing, raid, encounter, chat." or " (some routes skipped - see SKIP lines)"))
     else
         WN:Print("|cffff0000[WN-TC-Test]|r Failed checks (recap):")
         for i = 1, #failedLabels do
@@ -1515,11 +1639,12 @@ function WarbandNexus:RunTryCounterSelfTest()
             local tail = entry.err and (": " .. tostring(entry.err)) or ""
             WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. entry.label .. tail)
         end
-        WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d warnings.", pass, fail, warn))
+        WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d skipped, %d warnings.", pass, fail, skip, warn))
     end
+    return pass, fail, skip, warn
 end
 
---- Mythic Sylvanas chest path only (/wn tc test sylvanas). No raid required.
+--- Mythic Sylvanas chest probes. No raid required; part of the full /wn tc test run.
 function WarbandNexus:RunTryCounterSylvanasSelfTest()
     local WN = self
     if not Fns.EnsureDB() then
@@ -1535,7 +1660,7 @@ function WarbandNexus:RunTryCounterSylvanasSelfTest()
         Fns.SetTryCounterSelfTestSyncMiss(true)
     end
 
-    runSelfTestHarness(WN, "Sylvanas Mythic chest probes (post-cinematic slot-first + pending replay)...", function(section, probe)
+    local sylvPass, sylvFail, sylvSkip, sylvWarn = runSelfTestHarness(WN, "Sylvanas Mythic chest probes (post-cinematic slot-first + pending replay)...", function(section, probe)
         section("Encounter bookkeeping")
         probe("ENCOUNTER_END seeds recentKill for Sylvanas (2435)", function()
             withRestoredState(function()
@@ -1572,7 +1697,12 @@ function WarbandNexus:RunTryCounterSylvanasSelfTest()
         end)
 
         section("Chest before ENCOUNTER_END (pending replay)")
-        probe("TryReplayPendingEncounterLoot after ENCOUNTER_END", function()
+        -- The shipped Sylvanas row carries statisticIds = { 15176 }, so in a raid the miss is owned
+        -- by the ENCOUNTER_END statistics sync and the loot path must NOT add its own +1
+        -- (ShouldUseStatisticsOnlyMiss). This probe asserted the opposite and reported a FAIL on a
+        -- correctly behaving client; the two probes in "Statistics-only miss (raid/dungeon gate)"
+        -- assert the same contract the right way round.
+        probe("TryReplayPendingEncounterLoot after ENCOUNTER_END (stat-backed boss: no loot +1)", function()
             withRestoredState(function()
                 local drop = fakeDrop()
                 local old = WN:GetTryCount("item", FAKE_ITEM_ID)
@@ -1596,10 +1726,11 @@ function WarbandNexus:RunTryCounterSylvanasSelfTest()
                 if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
                     Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
                 end
-                if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
-                    error("expected replay miss increment")
-                end
+                local after = WN:GetTryCount("item", FAKE_ITEM_ID)
                 WN:SetTryCount("item", FAKE_ITEM_ID, old)
+                if after ~= old then
+                    error(format("stat-backed raid boss must not take a loot +1: %d -> %d", old, after))
+                end
             end)
         end)
     end)
@@ -1610,7 +1741,10 @@ function WarbandNexus:RunTryCounterSylvanasSelfTest()
     if Fns.FlushDeferredTryCounterIncrementAnnounces then
         Fns.FlushDeferredTryCounterIncrementAnnounces()
     end
-    WN:SetTryCount("item", FAKE_ITEM_ID, savedFake or 0)
+    -- Synthetic probe id: remove it rather than writing it back (SetTryCount cannot delete a key).
+    local tcItems = WN.db and WN.db.global and WN.db.global.tryCounts and WN.db.global.tryCounts.item
+    if tcItems then tcItems[FAKE_ITEM_ID] = nil end
+    return sylvPass, sylvFail, sylvSkip, sylvWarn
 end
 
 -- ── Live fishing diagnostic (/wn tc fishing) ──────────────────────────────────
@@ -1668,12 +1802,17 @@ end
 function WarbandNexus:PrintFishingTryCounterDiagnostics()
     local WN = self
     local blockers = {}
-    local function pass(label) WN:Print("|cff00ff00[WN-TC-Fish] OK|r " .. label) end
+    -- Same sink as the probe suites: into the results window when one is being built.
+    local function pass(label)
+        if not SinkEmit("pass", label) then WN:Print("|cff00ff00[WN-TC-Fish] OK|r " .. label) end
+    end
     local function warn(label, blocker)
         if blocker then blockers[#blockers + 1] = blocker end
-        WN:Print("|cffffcc00[WN-TC-Fish] WARN|r " .. label)
+        if not SinkEmit("warn", label) then WN:Print("|cffffcc00[WN-TC-Fish] WARN|r " .. label) end
     end
-    local function info(label) WN:Print("|cff9370DB[WN-TC-Fish]|r " .. label) end
+    local function info(label)
+        if not SinkEmit("info", label) then WN:Print("|cff9370DB[WN-TC-Fish]|r " .. label) end
+    end
 
     if not Fns.EnsureDB() then
         WN:Print("|cffff0000[WN-TC-Fish]|r DB not ready — aborting.")
@@ -1682,6 +1821,27 @@ function WarbandNexus:PrintFishingTryCounterDiagnostics()
     if not Fns.EnsureTryCounterRuntimeDbLoaded or not Fns.EnsureTryCounterRuntimeDbLoaded() then
         WN:Print("|cffff0000[WN-TC-Fish]|r CollectibleSourceDB not loaded — aborting.")
         return
+    end
+
+    -- Route-level "skip" flags. ClassifyLootSession returns "skip" for each of these before the
+    -- fishing branch is ever reached, and ProcessFishingLoot bails on isProfessionLooting outright
+    -- — but the verdict below never consulted them, so it could promise "should count" while the
+    -- product refused. All four are observable right now, which is what this triage is for.
+    if V.isProfessionLooting then
+        warn("profession loot flag is set (herb/ore cast) — fishing route is skipped",
+            "profession looting active")
+    end
+    if V.isPickpocketing then
+        warn("pickpocket flag is set — loot route is skipped", "pickpocketing active")
+    end
+    if V.isBlockingInteractionOpen then
+        warn("merchant / bank / mail / trade window is open — loot route is skipped",
+            "blocking interaction window open")
+    end
+    local gatherAge = Fns.GetTryCounterGatherCastAge and Fns.GetTryCounterGatherCastAge()
+    if type(gatherAge) == "number" and gatherAge < 12 then
+        warn(format("a gathering cast %.1fs ago still guards GameObject-only loot (12s window)", gatherAge),
+            "recent gathering cast")
     end
 
     info("— gates")
@@ -1809,5 +1969,57 @@ function WarbandNexus:PrintFishingTryCounterDiagnostics()
             .. "run |cff00ccff/wn tc test|r and report the failing probe.")
     else
         WN:Print("|cffff6600[WN-TC-Fish]|r A cast here will NOT count: " .. table.concat(blockers, "; "))
+    end
+end
+
+-- ── One command, everything (/wn tc test) ────────────────────────────────────
+--- Runs the main probe suite, the Sylvanas chest probes and the live fishing triage back to back,
+--- then prints a single combined verdict. Each part still prints its own lines; the overall line is
+--- the one to report. Added because the three used to need three separate commands and the Sylvanas
+--- probes were easy to forget — they are also the ones CI never runs.
+function WarbandNexus:RunTryCounterFullTest()
+    local WN = self
+    local totalPass, totalFail, totalSkip, totalWarn = 0, 0, 0, 0
+    -- Render into a window when the UI layer is loaded; otherwise keep the chat output.
+    local useWindow = (ns.UI_ShowTryCounterTestResults ~= nil)
+    if useWindow then SinkStart() end
+    local function tally(p, f, s, w)
+        totalPass = totalPass + (tonumber(p) or 0)
+        totalFail = totalFail + (tonumber(f) or 0)
+        totalSkip = totalSkip + (tonumber(s) or 0)
+        totalWarn = totalWarn + (tonumber(w) or 0)
+    end
+
+    -- pcall, because a suite that throws would otherwise leave resultSink set for the rest of
+    -- the session and every later test line would vanish into it.
+    local runOk, runErr = pcall(function()
+        if WN.RunTryCounterSelfTest then tally(WN:RunTryCounterSelfTest()) end
+        if WN.RunTryCounterSylvanasSelfTest then tally(WN:RunTryCounterSylvanasSelfTest()) end
+        -- Live triage prints its own verdict and has no probe counts to add.
+        if WN.PrintFishingTryCounterDiagnostics then WN:PrintFishingTryCounterDiagnostics() end
+    end)
+
+    if useWindow then
+        local rows = SinkTake()
+        local shown = ns.UI_ShowTryCounterTestResults(rows, {
+            pass = totalPass, fail = totalFail, skip = totalSkip, warn = totalWarn,
+        })
+        if shown then
+            if not runOk then WN:Print("|cffff0000[WN-TC-Test]|r " .. tostring(runErr)) end
+            return
+        end
+        -- The window refused to open (already showing, or SharedWidgets missing). Everything the
+        -- suites would have printed is sitting in rows, so print it rather than losing the run.
+        SinkFlush(WN, rows)
+    end
+    if not runOk then WN:Print("|cffff0000[WN-TC-Test]|r " .. tostring(runErr)) end
+
+    WN:Print("|cff9370DB[WN-TC-Test]|r ──────── overall ────────")
+    if totalFail == 0 then
+        WN:Print(format("|cff00ff00[WN-TC-Test] ALL OK|r %d passed, %d skipped, %d warnings"
+            .. " (probes + Sylvanas chest + live fishing triage).", totalPass, totalSkip, totalWarn))
+    else
+        WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d skipped, %d warnings"
+            .. " — scroll up for the FAIL lines.", totalPass, totalFail, totalSkip, totalWarn))
     end
 end

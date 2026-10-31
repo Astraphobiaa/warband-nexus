@@ -104,6 +104,7 @@ LoadFile("Modules/TryCounterService_Instance.lua")
 LoadFile("Modules/TryCounterService_TrackDB.lua")
 LoadFile("Modules/TryCounterService_Loot.lua")
 LoadFile("Modules/TryCounterService_Stats.lua")
+LoadFile("Modules/TryCounterService_JournalScan.lua")
 LoadFile("Modules/TryCounterService_Handlers.lua")
 
 WN:InitializeTryCounter()

@@ -164,7 +164,11 @@ end
 function Fns.ResolveTryCounterMountAnnounceDrop(drop)
     if not drop or not drop.type then return nil end
     if drop.type == "mount" then return drop end
-    if drop.type == "pet" or drop.type == "toy" then return nil end
+    -- Pets and toys are counted by the same type-agnostic pipeline as mounts, so excluding them
+    -- here made the instance-entry announce and /wn check silently blind to them: a boss whose only
+    -- tracked drop is a pet produced "no mount entries in database", and an instance with only
+    -- pet/toy drops printed nothing at all.
+    if drop.type == "pet" or drop.type == "toy" then return drop end
     if drop.type == "item" then
         local r = drop.tryCountReflectsTo
         if r and r.type == "mount" then return r end

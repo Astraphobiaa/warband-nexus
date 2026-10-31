@@ -241,6 +241,13 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         return fallbackNpcID
     end
 
+    -- Journal-discovered boss loot, counted straight off the DungeonEncounterID. These rows have
+    -- no npcID (EJ_GetCreatureInfo cannot give one), so they never reach the npc path below.
+    -- Guarded against a secret encounterID inside; strictly additive to the npc lane.
+    if Fns.ProcessEncounterKeyedMiss then
+        Fns.ProcessEncounterKeyedMiss(encounterID, difficultyID)
+    end
+
     -- Midnight 12.0: encounterID can be secret in dungeons; cannot use as table key or tostring().
     if issecretvalue and issecretvalue(encounterID) then
         if not (issecretvalue and issecretvalue(encounterName)) and encounterName and RT.encounterNameToNpcs[encounterName] then
@@ -848,7 +855,12 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                 if caughtDrop then
                     if not caughtDrop.repeatable and caughtDrop.type == "item" then Fns.MarkItemObtained(caughtDrop.itemID) end
                     local tcType, tryKey = Fns.GetTryCountTypeAndKey(caughtDrop)
-                    if tryKey then
+                    -- Pairs with ApplyFishingLootOutcomes: whichever route sees the catch first
+                    -- claims it, so the loot window and this chat line cannot both announce one
+                    -- catch. One-time drops only — the mark is a flat 45s TTL with no cast
+                    -- identity, and a repeatable can legitimately be caught again inside it.
+                    if tryKey and (caughtDrop.repeatable
+                            or not Fns.IsObtainOutcomeApplied(tcType, tryKey, caughtDrop)) then
                         Fns.MarkDropObtainedThisKill(tcType, tryKey, caughtDrop)
                         local preResetCount = self:GetTryCount(tcType, tryKey)
                         local didReset = Fns.ShouldResetOnObtain(tcType, tryKey, caughtDrop)
@@ -873,6 +885,9 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                                 preResetTryCount = preResetCount,
                                 fromTryCounter = true,
                             }, caughtDrop.itemID)
+                        end
+                        if not caughtDrop.repeatable then
+                            Fns.MarkObtainOutcomeApplied(tcType, tryKey, caughtDrop)
                         end
                     end
                     return

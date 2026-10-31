@@ -107,6 +107,17 @@ function Fns.ClearTryCounterGatherCastGuard()
     lastGatherCastName = nil
 end
 
+---Seconds since the last gathering cast, or nil when there has been none.
+---Exposed for /wn tc fishing: the guard below is a real reason a cast will not count, and the
+---diagnostic cannot read a file-local.
+---@return number|nil
+function Fns.GetTryCounterGatherCastAge()
+    if not lastGatherCastTime or lastGatherCastTime <= 0 then return nil end
+    local age = GetTime() - lastGatherCastTime
+    if age < 0 then return nil end
+    return age
+end
+
 ---Begin fishing context when a known Fishing spell starts (shared by SENT + CHANNEL_START).
 ---@param spellID number|nil
 function WarbandNexus:TryCounterBeginFishingContext(spellID)
@@ -1162,7 +1173,9 @@ function Fns.CountCorpsesSharingDropTable(allSourceGUIDs, dropsTable)
     for i = 1, #allSourceGUIDs do
         local g = allSourceGUIDs[i]
         if type(g) == "string" and not (issecretvalue and issecretvalue(g)) then
-            if not g:match("^GameObject") and not seen[g] then
+            -- Already-counted corpses must not inflate the multiplier: loot A alone (+1, A marked),
+            -- then a window merging A+B scored 2 and charged a second attempt for A.
+            if not g:match("^GameObject") and not seen[g] and not RT.processedGUIDs[g] then
                 seen[g] = true
                 local d2 = Fns.MatchGuidExact(g)
                 if d2 == dropsTable then
@@ -1181,7 +1194,8 @@ function Fns.CountUniqueLootSourcesForNpcID(allSourceGUIDs, npcID)
     local n = 0
     for i = 1, #allSourceGUIDs do
         local g = allSourceGUIDs[i]
-        if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and not seen[g] then
+        if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and not seen[g]
+            and not RT.processedGUIDs[g] then
             seen[g] = true
             if not g:match("^GameObject") then
                 local nid = Fns.GetNPCIDFromGUID(g)

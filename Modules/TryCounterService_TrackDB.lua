@@ -236,6 +236,46 @@ function Fns.MergeTrackDB()
                 end
             end
 
+            -- 2.5) Journal-discovered boss loot, keyed by DungeonEncounterID.
+            -- Its own namespace, not trackDB.custom: a rescan replaces the whole set and the
+            -- player's own additions must not be collateral. Rebuilt from scratch each merge so a
+            -- rescan cannot leave orphans behind.
+            wipe(RT.encounterDropDB)
+            local journalEncounters = trackDB.journal and trackDB.journal.encounters
+            if journalEncounters then
+                for encID, drops in pairs(journalEncounters) do
+                    encID = tonumber(encID)
+                    if encID and type(drops) == "table" and #drops > 0 then
+                        local copy = {}
+                        local seen = {}
+                        -- Strictly additive: anything the shipped npc rows for this encounter
+                        -- already cover is skipped, so a boss present in both tables can never be
+                        -- charged twice for the same drop.
+                        local npcIDs = RT.encounterDB and RT.encounterDB[encID]
+                        if npcIDs then
+                            for n = 1, #npcIDs do
+                                local existing = RT.npcDropDB[npcIDs[n]]
+                                if existing then
+                                    for j = 1, #existing do
+                                        local ex = existing[j]
+                                        if ex and ex.itemID then seen[ex.itemID] = true end
+                                    end
+                                end
+                            end
+                        end
+                        for i = 1, #drops do
+                            local d = drops[i]
+                            if d and d.itemID and not seen[d.itemID] then
+                                seen[d.itemID] = true
+                                copy[#copy + 1] = d
+                            end
+                        end
+                        if drops.statisticIds then copy.statisticIds = drops.statisticIds end
+                        if #copy > 0 then RT.encounterDropDB[encID] = copy end
+                    end
+                end
+            end
+
             -- 3) Remove disabled entries (user-untracked built-in items)
             local disabled = trackDB.disabled
             if disabled then
@@ -249,6 +289,10 @@ function Fns.MergeTrackDB()
                             db = RT.npcDropDB
                         elseif sourceType == "object" then
                             db = RT.objectDropDB
+                        elseif sourceType == "encounter" then
+                            -- Journal-discovered boss loot the player untracked. Runs after the
+                            -- rebuild above, so a rescan can never resurrect a disabled drop.
+                            db = RT.encounterDropDB
                         end
                         if db and db[sourceID] then
                             local drops = db[sourceID]

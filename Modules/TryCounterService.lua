@@ -52,6 +52,8 @@ RT.tryCounterSelfTest = RT.tryCounterSelfTest or { slotInstance = nil }
 local VALID_TYPES = TC.VALID_TYPES or { mount = true, pet = true, toy = true, illusion = true, item = true }
 local RECENT_KILL_TTL = TC.RECENT_KILL_TTL or 15
 local PROCESSED_GUID_TTL = TC.PROCESSED_GUID_TTL or 300
+local COUNTED_LOOT_GUID_TTL = TC.COUNTED_LOOT_GUID_TTL or 300
+local COUNTED_LOOT_GUID_MAX = TC.COUNTED_LOOT_GUID_MAX or 400
 local MERGED_LOOT_TRY_DEDUP_TTL = TC.MERGED_LOOT_TRY_DEDUP_TTL or 600
 local CLEANUP_INTERVAL = TC.CLEANUP_INTERVAL or 60
 local GUID_PARSE_CACHE_MAX = TC.GUID_PARSE_CACHE_MAX or 512
@@ -530,6 +532,11 @@ local fishingDropDB = {}
 local containerDropDB = {}
 local zoneDropDB = {}
 local encounterDB = {}
+-- Drops attached straight to a DungeonEncounterID (the id ENCOUNTER_END delivers), with no npcID
+-- pivot. The Encounter Journal can name an encounter but NOT its creature id -- EJ_GetCreatureInfo
+-- returns JournalEncounterCreature.ID and CreatureDisplayID, neither of which matches a GUID -- so
+-- journal-discovered boss loot lands here instead of npcDropDB.
+local encounterDropDB = {}
 local npcIDToEncounterID = {} -- [npcID] = encounterID — built in BuildReverseIndices; O(1) GetEncounterIDForNpcID
 local encounterNameToNpcs = {}  -- [encounterName (enUS)] = { npcID1, ... } — Midnight: fallback when encounterID is secret
 local lockoutQuestsDB = {}  -- [npcID] = questID or { questID1, questID2, ... }
@@ -768,6 +775,7 @@ function Fns.LoadRuntimeSourceTables()
     if not db then
         npcDropDB, objectDropDB, fishingDropDB, containerDropDB = {}, {}, {}, {}
         zoneDropDB, encounterDB, encounterNameToNpcs, lockoutQuestsDB = {}, {}, {}, {}
+        encounterDropDB = {}
         wipe(npcIDToEncounterID)
         wipe(instanceBossSlotOutcomeRules)
         Fns.SyncTryCounterRTTableRefs()
@@ -793,6 +801,7 @@ function Fns.LoadRuntimeSourceTables()
     containerDropDB = Fns.CopyContainerMap(db.containers or {})
     zoneDropDB = Fns.CopyZoneMap(db.zones or {})
     encounterDB = Fns.CopyEncounterMap(db.encounters or {})
+    encounterDropDB = {}
     encounterNameToNpcs = Fns.CopyEncounterMap(db.encounterNames or {})
     Fns.AugmentEncounterNameToNpcsFromNpcNameIndex()
     lockoutQuestsDB = Fns.CopyKeyValueMap(db.lockoutQuests or {})
@@ -837,6 +846,7 @@ function Fns.SyncTryCounterRTTableRefs()
     RT.containerDropDB = containerDropDB
     RT.zoneDropDB = zoneDropDB
     RT.encounterDB = encounterDB
+    RT.encounterDropDB = encounterDropDB
     RT.encounterNameToNpcs = encounterNameToNpcs
     RT.lockoutQuestsDB = lockoutQuestsDB
     RT.npcIDToEncounterID = npcIDToEncounterID
@@ -1368,6 +1378,9 @@ function Fns.EnsureDB()
     if not WarbandNexus.db.global.tryCounts.obtained then
         WarbandNexus.db.global.tryCounts.obtained = {}
     end
+    if not WarbandNexus.db.global.tryCounterCountedGuids then
+        WarbandNexus.db.global.tryCounterCountedGuids = {}
+    end
     local tc0 = WarbandNexus.db.global.tryCounts
     local oldSeedKey = "r" .. "arityMountsOneTimeSeedComplete"
     if tc0.legacyMountTrackerSeedComplete == nil then
@@ -1375,6 +1388,86 @@ function Fns.EnsureDB()
     end
     tc0[oldSeedKey] = nil
     return true
+end
+
+-- Corpses whose attempt is already committed, surviving a reload.
+--
+-- The session table processedGUIDs cannot do this job: ResolveFromGUIDs early-exits on it, which
+-- skips the whole NPC route and with it the found/obtain detection. An earlier attempt at this fix
+-- persisted that table and silently lost the obtain. So this is a SEPARATE set, consulted only
+-- where the increment is decided — the loot route still runs, slots are still read, the obtain is
+-- still announced; only the second +1 is suppressed.
+--
+-- Stamped with wall-clock time(), not GetTime(): GetTime() restarts with the client.
+function Fns.MarkLootAttemptCountedForGuids(dedupGUID, allSourceGUIDs)
+    if not Fns.EnsureDB() then return end
+    local store = WarbandNexus.db.global.tryCounterCountedGuids
+    local now = time()
+    local function mark(g)
+        if type(g) ~= "string" or g == "" then return end
+        if issecretvalue and issecretvalue(g) then return end
+        if g:match("^zone_") then return end
+        store[g] = now
+    end
+    mark(dedupGUID)
+    if allSourceGUIDs then
+        for i = 1, #allSourceGUIDs do mark(allSourceGUIDs[i]) end
+    end
+    Fns.PruneCountedLootGuids()
+end
+
+---@return boolean true when this corpse set already paid for its attempt in an earlier session
+function Fns.WasLootAttemptAlreadyCounted(dedupGUID, allSourceGUIDs)
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return false end
+    local store = WarbandNexus.db.global.tryCounterCountedGuids
+    if type(store) ~= "table" or not next(store) then return false end
+    local nowWall = time()
+    local function counted(g)
+        if type(g) ~= "string" or g == "" then return false end
+        if issecretvalue and issecretvalue(g) then return false end
+        local stamp = store[g]
+        if type(stamp) ~= "number" then return false end
+        local age = nowWall - stamp
+        return age >= 0 and age < COUNTED_LOOT_GUID_TTL
+    end
+    -- Every source already counted = the same corpse set reopened. A set with ANY fresh corpse is
+    -- a new attempt and must still count, so the dedupGUID shortcut only applies when there is no
+    -- source list to check: dedupGUID is just the first unprocessed GUID of the set, and after a
+    -- reload it can name an already-counted corpse while a fresh one sits beside it in the window.
+    if allSourceGUIDs and #allSourceGUIDs > 0 then
+        for i = 1, #allSourceGUIDs do
+            if not counted(allSourceGUIDs[i]) then return false end
+        end
+        return true
+    end
+    return counted(dedupGUID)
+end
+
+function Fns.PruneCountedLootGuids()
+    if not Fns.EnsureDB() then return end
+    local store = WarbandNexus.db.global.tryCounterCountedGuids
+    local nowWall = time()
+    local n, oldestKey, oldestAt = 0, nil, nil
+    for g, stamp in pairs(store) do
+        local age = (type(stamp) == "number") and (nowWall - stamp) or nil
+        if not age or age < 0 or age >= COUNTED_LOOT_GUID_TTL then
+            store[g] = nil
+        else
+            n = n + 1
+            if oldestAt == nil or stamp < oldestAt then oldestKey, oldestAt = g, stamp end
+        end
+    end
+    -- Hard ceiling, newest-wins: a returning player can only re-loot a recent corpse.
+    while n > COUNTED_LOOT_GUID_MAX and oldestKey do
+        store[oldestKey] = nil
+        n = n - 1
+        oldestKey, oldestAt = nil, nil
+        for g, stamp in pairs(store) do
+            if type(stamp) == "number" and (oldestAt == nil or stamp < oldestAt) then
+                oldestKey, oldestAt = g, stamp
+            end
+        end
+    end
 end
 
 function Fns.MarkItemObtained(itemID)
@@ -1622,6 +1715,25 @@ function WarbandNexus:GetItemIDForCollectible(collectibleType, id)
     end
     if collectibleType == "mount" and ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetItemIDForMount then
         return ns.CollectibleSourceDB.GetItemIDForMount(idNum)
+    end
+    -- Pets fell through to nil, which made both consumers dead code for every pet: the "(~62%)"
+    -- suffix and the drop-rate tooltip on a try-count row (SharedWidgets_Factory). A pet showed a
+    -- bare number where a mount showed its odds.
+    -- resolvedIDsReverse is populated for pets too (ResolveCollectibleID writes it for every type),
+    -- but it is keyed by native id with no type tag and a mountID can collide numerically with a
+    -- speciesID — so round-trip the candidate through the journal before trusting it.
+    if collectibleType == "pet" and resolvedIDsReverse and C_PetJournal
+        and C_PetJournal.GetPetInfoByItemID then
+        local itemID = resolvedIDsReverse[idNum]
+        if type(itemID) == "number" and itemID > 0 then
+            local ok, sid = pcall(function()
+                return select(13, C_PetJournal.GetPetInfoByItemID(itemID))
+            end)
+            if ok and not (issecretvalue and issecretvalue(sid))
+                and type(sid) == "number" and sid == idNum then
+                return itemID
+            end
+        end
     end
     return nil
 end
@@ -1992,6 +2104,7 @@ RT.pendingPreResetCounts = pendingPreResetCounts
 RT.npcDropDB = npcDropDB
 RT.tryCounterNpcEligible = tryCounterNpcEligible
 RT.encounterDB = encounterDB
+RT.encounterDropDB = encounterDropDB
 RT.encounterNameToNpcs = encounterNameToNpcs
 RT.currentEncounterCache = currentEncounterCache
 RT.recentKills = recentKills
@@ -2087,6 +2200,11 @@ end
 
 -- Drops found on this kill (loot/chat/journal) — blocks deferred ProcessMissedDrops after reset.
 local dropObtainedThisKill = {}
+-- Loot-window serial each mark was taken under (RT.lootOpenSerial, the same identity
+-- FinalizeDeferredLootSessionOutcome uses for `sameWindow`). The flat TTL below could not tell
+-- "this kill already yielded the drop" from "a different kill 30s later", so obtaining a
+-- repeatable blanked every attempt for the next 45s.
+local dropObtainedThisKillSerial = {}
 local DROP_OBTAINED_KILL_TTL = 45
 -- Chat+reset already emitted for this drop (LOOT_CLOSED finalize vs late CHAT_MSG_LOOT).
 local obtainOutcomeApplied = {}
@@ -2561,9 +2679,12 @@ end
 function Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
     if not tcType or not tryKey then return end
     local now = GetTime()
+    local serial = RT.lootOpenSerial or 0
     local function mark(k)
         if k == nil then return end
-        dropObtainedThisKill[tcType .. "\0" .. tostring(k)] = now
+        local mk = tcType .. "\0" .. tostring(k)
+        dropObtainedThisKill[mk] = now
+        dropObtainedThisKillSerial[mk] = serial
     end
     mark(tryKey)
     if drop and type(drop) == "table" and drop.itemID then
@@ -2578,10 +2699,19 @@ end
 function Fns.IsDropObtainedThisKill(tcType, tryKey, drop)
     if not tcType or not tryKey then return false end
     local now = GetTime()
+    local serial = RT.lootOpenSerial or 0
     local function recent(k)
         if k == nil then return false end
-        local t = dropObtainedThisKill[tcType .. "\0" .. tostring(k)]
-        return t and (now - t) < DROP_OBTAINED_KILL_TTL
+        local mk = tcType .. "\0" .. tostring(k)
+        local t = dropObtainedThisKill[mk]
+        if not t or (now - t) >= DROP_OBTAINED_KILL_TTL then return false end
+        -- Same loot window: block, exactly as before — the session that yielded the drop must
+        -- never also charge a miss for it. A LATER window (serial moved on) only stays blocked
+        -- for the few seconds a trailing CHAT_MSG_LOOT needs, since LOOT_CLOSED is documented to
+        -- fire before the last loot line. A kill with no loot window does not move the serial,
+        -- so that case keeps the old behaviour.
+        if dropObtainedThisKillSerial[mk] == serial then return true end
+        return (now - t) < 5
     end
     if recent(tryKey) then return true end
     if drop and drop.itemID and recent(drop.itemID) then return true end
@@ -2616,26 +2746,51 @@ end
 
 function Fns.ClearTryCounterTransientKillMarks()
     wipe(dropObtainedThisKill)
+    wipe(dropObtainedThisKillSerial)
     wipe(obtainOutcomeApplied)
 end
 
+local function CopySelfTestDedupTable(src)
+    local out = {}
+    for k, v in pairs(src) do out[k] = v end
+    return out
+end
+
 --- Self-test: snapshot GUID/lockout dedup tables so probes do not leak across each other.
+--- Covers EVERY table the two Clear* helpers below wipe. It used to save only processedGUIDs and
+--- lockoutAttempted while the clears also wiped mergedLootTryCountedAt and the three transient kill
+--- mark tables, so running /wn tc test mid-farm destroyed the live AoE dedup and the same-kill
+--- obtain marks — the next real loot window could then count twice.
 function Fns.SnapshotTryCounterSelfTestDedupState()
-    local guids = {}
-    for k, v in pairs(processedGUIDs) do
-        guids[k] = v
-    end
-    local lockouts = {}
-    for k, v in pairs(lockoutAttempted) do
-        lockouts[k] = v
-    end
-    return { processedGUIDs = guids, lockoutAttempted = lockouts }
+    return {
+        processedGUIDs = CopySelfTestDedupTable(processedGUIDs),
+        lockoutAttempted = CopySelfTestDedupTable(lockoutAttempted),
+        mergedLootTryCountedAt = CopySelfTestDedupTable(mergedLootTryCountedAt),
+        dropObtainedThisKill = CopySelfTestDedupTable(dropObtainedThisKill),
+        dropObtainedThisKillSerial = CopySelfTestDedupTable(dropObtainedThisKillSerial),
+        obtainOutcomeApplied = CopySelfTestDedupTable(obtainOutcomeApplied),
+        countedLootGuids = (WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+            and WarbandNexus.db.global.tryCounterCountedGuids)
+            and CopySelfTestDedupTable(WarbandNexus.db.global.tryCounterCountedGuids) or nil,
+        lastLootTryOutcomeCommittedAt = RT.lastLootTryOutcomeCommittedAt,
+        lastLootTryOutcomeCommittedKey = RT.lastLootTryOutcomeCommittedKey,
+        lastTryCountSourceKey = V and V.lastTryCountSourceKey,
+        lastTryCountSourceTime = V and V.lastTryCountSourceTime,
+        lastTryCountLootSourceGUID = V and V.lastTryCountLootSourceGUID,
+    }
 end
 
 function Fns.ClearTryCounterSelfTestDedupState()
     wipe(processedGUIDs)
     wipe(lockoutAttempted)
     wipe(mergedLootTryCountedAt)
+    -- Persisted set: probes reuse synthetic GUIDs, so without this one probe's committed corpse
+    -- suppresses the next probe's increment. Real corpses have unique GUIDs, so this is test
+    -- isolation only.
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+        and WarbandNexus.db.global.tryCounterCountedGuids then
+        wipe(WarbandNexus.db.global.tryCounterCountedGuids)
+    end
     RT.lastLootTryOutcomeCommittedAt = nil
     RT.lastLootTryOutcomeCommittedKey = nil
     if V then
@@ -2645,16 +2800,80 @@ function Fns.ClearTryCounterSelfTestDedupState()
     end
 end
 
+local function RefillSelfTestDedupTable(dst, src)
+    wipe(dst)
+    for k, v in pairs(src or {}) do dst[k] = v end
+end
+
 function Fns.RestoreTryCounterSelfTestDedupState(snap)
     if not snap then return end
-    wipe(processedGUIDs)
-    for k, v in pairs(snap.processedGUIDs or {}) do
-        processedGUIDs[k] = v
+    RefillSelfTestDedupTable(processedGUIDs, snap.processedGUIDs)
+    RefillSelfTestDedupTable(lockoutAttempted, snap.lockoutAttempted)
+    RefillSelfTestDedupTable(mergedLootTryCountedAt, snap.mergedLootTryCountedAt)
+    RefillSelfTestDedupTable(dropObtainedThisKill, snap.dropObtainedThisKill)
+    RefillSelfTestDedupTable(dropObtainedThisKillSerial, snap.dropObtainedThisKillSerial)
+    RefillSelfTestDedupTable(obtainOutcomeApplied, snap.obtainOutcomeApplied)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+        and WarbandNexus.db.global.tryCounterCountedGuids then
+        RefillSelfTestDedupTable(WarbandNexus.db.global.tryCounterCountedGuids, snap.countedLootGuids)
     end
-    wipe(lockoutAttempted)
-    for k, v in pairs(snap.lockoutAttempted or {}) do
-        lockoutAttempted[k] = v
+    RT.lastLootTryOutcomeCommittedAt = snap.lastLootTryOutcomeCommittedAt
+    RT.lastLootTryOutcomeCommittedKey = snap.lastLootTryOutcomeCommittedKey
+    if V then
+        V.lastTryCountSourceKey = snap.lastTryCountSourceKey
+        V.lastTryCountSourceTime = snap.lastTryCountSourceTime or 0
+        V.lastTryCountLootSourceGUID = snap.lastTryCountLootSourceGUID
     end
+end
+
+---Count one attempt for journal-discovered boss loot that has no npcID to hang on.
+---Runs on ENCOUNTER_END (success only). The shipped npc path is untouched; MergeTrackDB already
+---stripped anything those rows cover, so the two lanes cannot charge the same drop twice.
+---@param encounterID number DungeonEncounterID, as ENCOUNTER_END delivers it
+---@param difficultyID number|nil ENCOUNTER_END's difficulty, already cache-resolved by the handler
+function Fns.ProcessEncounterKeyedMiss(encounterID, difficultyID)
+    if type(encounterID) ~= "number" then return end
+    if issecretvalue and issecretvalue(encounterID) then return end
+    if not Fns.IsAutoTryCounterEnabled() then return end
+    local entry = encounterDropDB[encounterID]
+    if not entry or #entry == 0 then return end
+
+    -- Journal rows carry a difficultyIDs whitelist whenever the scan could prove a drop is limited
+    -- to some of the difficulties its boss offers. Run them through the same filter the npc lane
+    -- uses, so a Mythic-only mount cannot take a +1 off a Normal kill. Rows with no whitelist pass
+    -- through untouched, which is what an incomplete scan deliberately produces.
+    local safeDiffID = difficultyID
+    if issecretvalue and issecretvalue(safeDiffID) then safeDiffID = nil end
+    if type(safeDiffID) ~= "number" then safeDiffID = nil end
+    local eligible = entry
+    if Fns.FilterDropsByDifficulty then
+        eligible = Fns.FilterDropsByDifficulty(entry, safeDiffID)
+    end
+    if not eligible or #eligible == 0 then return end
+
+    -- Distinct from the npc lane's "encounter_<id>": OnTryCounterEncounterEnd builds that exact
+    -- string a few lines after calling us and bails if it is already the last source key, which
+    -- would silently kill the shipped npc path for every boss this lane touches.
+    local key = "encjournal_" .. tostring(encounterID)
+    local now = GetTime()
+    if V.lastTryCountSourceKey == key and (now - (V.lastTryCountSourceTime or 0)) < 15 then
+        return
+    end
+    -- Raid/dungeon with a backing statistic: the miss is owned by the statistics sync, exactly as
+    -- on the npc lane (ShouldUseStatisticsOnlyMiss), so the loot-side +1 must not also land.
+    local missed = {}
+    for i = 1, #eligible do
+        local d = eligible[i]
+        if d and not Fns.ShouldSkipMissIncrementForDrop(d)
+            and (d.repeatable or not Fns.IsCollectibleCollected(d))
+            and not Fns.ShouldUseStatisticsOnlyMiss({ d }, entry.statisticIds) then
+            missed[#missed + 1] = d
+        end
+    end
+    if #missed == 0 then return end
+    V.lastTryCountSourceKey = key
+    V.lastTryCountSourceTime = now
+    Fns.ProcessMissedDrops(missed, entry.statisticIds, { attemptTimes = 1 })
 end
 
 function Fns.ShouldSkipMissIncrementForDrop(drop)
@@ -2822,6 +3041,10 @@ function Fns.ShouldSkipLateLootOpenedRoute(isFromItem)
     end
     local key = RT.lastLootTryOutcomeCommittedKey or V.lastTryCountSourceKey
     if not key or type(key) ~= "string" then return false end
+    -- encounter_ / inst_slot_ stay unconditional on purpose. The committed GUID for an encounter
+    -- is the boss CREATURE guid, but the follow-up LOOT_OPENED is often its GameObject chest with
+    -- a different guid, so an identity check reads "different source" and lets the chest through
+    -- for a second +1 — the Sylvanas-chest double count that ConsumePendingStatReseed also guards.
     if key:match("^encounter_") or key:match("^inst_slot_") then return true end
     if key:match("^npc_") then
         -- npc_<id> + a 10s window is not enough to identify "the same corpse we just counted".
@@ -3031,9 +3254,17 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
                 if qs.type == "mount" and qs.itemID and not Fns.IsCollectibleCollected(qs) then
                     local k1 = Fns.ResolveCollectibleID(qs)
                     local k2 = qs.itemID
-                    WN:SetTryCount("mount", k1 or k2, newCount)
+                    -- math.max, not a bare write: SetTryCount clamps every alias key DOWN to the
+                    -- value it is given, so mirroring the source item's count onto a mount key that
+                    -- was seeded higher (statistics, Rarity import) destroyed those attempts.
+                    -- ReseedStatisticsForDrops already mirrors this way; this path did not.
+                    local function MirrorMax(key)
+                        if not key then return end
+                        WN:SetTryCount("mount", key, math.max(newCount, WN:GetTryCount("mount", key) or 0))
+                    end
+                    MirrorMax(k1 or k2)
                     if k1 and k1 ~= k2 then
-                        WN:SetTryCount("mount", k2, newCount)
+                        MirrorMax(k2)
                     end
                     RegisterQuestStarterMountKey(k1 or k2, drop.itemID)
                     if k1 and k1 ~= k2 then RegisterQuestStarterMountKey(k2, drop.itemID) end
@@ -3289,8 +3520,9 @@ function WarbandNexus:InitializeTryCounter()
         pcall(function()
             hooksecurefunc(C_Container, "UseContainerItem", function(bagID, slotIndex)
                 if bagID and slotIndex then
-                    local safeBag = not (issecretvalue and issecretvalue(bagID)) and bagID or nil
-                    local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and slotIndex or nil
+                    -- Callers (macros, other addons) may pass bag/slot as strings - coerce before comparing.
+                    local safeBag = not (issecretvalue and issecretvalue(bagID)) and tonumber(bagID) or nil
+                    local safeSlot = not (issecretvalue and issecretvalue(slotIndex)) and tonumber(slotIndex) or nil
                     if safeBag and safeSlot and safeBag >= 0 and safeBag <= maxCarriedBagID then
                         local slotKey = safeBag * 100 + safeSlot
                         local itemID = C_Container.GetContainerItemID(safeBag, safeSlot)
@@ -3451,6 +3683,9 @@ function WarbandNexus:InitializeTryCounter()
     -- Periodic cleanup of stale GUIDs and kills (every 60s, batched)
     C_Timer.NewTicker(CLEANUP_INTERVAL, function()
         TrimGuidParseCachesIfOversized()
+        -- Runs unconditionally: the counted-guid set is persisted, so it outlives the session
+        -- tables the early-out below checks and would otherwise ship stale rows to SavedVariables.
+        Fns.PruneCountedLootGuids()
         if not next(processedGUIDs) and not next(recentKills) and not next(mergedLootTryCountedAt) then
             return
         end

@@ -136,6 +136,7 @@ Modules\TryCounterService_Instance.lua
 Modules\TryCounterService_TrackDB.lua
 Modules\TryCounterService_Loot.lua
 Modules\TryCounterService_Stats.lua
+Modules\TryCounterService_JournalScan.lua
 Modules\TryCounterService_Handlers.lua
 Modules\TryCounterService_SelfTest.lua
 Modules\Data\MidnightQuestCatalog.lua
@@ -272,6 +273,7 @@ Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
 Modules\UI\WarbandBankDepositPopup.lua
 Modules\UI\CharacterBankMoneyLogPopup.lua
+Modules\UI\TryCounterTestResultsWindow.lua
 Modules\UI\UI_RefreshRouter.lua
 Modules\UI.lua
 Modules\UI\UI_MainShell.lua
