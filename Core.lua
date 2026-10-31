@@ -415,6 +415,14 @@ local defaults = {
             -- On instance entry: [WN-Drops] lines (boss, item link, difficulty color) vs one short hint
             tryCounterInstanceEntryDropLines = true,
             hideTryCounterChat = false,        -- Suppress all try counter chat lines; counting still runs
+            -- Sound played when a mount/pet/toy is obtained: celebration | questComplete | compact
+            -- | progress | none. Resolved in NotificationManager (ResolveCollectibleSoundID).
+            collectibleSound = "celebration",
+            -- Playback volume for this addon's own cues, snapped to a rendered level
+            -- (ns.COLLECTIBLE_SOUND_VOLUMES). PlaySoundFile has no volume argument, so the
+            -- levels are shipped as files; Blizzard kits and sound packs follow the game's
+            -- own volume sliders instead.
+            collectibleSoundVolume = 100,
             -- Try counter chat routing: loot | dedicated (WN_TRYCOUNTER group) | all_tabs
             tryCounterChatRoute = "loot",
             lastSeenVersion = "0.0.0",         -- Last addon version seen

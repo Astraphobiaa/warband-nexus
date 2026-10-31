@@ -75,6 +75,11 @@ ns.UI_ICONS = {
     minus          = { atlases = { "common-icon-minus" } },
     settings       = { atlases = { "questlog-icon-setting" } },
     filter         = { atlases = { "ui-questtrackerbutton-filter" } },
+    -- Play/preview marker for sound rows. Candidates are probed with C_Texture.GetAtlasInfo and the
+    -- shipped chevron is the fallback, so this can never render blank on a client missing an atlas.
+    sound_play     = { atlases = { "voicechat-icon-speaker", "chatframe-button-icon-voicechat",
+                                   "common-icon-forwardarrow" },
+                       file = "Interface\\COMMON\\VoiceChat-Speaker" },
     -- Monochrome WN stroke chevrons (expand/collapse); atlases cannot be lightened for dark mode.
     chevron_up     = { file = Constants.WN_ICON_CHEVRON_UP or (WN_MEDIA .. "Icon-ChevronUp.tga"), mono = true },
     chevron_down   = { file = Constants.WN_ICON_CHEVRON_DOWN or (WN_MEDIA .. "Icon-ChevronDown.tga"), mono = true },

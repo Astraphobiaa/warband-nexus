@@ -1166,7 +1166,38 @@ local function CreateDropdownWidget(parent, option, yOffset)
             btnText:SetJustifyH("LEFT")
             if btnText.EnableMouse then btnText:EnableMouse(false) end
             btnText:SetText(data.text)
-            
+
+            -- Optional per-row action button (sound rows use it to audition the cue). It lives
+            -- inside the row but consumes its own click, so pressing it previews without also
+            -- selecting the row.
+            if option.rowAction then
+                local actSize = itemHeight - 10
+                local act = ns.UI.Factory:CreateButton(btn, actSize, actSize, true)
+                if act then
+                    act:SetPoint("RIGHT", -6, 0)
+                    act:EnableMouse(true)
+                    if act.RegisterForClicks then act:RegisterForClicks("LeftButtonUp") end
+                    btnText:SetPoint("RIGHT", -(actSize + 14), 0)
+                    local actIcon = act:CreateTexture(nil, "ARTWORK")
+                    actIcon:SetSize(actSize - 6, actSize - 6)
+                    actIcon:SetPoint("CENTER")
+                    if ns.UI_SetIcon then
+                        ns.UI_SetIcon(actIcon, option.rowAction.icon or "sound_play")
+                    end
+                    act:SetScript("OnClick", function()
+                        if option.rowAction.onClick then
+                            option.rowAction.onClick(data.value)
+                        end
+                    end)
+                    if option.rowAction.tooltip then
+                        act:SetScript("OnEnter", function(self)
+                            Settings_ShowWrappedTooltip(self, option.rowAction.tooltip)
+                        end)
+                        act:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
+                    end
+                end
+            end
+
             if isCurrent then
                 btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             else

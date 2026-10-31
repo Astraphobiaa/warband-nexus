@@ -400,6 +400,107 @@ function M.AppendNotificationsPanel(ctx)
                 end
             end,
         }, cy)
+        -- Obtained-collectible cue. Changing it previews the sound so the choice is audible here.
+        cy = cy - GetHeaderToolbarGap()
+        cy = CreateDropdownWidget(inner, {
+            stackBelowLabel = true,
+            name = (ns.L and ns.L["COLLECTIBLE_SOUND_LABEL"]) or "Sound on collectible obtained",
+            desc = (ns.L and ns.L["COLLECTIBLE_SOUND_DESC"])
+                or "Cue played when a mount, pet or toy you were tracking finally drops.",
+            menuOpensUpward = false,
+            valueOrder = (function()
+                -- Shipped options first, then every sound LibSharedMedia knows about (i.e. the
+                -- sound packs the player already has), then "off" last.
+                local base = ns.COLLECTIBLE_SOUND_ORDER or { "celebration", "none" }
+                local order = {}
+                for i = 1, #base do
+                    if base[i] ~= "none" then order[#order + 1] = base[i] end
+                end
+                if ns.GetSharedMediaSoundChoices then
+                    local lsmOrder = ns.GetSharedMediaSoundChoices()
+                    for i = 1, #lsmOrder do order[#order + 1] = lsmOrder[i] end
+                end
+                order[#order + 1] = "none"
+                return order
+            end)(),
+            values = (function()
+                -- Blizzard kits first, then the eight cues shipped under Media/Sounds, then "off".
+                local v = {
+                    celebration = (ns.L and ns.L["COLLECTIBLE_SOUND_CELEBRATION"]) or "Achievement (default)",
+                    questComplete = (ns.L and ns.L["COLLECTIBLE_SOUND_QUEST"]) or "Quest complete",
+                    compact = (ns.L and ns.L["COLLECTIBLE_SOUND_COMPACT"]) or "Short toast",
+                    progress = (ns.L and ns.L["COLLECTIBLE_SOUND_PROGRESS"]) or "Objective",
+                    none = (ns.L and ns.L["COLLECTIBLE_SOUND_NONE"]) or "No sound",
+                }
+                local custom = ns.COLLECTIBLE_CUSTOM_SOUNDS or {}
+                for i = 1, #custom do
+                    local c = custom[i]
+                    local lkey = "COLLECTIBLE_SOUND_" .. string.upper(c.key)
+                    v[c.key] = (ns.L and ns.L[lkey]) or c.lsm
+                end
+                if ns.GetSharedMediaSoundChoices then
+                    local _, lsmNames = ns.GetSharedMediaSoundChoices()
+                    for key, name in pairs(lsmNames) do v[key] = name end
+                end
+                return v
+            end)(),
+            get = function()
+                return WarbandNexus.db.profile.notifications.collectibleSound or "celebration"
+            end,
+            -- No preview on select: the per-row play button below auditions a cue without
+            -- committing to it, so selecting should be silent.
+            set = function(_, value)
+                WarbandNexus.db.profile.notifications.collectibleSound = value
+            end,
+            rowAction = {
+                icon = "sound_play",
+                tooltip = (ns.L and ns.L["COLLECTIBLE_SOUND_PLAY_TOOLTIP"]) or "Play this sound",
+                onClick = function(value)
+                    if ns.PreviewCollectibleSoundKey then ns.PreviewCollectibleSoundKey(value) end
+                end,
+            },
+        }, cy)
+
+        -- Volume for the addon's own cues. Four steps, not a free slider: PlaySoundFile takes no
+        -- volume argument, so each level is a separate rendered file, and a slider that snapped
+        -- silently to the nearest of four would be showing a number it does not play.
+        cy = cy - GetHeaderToolbarGap()
+        do
+            local levels = ns.COLLECTIBLE_SOUND_VOLUMES or { 100 }
+            cy = CreateSliderWidget(inner, {
+                name = (ns.L and ns.L["COLLECTIBLE_SOUND_VOLUME_LABEL"]) or "Cue volume",
+                desc = (ns.L and ns.L["COLLECTIBLE_SOUND_VOLUME_DESC"])
+                    or "Volume of this addon's own cues. Blizzard sounds and sound packs follow the game's own volume sliders.",
+                min = 1,
+                max = #levels,
+                step = 1,
+                -- Audition once, on release: without this onChange fires on every step of a drag
+                -- and again on mouse-up, stacking four copies of the cue on a 25 -> 100 drag.
+                applyOnRelease = true,
+                valueFormat = function(v)
+                    local idx = math.max(1, math.min(#levels, math.floor(v + 0.5)))
+                    return tostring(levels[idx]) .. "%"
+                end,
+                get = function()
+                    local current = ns.GetCollectibleSoundVolume and ns.GetCollectibleSoundVolume() or 100
+                    for i = 1, #levels do
+                        if levels[i] == current then return i end
+                    end
+                    return #levels
+                end,
+                set = function(_, value)
+                    local idx = math.max(1, math.min(#levels, math.floor(value + 0.5)))
+                    WarbandNexus.db.profile.notifications.collectibleSoundVolume = levels[idx]
+                    -- Audition the new level with the cue that is actually selected, so the
+                    -- slider is judged on the sound it will really play.
+                    local key = WarbandNexus.db.profile.notifications.collectibleSound
+                    if key and key ~= "none" and ns.PreviewCollectibleSoundKey then
+                        ns.PreviewCollectibleSoundKey(key)
+                    end
+                end,
+            }, cy, sliderElements)
+        end
+
         cy = cy - GetHeaderToolbarGap()
         addTcChatBtn = ns.UI.Factory:CreateButton(inner)
         addTcChatBtn:SetSize(math.min(iw, 320), SETTINGS_COMPACT_BTN_H)

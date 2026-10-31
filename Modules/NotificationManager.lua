@@ -44,6 +44,219 @@ local NotificationEvents = {}
 -- Current addon version (from Constants)
 local Constants = ns.Constants
 local E = Constants.EVENTS
+
+-- Player-selectable cue for the collectible-obtained toast.
+-- Two families: WoW's own kits (ids this addon already shipped, plus SOUNDKIT names it already
+-- referenced, so no unverified ids are introduced) and the
+-- eight cues shipped under Media/Sounds, synthesised for this addon
+-- (scripts/make_notification_sounds.py).
+local WN_SOUND_PATH = [[Interface\AddOns\WarbandNexus\Media\Sounds\]]
+ns.COLLECTIBLE_CUSTOM_SOUNDS = {
+    { key = "wnTriumph",   file = "wn-triumph.ogg",   lsm = "WN Triumph" },
+    { key = "wnItemGet",   file = "wn-itemget.ogg",   lsm = "WN Item Get" },
+    { key = "wnFanfare",   file = "wn-fanfare.ogg",   lsm = "WN Fanfare" },
+    { key = "wnDiscovery", file = "wn-discovery.ogg", lsm = "WN Discovery" },
+    { key = "wnHeroic",    file = "wn-heroic.ogg",    lsm = "WN Heroic" },
+    { key = "wnRareDrop",  file = "wn-raredrop.ogg",  lsm = "WN Rare Drop" },
+    { key = "wnChime",     file = "wn-chime.ogg",     lsm = "WN Chime" },
+    { key = "wnCoin",      file = "wn-coin.ogg",      lsm = "WN Coin" },
+}
+
+-- Playback volume, quietest first. PlaySoundFile takes no volume argument and the only volume
+-- controls WoW exposes are the player's own Sound_*Volume CVars, which this addon has no
+-- business writing, so each cue ships pre-rendered at these levels and the setting picks a file.
+-- 100 keeps the plain filename, so a saved path or a LibSharedMedia entry still resolves.
+ns.COLLECTIBLE_SOUND_VOLUMES = { 25, 45, 70, 100 }
+local DEFAULT_SOUND_VOLUME = 100
+-- SoundKitID for sound/interface/autoquestcomplete.ogg, used when the SOUNDKIT global does not
+-- carry the named constant on this build.
+local AUTO_QUEST_COMPLETE_KIT = 23404
+-- Every toast cue, shipped file or Blizzard kit, plays on the same channel. "SFX" is where
+-- Blizzard's own toasts play, so the player's Effects slider governs ours too; "Master" would
+-- have made this addon the one thing still audible after they turned effects down.
+local SOUND_CHANNEL = "SFX"
+
+local customByKey = {}
+-- Names to leave out of the LibSharedMedia section of the dropdown. The cues this addon
+-- registered are already listed above it, and the lsm: copy would bypass the volume setting;
+-- LSM's own "None" is the same thing as the "No sound" entry at the bottom.
+local ownLSMNames = { None = true }
+for i = 1, #ns.COLLECTIBLE_CUSTOM_SOUNDS do
+    local c = ns.COLLECTIBLE_CUSTOM_SOUNDS[i]
+    customByKey[c.key] = WN_SOUND_PATH .. c.file
+    ownLSMNames[c.lsm] = true
+end
+
+---A value PlaySoundFile will accept: an addon file path, or a fileDataID.
+---LibSharedMedia stores whatever an addon registered, and Register only validates strings, so a
+---sound can come back as a number.
+---@param v any
+---@return boolean
+local function IsPlayableMedia(v)
+    local t = type(v)
+    return (t == "string" and v ~= "") or t == "number"
+end
+
+---The volume the player has chosen, snapped to a level that was actually rendered.
+---@return number one of ns.COLLECTIBLE_SOUND_VOLUMES
+function ns.GetCollectibleSoundVolume()
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local want = profile and profile.notifications and profile.notifications.collectibleSoundVolume
+    if type(want) ~= "number" then return DEFAULT_SOUND_VOLUME end
+    local levels = ns.COLLECTIBLE_SOUND_VOLUMES
+    local best, bestGap = DEFAULT_SOUND_VOLUME, math.huge
+    for i = 1, #levels do
+        local gap = math.abs(levels[i] - want)
+        if gap < bestGap then best, bestGap = levels[i], gap end
+    end
+    return best
+end
+
+---Path to one of this addon's cues at the chosen volume.
+---Only the addon's own files have levels; Blizzard kits and LibSharedMedia sounds belong to
+---someone else and cannot be rescaled, which is why the setting says so.
+---@param key string option key from ns.COLLECTIBLE_CUSTOM_SOUNDS
+---@param volume number|nil defaults to the player's setting
+---@return string|nil
+function ns.GetCollectibleSoundFile(key, volume)
+    local base = key and customByKey[key]
+    if not base then return nil end
+    volume = volume or ns.GetCollectibleSoundVolume()
+    if volume >= 100 then return base end
+    return (base:gsub("%.ogg$", "-" .. tostring(volume) .. ".ogg"))
+end
+
+ns.COLLECTIBLE_SOUND_ORDER = { "celebration", "questComplete", "compact", "progress" }
+for i = 1, #ns.COLLECTIBLE_CUSTOM_SOUNDS do
+    ns.COLLECTIBLE_SOUND_ORDER[#ns.COLLECTIBLE_SOUND_ORDER + 1] = ns.COLLECTIBLE_CUSTOM_SOUNDS[i].key
+end
+ns.COLLECTIBLE_SOUND_ORDER[#ns.COLLECTIBLE_SOUND_ORDER + 1] = "none"
+
+---Every sound LibSharedMedia knows about, i.e. whatever sound packs the player already has
+---installed, keyed as "lsm:<name>" so the stored profile value stays a plain string.
+---@return table ordered keys, table key -> display name
+function ns.GetSharedMediaSoundChoices()
+    local order, names = {}, {}
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if not LSM or not LSM.List then return order, names end
+    local ok, list = pcall(LSM.List, LSM, "sound")
+    if not ok or type(list) ~= "table" then return order, names end
+    for i = 1, #list do
+        local name = list[i]
+        -- Skip the cues this addon itself registered: they already have their own entries above,
+        -- and the lsm: copy would bypass the volume setting and play at full every time.
+        if type(name) == "string" and name ~= "" and not ownLSMNames[name] then
+            local key = "lsm:" .. name
+            order[#order + 1] = key
+            names[key] = name
+        end
+    end
+    return order, names
+end
+
+---Resolve the player's choice.
+---@return string kind "kit"|"file"|"none"
+---@return number|string|nil value kit id, file path, or nil
+function ns.ResolveCollectibleSound()
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local key = profile and profile.notifications and profile.notifications.collectibleSound
+    if key == "none" then return "none", nil end
+    local file = ns.GetCollectibleSoundFile(key)
+    if file then return "file", file end
+    if type(key) == "string" and key:sub(1, 4) == "lsm:" then
+        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+        if LSM and LSM.Fetch then
+            local ok, path = pcall(LSM.Fetch, LSM, "sound", key:sub(5), true)
+            if ok and IsPlayableMedia(path) then return "file", path end
+        end
+        -- Pack uninstalled since it was picked: fall through to the default cue, never silence.
+    end
+    if key == "compact" then
+        return "kit", (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295
+    end
+    if key == "progress" then
+        return "kit", (Constants and Constants.NOTIFICATION_SOUND_PROGRESS) or 44294
+    end
+    if key == "questComplete" then
+        -- 23404 is autoquestcomplete.ogg. The old fallback was the compact kit, so whenever the
+        -- SOUNDKIT key was missing this option played exactly the same cue as "Short toast".
+        local kit = SOUNDKIT and (SOUNDKIT.UI_AUTO_QUEST_COMPLETE or SOUNDKIT.AUTO_QUEST_COMPLETE)
+        return "kit", kit or AUTO_QUEST_COMPLETE_KIT
+    end
+    -- default: the loot-won toast kit, the celebratory cue players already associate with a drop
+    return "kit", (Constants and Constants.NOTIFICATION_SOUND_CELEBRATION) or 31578
+end
+
+---Play a cue file, falling back to the full-volume rendering of the same cue.
+---PlaySoundFile returns willPlay = nil when it will not play -- a missing file (the wiki is
+---explicit that it "must exist prior to logging in or reloading", so a file dropped in while the
+---client is up is not there yet) or a muted channel. pcall's own ok stays true in that case, so
+---the return value has to be read or a cue that never sounded looks like it played.
+---@param file string path to try first
+---@return boolean true if playback actually started
+local function PlayCueFile(file)
+    if not PlaySoundFile or not IsPlayableMedia(file) then return false end
+    local ok, willPlay = pcall(PlaySoundFile, file, SOUND_CHANNEL)
+    if ok and willPlay then return true end
+    -- The volume levels are separate files. If the chosen one is missing, the player still gets
+    -- the cue they picked rather than an unrelated Blizzard kit.
+    if type(file) == "string" and file:sub(1, #WN_SOUND_PATH) == WN_SOUND_PATH then
+        local base = file:gsub("%-%d+%.ogg$", ".ogg")
+        if base ~= file then
+            local okBase, willPlayBase = pcall(PlaySoundFile, base, SOUND_CHANNEL)
+            if okBase and willPlayBase then return true end
+        end
+    end
+    return false
+end
+
+---Single play site for every toast: a shipped .ogg needs PlaySoundFile, a kit id needs PlaySound.
+function ns.PlayNotificationCue(config, defaultSoundID)
+    -- Fall through to the kit cue rather than going silent if the file cannot play.
+    if config and config.soundFile and PlayCueFile(config.soundFile) then return end
+    if PlaySound then
+        pcall(PlaySound, (config and config.soundID) or defaultSoundID, SOUND_CHANNEL)
+    end
+end
+
+---Audition one option without selecting it (the play button on each dropdown row).
+---@param key string the option key, not the player's current setting
+function ns.PreviewCollectibleSoundKey(key)
+    if key == "none" then return end
+    -- Audition at the chosen volume, not at full: a preview that is louder than the real cue
+    -- makes the volume setting useless for deciding what to pick.
+    local file = ns.GetCollectibleSoundFile(key)
+    if not file and type(key) == "string" and key:sub(1, 4) == "lsm:" then
+        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+        if LSM and LSM.Fetch then
+            local ok, path = pcall(LSM.Fetch, LSM, "sound", key:sub(5), true)
+            if ok and IsPlayableMedia(path) then file = path end
+        end
+    end
+    if file and PlayCueFile(file) then return end
+    local kit
+    if key == "compact" then
+        kit = (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295
+    elseif key == "progress" then
+        kit = (Constants and Constants.NOTIFICATION_SOUND_PROGRESS) or 44294
+    elseif key == "questComplete" then
+        kit = (SOUNDKIT and (SOUNDKIT.UI_AUTO_QUEST_COMPLETE or SOUNDKIT.AUTO_QUEST_COMPLETE))
+            or AUTO_QUEST_COMPLETE_KIT
+    else
+        kit = (Constants and Constants.NOTIFICATION_SOUND_CELEBRATION) or 31578
+    end
+    if PlaySound then pcall(PlaySound, kit, SOUND_CHANNEL) end
+end
+
+---Expose the shipped cues to other addons when LibSharedMedia is present (optional dependency).
+function ns.RegisterCollectibleSoundsWithLSM()
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if not LSM or not LSM.Register then return end
+    for i = 1, #ns.COLLECTIBLE_CUSTOM_SOUNDS do
+        local c = ns.COLLECTIBLE_CUSTOM_SOUNDS[i]
+        pcall(LSM.Register, LSM, "sound", c.lsm, WN_SOUND_PATH .. c.file)
+    end
+end
 -- Dedupe Blizzard progressive criteria: AchievementAlertSystem / CriteriaAlertSystem may both enqueue.
 local lastCriteriaProgressEmitKey = nil
 local lastCriteriaProgressEmitTime = nil
@@ -1103,7 +1316,7 @@ function WarbandNexus:ShowModalNotification(config)
             else
                 defaultSound = (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295
             end
-            PlaySound(config.soundID or defaultSound)
+            ns.PlayNotificationCue(config, defaultSound)
         end
         
         -- Left-click: open the related Blizzard panel + dismiss | Right-click: dismiss only
@@ -1443,7 +1656,8 @@ function WarbandNexus:ShowModalNotification(config)
     
     if playSound then
         local Constants = ns.Constants
-        PlaySound(config.soundID or (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295)
+        ns.PlayNotificationCue(config,
+            (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295)
     end
     
     local slideOffset = 50 * -direction
@@ -1649,6 +1863,12 @@ end
 
 ---Initialize event-driven notification system
 function WarbandNexus:InitializeNotificationListeners()
+    -- Publish the shipped cues to LibSharedMedia when it is present (optional dependency), so other
+    -- addons can pick them and so any sound pack the player already has shows up alongside ours.
+    if ns.RegisterCollectibleSoundsWithLSM then
+        pcall(ns.RegisterCollectibleSoundsWithLSM)
+    end
+
     -- Register for custom notification events
     self:RegisterMessage(E.SHOW_NOTIFICATION, "OnShowNotification")
     self:RegisterMessage(E.SHOW_REMINDER_TOAST, "OnShowReminderToast")
@@ -2427,6 +2647,20 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         overrides.deferScreenFlash = true
         overrides.autoDismiss = 7
         overrides.toastFxTier = "celebration"
+    end
+    -- A collectible landing is the moment worth hearing. Everything used the generic compact cue,
+    -- while NOTIFICATION_SOUND_CELEBRATION (the loot-won toast kit) was
+    -- defined and wired to nothing. The kit is now player-selectable; "none" mutes just this lane
+    -- and leaves every other toast sound alone.
+    if hasTryCount or data.type == "mount" or data.type == "pet" or data.type == "toy" then
+        local kind, value = ns.ResolveCollectibleSound()
+        if kind == "none" then
+            overrides.playSound = false
+        elseif kind == "file" then
+            overrides.soundFile = value
+        elseif value then
+            overrides.soundID = overrides.soundID or value
+        end
     end
     local notifyType = hasTryCount and "tryCounter" or data.type
     self:Notify(notifyType, displayName, data.icon, overrides)
