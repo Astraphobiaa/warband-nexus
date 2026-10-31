@@ -1217,20 +1217,19 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V371"] = [=[v3.7.1 (2026-10-24)
+L["CHANGELOG_V380"] = [=[v3.8.0 (2026-11-01)
 
-A stability update: fixes for Midnight secret value errors, cleaner handling of Blizzard alerts, and a corrected Delve Nemesis column.
+Collectible drops can now play a sound of your choice, and try counter attempts respect the difficulty a drop is limited to.
 
-Updated:
-- Warband achievement popups now replace Blizzard's achievement, criteria and Traveler's Log alerts without touching Blizzard's alert system, so other Blizzard alerts are no longer affected.
-- Blizzard's "addon blocked an action" message is no longer hidden.
+Added:
+- A sound now plays when a mount, pet or toy you are tracking finally drops. Pick from eight new cues made for the addon, four of Blizzard's own, or any sound pack you already have installed, and set how loud it plays. Every option has a play button so you can hear it before you choose.
+- Try counter attempts now respect raid and dungeon difficulty. A drop that is limited to Mythic no longer counts an attempt when you kill that boss on Normal or Heroic.
 
 Fixed:
-- Fixed "attempt to compare a secret number value" errors when moving from a map pin or NPC tooltip onto a Warband Nexus button.
-- Fixed many more Midnight secret value errors in instances, the try counter, loot tracking and tooltips.
-- Fixed the Delve Nemesis column not completing after killing the Nemesis summoned with the Scalebound Herald's Flute.
-- Fixed setting tooltips making later game tooltips too wide.
-- Fixed keyboard errors when a settings panel or menu closed during combat.
+- Fixed a second attempt being counted when you reloaded or logged back in and reopened a corpse you had already looted.
+- Fixed attempts being skipped for up to 45 seconds after obtaining a repeatable drop, so kills in that window count again.
+- Fixed battle pets showing a bare attempt count with no drop chance, while mounts showed their odds.
+- Fixed a secret value error while reading an open loot window.
 
 CurseForge: Warband Nexus]=]
 

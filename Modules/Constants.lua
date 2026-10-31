@@ -14,9 +14,9 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.7.1",
+    ADDON_VERSION = "3.8.0",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-10-24",
+    ADDON_RELEASE_DATE = "2026-11-01",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -390,8 +390,10 @@ local Constants = {
     -- Compact achievement-style lane: existing default for collector-style toasts.
     NOTIFICATION_SOUND_PROGRESS = 44294,
     NOTIFICATION_SOUND_COMPACT_DEFAULT = 44295,
-    -- Full earned / rare drop celebration (UI achievement toast kit when SOUNDKIT unavailable).
-    NOTIFICATION_SOUND_CELEBRATION = 8565,
+    -- Full earned / rare drop celebration: ui_epicloot_toast_01.ogg, the cue Blizzard plays on a
+    -- loot-won toast. The previous value (8565) resolved to an Ahn'Qiraj room ambience loop
+    -- (SoundKit.db2 SoundType 50), so this lane was effectively silent.
+    NOTIFICATION_SOUND_CELEBRATION = 31578,
 }
 
 -- Export to namespace
