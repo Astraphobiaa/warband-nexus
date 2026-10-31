@@ -1404,8 +1404,8 @@ function Fns.MarkLootAttemptCountedForGuids(dedupGUID, allSourceGUIDs)
     local store = WarbandNexus.db.global.tryCounterCountedGuids
     local now = time()
     local function mark(g)
-        if type(g) ~= "string" or g == "" then return end
         if issecretvalue and issecretvalue(g) then return end
+        if type(g) ~= "string" or g == "" then return end
         if g:match("^zone_") then return end
         store[g] = now
     end
@@ -1423,8 +1423,8 @@ function Fns.WasLootAttemptAlreadyCounted(dedupGUID, allSourceGUIDs)
     if type(store) ~= "table" or not next(store) then return false end
     local nowWall = time()
     local function counted(g)
-        if type(g) ~= "string" or g == "" then return false end
         if issecretvalue and issecretvalue(g) then return false end
+        if type(g) ~= "string" or g == "" then return false end
         local stamp = store[g]
         if type(stamp) ~= "number" then return false end
         local age = nowWall - stamp
