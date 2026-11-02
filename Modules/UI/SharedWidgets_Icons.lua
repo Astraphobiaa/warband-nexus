@@ -774,26 +774,29 @@ ns.UI_GetRaceIcon = GetRaceIcon
 ns.UI_GetRaceGenderAtlas = GetRaceGenderAtlas
 ns.UI_CreateFactionIcon = CreateFactionIcon
 ns.UI_CreateRaceIcon = CreateRaceIcon
-local function GetClassIcon(classFile)
-    -- Use class crest icons (clean, no frame)
-    local classIcons = {
-        ["WARRIOR"] = "Interface\\Icons\\ClassIcon_Warrior",
-        ["PALADIN"] = "Interface\\Icons\\ClassIcon_Paladin",
-        ["HUNTER"] = "Interface\\Icons\\ClassIcon_Hunter",
-        ["ROGUE"] = "Interface\\Icons\\ClassIcon_Rogue",
-        ["PRIEST"] = "Interface\\Icons\\ClassIcon_Priest",
-        ["DEATHKNIGHT"] = "Interface\\Icons\\ClassIcon_DeathKnight",
-        ["SHAMAN"] = "Interface\\Icons\\ClassIcon_Shaman",
-        ["MAGE"] = "Interface\\Icons\\ClassIcon_Mage",
-        ["WARLOCK"] = "Interface\\Icons\\ClassIcon_Warlock",
-        ["MONK"] = "Interface\\Icons\\ClassIcon_Monk",
-        ["DRUID"] = "Interface\\Icons\\ClassIcon_Druid",
-        ["DEMONHUNTER"] = "Interface\\Icons\\ClassIcon_DemonHunter",
-        ["EVOKER"] = "Interface\\Icons\\ClassIcon_Evoker",
-    }
-    
-    return classIcons[classFile] or "Interface\\Icons\\INV_Misc_QuestionMark"
+-- Painted class crest atlas (Media/ClassIcons*.tga): 4x4 grid, cell index = classID - 1.
+-- Keep in sync with CLASS_ORDER in scripts/build_class_icon_atlas.py.
+local CLASS_ICON_CELL = {
+    WARRIOR = 0, PALADIN = 1, HUNTER = 2, ROGUE = 3,
+    PRIEST = 4, DEATHKNIGHT = 5, SHAMAN = 6, MAGE = 7,
+    WARLOCK = 8, MONK = 9, DRUID = 10, DEMONHUNTER = 11,
+    EVOKER = 12,
+}
+local CLASS_ICON_GRID = 4
+local CLASS_ICON_INSET = 0.5 / 512  -- half a texel: bilinear sampling never bleeds into the neighbour cell
+local CLASS_ICON_ATLAS = (Constants and Constants.WN_CLASS_ICON_ATLAS) or "Interface\\AddOns\\WarbandNexus\\Media\\ClassIcons.tga"
+local CLASS_ICON_ATLAS_BARE = (Constants and Constants.WN_CLASS_ICON_ATLAS_BARE) or "Interface\\AddOns\\WarbandNexus\\Media\\ClassIconsBare.tga"
+
+--- TexCoord (left, right, top, bottom) of a class crest cell; nil for an unknown class.
+local function GetClassIconTexCoord(classFile)
+    local cell = type(classFile) == "string" and CLASS_ICON_CELL[string.upper(classFile)]
+    if not cell then return nil end
+    local step = 1 / CLASS_ICON_GRID
+    local col, row = cell % CLASS_ICON_GRID, math.floor(cell / CLASS_ICON_GRID)
+    return col * step + CLASS_ICON_INSET, (col + 1) * step - CLASS_ICON_INSET,
+        row * step + CLASS_ICON_INSET, (row + 1) * step - CLASS_ICON_INSET
 end
+ns.UI_GetClassIconTexCoord = GetClassIconTexCoord
 
 --- Reset pooled/reused icon textures to full color (atlas + file icons).
 local function EnsureTextureFullColor(tex)
@@ -804,31 +807,17 @@ local function EnsureTextureFullColor(tex)
 end
 ns.UI_EnsureTextureFullColor = EnsureTextureFullColor
 
---- Apply class icon (atlas with file fallback); safe for pooled textures.
-local function ApplyClassIconTexture(tex, classFile)
+--- Apply the painted class crest from the addon atlas (no Blizzard class art, so it works on every client);
+--- safe for pooled textures. bare = true uses the ring-less art for surfaces that draw their own frame.
+local function ApplyClassIconTexture(tex, classFile, bare)
     if not tex or not classFile or classFile == "" then return end
-    local cf = classFile
-    if type(cf) == "string" then
-        cf = string.upper(cf)
-    end
-    if tex.SetTexture then
-        tex:SetTexture(nil)
-    end
-    local atlasName = "classicon-" .. cf
-    local applied = false
-    if tex.SetAtlas then
-        applied = pcall(tex.SetAtlas, tex, atlasName)
-        if applied and tex.GetAtlas then
-            local a = tex:GetAtlas()
-            applied = a and a ~= ""
-        end
-    end
-    if not applied then
-        if tex.SetAtlas then
-            pcall(tex.SetAtlas, tex, nil)
-        end
-        tex:SetTexture(GetClassIcon(cf))
-        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local l, r, t, b = GetClassIconTexCoord(classFile)
+    if l then
+        tex:SetTexture(bare and CLASS_ICON_ATLAS_BARE or CLASS_ICON_ATLAS, nil, nil, "TRILINEAR")
+        tex:SetTexCoord(l, r, t, b)
+    else
+        tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        ns.UI_ApplyFileIconTexCoord(tex)
     end
     EnsureTextureFullColor(tex)
 end

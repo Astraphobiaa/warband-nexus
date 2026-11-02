@@ -2652,8 +2652,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
             grad:SetColorTexture(1, 1, 1, 1)
             portrait._gradient = grad
 
-            -- Large class icon — modern transparent atlas (classicon-<class>) instead of
-            -- the legacy WORLDSTATEFRAME sheet which left a coloured square outline.
+            -- Large class icon — painted crest from the addon atlas (UI_ApplyClassIconTexture).
             local icon = portrait:CreateTexture(nil, "ARTWORK")
             icon:SetSize(80, 80)
             icon:SetPoint("CENTER", portrait, "CENTER", 0, 22)
@@ -2758,27 +2757,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
         end
 
         if portrait._classIcon then
-            local applied = false
-            if classFile and portrait._classIcon.SetAtlas then
-                local atlas = "classicon-" .. string.lower(classFile)
-                applied = pcall(portrait._classIcon.SetAtlas, portrait._classIcon, atlas)
-            end
-            if applied then
-                -- Reset TexCoord so a previous WORLDSTATEFRAME crop doesn't clip the atlas.
-                portrait._classIcon:SetTexCoord(0, 1, 0, 1)
-            else
-                -- Legacy fallback: WORLDSTATEFRAME sheet with TCoords.
-                -- Inset the TexCoords by ~6 % on each edge to crop the coloured square
-                -- border that surrounds each class icon cell in the sprite sheet.
-                portrait._classIcon:SetTexture("Interface\\WORLDSTATEFRAME\\Icons-Classes")
-                local coords = CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
-                if coords then
-                    local INSET = 0.02
-                    portrait._classIcon:SetTexCoord(
-                        coords[1] + INSET, coords[2] - INSET,
-                        coords[3] + INSET, coords[4] - INSET)
-                end
-            end
+            ns.UI_ApplyClassIconTexture(portrait._classIcon, classFile)
             portrait._classIcon:SetVertexColor(1, 1, 1, 1)
             portrait._classIcon:Show()
         end

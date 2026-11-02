@@ -2185,11 +2185,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
         row.classIcon:ClearAllPoints()
         row.classIcon:SetPoint("CENTER", row, "LEFT", classCenterX, 0)
         if char.classFile then
-            if ns.UI_ApplyClassIconTexture then
-                ns.UI_ApplyClassIconTexture(row.classIcon, char.classFile)
-            else
-                row.classIcon:SetAtlas("classicon-" .. char.classFile)
-            end
+            ns.UI_ApplyClassIconTexture(row.classIcon, char.classFile)
             row.classIcon:Show()
         else row.classIcon:Hide() end
     end

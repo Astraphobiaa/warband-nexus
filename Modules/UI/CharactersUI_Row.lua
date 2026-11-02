@@ -1001,11 +1001,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if not row.classIcon then
             row.classIcon = CreateClassIcon(row, char.classFile, CHAR_ROW_COLUMNS.class.width, "LEFT", classOffset + (CHAR_ROW_COLUMNS.class.spacing / 2), 0)
         end
-        if ns.UI_ApplyClassIconTexture then
-            ns.UI_ApplyClassIconTexture(row.classIcon, char.classFile)
-        else
-            row.classIcon:SetAtlas("classicon-" .. char.classFile)
-        end
+        ns.UI_ApplyClassIconTexture(row.classIcon, char.classFile)
         row.classIcon:Show()
     elseif row.classIcon then
         row.classIcon:Hide()

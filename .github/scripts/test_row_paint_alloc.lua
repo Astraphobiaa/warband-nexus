@@ -478,6 +478,7 @@ do
     ns.UI_CreateFactionIcon = function(parent) return Frame.new(parent) end
     ns.UI_CreateRaceIcon = function(parent) return Frame.new(parent) end
     ns.UI_CreateClassIcon = function(parent) return Frame.new(parent) end
+    ns.UI_ApplyClassIconTexture = function() end
     ns.UI_ComputeCharRowFlexColumns = function() return flex end
     ns.UI_SetTextColorRole = function() end
     ns.UI_SetIcon = function() end

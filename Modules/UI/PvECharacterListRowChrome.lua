@@ -194,14 +194,7 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
         classIcon:SetSize(PVE_CLASS_COL_W, PVE_CLASS_COL_W)
         classIcon:ClearAllPoints()
         classIcon:SetPoint("CENTER", charHeader, "LEFT", layout.classCenterX, 0)
-        if ns.UI_ApplyClassIconTexture then
-            ns.UI_ApplyClassIconTexture(classIcon, char.classFile)
-        elseif ns.UI_EnsureTextureFullColor then
-            classIcon:SetAtlas("classicon-" .. char.classFile)
-            ns.UI_EnsureTextureFullColor(classIcon)
-        else
-            classIcon:SetAtlas("classicon-" .. char.classFile)
-        end
+        ns.UI_ApplyClassIconTexture(classIcon, char.classFile)
         classIcon:Show()
     elseif classIcon then
         classIcon:Hide()

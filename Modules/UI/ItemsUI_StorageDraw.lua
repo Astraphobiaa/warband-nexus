@@ -1084,11 +1084,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         isCharExpanded = true
                     end
                     
-                    -- Get character class icon
-                    local charIcon = "Interface\\Icons\\Achievement_Character_Human_Male"  -- Default
-                    if char.classFile then
-                        charIcon = "Interface\\Icons\\ClassIcon_" .. char.classFile
-                    end
+                    -- Placeholder so the header creates its icon slot; the class crest is applied after creation.
+                    local charIcon = "Interface\\Icons\\Achievement_Character_Human_Male"
                     
                     -- Character block: wrapped header + body (major section); types always built inside body.
                     local charIndent = BASE_INDENT * 1  -- 15px
@@ -1105,7 +1102,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     end
 
                     local charBody
-                    local charHeader, charBtn = CreateCollapsibleHeader(
+                    local charHeader, charBtn, charCatIcon = CreateCollapsibleHeader(
                         charWrap,
                         (charDisplayName or charKey),
                         charCategoryKey,
@@ -1127,6 +1124,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             outerHeaderH = MAIN_SECTION_HEADER_H,
                         }))
                     )
+                    if charCatIcon and char.classFile then
+                        ns.UI_ApplyClassIconTexture(charCatIcon, char.classFile)
+                    end
                     StorPool.Remember(parent, "hdr:" .. charCategoryKey, charHeader)
                     if ns.UI_AnchorSectionHeaderInWrap then
                         ns.UI_AnchorSectionHeaderInWrap(charHeader, charWrap, charStackW)
