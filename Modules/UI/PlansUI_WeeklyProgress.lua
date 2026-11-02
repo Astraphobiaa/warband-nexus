@@ -301,8 +301,7 @@ local function PaintWeeklyQuestRow(row, quest, width)
         statusIcon:SetPoint("LEFT", leftIndent, 0)
     end
     if quest.isComplete then
-        statusIcon:SetAtlas("common-icon-checkmark", false)
-        statusIcon:SetVertexColor(0.27, 1, 0.27, 1)  -- explicit alpha: a pooled icon may carry 0.6 from "pending"
+        ns.UI_SetIcon(statusIcon, "status_ok")  -- neutral vertex, alpha 1: a pooled icon may carry 0.6 from "pending"
     elseif quest.isLocked then
         ns.UI_SetIcon(statusIcon, "lock", { vertexColor = { 1, 0.6, 0.2, 1 } })
     else
@@ -342,8 +341,7 @@ local function PaintWeeklyQuestRow(row, quest, width)
             objIcon:SetSize(8, 8)
             objIcon:SetPoint("TOPLEFT", leftIndent + iconSize + 8, objY)
             if obj.finished then
-                objIcon:SetAtlas("common-icon-checkmark", false)
-                objIcon:SetVertexColor(0.27, 1, 0.27)
+                ns.UI_SetIcon(objIcon, "status_ok")
             else
                 ns.UI_SetIcon(objIcon, "status_pending", { alpha = 0.5 })
             end

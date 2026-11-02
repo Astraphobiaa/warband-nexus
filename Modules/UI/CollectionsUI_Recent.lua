@@ -515,11 +515,7 @@ function M.DrawRecentContent(contentFrame)
         resetBtn:SetFrameLevel((card:GetFrameLevel() or 0) + 8)
         local resetTex = resetBtn:CreateTexture(nil, "ARTWORK")
         resetTex:SetAllPoints()
-        local resetAtlasOk = pcall(function() resetTex:SetAtlas("talents-button-reset", true) end)
-        if not resetAtlasOk then
-            resetTex:SetTexture("Interface\\Buttons\\UI-RefreshButton")
-        end
-        resetTex:SetVertexColor(1, 1, 1, 1)
+        ns.UI_SetIcon(resetTex, "reset")
         resetBtn:SetScript("OnEnter", function(self)
             resetTex:SetVertexColor(1, 0.95, 0.45, 1)
             if not ns.UI_SetGameTooltipSmartOwner(self, 0, 0) then return end
@@ -533,7 +529,7 @@ function M.DrawRecentContent(contentFrame)
             GameTooltip:Show()
         end)
         resetBtn:SetScript("OnLeave", function()
-            resetTex:SetVertexColor(1, 1, 1, 1)
+            ns.UI_SetIcon(resetTex, "reset")  -- back to the theme tint
             ns.UI_SafeHideGameTooltip()
         end)
         resetBtn:SetScript("OnClick", function()

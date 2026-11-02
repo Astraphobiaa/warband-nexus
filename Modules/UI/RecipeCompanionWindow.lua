@@ -202,14 +202,14 @@ end
 --[[
     Create a storage-type icon as a real Texture frame (bag, bank, warband).
     @param parent Frame - The row frame to attach the icon to
-    @param atlas string - Atlas name (e.g. "bag-main")
+    @param atlas string - Icon registry key (e.g. "warband") or atlas name (e.g. "bag-main")
     @param w number|nil - Width (defaults to STORAGE_ICON)
     @param h number|nil - Height (defaults to STORAGE_ICON)
     @return Texture
 ]]
 local function CreateStorageIcon(parent, atlas, w, h)
     local icon = parent:CreateTexture(nil, "ARTWORK")
-    icon:SetAtlas(atlas)
+    if not ns.UI_SetIcon(icon, atlas) then icon:SetAtlas(atlas) end
     icon:SetSize(w or STORAGE_ICON, h or STORAGE_ICON)
     icon:SetPoint("LEFT", PADDING + 10, 0)
     return icon
@@ -508,7 +508,7 @@ local function RenderContent(scrollChild)
                     local nameOffset = PADDING + 10
                     if ci == bestIdx then
                         local star = crafterRow:CreateTexture(nil, "ARTWORK")
-                        star:SetAtlas("PetJournal-FavoritesIcon")
+                        ns.UI_SetIcon(star, "favorite_on")
                         star:SetSize(12, 12)
                         star:SetPoint("LEFT", PADDING + 2, 0)
                         nameOffset = PADDING + 16
@@ -658,7 +658,7 @@ local function RenderContent(scrollChild)
                     local wbRow
                     wbRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
 
-                    local wbIconTex = CreateStorageIcon(wbRow, "warbands-icon", WARBAND_ICON_W, WARBAND_ICON_H)
+                    local wbIconTex = CreateStorageIcon(wbRow, "warband", WARBAND_ICON_W, WARBAND_ICON_H)
                     local wbNameText = FontManager:CreateFontString(wbRow, "body", "OVERLAY")
                     wbNameText:SetPoint("LEFT", wbIconTex, "RIGHT", 4, 0)
                     wbNameText:SetText("|cff" .. (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex():gsub("|cff", "") or "ddaa44")

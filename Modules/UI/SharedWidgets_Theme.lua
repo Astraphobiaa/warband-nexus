@@ -547,7 +547,13 @@ function ns.UI_ApplyNavTabIconStyle(tex, isActive, opts)
         tex:SetDesaturated(false)
     end
     if IsLightModeEnabled() then
-        tex:SetVertexColor(1, 1, 1, 1)
+        -- addon registry glyphs are white mono art: they need the dark theme glyph color on light panels
+        local m = tex._wnRegistryIcon and ns.UI_GetMonochromeIconVertex and ns.UI_GetMonochromeIconVertex(1)
+        if m then
+            tex:SetVertexColor(m[1], m[2], m[3], m[4] or 1)
+        else
+            tex:SetVertexColor(1, 1, 1, 1)
+        end
         return
     end
     local r, g, b, a

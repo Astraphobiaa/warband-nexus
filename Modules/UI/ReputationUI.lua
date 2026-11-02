@@ -559,7 +559,7 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
 
     if baseReputationMaxed then
         if not row.checkFrame then
-            row.checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)
+            row.checkFrame = CreateIcon(row, ns.UI_GetIconFile("status_ok"), 16, false, nil, true)
             if row.checkFrame and row.checkFrame.texture then
                 ns.UI_SetIcon(row.checkFrame.texture, "status_ok")
             end
@@ -2334,9 +2334,7 @@ function WarbandNexus:DrawReputationList(container, width)
         sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
         sectionHeader:SetHeight(COLLAPSE_H_REP)
         if sectionIcon and scopeTag == "AW" then
-            sectionIcon:SetTexture(nil)
-            sectionIcon:SetAtlas("warbands-icon")
-            sectionIcon:SetSize(27, 36)
+            ns.UI_SetIcon(sectionIcon, "warband")  -- square glyph: keeps the header icon size
         end
 
         local headerTail = nil

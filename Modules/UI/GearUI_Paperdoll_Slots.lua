@@ -205,16 +205,12 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         end
         local useCraftedAtlas = isCraftedSlot and hasUpgradePath and canAffordNext
         btn._gearUpgradeArrowCraftedAtlas = (useCraftedAtlas == true)
-        if useCraftedAtlas and upgradeArrow.SetAtlas then
-            upgradeArrow:SetAtlas("Professions-Crafting-Orders-Icon", false)
-            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(1, 1, 1) end
-        elseif upgradeArrow.SetAtlas then
-            upgradeArrow:SetAtlas("loottoast-arrow-green", false)
-            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(0.2, 1, 0.48) end
+        if useCraftedAtlas then
+            ns.UI_SetIcon(upgradeArrow, "crafting_order")
+            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(1, 1, 1) end  -- white on the dark chip
         else
-            upgradeArrow:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-            upgradeArrow:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            upgradeArrow:SetVertexColor(0.15, 1, 0.42)
+            ns.UI_SetIcon(upgradeArrow, "upgrade")
+            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(0.2, 1, 0.48) end
         end
         if upgradeArrow.SetDrawLayer then upgradeArrow:SetDrawLayer("OVERLAY", 7) end
         PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBd, upgradeBg, upgradeArrow, nil)
@@ -232,8 +228,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         end
         if lockIcon.SetDrawLayer then lockIcon:SetDrawLayer("OVERLAY", 7) end
         PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, lockIcon)
-        lockIcon:SetTexture("Interface\\Common\\LockIcon")
-        lockIcon:SetVertexColor(0.45, 0.45, 0.45, 0.9)
+        ns.UI_SetIcon(lockIcon, "lock", { vertexColor = { 0.45, 0.45, 0.45, 0.9 } })
     end
 
     -- Tooltip: item link + simplified upgrade info (custom tooltip service)

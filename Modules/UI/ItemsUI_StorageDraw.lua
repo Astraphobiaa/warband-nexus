@@ -1563,11 +1563,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         warbandBody:SetPoint("TOPLEFT", warbandHeader, "BOTTOMLEFT", 0, 0)
         warbandBody:SetPoint("TOPRIGHT", warbandHeader, "BOTTOMRIGHT", 0, 0)
 
-        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+        -- Replace the dummy texture with the Warband icon (square glyph: keeps the header icon size)
         if warbandIcon then
-            warbandIcon:SetTexture(nil)  -- Clear dummy texture
-            warbandIcon:SetAtlas("warbands-icon")
-            warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
+            ns.UI_SetIcon(warbandIcon, "warband")
         end
 
         local warbandBodyAdvance = SECTION_SPACING

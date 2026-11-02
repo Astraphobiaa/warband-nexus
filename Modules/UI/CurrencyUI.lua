@@ -1265,9 +1265,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
             sectionHeader:SetPoint("TOPRIGHT", sectionWrap, "TOPRIGHT", 0, 0)
             sectionHeader:SetHeight(COLLAPSE_H_CUR)
             if warbandIcon then
-                warbandIcon:SetTexture(nil)
-                warbandIcon:SetAtlas("warbands-icon")
-                warbandIcon:SetSize(27, 36)
+                ns.UI_SetIcon(warbandIcon, "warband")  -- square glyph: keeps the header icon size
             end
 
             local roots = {}

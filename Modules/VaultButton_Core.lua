@@ -113,7 +113,7 @@ M.TRACK_ICONS = {
 
 M.CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
 M.CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
-M.UPARROW = "|A:loottoast-arrow-green:12:12|a"
+M.UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12, 0, 0, { 0.2, 1, 0.48 })  -- upgradeable: green
 
 -- Easy Access tooltip / menu copy (shared across VaultButton_* chunks via M)
 M.EA_MONEY_ICON = 14
@@ -138,7 +138,7 @@ function M.SyncEasyAccessThemeInk()
     M.EA_SECTION_COLOR[1], M.EA_SECTION_COLOR[2], M.EA_SECTION_COLOR[3] = br, bg, bb
     M.EA_FOOTER_COLOR[1], M.EA_FOOTER_COLOR[2], M.EA_FOOTER_COLOR[3] = mr, mg, mb
 end
-M.EA_STATUS_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"  -- file fallback; atlas via UI_ICONS.status_ok
+M.EA_STATUS_ICON = ns.UI_GetIconFile("status_ok")  -- addon Media file (registry key status_ok)
 M.EA_CAT_TIP = {
     raids = { key = "EA_TOOLTIP_CAT_RAID", fallback = "Raid", icon = M.TRACK_ICONS.raids },
     mythicPlus = { key = "EA_TOOLTIP_CAT_DUNGEON", fallback = "Dungeon", icon = M.TRACK_ICONS.mythicPlus },
@@ -565,6 +565,7 @@ M.LAUNCHER_MENU_ORDER = {
 ---@field settingsDescKey string|nil
 ---@field iconTab string|nil `UI_GetTabIcon` key
 ---@field iconAtlas string|nil
+---@field iconKey string|nil ns.UI_ICONS key (addon Media icon); `icon` carries its file
 ---@field icon string|nil texture path fallback
 ---@field menuLeftClick boolean|nil false = row cannot be assigned as left-click target (Settings row)
 
@@ -652,8 +653,8 @@ M.LAUNCHER_ACTION_DEFS = {
         kind = "settings",
         labelKey = "VAULT_BUTTON_MENU_SETTINGS", labelFallback = "Settings",
         settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS_DESC",
-        iconAtlas = ns.UI_GetIconAtlas("settings") or "mechagon-projects",
-        icon = "Interface\\Icons\\Trade_Engineering",
+        iconKey = "settings",
+        icon = ns.UI_GetIconFile("settings"),
         menuLeftClick = false,
     },
 }

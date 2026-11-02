@@ -1047,7 +1047,7 @@ function WarbandNexus:DrawStatistics(parent)
 
                 wb.icon = goldCard:CreateTexture(nil, "ARTWORK")
                 wb.icon:SetSize(16, 16)
-                wb.icon:SetAtlas("warbands-icon")
+                ns.UI_SetIcon(wb.icon, "warband")
 
                 wb.name = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
                 wb.name:SetPoint("LEFT", wb.icon, "RIGHT", 6, 0)

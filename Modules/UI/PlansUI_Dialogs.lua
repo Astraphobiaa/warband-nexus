@@ -963,12 +963,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     local starTex = box:CreateTexture(nil, "ARTWORK")
                     starTex:SetSize(SLOT_STAR, SLOT_STAR)
                     starTex:SetPoint("TOP", box, "TOP", 0, -2)
-                    starTex:SetAtlas("PetJournal-FavoritesIcon")
-                    if isComplete then
-                        starTex:SetVertexColor(1, 0.9, 0.25)
-                    else
-                        starTex:SetVertexColor(0.32, 0.32, 0.34)
-                    end
+                    ns.UI_SetIcon(starTex, isComplete and "favorite_on" or "favorite_off")
 
                     local milestoneText = FontManager:CreateFontString(box, "subtitle", "OVERLAY")
                     milestoneText:SetWidth(slotW - 4)

@@ -2278,7 +2278,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
             local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
             checkArrow:SetSize(24, 24)
             checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
-            checkArrow:SetAtlas("MiniMap-QuestArrow")
+            ns.UI_SetIcon(checkArrow, "marker_up")
             checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
             local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
             label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
@@ -2903,14 +2903,14 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
         return addedBtn
     end
 
-    local ICON_CHECK = "common-icon-checkmark"
     local addedFrame = ns.UI.Factory:CreateContainer(parent, width, height)
     addedFrame:SetPoint(anchorPoint, x, y)
     local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
     addedText:SetPoint("CENTER", addedFrame, "CENTER", 9, 0)
     local P = ns.PLAN_UI_COLORS or {}
     addedText:SetText((P.completed or "|cff44ff44") .. label .. "|r")
-    local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)
+    local addedIcon = CreateIcon(addedFrame, ns.UI_GetIconFile("status_ok"), 14, false, nil, true)
+    if addedIcon.texture then ns.UI_SetIcon(addedIcon.texture, "status_ok") end
     addedIcon:SetPoint("RIGHT", addedText, "LEFT", -2, 0)
     addedIcon:Show()
     return addedFrame

@@ -1063,7 +1063,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             local upIcon = scrollBar.ScrollUpBtn:CreateTexture(nil, "ARTWORK")
             upIcon:SetSize(12, 12)
             upIcon:SetPoint("CENTER")
-            upIcon:SetAtlas("common-icon-offscreen", false)
+            ns.UI_SetIcon(upIcon, "arrow_left")
             upIcon:SetRotation(-math.pi / 2)
             upIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             scrollBar.ScrollUpBtn.icon = upIcon
@@ -1157,7 +1157,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             local downIcon = scrollBar.ScrollDownBtn:CreateTexture(nil, "ARTWORK")
             downIcon:SetSize(12, 12)
             downIcon:SetPoint("CENTER")
-            downIcon:SetAtlas("common-icon-offscreen", false)
+            ns.UI_SetIcon(downIcon, "arrow_left")
             downIcon:SetRotation(math.pi / 2)
             downIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             scrollBar.ScrollDownBtn.icon = downIcon
@@ -1945,11 +1945,11 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.ScrollLeftBtn._borderType = "accent"
     hBar.ScrollLeftBtn._borderAlpha = 0.6
     table.insert(ns.BORDER_REGISTRY, hBar.ScrollLeftBtn)
-    -- Icon: common-icon-offscreen (default left); accent color
+    -- Icon: registry arrow_left (points left); accent color
     local leftIcon = hBar.ScrollLeftBtn:CreateTexture(nil, "ARTWORK")
     leftIcon:SetSize(12, 12)
     leftIcon:SetPoint("CENTER")
-    leftIcon:SetAtlas("common-icon-offscreen", false)
+    ns.UI_SetIcon(leftIcon, "arrow_left")
     leftIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
     hBar.ScrollLeftBtn.icon = leftIcon
     hBar.ScrollLeftBtn._iconTexture = leftIcon
@@ -1997,11 +1997,11 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.ScrollRightBtn._borderType = "accent"
     hBar.ScrollRightBtn._borderAlpha = 0.6
     table.insert(ns.BORDER_REGISTRY, hBar.ScrollRightBtn)
-    -- Icon: common-icon-offscreen rotated 180° (right)
+    -- Icon: registry arrow_left rotated 180° (right)
     local rightIcon = hBar.ScrollRightBtn:CreateTexture(nil, "ARTWORK")
     rightIcon:SetSize(12, 12)
     rightIcon:SetPoint("CENTER")
-    rightIcon:SetAtlas("common-icon-offscreen", false)
+    ns.UI_SetIcon(rightIcon, "arrow_left")
     rightIcon:SetRotation(math.pi)
     rightIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
     hBar.ScrollRightBtn.icon = rightIcon

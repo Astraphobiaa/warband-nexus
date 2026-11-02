@@ -22,14 +22,12 @@ local PvEHeader = {}
 local PVE_HEADER_ICON_TOP = 4
 local PVE_HEADER_LABEL_GAP = 0
 
---- TableKit applyIcon hook: atlas first (vault status), else the kit draws col.icon (fileID / file path).
+local PVE_STATUS_OK_ICON = ns.UI_GetIconFile("status_ok")
+
+--- TableKit applyIcon hook: registry status_ok (vault status, uncropped), else the kit draws col.icon (fileID / file path).
 function PvEHeader.ApplyIcon(tex, col, size)
-    local atlas = col and col.iconAtlas
-    if not atlas or not tex.SetAtlas then return false end
-    local ok = pcall(tex.SetAtlas, tex, atlas)
-    if not ok or not (tex.GetAtlas and tex:GetAtlas()) then return false end
-    if ns.UI_EnsureTextureFullColor then ns.UI_EnsureTextureFullColor(tex) end
-    return true
+    if not col or col.icon == nil or col.icon ~= PVE_STATUS_OK_ICON then return false end
+    return ns.UI_SetIcon(tex, "status_ok") and true or false
 end
 
 --- Fill the TableKit header fields on this draw's column copies: compact label (crest quality hex), tooltip, gapAfter.
@@ -726,8 +724,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             key = "vault_status",
             label = "",
             width = L.PVE_STATUS_COL_W,
-            iconAtlas = ns.UI_GetIconAtlas("status_ok"),
-            icon = "Interface\\RaidFrame\\ReadyCheck-Ready",
+            icon = PVE_STATUS_OK_ICON,
             tooltipTitle = GetLocalizedText("PVE_COL_VAULT_STATUS", "Vault Status"),
             headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
             headerIconIsAtlas = false,

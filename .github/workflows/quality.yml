@@ -202,6 +202,9 @@ jobs:
             lua5.1 .github/scripts/test_vault_preserve_import.lua
             lua5.1 .github/scripts/test_warband_features_1_to_4.lua
             lua5.1 .github/scripts/test_class_icon_atlas.lua
+            lua5.1 .github/scripts/test_ui_icon_registry.lua
+            lua5.1 .github/scripts/test_icon_call_sites.lua
+            lua5.1 .github/scripts/test_icon_registry_sites.lua
           else
             echo "lua5.1 unavailable - skipping earlier unit suites"
           fi

@@ -220,15 +220,15 @@ local function RebindReusedCollapsibleHeader(header, parent, text, isExpanded, o
     if categoryIcon and iconTexture then
         local iconSize = (UI_LAYOUT and UI_LAYOUT.HEADER_ICON_SIZE) or 24
         categoryIcon:SetSize(iconSize, iconSize)
-        if isAtlas then
+        if isAtlas and not ns.UI_IsAddonMediaTexture(iconTexture) then  -- our media files are never atlases
             local ok = pcall(categoryIcon.SetAtlas, categoryIcon, iconTexture, false)
             if not ok then
-                categoryIcon:SetAtlas(ns.UI_GetIconAtlas("attention") or "icons_64x64_important", false)
+                ns.UI_SetIcon(categoryIcon, "attention")
             end
         else
             categoryIcon:SetTexCoord(0, 1, 0, 1)
             categoryIcon:SetTexture(iconTexture)
-            if type(iconTexture) == "string" then
+            if type(iconTexture) == "string" and not ns.UI_IsAddonMediaTexture(iconTexture) then
                 categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
         end
@@ -276,11 +276,12 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local useClassicPanel = UseClassicSectionChrome()
     local reuseHeader = visualOpts and visualOpts.reuseHeader
     if reuseHeader and reuseHeader._wnCollExpandIcon then
-        local reuseIcon = iconTexture
+        local reuseIcon, reuseIsAtlas = iconTexture, isAtlas
         if noCategoryIcon then
             reuseIcon = nil
         elseif not reuseIcon or reuseIcon == "" then
-            reuseIcon = isAtlas and (ns.UI_GetIconAtlas("attention") or "icons_64x64_important") or "Interface\\Icons\\INV_Misc_Coin_01"
+            reuseIcon = ns.UI_GetIconFile(isAtlas and "attention" or "money_gold")
+            reuseIsAtlas = false
         end
         if reuseHeader._wnCollReuseSig == CollapsibleHeaderReuseSig(useClassicPanel, suppressSectionChrome, reuseIcon ~= nil) then
             local reuseW
@@ -291,7 +292,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
             else
                 reuseW = math.max(1, parentW - (sideInset * 2) - indent)
             end
-            return RebindReusedCollapsibleHeader(reuseHeader, parent, text, isExpanded, onToggle, reuseIcon, isAtlas,
+            return RebindReusedCollapsibleHeader(reuseHeader, parent, text, isExpanded, onToggle, reuseIcon, reuseIsAtlas,
                 indent, visualOpts, reuseW, sectionH)
         end
     end
@@ -402,7 +403,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     if noCategoryIcon then
         iconTexture = nil
     elseif not iconTexture or iconTexture == "" then
-        iconTexture = isAtlas and (ns.UI_GetIconAtlas("attention") or "icons_64x64_important") or "Interface\\Icons\\INV_Misc_Coin_01"
+        iconTexture = ns.UI_GetIconFile(isAtlas and "attention" or "money_gold")
+        isAtlas = false
     end
     local categoryIcon = nil
     if iconTexture then
@@ -412,16 +414,16 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", catIconGap, 0)
         
         -- Use atlas only (isAtlas=true from Collections); texture path fallback for legacy callers
-        if isAtlas then
+        if isAtlas and not ns.UI_IsAddonMediaTexture(iconTexture) then  -- our media files are never atlases
             local ok = pcall(categoryIcon.SetAtlas, categoryIcon, iconTexture, false)
             if not ok then
-                categoryIcon:SetAtlas(ns.UI_GetIconAtlas("attention") or "icons_64x64_important", false)
+                ns.UI_SetIcon(categoryIcon, "attention")
             end
             categoryIcon:Show()
         else
             -- iconTexture: string path veya number (fileID); WoW ikisini de kabul eder
             categoryIcon:SetTexture(iconTexture)
-            if type(iconTexture) == "string" then
+            if type(iconTexture) == "string" and not ns.UI_IsAddonMediaTexture(iconTexture) then
                 categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
             categoryIcon:Show()

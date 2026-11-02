@@ -44,9 +44,13 @@ local TAB_HEADER_ICONS = {
     collections = "dragon-rostrum",
     professions = "Vehicle-HammerGold",
     gear = "VignetteEventElite",
-    settings = ns.UI_GetIconAtlas("settings") or "mechagon-projects",
     about = "Campaign-QuestLog-Legendaryicon",
     qol = "Soulbinds_Tree_Conduit_Icon_Utility",
+}
+
+--- Tabs drawn from the addon icon registry (ns.UI_ICONS key) instead of a Blizzard atlas.
+local TAB_REGISTRY_ICON_KEYS = {
+    settings = "settings",
 }
 
 --- Blizzard `Interface\\Icons\\...` fallback when atlases reject (broken/missing art in some patches).
@@ -102,6 +106,10 @@ ns.UI_GetTabIcon = function(tabName)
     if key == "characters" then
         key = "chars"
     end
+    -- No atlas for registry tabs: callers fall through to UI_ApplyMainNavTabGlyph / their file path.
+    if TAB_REGISTRY_ICON_KEYS[key] then
+        return nil
+    end
     return TAB_HEADER_ICONS[key]
         or TAB_HEADER_ICONS[tabName]
         or "shop-icon-housing-characters-up"
@@ -131,10 +139,18 @@ function ns.UI_ApplyTitleCardGlyph(tex, tabKey, atlasName)
     return false
 end
 
---- Main nav strip / rail: Blizzard atlas (`UI_GetTabIcon`) then built-in texture paths (packaged TGAs optional).
----@return boolean usedPackaged Unused; kept for call-site compatibility (always false when Media lacks matching files).
+--- Main nav strip / rail: registry icon (TAB_REGISTRY_ICON_KEYS), Blizzard atlas (`UI_GetTabIcon`), then built-in texture paths.
+---@return boolean usedPackaged true only for a registry icon (tex._wnRegistryIcon set); callers may ignore it.
 function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
     if not tex or not tabKey then return false end
+
+    local canon = NormalizeMainNavTabMediaKey(tabKey)
+    local regKey = canon and TAB_REGISTRY_ICON_KEYS[canon]
+    tex._wnRegistryIcon = nil
+    if regKey and ns.UI_SetIcon and ns.UI_SetIcon(tex, regKey) then
+        tex._wnRegistryIcon = regKey
+        return true
+    end
 
     local atlasNm = ns.UI_GetTabIcon(tabKey)
     if atlasNm and type(atlasNm) == "string" then
@@ -146,7 +162,6 @@ function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
         end
     end
 
-    local canon = NormalizeMainNavTabMediaKey(tabKey)
     local iconPath = canon and TAB_NAV_TEXTURE_FALLBACK[canon]
     if type(iconPath) == "string" and iconPath ~= "" then
         tex:SetTexture(iconPath)
@@ -258,7 +273,10 @@ local function CreateHeaderIcon(parent, atlasName, options)
     if ns.UI_ApplyTitleCardGlyph then
         ns.UI_ApplyTitleCardGlyph(icon, options.tabKey, atlasName)
     end
-    icon:SetVertexColor(1, 1, 1, 1)
+    -- Registry glyphs keep their theme vertex (mono: white dark / black light).
+    if not icon._wnRegistryIcon then
+        icon:SetVertexColor(1, 1, 1, 1)
+    end
 
     return {
         icon = icon,

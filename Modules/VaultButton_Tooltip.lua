@@ -360,7 +360,7 @@ function M.AppendVaultStatusLine(lines, isReady, isPending, slotsEarned)
         right = "|cff888888" .. DASH .. "|r"
     end
     lines[#lines + 1] = {
-        left = EAIconLabel(M.EA_STATUS_ICON, ns.UI_GetIconAtlas("status_ok"), "PVE_HEADER_STATUS_SHORT", "Status"),
+        left = EAIconLabel(M.EA_STATUS_ICON, nil, "PVE_HEADER_STATUS_SHORT", "Status"),
         right = right,
         leftColor = M.EA_LABEL_COLOR,
         rightColor = M.EA_VALUE_COLOR,
@@ -614,14 +614,14 @@ BuildEasyAccessTooltipData = function(charKey, entry)
 
     if ShowEasyAccessDisplay("tooltipGold") then
         lines[#lines + 1] = {
-            left = EAIconLabel("Interface\\MoneyFrame\\UI-GoldIcon", "coin-gold", "EA_TOOLTIP_LINE_GOLD", "Gold"),
+            left = EAIconLabel(ns.UI_GetIconFile("money_gold"), nil, "EA_TOOLTIP_LINE_GOLD", "Gold"),
             right = EAFormatMoneyCopper(ResolveEasyAccessGoldCopper(charKey, charRow)),
             leftColor = M.EA_LABEL_COLOR,
             rightColor = M.EA_VALUE_COLOR,
         }
         if shiftHeld and not warbandSummary then
             lines[#lines + 1] = {
-                left = EAIconLabel("Interface\\MoneyFrame\\UI-GoldIcon", "coin-gold", "TOTAL_GOLD_LABEL", "Total Gold:"),
+                left = EAIconLabel(ns.UI_GetIconFile("money_gold"), nil, "TOTAL_GOLD_LABEL", "Total Gold:"),
                 right = EAFormatMoneyCopper(ResolveEasyAccessTotalGoldCopper()),
                 leftColor = M.EA_LABEL_COLOR,
                 rightColor = { 0.35, 0.9, 0.4 },

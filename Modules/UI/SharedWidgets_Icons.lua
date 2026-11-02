@@ -255,12 +255,12 @@ local function ApplyIconTexture(tex, texture, isAtlas)
         end
         return
     end
-    if type(texture) == "string" then
-        tex:SetTexture(texture)
+    tex:SetTexture(texture)
+    if ns.UI_IsAddonMediaTexture and ns.UI_IsAddonMediaTexture(texture) then
+        tex:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
     else
-        tex:SetTexture(texture)
+        ns.UI_ApplyFileIconTexCoord(tex)
     end
-    ns.UI_ApplyFileIconTexCoord(tex)
 end
 
 local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)

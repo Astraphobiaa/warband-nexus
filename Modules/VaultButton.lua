@@ -156,12 +156,14 @@ function M.CreateMenuItem(parent, opts, y)
     end
 
     local MENU_ICON_SIZE = lay.iconSize or 20
-    local hasIcon = opts.iconAtlas or opts.icon
+    local hasIcon = opts.iconKey or opts.iconAtlas or opts.icon
     if hasIcon then
         local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetSize(MENU_ICON_SIZE, MENU_ICON_SIZE)
         icon:SetPoint("LEFT", lay.innerPad, 0)
-        if opts.iconAtlas and icon.SetAtlas then
+        if opts.iconKey and ns.UI_SetIcon(icon, opts.iconKey) then
+            -- addon registry icon: own file, theme tint
+        elseif opts.iconAtlas and icon.SetAtlas then
             icon:SetTexture(nil)
             local ok = pcall(icon.SetAtlas, icon, opts.iconAtlas, false)
             if not ok and opts.icon then
@@ -260,6 +262,7 @@ function M.BuildMenu()
             local iconTab = def.iconTab
             local opt = {
                 label = GetLauncherActionLabel(actionId),
+                iconKey = def.iconKey,
                 iconAtlas = def.iconAtlas or (iconTab and tabIcon(iconTab)) or nil,
                 icon = def.icon,
                 action = (function(capturedActionId)

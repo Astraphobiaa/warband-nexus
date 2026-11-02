@@ -149,11 +149,6 @@ local STATUS_ICON_INSET = 1
 local GEAR_DEBUG_ALWAYS_SHOW_UPGRADE = false
 -- When false, hide paperdoll missing-enchant / empty-socket alert triangles (upgrade chip is separate).
 local GEAR_PAPERDOLL_ENCHANT_GEM_ALERTS = true
--- Inline ilvl separator in recommendation FontStrings (Unicode → renders as tofu); same atlas as storage row ilvl arrow.
-local GEAR_ILVL_ARROW_ATLAS = "common-dropdown-icon-play"
-local GEAR_ILVL_ARROW_INLINE_SZ = 14
-local GEAR_ILVL_ARROW_INLINE_MARKUP = (CreateAtlasMarkup and CreateAtlasMarkup(GEAR_ILVL_ARROW_ATLAS, GEAR_ILVL_ARROW_INLINE_SZ, GEAR_ILVL_ARROW_INLINE_SZ))
-    or ("|A:" .. GEAR_ILVL_ARROW_ATLAS .. ":" .. GEAR_ILVL_ARROW_INLINE_SZ .. ":" .. GEAR_ILVL_ARROW_INLINE_SZ .. "|a")
 local CURRENCY_PANEL_W = 248
 local GEAR_STAT_PANEL_W = 292
 local GEAR_REC_STACK_MIN_H = 200
@@ -1257,14 +1252,8 @@ local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable, canAff
         if upgradeArrow.SetFrameLevel and btn.GetFrameLevel then
             upgradeArrow:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
         end
-        if upgradeArrow.SetAtlas then
-            upgradeArrow:SetAtlas("loottoast-arrow-green", false)
-            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(0.2, 1, 0.48) end
-        else
-            upgradeArrow:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-            upgradeArrow:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            upgradeArrow:SetVertexColor(0.15, 1, 0.42)
-        end
+        ns.UI_SetIcon(upgradeArrow, "upgrade")
+        if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(0.2, 1, 0.48) end
         if upgradeArrow.SetDrawLayer then upgradeArrow:SetDrawLayer("OVERLAY", 7) end
         PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBd, upgradeBg, upgradeArrow, nil)
     end
@@ -1498,7 +1487,7 @@ function PD.GearSlotApplyDeferredEnchantGemInspect(btn)
             btn.missingEnchantIcon = ic
         end
         btn.missingEnchantIcon:SetSize(inner, inner)
-        btn.missingEnchantIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        ns.UI_SetIcon(btn.missingEnchantIcon, "attention")
         btn.missingEnchantIcon:ClearAllPoints()
         btn.missingEnchantIcon:SetPoint("CENTER", encHost, "CENTER", 0, 0)
         btn.missingEnchantIcon:Show()
@@ -1519,7 +1508,7 @@ function PD.GearSlotApplyDeferredEnchantGemInspect(btn)
             btn.missingGemIcon = ic
         end
         btn.missingGemIcon:SetSize(inner, inner)
-        btn.missingGemIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        ns.UI_SetIcon(btn.missingGemIcon, "attention")
         btn.missingGemIcon:ClearAllPoints()
         btn.missingGemIcon:SetPoint("CENTER", gemHost, "CENTER", 0, 0)
         btn.missingGemIcon:Show()

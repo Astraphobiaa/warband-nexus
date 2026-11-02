@@ -124,11 +124,7 @@ local function EnsureGearContentVeil(scrollChild, mf, gen)
         local spinner = host:CreateTexture(nil, "OVERLAY")
         spinner:SetSize(48, 48)
         spinner:SetPoint("CENTER", 0, 18)
-        if spinner.SetAtlas then
-            spinner:SetAtlas("auctionhouse-ui-loadingspinner")
-        else
-            spinner:SetTexture("Interface\\COMMON\\StreamCircle")
-        end
+        ns.UI_SetIcon(spinner, "spinner")
         host._wnSpinner = spinner
         if FontManager then
             local titleFs = FontManager:CreateFontString(host, GFR("loadingCardTitle"), "OVERLAY")
@@ -2519,7 +2515,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local arrow = btn:CreateTexture(nil, "ARTWORK")
             arrow:SetSize(12, 12)
             arrow:SetPoint("RIGHT", -5, 0)
-            arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+            ns.UI_SetIcon(arrow, "arrow_right")
         end
 
         local hi = btn:CreateTexture(nil, "HIGHLIGHT")

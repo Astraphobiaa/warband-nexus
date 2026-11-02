@@ -237,6 +237,7 @@ do
     ns.VaultButton = ns.VaultButton or {}
     ns.UI_GetIconMarkup = ns.UI_GetIconMarkup or function() return "" end
     ns.UI_GetIconAtlas = ns.UI_GetIconAtlas or function() return nil end
+    ns.UI_GetIconFile = ns.UI_GetIconFile or function() return nil end
     local okLoad, loadErr = pcall(LoadFile, "Modules/VaultButton_Core.lua")
     assert_eq(okLoad, true, "VaultButton_Core.lua loads" .. (okLoad and "" or (": " .. tostring(loadErr))))
     local M = ns.VaultButton

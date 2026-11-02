@@ -285,7 +285,8 @@ function M.BuildTableFrame()
     -- Settings (gear) button — opens options frame
     local settingsBtn = VF:CreateButton(chrome, 28, 28, true)
     settingsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
-    settingsBtn:SetNormalAtlas(ns.UI_GetIconAtlas("settings") or "mechagon-projects")
+    settingsBtn:SetNormalTexture(ns.UI_GetIconFile("settings"))
+    ns.UI_SetIcon(settingsBtn:GetNormalTexture(), "settings")
     settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     settingsBtn:SetScript("OnClick", function() ToggleOptionsFrame(f, "RIGHT") end)
 

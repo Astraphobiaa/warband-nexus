@@ -2158,9 +2158,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     local favIconSize = favColW * 0.65
     if not row.favIcon then
         row.favIcon = row:CreateTexture(nil, "OVERLAY")
-        row.favIcon:SetAtlas("transmog-icon-favorite")
-        row.favIcon:SetDesaturated(false)
-        row.favIcon:SetVertexColor(1, 0.84, 0)
+        ns.UI_SetIcon(row.favIcon, "favorite_on")  -- non-favorites hide the icon (below)
     end
     row.favIcon:SetSize(favIconSize, favIconSize)
     row.favIcon:ClearAllPoints()

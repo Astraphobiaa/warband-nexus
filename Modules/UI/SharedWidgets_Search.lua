@@ -864,18 +864,10 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             addBtn = ns.UI.Factory:CreateButton(headerFrame, addBtnSize, addBtnSize, true)
             headerFrame._wnCustomHeaderAddBtn = addBtn
             addBtn:SetFrameLevel((headerFrame:GetFrameLevel() or 2) + 3)
-            local okA = false
-            if addBtn.SetNormalAtlas then
-                okA = pcall(function()
-                    addBtn:SetNormalAtlas("communities-icon-addgroupplus")
-                end)
-            end
-            if not okA then
-                local gt = addBtn.GetNormalTexture and addBtn:GetNormalTexture()
-                if gt then
-                    gt:SetTexture("Interface\\Icons\\INV_Misc_GroupLooking")
-                    gt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                end
+            addBtn:SetNormalTexture(ns.UI_GetIconFile("plus"))
+            local gt = addBtn.GetNormalTexture and addBtn:GetNormalTexture()
+            if gt then
+                ns.UI_SetIcon(gt, "plus")
             end
         end
         if addBtn then
@@ -919,21 +911,12 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             lockBtn:SetSize(addBtnSize, addBtnSize)
             local isLocked = CharacterService and CharacterService.IsCustomSectionLocked
                 and CharacterService:IsCustomSectionLocked(addon, groupId)
-            local okA = false
-            if lockBtn.SetNormalAtlas then
-                local lockAtlas = ns.UI_GetIconAtlas("lock") or "communities-icon-lock"
-                okA = pcall(function()
-                    lockBtn:SetNormalAtlas(lockAtlas)
-                    lockBtn:SetHighlightAtlas(lockAtlas)
-                end)
-            end
+            local lockFile = ns.UI_GetIconFile("lock")
+            lockBtn:SetNormalTexture(lockFile)
+            lockBtn:SetHighlightTexture(lockFile)
             local nt = lockBtn.GetNormalTexture and lockBtn:GetNormalTexture()
-            if not okA or not nt or not nt:GetTexture() then
-                lockBtn:SetNormalTexture("Interface\\Common\\LockIcon")
-                lockBtn:SetHighlightTexture("Interface\\Common\\LockIcon")
-                nt = lockBtn.GetNormalTexture and lockBtn:GetNormalTexture()
-            end
             if nt then
+                ns.UI_SetIcon(nt, "lock")
                 if isLocked then
                     nt:SetDesaturated(false)
                     nt:SetVertexColor(1, 0.82, 0.2, 1)

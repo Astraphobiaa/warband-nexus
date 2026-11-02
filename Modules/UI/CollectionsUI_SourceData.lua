@@ -130,8 +130,9 @@ local BATTLEPET_SOURCETYPE_TO_CATEGORY = {
 }
 local SOURCE_INDEX_TO_TOY_CAT = BATTLEPET_SOURCETYPE_TO_CATEGORY
 
--- Category icon by key (atlas only; CreateCollapsibleHeader isAtlas=true)
-local DEFAULT_CATEGORY_ATLAS = ns.UI_GetIconAtlas("attention") or "importantavailablequesticon"
+-- Category icon by key (atlas only; CreateCollapsibleHeader isAtlas=true).
+-- No default atlas: a nil icon makes CreateCollapsibleHeader draw the registry "attention" file.
+local DEFAULT_CATEGORY_ATLAS = nil
 local function GetMountCategoryIcon(catKey)
     for i = 1, #SOURCE_CATEGORIES do
         if SOURCE_CATEGORIES[i].key == catKey then

@@ -569,7 +569,7 @@ local function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     errorCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Warning icon
-    local warningIconFrame = ns.UI_CreateIcon(errorCard, ns.UI_GetIconAtlas("warning") or "services-icon-warning", 24, true, nil, true)
+    local warningIconFrame = ns.UI_CreateIcon(errorCard, ns.UI_GetIconFile("warning"), 24, false, nil, true)
     warningIconFrame:SetPoint("LEFT", 20, 0)
     warningIconFrame:Show()
     

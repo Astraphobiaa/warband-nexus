@@ -315,7 +315,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local goldIcon = contentFrame:CreateTexture(nil, "ARTWORK")
     goldIcon:SetSize(18, 18)
     goldIcon:SetPoint("LEFT", inputBox, "RIGHT", 8, 0)
-    goldIcon:SetAtlas("coin-gold")
+    ns.UI_SetIcon(goldIcon, "money_gold")
     
     -- Tooltip for target input
     local targetTooltip = L["GOLD_MANAGEMENT_HELPER"] or "Enter the amount of gold you want to keep on this character. The addon will notify you when you need to move gold."

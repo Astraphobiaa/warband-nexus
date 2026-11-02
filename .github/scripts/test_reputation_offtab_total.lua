@@ -104,6 +104,7 @@ do
     ns.UI_CreateNoticeFrame = function(parent) return Frame.new(parent) end
     ns.UI_CreateCollapsibleHeader = function(parent) local h = Frame.new(parent); return h, nil, Frame.new(h) end
     ns.UI_SyncMainTabScrollChrome = function() end
+    ns.UI_SetIcon = function() return true end
     ns.UI_GetCharKey = function(c) return c._key end
     ns.UI_GetSubsidiaryCharKey = function() return KEY end
     local bodies = {}
