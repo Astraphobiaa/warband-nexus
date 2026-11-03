@@ -921,21 +921,16 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
         end
 
         -- Track icon + label (left column, vertically centered)
+        -- Same painted door markers as the Great Vault plan card and toasts (registry keys).
         local trackIcons = {
-            Raid    = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
-            Dungeon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-            World   = "Interface\\Icons\\INV_Misc_Map_01",
+            Raid    = "quest_raid",
+            Dungeon = "quest_dungeon",
+            World   = "quest_delve",
         }
         local trackIcon = rowFrame:CreateTexture(nil, "ARTWORK")
         trackIcon:SetSize(trackIconSize, trackIconSize)
         trackIcon:SetPoint("LEFT", rowFrame, "LEFT", leftPad, 0)
-        local trackFile = trackIcons[typeName]
-        if trackFile then
-            trackIcon:SetTexture(trackFile)
-            trackIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        else
-            ns.UI_SetIcon(trackIcon, "question")
-        end
+        ns.UI_SetIcon(trackIcon, trackIcons[typeName] or "question")
 
         local typeDisplayName = typeName
         if typeName == "Raid" then

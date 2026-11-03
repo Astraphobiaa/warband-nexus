@@ -1912,19 +1912,19 @@ function WarbandNexus:DrawReputationList(container, width)
     
     local function GetHeaderIcon(headerName)
         if issecretvalue and issecretvalue(headerName) then
-            return "Interface\\Icons\\Achievement_Reputation_01"
+            return ns.UI_GetIconFile("medal")
         end
         if not headerName or headerName == "" then
-            return "Interface\\Icons\\Achievement_Reputation_01"
+            return ns.UI_GetIconFile("medal")
         end
         if headerName:find("Guild") then
-            return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
+            return ns.UI_GetIconFile("guild")
         elseif headerName:find("Midnight") or headerName:find("Quel'Thalas") or headerName:find("Coiled Isle") or headerName:find("Ula'tek") then
             return "Interface\\Icons\\Spell_Shadow_Teleport"
         elseif headerName:find("Alliance") then
-            return "Interface\\Icons\\Achievement_PVP_A_A"
+            return ns.UI_GetIconFile("faction_alliance")
         elseif headerName:find("Horde") then
-            return "Interface\\Icons\\Achievement_PVP_H_H"
+            return ns.UI_GetIconFile("faction_horde")
         elseif headerName:find("War Within") or headerName:find("Khaz Algar") then
             return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
         elseif headerName:find("Dragonflight") or headerName:find("Dragon") then
@@ -1948,7 +1948,7 @@ function WarbandNexus:DrawReputationList(container, width)
         elseif headerName:find("Classic") then
             return "Interface\\Icons\\INV_Misc_Book_11"
         else
-            return "Interface\\Icons\\Achievement_Reputation_01"
+            return ns.UI_GetIconFile("medal")
         end
     end
     

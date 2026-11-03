@@ -69,7 +69,7 @@ local function ResolvePopupWidth()
     return LAYOUT.CONTENT_W + (LAYOUT.PAD * 2) + SCROLLBAR_LANE + (DialogInset() * 2)
 end
 
-local MAIL_ICON_FROM = "Interface\\Icons\\INV_Letter_15"
+local MAIL_ICON_FROM = ns.UI_GetIconFile and ns.UI_GetIconFile("mail")
 local MAIL_ICON_SUBJECT = ns.UI_GetIconFile("scroll")
 local MAIL_ICON_GOLD = ns.UI_GetIconFile("money_gold")
 local MAIL_ICON_COD = "Interface\\Icons\\INV_Letter_16"
@@ -571,7 +571,7 @@ function WarbandNexus:ShowMailDetailsPopup(char)
     local dialog, contentFrame = CreateExternalWindow({
         name = "MailDetailsPopup",
         title = L("MAIL_DETAILS_TITLE", "Mail Details"),
-        icon = "Interface\\Minimap\\Tracking\\Mailbox",
+        icon = ns.UI_GetIconFile("mail"),
         width = ResolvePopupWidth(),
         height = POPUP_H,
         preventDuplicates = false,

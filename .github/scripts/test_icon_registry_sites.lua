@@ -140,6 +140,12 @@ do
     check(not has("Modules/UI/PlanCardFactory.lua", "questtypeicon-heroic") and not has("Modules/UI/PlanCardFactory.lua", "questtypeicon-raid")
         and not has("Modules/UI/PlansUI_Dialogs.lua", "questtypeicon")
         and has("Modules/NotificationManager.lua", 'icon = IconFile("quest_raid")'), "Great Vault dungeon/raid/world markers use registry icons")
+    check(not has("Modules/UI/PvEUI_VaultGrid.lua", "Head_Dragon_01") and has("Modules/UI/PvEUI_VaultGrid.lua", 'Dungeon = "quest_dungeon"'),
+        "PvE vault grid rows use the registry door markers")
+    check(not has("Modules/UI/ReputationUI.lua", "Achievement_PVP_A_A") and not has("Modules/UI/ReputationUI.lua", "EverybodysFriend")
+        and has("Modules/UI/ReputationUI.lua", 'ns.UI_GetIconFile("faction_horde")'), "Reputation faction/guild/generic headers use registry icons")
+    check(not has("Modules/UI/MailDetailsPopup.lua", "Tracking\\Mailbox") and not has("Modules/UI/MailDetailsPopup.lua", "INV_Letter_15"),
+        "Mail details popup uses the registry envelope")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))
