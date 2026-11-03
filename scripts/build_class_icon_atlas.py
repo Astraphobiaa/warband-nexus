@@ -10,6 +10,7 @@ Sources: scripts/assets/class_icons/<class>_ring.png and <class>.png (512 px, tr
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PIL import Image
@@ -35,7 +36,10 @@ def build(suffix: str, out_name: str) -> None:
         cell = Image.open(SRC / f"{key}{suffix}.png").convert("RGBA").resize((CELL, CELL), Image.LANCZOS)
         atlas.paste(cell, ((i % COLS) * CELL, (i // COLS) * CELL))
     out = MEDIA / out_name
-    atlas.save(out, format="TGA")
+    # Write beside the target, then rename: the addon folder is live in the game, which must never read a half-written file.
+    tmp = out.with_name(out.name + ".tmp")
+    atlas.save(tmp, format="TGA")
+    os.replace(tmp, out)
     print(f"wrote {out.name}")
 
 

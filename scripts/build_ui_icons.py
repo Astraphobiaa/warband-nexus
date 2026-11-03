@@ -11,6 +11,7 @@ Keys -> files are wired in Modules/UI/IconRegistry.lua (ns.UI_ICONS).
 from __future__ import annotations
 
 import math
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -512,7 +513,11 @@ def render(name: str, svg: str) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         png = Path(tmp) / "icon.png"
         subprocess.run(["resvg", "-w", str(SIZE), "-h", str(SIZE), str(svg_path), str(png)], check=True)
-        Image.open(png).convert("RGBA").save(MEDIA / f"Icon-{name}.tga", format="TGA")
+        out = MEDIA / f"Icon-{name}.tga"
+        # Write beside the target, then rename: the addon folder is live in the game, which must never read a half-written file.
+        tmp = out.with_name(out.name + ".tmp")
+        Image.open(png).convert("RGBA").save(tmp, format="TGA")
+        os.replace(tmp, out)
     print(f"wrote Icon-{name}.tga + .svg")
 
 

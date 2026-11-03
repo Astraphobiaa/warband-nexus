@@ -22,7 +22,10 @@ def blank() -> Image.Image:
 def save_pair(name: str, img: Image.Image, svg_body: str) -> None:
     tga_path = MEDIA / f"Icon-{name}.tga"
     svg_path = MEDIA / f"Icon-{name}.svg"
-    img.save(tga_path, format="TGA")
+    # Write beside the target, then rename: the addon folder is live in the game, which must never read a half-written file.
+    tmp = tga_path.with_name(tga_path.name + ".tmp")
+    img.save(tmp, format="TGA")
+    os.replace(tmp, tga_path)
     svg_path.write_text(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#FFFFFF" stroke-width="{STROKE}" stroke-linecap="round" stroke-linejoin="round">\n{svg_body}\n</svg>\n',
         encoding="utf-8",
