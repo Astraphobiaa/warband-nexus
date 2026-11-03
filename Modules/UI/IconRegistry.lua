@@ -204,7 +204,8 @@ function ns.UI_SetIcon(tex, key, opts)
         end
     end
     if not applied and entry.file then
-        tex:SetTexture(entry.file)
+        -- TRILINEAR: mipmaps, so 64-128 px art stays smooth at 16-24 px (Blizzard map tiles use the same mode).
+        tex:SetTexture(entry.file, nil, nil, "TRILINEAR")
         local tc = entry.texCoord or SORT_DOWN_TC
         tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
         applied = "file"

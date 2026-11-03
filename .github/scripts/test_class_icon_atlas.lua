@@ -86,7 +86,7 @@ local Apply = ns.UI_ApplyClassIconTexture
 local tex = FakeTexture()
 Apply(tex, "MAGE")
 assert_eq(tex.path, GetFile("MAGE"), "ring crest by default")
-assert_eq(tex.filter, nil, "default filtering (no TRILINEAR)")
+assert_eq(tex.filter, "TRILINEAR", "trilinear filtering for scaled crests")
 assert_eq(tex.tc and tex.tc[1] == 0 and tex.tc[2] == 1 and tex.tc[3] == 0 and tex.tc[4] == 1, true, "full TexCoord")
 assert_eq(tex.atlas, nil, "no Blizzard atlas name is set")
 Apply(tex, "DRUID", true)

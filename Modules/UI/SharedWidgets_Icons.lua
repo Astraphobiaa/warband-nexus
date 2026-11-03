@@ -249,10 +249,11 @@ local function ApplyIconTexture(tex, texture, isAtlas)
         end
         return
     end
-    tex:SetTexture(texture)
     if ns.UI_IsAddonMediaTexture and ns.UI_IsAddonMediaTexture(texture) then
+        tex:SetTexture(texture, nil, nil, "TRILINEAR")  -- mipmapped: smooth when drawn below file size
         tex:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
     else
+        tex:SetTexture(texture)
         ns.UI_ApplyFileIconTexCoord(tex)
     end
 end
@@ -801,7 +802,7 @@ local function ApplyClassIconTexture(tex, classFile, bare)
     if not tex or not classFile or classFile == "" then return end
     local file = GetClassIconFile(classFile, bare)
     if file then
-        tex:SetTexture(file)
+        tex:SetTexture(file, nil, nil, "TRILINEAR")  -- smooth at 24 px row size
         tex:SetTexCoord(0, 1, 0, 1)
     else
         ns.UI_SetIcon(tex, "question")
