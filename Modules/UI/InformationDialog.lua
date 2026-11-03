@@ -212,9 +212,8 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
             local icon = card:CreateTexture(nil, "ARTWORK")
             icon:SetSize(CARD_ICON, CARD_ICON)
             icon:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD, -CARD_PAD)
-            local atlas = entry.tab and ns.UI_GetTabIcon and ns.UI_GetTabIcon(entry.tab)
-            if atlas then
-                pcall(icon.SetAtlas, icon, atlas, false)
+            if entry.tab and ns.UI_ApplyMainNavTabGlyph then
+                ns.UI_ApplyMainNavTabGlyph(icon, entry.tab)  -- the tab's addon registry icon
             end
 
             local title = FontManager:CreateFontString(card, "title", "OVERLAY")

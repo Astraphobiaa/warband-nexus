@@ -51,9 +51,13 @@ do
     check(tex.texture == ns.UI_GetIconFile("settings") and not used(tex, "SetAtlas"),
         "settings nav glyph is the registry Settings file, no SetAtlas")
     check(tex.vertex and tex.vertex[1] == 0.1, "settings nav glyph carries the mono theme vertex")
-    local other = FakeTex()
-    ns.UI_ApplyMainNavTabGlyph(other, "items")
-    check(other.atlas == "Banker" and other._wnRegistryIcon == nil, "other tabs keep their atlas, no registry flag")
+    -- every main tab is on the registry now; storage keeps its own crate glyph instead of the items one
+    for _, pair in ipairs({ { "items", "bag" }, { "storage", "crate" }, { "reputation", "medal" }, { "characters", "character" } }) do
+        local t = FakeTex()
+        ns.UI_ApplyMainNavTabGlyph(t, pair[1])
+        check(ns.UI_GetTabIcon(pair[1]) == nil and t._wnRegistryIcon == pair[2] and not used(t, "SetAtlas"),
+            pair[1] .. " tab uses the registry " .. pair[2] .. " glyph, no Blizzard atlas")
+    end
 end
 
 print("Phase 2: Easy Access launcher / status icons")

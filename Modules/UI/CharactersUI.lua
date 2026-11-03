@@ -686,14 +686,19 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Use factory for standardized card header layout
     local wb1Layout = CreateCardHeaderLayout(
         wbGoldCard,
-        "warbands-icon",
+        ns.UI_GetIconFile and ns.UI_GetIconFile("warband"),
         40,
-        true,
+        false,
         (ns.L and ns.L["HEADER_WARBAND_GOLD"]) or "WARBAND GOLD",
         FormatMoney(warbandBankGold, 14),
         "subtitle",
         "body"
     )
+    -- Addon registry warband glyph: theme tint (CreateIcon resets vertex), kept on theme toggle.
+    local wbIconTex = wb1Layout.icon and wb1Layout.icon.texture
+    if wbIconTex and ns.UI_SetIcon and ns.UI_SetIcon(wbIconTex, "warband") and ns.UI_TrackRegistryIconTint then
+        ns.UI_TrackRegistryIconTint(wbIconTex, "warband")
+    end
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
 

@@ -29,7 +29,6 @@ local CreateThemedButton  = ns.UI_CreateThemedButton
 local FormatGold          = ns.UI_FormatGold
 local FormatNumber        = ns.UI_FormatNumber
 local CreateHeaderIcon    = ns.UI_CreateHeaderIcon
-local GetTabIcon          = ns.UI_GetTabIcon
 local ShowTooltip         = ns.UI_ShowTooltip
 local HideTooltip         = ns.UI_HideTooltip
 local ApplyProfessionCraftingQualityAtlasToTexture = ns.UI_ApplyProfessionCraftingQualityAtlasToTexture

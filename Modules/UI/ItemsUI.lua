@@ -256,6 +256,12 @@ local function ItemsBankSubTabIconApply(tex, tabInfo)
     if not tex or not tabInfo then return end
     tex:SetTexture(nil)
     local sz = ITEMS_BANK_SUBTAB_ICON_SIZE - 2
+    if tabInfo.iconKey and ns.UI_SetIcon and ns.UI_SetIcon(tex, tabInfo.iconKey) then
+        -- addon registry icon; the bar is cached with the header, so keep it on the theme tint
+        if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(tex, tabInfo.iconKey) end
+        tex:SetSize(sz, sz)
+        return
+    end
     if tabInfo.iconAtlas then
         local ok = pcall(function()
             tex:SetAtlas(tabInfo.iconAtlas, false)
@@ -279,10 +285,10 @@ local ApplyItemsSubTabButtonVisuals = ns.UI_ApplySubTabButtonVisuals
 local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accentColor, sideMargin)
     sideMargin = sideMargin or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN
     local tabDefs = {
-        { key = "inventory", label = (ns.L and ns.L["ITEMS_SUBTAB_BAGS"]) or "Bags", icon = "Interface\\Icons\\INV_Misc_Bag_07" },
-        { key = "personal", label = (ns.L and ns.L["ITEMS_SUBTAB_BANK"]) or "Bank", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
-        { key = "warband", label = (ns.L and ns.L["ITEMS_SUBTAB_WARBAND"]) or "Warband", iconAtlas = "warbands-icon", icon = "Interface\\Icons\\INV_Misc_Coin_01" },
-        { key = "guild", label = (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank", iconAtlas = "poi-workorders", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01" },
+        { key = "inventory", label = (ns.L and ns.L["ITEMS_SUBTAB_BAGS"]) or "Bags", iconKey = "bag" },
+        { key = "personal", label = (ns.L and ns.L["ITEMS_SUBTAB_BANK"]) or "Bank", iconKey = "vault" },
+        { key = "warband", label = (ns.L and ns.L["ITEMS_SUBTAB_WARBAND"]) or "Warband", iconKey = "warband" },
+        { key = "guild", label = (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank", iconKey = "guild" },
     }
 
     local Factory = ns.UI and ns.UI.Factory

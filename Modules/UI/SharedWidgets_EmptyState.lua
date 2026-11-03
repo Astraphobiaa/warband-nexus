@@ -299,6 +299,23 @@ local EMPTY_STATE_CONFIG = {
     },
 }
 
+--- Registry icon per empty-state key (Modules/UI/IconRegistry.lua). Keys without an entry keep their atlas.
+local EMPTY_STATE_ICON_KEYS = {
+    characters = "character",
+    items = "bag", items_inventory = "bag", items_personal = "vault", items_warband = "warband", items_guild = "guild",
+    storage = "crate",
+    plans = "checklist", plans_active = "checklist", plans_daily_tasks = "calendar",
+    plans_achievement = "trophy", plans_mount = "book", plans_pet = "paw", plans_toy = "gift", plans_illusion = "sparkle", plans_title = "scroll",
+    reputation = "medal",
+    currency = "token",
+    pve = "dungeon", pve_vault = "dungeon",
+    statistics = "bar_chart",
+    collections = "book", collections_recent = "book", collections_mounts = "book", collections_pets = "paw",
+    collections_toys = "gift", collections_achievements = "trophy",
+    gear = "cuirass", gear_filter = "cuirass",
+    professions = "anvil",
+}
+
 local SEARCH_EMPTY_TAB_KEY = "search"
 ns.UI_SEARCH_EMPTY_TAB_KEY = SEARCH_EMPTY_TAB_KEY
 
@@ -397,10 +414,15 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     end
 
     local atlasForIcon = opts.atlas or config.atlas
-    if configTabName == "reputation" and not opts.atlas and ns.UI_GetTabIcon then
-        local dyn = ns.UI_GetTabIcon("reputation")
-        if dyn and dyn ~= "" then
-            atlasForIcon = dyn
+    -- Empty states show the addon registry icon (theme tint) for their tab / sub-view instead of a Blizzard atlas.
+    local registryIconKey = (not opts.atlas) and EMPTY_STATE_ICON_KEYS[configTabName] or nil
+    local function ApplyEmptyStateIcon(tex)
+        if registryIconKey and ns.UI_SetIcon and ns.UI_SetIcon(tex, registryIconKey) then
+            if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(tex, registryIconKey) end
+            return
+        end
+        if atlasForIcon then
+            tex:SetAtlas(atlasForIcon)
         end
     end
 
@@ -442,8 +464,8 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
             card._wnExcludedFromStorageExtent = true
         end
         ApplyStandardCardElevatedChrome(card)
-        if card._emptyIcon and atlasForIcon then
-            card._emptyIcon:SetAtlas(atlasForIcon)
+        if card._emptyIcon then
+            ApplyEmptyStateIcon(card._emptyIcon)
         end
         if card._emptyTitle then
             card._emptyTitle:SetText(ResolveEmptyStateHex("Dim", "|cff888888") .. ResolveEmptyTitle() .. "|r")
@@ -487,7 +509,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
 
     local icon = iconContainer:CreateTexture(nil, "OVERLAY", nil, 7)
     icon:SetAllPoints(iconContainer)
-    icon:SetAtlas(atlasForIcon)
+    ApplyEmptyStateIcon(icon)
     icon:SetAlpha(0.6)
     card._emptyIcon = icon
 

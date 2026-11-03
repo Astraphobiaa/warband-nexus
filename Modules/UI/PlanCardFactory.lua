@@ -70,7 +70,6 @@ local function BuildAchievementProgressLabelText(achievementID)
 end
 
 local REMINDER_ALERT_TEX = (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE) or "Interface\\Icons\\INV_Misc_Horn_01"
-local REMINDER_ALERT_ATLAS = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager"
 local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
 
 local function ApplyReminderCardButtonIcon(tex, hasReminder)
@@ -86,15 +85,12 @@ local function ApplyReminderCardButtonIcon(tex, hasReminder)
         ns.UI_SetWnIconTexture(tex, "alert", { vertexColor = { vc[1], vc[2], vc[3], vc[4] or 1 }, desaturate = false })
         return
     end
-    local ok = pcall(function()
-        tex:SetAtlas(REMINDER_ALERT_ATLAS, false)
-    end)
-    if ok then
-        tex:SetTexCoord(0, 1, 0, 1)
-    else
-        tex:SetTexture(REMINDER_ALERT_TEX)
-        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- Last resort: registry clock glyph (horn yellow when a reminder is set), then the horn item icon.
+    if ns.UI_SetIcon and ns.UI_SetIcon(tex, "clock", hasReminder and { vertexColor = REMINDER_HORN_UI_COLOR } or nil) then
+        return
     end
+    tex:SetTexture(REMINDER_ALERT_TEX)
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 end
 
 --- Tooltip lines when an alert is configured (plan card horn button).
@@ -366,8 +362,14 @@ local TYPE_ICONS = {
     title = "poi-legendsoftheharanir",
     achievement = "UI-Achievement-Shield-NoPoints",
 }
+-- Plan types drawn from the addon icon registry (ns.UI_ICONS key) on the card badge instead of TYPE_ICONS.
+-- TYPE_ICONS stays the exported atlas map for the other plan surfaces.
+local TYPE_ICON_KEYS = {
+    pet = "paw",
+    achievement = "trophy",
+}
 
--- Inline |A:...|a markers (Drop / Quest / Location / Vendor): modest size so stacked rows do not crowd.
+-- Inline source-row markers (Drop / Quest / Location / Vendor): modest size so stacked rows do not crowd.
 local PLAN_SRC_ICON_LG = math.floor(16 * 1.12 + 0.5)
 local PLAN_SRC_ICON_MD = math.floor(14 * 1.12 + 0.5)
 local PLAN_SRC_ICON_SM = math.floor(12 * 1.12 + 0.5)
@@ -384,19 +386,20 @@ local function PlanSourceAdvanceY(y, fontString, useIconFloor)
     return y - block - PLAN_SRC_ROW_VPAD
 end
 
---- Inline |A:...|a markup for Loot / Quest / Location source rows (My Plans, tracker, browse cards).
---- kinds: "loot" | "quest" | "location" | "class" (vendor/generic)
---- Drop uses Banker atlas (per UI direction). Default size = PLAN_SRC_ICON_LG.
+--- Inline |T...|t markup (addon icon registry, theme glyph tint) for source rows (My Plans, tracker, browse cards).
+--- kinds: "loot" | "quest" | "location" | "profession" | "class" (vendor/generic). Default size = PLAN_SRC_ICON_LG.
 local function PlanSourceIconMarkup(kind, size)
     size = size or PLAN_SRC_ICON_LG
     if kind == "loot" then
-        return format("|A:Banker:%d:%d|a", size, size)
+        return ns.UI_GetIconMarkup("chest", size, size)
     elseif kind == "quest" then
-        return format("|A:Islands-QuestTurnin:%d:%d|a", size, size)
+        return ns.UI_GetIconMarkup("scroll", size, size)
     elseif kind == "location" then
-        return format("|A:poi-islands-table:%d:%d|a", size, size)
+        return ns.UI_GetIconMarkup("pin", size, size)
+    elseif kind == "profession" then
+        return ns.UI_GetIconMarkup("anvil", size, size)
     end
-    return format("|A:Class:%d:%d|a", size, size)
+    return ns.UI_GetIconMarkup("stall", size, size)
 end
 
 ns.UI_PlanSourceIconMarkup = PlanSourceIconMarkup
@@ -730,10 +733,11 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
     local COLORS = ns.UI_COLORS
     local typeColor = TYPE_COLORS[plan.type] or {0.6, 0.6, 0.6}
     local typeIconAtlas = TYPE_ICONS[plan.type]
+    local typeIconKey = TYPE_ICON_KEYS[plan.type]
     
     -- Create icon frame if available
     local iconFrame = nil
-    if typeIconAtlas then
+    if typeIconKey or typeIconAtlas then
         iconFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
         if anchorFrame == card then
             iconFrame:SetPoint("TOPLEFT", 10, -60)
@@ -744,9 +748,14 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
         
         local iconTexture = iconFrame:CreateTexture(nil, "OVERLAY")
         iconTexture:SetAllPoints()
-        local iconSuccess = pcall(function()
-            iconTexture:SetAtlas(typeIconAtlas, false)
-        end)
+        local iconSuccess
+        if typeIconKey then
+            iconSuccess = ns.UI_SetIcon(iconTexture, typeIconKey) and true or false
+        else
+            iconSuccess = pcall(function()
+                iconTexture:SetAtlas(typeIconAtlas, false)
+            end)
+        end
         if not iconSuccess then
             iconFrame:Hide()
             iconFrame = nil
@@ -2972,7 +2981,7 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
         if lowerType:match("quest") then
             iconAtlas = PlanSourceIconMarkup("quest") .. " "
         elseif lowerType:match("profession") or lowerType:match("crafted") then
-            iconAtlas = format("|A:Repair:%d:%d|a ", PLAN_SRC_ICON_LG, PLAN_SRC_ICON_LG)
+            iconAtlas = PlanSourceIconMarkup("profession") .. " "
         elseif lowerType:match("drop") or lowerType:match("loot") then
             iconAtlas = PlanSourceIconMarkup("loot") .. " "
         elseif lowerType:match("location") or lowerType:match("zone") then

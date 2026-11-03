@@ -20,6 +20,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ROOT / "Media"
 SIZE = 64
+# Painted with Z-Image Turbo (512 px masters kept outside the repo); never overwrite these TGAs from SVG.
+PAINTED = {"FactionPortraits", "WowBag34", "WowBox", "Handshake", "Checklist", "Currency", "CrossedSwords", "BarChart", "AnvilHammer", "BossSkull", "HorseHead", "PlateArmor", "Info", "GearGold", "MoneySacks", "Tabard", "Campfire", "WowLootChest", "RolledScroll", "DrawstringSack", "Paw", "Trophy", "Calendar", "Present", "TarotCards", "Spyglass", "RedQuestion", "Sparkle", "GoldPin", "Cart", "Tent"}
 
 OUTLINE = "#1B130B"
 OUTLINE_W = 3.2  # stroke drawn under the fill: 1.6 units show outside the shape
@@ -215,6 +217,253 @@ def warband() -> str:
             '<path d="M6 4H18.5L15.6 8.5L18.5 13H6" fill="#FFFFFF"/>')
 
 
+
+# ---------------------------------------------------------------- category / header (mono)
+
+def character() -> str:
+    return '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5V20a6 6 0 0 1 6-6h3a6 6 0 0 1 6 6v.5"/>'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def medal() -> str:
+    return '<path d="M7.5 2.5L10.6 9M16.5 2.5L13.4 9"/><circle cx="12" cy="15" r="6"/><circle cx="12" cy="15" r="2.2"/>'
+
+
+
+
+def crossed_swords() -> str:
+    return ('<path d="M4 4L16 16M13.5 18.5L18.5 13.5M17.5 17.5L20.5 20.5"/>'
+            '<path d="M20 4L8 16M5.5 13.5L10.5 18.5M6.5 17.5L3.5 20.5"/>')
+
+
+def bar_chart() -> str:
+    return '<path d="M3.5 20.5H20.5"/><path d="M7 16.5V11M12 16.5V5.5M17 16.5V8.5"/>'
+
+
+
+
+
+
+
+
+def info() -> str:
+    return '<circle cx="12" cy="12" r="9.5"/><path d="M12 11V16.5"/><path d="M12 7.6h.01"/>'
+
+
+
+
+
+
+def scroll() -> str:
+    return ('<path d="M8 3.5h10.5a2 2 0 0 1 0 4H8"/><path d="M8 3.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7.5"/>'
+            '<path d="M9.5 11.5H15.5M9.5 15H13.5"/>')
+
+
+
+
+def paw() -> str:
+    return ('<ellipse cx="12" cy="15.5" rx="4.2" ry="3.7" fill="#FFFFFF" stroke="none"/>'
+            '<circle cx="6.2" cy="10.4" r="1.9" fill="#FFFFFF" stroke="none"/><circle cx="9.6" cy="6.6" r="1.9" fill="#FFFFFF" stroke="none"/>'
+            '<circle cx="14.4" cy="6.6" r="1.9" fill="#FFFFFF" stroke="none"/><circle cx="17.8" cy="10.4" r="1.9" fill="#FFFFFF" stroke="none"/>')
+
+
+def trophy() -> str:
+    return ('<path d="M7.5 3.5h9V9a4.5 4.5 0 0 1-9 0Z"/><path d="M7.5 5.5H5a3 3 0 0 0 3 4.4M16.5 5.5H19a3 3 0 0 1-3 4.4"/>'
+            '<path d="M12 13.5V17M8 20.5h8M9.5 17h5"/>')
+
+
+def calendar() -> str:
+    return ('<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10H20.5"/>'
+            '<path d="M8 3V7M16 3V7"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/>')
+
+
+def gift() -> str:
+    return ('<rect x="3" y="7.5" width="18" height="4" rx="1"/><path d="M4.5 11.5V20a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-8.5"/>'
+            '<path d="M12 7.5V21"/><path d="M12 7.5C10.5 4 7 3.8 7.4 5.9 7.7 7.5 12 7.5 12 7.5ZM12 7.5c1.5-3.5 5-3.7 4.6-1.6-.3 1.6-4.6 1.6-4.6 1.6Z"/>')
+
+
+def cards() -> str:
+    front = '<rect x="9.5" y="6" width="10" height="14" rx="1.6" transform="rotate(10 14.5 13)"/>'
+    return ('<mask id="cf" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/>'
+            '<rect x="9.5" y="6" width="10" height="14" rx="1.6" transform="rotate(10 14.5 13)" fill="#000" stroke="#000" stroke-width="4"/></mask>'
+            '<rect x="4" y="4" width="10" height="14" rx="1.6" transform="rotate(-12 9 11)" mask="url(#cf)"/>' + front)
+
+
+
+
+def compass() -> str:
+    return '<circle cx="12" cy="12" r="9.5"/><path d="M15.6 8.4L13.6 13.6L8.4 15.6L10.4 10.4Z"/>'
+
+
+
+
+def question() -> str:
+    return ('<circle cx="12" cy="12" r="9.5"/><path d="M9.4 9.4a2.7 2.7 0 1 1 3.8 2.5c-.7.3-1.2 1-1.2 1.8v.6"/>'
+            '<path d="M12 17.2h.01"/>')
+
+
+def sparkle() -> str:
+    return ('<path d="M10.5 3.5c.7 4.6 1.9 5.8 6.5 6.5-4.6.7-5.8 1.9-6.5 6.5-.7-4.6-1.9-5.8-6.5-6.5 4.6-.7 5.8-1.9 6.5-6.5Z"/>'
+            '<path d="M18 14.5c.3 2 .9 2.7 3 3-2.1.3-2.7.9-3 3-.3-2.1-.9-2.7-3-3 2.1-.3 2.7-1 3-3Z"/>')
+
+
+
+# ---------------------------------------------------------------- WoW-flavoured category glyphs (rev 2)
+
+def backpack() -> str:
+    return ('<path d="M6 9a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v10.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19.5Z"/>'
+            '<path d="M10 5V4a2 2 0 0 1 4 0v1"/><path d="M6 11.5h12M12 11.5v2.5"/><rect x="8.5" y="15.5" width="7" height="3.5" rx="1"/>')
+
+
+def supply_crate() -> str:
+    # plank crate: outer boards, inner frame, X brace corner to corner
+    return ('<rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><rect x="7" y="7" width="10" height="10" rx="0.4"/>'
+            '<path d="M7 7L17 17M17 7L7 17"/>')
+
+
+def treasure_map() -> str:
+    return ('<path d="M3 6.2L9 3.8l6 2.4 6-2.4v14l-6 2.4-6-2.4-6 2.4Z"/><path d="M9 3.8v14M15 6.2v14"/>'
+            '<path d="M16.6 10.4l2 2M18.6 10.4l-2 2"/><path d="M5.5 14.5c1.2-.8 2-.8 3.5 0"/>')
+
+
+def emblem() -> str:
+    return f'<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="6.2"/><path d="{star_path(12, 12.4, 3.6, 1.5)}" fill="#FFFFFF" stroke="none"/>'
+
+
+def skull() -> str:
+    return ('<path d="M12 3a8 8 0 0 0-8 8c0 2.6 1.2 4.6 3 5.8V20.5h10v-3.7c1.8-1.2 3-3.2 3-5.8a8 8 0 0 0-8-8Z"/>'
+            '<circle cx="8.9" cy="11.2" r="1.9" fill="#FFFFFF" stroke="none"/><circle cx="15.1" cy="11.2" r="1.9" fill="#FFFFFF" stroke="none"/>'
+            '<path d="M10.5 20.5V18M13.5 20.5V18"/>')
+
+
+def horseshoe() -> str:
+    # solid band (arch open at the bottom, flared heels) with nail holes knocked out along its centre line
+    band = ('M5.4 20.5H8.6L8.8 18.1C7.4 16.7 6.7 14.8 6.7 12.6 6.7 9 9 6.3 12 6.3S17.3 9 17.3 12.6C17.3 14.8 16.6 16.7 15.2 18.1L15.4 20.5H18.6'
+            'L18.4 17.5C19.7 15.9 20.5 14.3 20.5 12.4 20.5 7.3 16.7 3.5 12 3.5S3.5 7.3 3.5 12.4C3.5 14.3 4.3 15.9 5.6 17.5Z')
+    holes = "".join(f'<circle cx="{n(12 + 6.95 * math.cos(math.radians(a)))}" cy="{n(12.5 - 6.95 * math.sin(math.radians(a)))}" r="1" fill="#000" stroke="none"/>'
+                    for a in (190, 140, 90, 40, -10))
+    return ('<mask id="nails" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/>'
+            f'{holes}</mask><path d="{band}" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1" mask="url(#nails)"/>')
+
+
+def hammer_pick() -> str:
+    return ('<path d="M4 20L13.2 10.8"/><path d="M11.6 7.4L14.6 4.4L19.6 9.4L16.6 12.4Z" fill="#FFFFFF"/>'
+            '<path d="M20 20L7 7"/><path d="M3.5 10.5C4 6.6 6.6 4 10.5 3.5"/>')
+
+
+def helmet() -> str:
+    return ('<path d="M5 13a7 7 0 0 1 14 0v5.5a1.5 1.5 0 0 1-1.5 1.5H14v-4h-4v4H6.5A1.5 1.5 0 0 1 5 18.5Z"/>'
+            '<path d="M8 12.5h8"/><path d="M12 6V3"/>')
+
+
+def wrench() -> str:
+    return ('<path d="M15.4 3.6a4.6 4.6 0 0 0-4 6.1l-7 7a1.9 1.9 0 0 0 2.7 2.7l7-7a4.6 4.6 0 0 0 6.1-4l-2.9 2.9-2.8-.7-.7-2.8Z"/>')
+
+
+def coin_sack() -> str:
+    return ('<path d="M9 4h6l-1.6 3.4c3.6 1.4 6.1 4.6 6.1 8.3 0 3-2.6 4.8-7.5 4.8s-7.5-1.8-7.5-4.8c0-3.7 2.5-6.9 6.1-8.3Z"/>'
+            '<path d="M9.6 7.4h4.8"/><circle cx="12" cy="15" r="2.7"/>')
+
+
+def tabard() -> str:
+    return ('<path d="M7 3.5h10l3 4-2.5 1.5v11.5L12 18.4l-5.5 2.1V9L4 7.5Z"/><path d="M9.8 3.5a2.2 2.2 0 0 0 4.4 0"/>'
+            '<path d="M12 9.2l2.4 1v2.2c0 1.6-1 2.6-2.4 3.2-1.4-.6-2.4-1.6-2.4-3.2v-2.2Z"/>')
+
+
+def loot_chest() -> str:
+    return ('<path d="M3.5 11.5V9.2c0-2.4 2.3-4.2 5.2-4.2h6.6c2.9 0 5.2 1.8 5.2 4.2v2.3"/>'
+            '<rect x="3.5" y="11.5" width="17" height="9" rx="1.2"/><path d="M8.2 5.2V20.5M15.8 5.2V20.5"/>'
+            '<rect x="10.4" y="9.6" width="3.2" height="4" rx="0.8" fill="#FFFFFF"/>')
+
+
+def vendor_pouch() -> str:
+    return ('<path d="M6.5 7h5.5l-1 2.2c2.8 1.2 4.6 3.7 4.6 6.6 0 2.4-2.2 3.9-6.6 3.9s-6.5-1.5-6.5-3.9c0-2.9 1.7-5.4 4.5-6.6Z"/>'
+            '<path d="M7.4 9.2h3.8"/><circle cx="18" cy="7.5" r="3"/><path d="M18 6.3v2.4"/>')
+
+
+def cart() -> str:
+    return ('<path d="M2.5 3.5h2.8l2.4 11.5h10.4l2.1-8.2H6.1"/><circle cx="9.2" cy="19" r="1.6"/><circle cx="16.8" cy="19" r="1.6"/>')
+
+
+def tent() -> str:
+    return ('<path d="M2.5 20.5H21.5"/><path d="M3.5 20.5L12 7l8.5 13.5"/><path d="M9.4 20.5L12 14.2l2.6 6.3"/>'
+            '<path d="M12 7V2.5"/><path d="M12 2.6h4.2l-1.3 1.5 1.3 1.5H12" fill="#FFFFFF"/>')
+
+
+
+# ---------------------------------------------------------------- colored tab glyphs (WoW palette, rev 3)
+
+def _line(d: str, color: str, width: float, extra: str = "") -> str:
+    return f'<path d="{d}" stroke="{color}" stroke-width="{n(width)}" fill="none"{extra}/>'
+
+
+def backpack_c() -> str:
+    body = "M6 9.5a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4V19.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19.5Z"
+    flap = "M6 9.5a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2.6H6Z"
+    return (outlined_stroke("M10 5.6V4.4a2 2 0 0 1 4 0v1.2", "#6B4220", 1.6)
+            + outlined(body, "#9A6233") + f'<path d="{flap}" fill="#7A4B24"/>' + _line("M6 12.1h12", OUTLINE, 1)
+            + f'<rect x="8.3" y="15" width="7.4" height="4.2" rx="1" fill="#7A4B24" stroke="{OUTLINE}" stroke-width="0.9"/>'
+            + f'<rect x="10.6" y="10.8" width="2.8" height="2.8" rx="0.6" fill="#F2C94C" stroke="{OUTLINE}" stroke-width="0.9"/>')
+
+
+def crate_c() -> str:
+    box = "M3.5 5H20.5V20.5H3.5Z"
+    corners = "".join(f'<rect x="{x}" y="{y}" width="3.2" height="3.2" rx="0.5" fill="#A7B0BA" stroke="{OUTLINE}" stroke-width="0.9"/>'
+                      for x, y in ((3.5, 5), (17.3, 5), (3.5, 17.3), (17.3, 17.3)))
+    return (outlined(box, "#B9823F") + _line("M3.5 10.2H20.5M3.5 15.3H20.5", "#7A4E22", 1)
+            + outlined_stroke("M6.5 8L17.5 17.5M17.5 8L6.5 17.5", "#8F5E2C", 1.8) + corners)
+
+
+def map_c() -> str:
+    sheet = "M3 6.2L9 3.8l6 2.4 6-2.4v14l-6 2.4-6-2.4-6 2.4Z"
+    return (outlined(sheet, "#EAD6A6") + '<path d="M9 3.8L15 6.2V20.2L9 17.8Z" fill="#D3B97F"/>'
+            + _line("M9 3.8V17.8M15 6.2V20.2", "#9C7F4A", 0.9)
+            + _line("M5 15.2c1.4-1.1 2.9-1.1 4.4.1s3 1.1 4.5-.8", "#7A4E22", 1.1, ' stroke-dasharray="1.3 1.3"')
+            + _line("M16.4 9.4l2.6 2.6M19 9.4l-2.6 2.6", "#D9442E", 1.7))
+
+
+def emblem_c() -> str:
+    return (f'<circle cx="12" cy="12" r="11.2" fill="{OUTLINE}"/><circle cx="12" cy="12" r="9.6" fill="#F7C948"/>'
+            '<circle cx="12" cy="12" r="6.7" fill="none" stroke="#D69E1E" stroke-width="1.4"/>'
+            f'<path d="{star_path(12, 12.4, 4.3, 1.8)}" fill="#C88A14"/>'
+            '<path d="M5.6 9.2a7 7 0 0 1 4.2-4.1" stroke="#FFE59A" stroke-width="1.4" fill="none"/>')
+
+
+def helmet_c() -> str:
+    dome = "M5 13.2a7 7 0 0 1 14 0V19a1.5 1.5 0 0 1-1.5 1.5H14.2v-4.3H9.8v4.3H6.5A1.5 1.5 0 0 1 5 19Z"
+    return (outlined_stroke("M12 6.3V2.9", "#D9442E", 2) + outlined(dome, "#B4BDC8")
+            + '<clipPath id="hr"><rect x="12" y="0" width="12" height="24"/></clipPath>'
+            + f'<path d="{dome}" fill="#8E98A5" clip-path="url(#hr)"/>'
+            + _line("M7.8 12.7h8.4", OUTLINE, 1.7)
+            + '<circle cx="7.4" cy="17.8" r="0.9" fill="#E2B34A"/><circle cx="16.6" cy="17.8" r="0.9" fill="#E2B34A"/>')
+
+
+def sack_c() -> str:
+    sack = "M9 4h6l-1.6 3.4c3.6 1.4 6.1 4.6 6.1 8.3 0 3-2.6 4.8-7.5 4.8s-7.5-1.8-7.5-4.8c0-3.7 2.5-6.9 6.1-8.3Z"
+    return (outlined(sack, "#CFA56C") + _line("M9.3 7.5h5.4", "#7A4E22", 1.7)
+            + f'<circle cx="12" cy="15.2" r="3" fill="#F7C948" stroke="{OUTLINE}" stroke-width="0.9"/>'
+            + '<path d="M12 13.6V16.8" stroke="#C88A14" stroke-width="1.1"/>')
+
+
+def tabard_c() -> str:
+    cloth = "M7 3.5h10l3 4-2.5 1.5v11.5L12 18.4l-5.5 2.1V9L4 7.5Z"
+    shield = "M12 8.6l2.8 1.1v2.6c0 1.9-1.2 3.1-2.8 3.8-1.6-.7-2.8-1.9-2.8-3.8V9.7Z"
+    return (outlined(cloth, "#2F6DB5") + _line("M9.8 3.5a2.2 2.2 0 0 0 4.4 0", OUTLINE, 1.3)
+            + _line("M6.5 9V20.5M17.5 9V20.5", "#E2B34A", 0.9)
+            + f'<path d="{shield}" fill="#F2C94C" stroke="{OUTLINE}" stroke-width="0.9"/>')
+
+
 ICONS = {
     # name: (builder, colored)
     "TriangleDown": (triangle_down, False),
@@ -243,7 +492,17 @@ ICONS = {
     "Reset": (reset, False),
     "Upgrade": (upgrade, False),
     "CraftingOrder": (crafting_order, False),
-    "Warband": (warband, False),
+    # category / header
+    "CrossedSwords": (crossed_swords, False),
+    "BarChart": (bar_chart, False),
+    "Info": (info, False),
+    "Paw": (paw, False),
+    "Trophy": (trophy, False),
+    "Calendar": (calendar, False),
+    "Sparkle": (sparkle, False),
+    "Tabard": (tabard_c, True),
+    "Cart": (cart, False),
+    "Tent": (tent, False),
 }
 
 
@@ -258,6 +517,11 @@ def render(name: str, svg: str) -> None:
 
 
 if __name__ == "__main__":
+    from ui_icon_art import ART  # illustrated tab / category / storage icons (shared material model)
+    for name, build in ART.items():
+        ICONS[name] = (build, True)
     for name, (build, colored) in ICONS.items():
+        if name in PAINTED:
+            continue
         head = COLOR_HEAD if colored else MONO_HEAD
         render(name, head + build() + "</svg>\n")

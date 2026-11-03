@@ -162,7 +162,8 @@ function M.CreateMenuItem(parent, opts, y)
         icon:SetSize(MENU_ICON_SIZE, MENU_ICON_SIZE)
         icon:SetPoint("LEFT", lay.innerPad, 0)
         if opts.iconKey and ns.UI_SetIcon(icon, opts.iconKey) then
-            -- addon registry icon: own file, theme tint
+            -- addon registry icon: own file, theme tint (kept on theme toggle; the menu is cached)
+            if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(icon, opts.iconKey) end
         elseif opts.iconAtlas and icon.SetAtlas then
             icon:SetTexture(nil)
             local ok = pcall(icon.SetAtlas, icon, opts.iconAtlas, false)
@@ -248,9 +249,10 @@ function M.BuildMenu()
     local accent = COLORS.accent or {0.40, 0.20, 0.58}
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
 
-    local GetTabIcon = ns.UI_GetTabIcon
-    local tabIcon = function(key)
-        return (GetTabIcon and GetTabIcon(key)) or nil
+    -- Tab rows draw the addon registry icon of their tab (theme tint via UI_SetIcon in the row).
+    local GetTabIconKey = ns.UI_GetTabRegistryIconKey
+    local tabIconKey = function(key)
+        return (GetTabIconKey and GetTabIconKey(key)) or nil
     end
 
     local items = {}
@@ -262,8 +264,8 @@ function M.BuildMenu()
             local iconTab = def.iconTab
             local opt = {
                 label = GetLauncherActionLabel(actionId),
-                iconKey = def.iconKey,
-                iconAtlas = def.iconAtlas or (iconTab and tabIcon(iconTab)) or nil,
+                iconKey = def.iconKey or (iconTab and tabIconKey(iconTab)) or nil,
+                iconAtlas = def.iconAtlas,
                 icon = def.icon,
                 action = (function(capturedActionId)
                     return function()

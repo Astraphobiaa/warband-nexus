@@ -54,14 +54,45 @@ ns.UI_ICONS = {
     reset          = { file = Icon("Reset"), mono = true },
     upgrade        = { file = Icon("Upgrade"), mono = true },        -- callers tint it green
     crafting_order = { file = Icon("CraftingOrder"), mono = true },
-    warband        = { file = Icon("Warband"), mono = true },
+    warband        = { file = Icon("Campfire") },  -- colored
     close          = { file = Constants.WN_ICON_CLOSE or Icon("Close"), mono = true },
     clear          = { file = Constants.WN_ICON_CLOSE or Icon("Close"), mono = true },
     chevron_up     = { file = Constants.WN_ICON_CHEVRON_UP or Icon("ChevronUp"), mono = true },
     chevron_down   = { file = Constants.WN_ICON_CHEVRON_DOWN or Icon("ChevronDown"), mono = true },
+    -- mono: tab headers, source categories, storage markers (key = concept; file = WoW-flavoured glyph)
+    character      = { file = Icon("FactionPortraits") },  -- colored
+    faction_alliance = { file = Icon("FactionAlliance") },  -- colored
+    faction_horde  = { file = Icon("FactionHorde") },  -- colored
+    bag            = { file = Icon("WowBag34") },  -- colored
+    crate          = { file = Icon("WowBox") },  -- colored
+    checklist      = { file = Icon("Checklist") },  -- colored
+    token          = { file = Icon("Currency") },  -- colored
+    medal          = { file = Icon("Handshake") },  -- colored
+    dungeon        = { file = Icon("BossSkull") },  -- colored
+    pvp            = { file = Icon("CrossedSwords") },  -- colored
+    bar_chart      = { file = Icon("BarChart") },  -- colored
+    book           = { file = Icon("HorseHead") },  -- colored
+    anvil          = { file = Icon("AnvilHammer") },  -- colored
+    cuirass        = { file = Icon("PlateArmor") },  -- colored
+    info           = { file = Icon("Info") },  -- colored
+    wand           = { file = Icon("GearGold") },  -- colored
+    vault          = { file = Icon("MoneySacks") },  -- colored
+    guild          = { file = Icon("Tabard") },  -- colored
+    chest          = { file = Icon("WowLootChest") },  -- colored
+    scroll         = { file = Icon("RolledScroll") },  -- colored
+    stall          = { file = Icon("DrawstringSack") },  -- colored
+    paw            = { file = Icon("Paw") },  -- colored
+    trophy         = { file = Icon("Trophy") },  -- colored
+    calendar       = { file = Icon("Calendar") },  -- colored
+    gift           = { file = Icon("Present") },  -- colored
+    cards          = { file = Icon("TarotCards") },  -- colored
+    shop_bag       = { file = Icon("Cart") },  -- colored
+    compass        = { file = Icon("Spyglass") },  -- colored
+    tag            = { file = Icon("Tent") },  -- colored
+    question       = { file = Icon("RedQuestion") },  -- colored
+    sparkle        = { file = Icon("Sparkle") },  -- colored
+    pin            = { file = Icon("GoldPin") },  -- colored
     -- colored
-    faction_alliance = { file = Icon("FactionAlliance") },
-    faction_horde  = { file = Icon("FactionHorde") },
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },
     status_warn    = { file = Icon("StatusWarn") },

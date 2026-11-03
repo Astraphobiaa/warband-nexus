@@ -205,6 +205,8 @@ jobs:
             lua5.1 .github/scripts/test_ui_icon_registry.lua
             lua5.1 .github/scripts/test_icon_call_sites.lua
             lua5.1 .github/scripts/test_icon_registry_sites.lua
+            lua5.1 .github/scripts/test_source_category_icons.lua
+            lua5.1 .github/scripts/test_tab_icon_registry_callers.lua
           else
             echo "lua5.1 unavailable - skipping earlier unit suites"
           fi

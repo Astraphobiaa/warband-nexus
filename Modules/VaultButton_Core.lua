@@ -563,7 +563,7 @@ M.LAUNCHER_MENU_ORDER = {
 ---@field labelFallback string
 ---@field settingsLabelKey string|nil Settings > Easy Access left-click checkbox
 ---@field settingsDescKey string|nil
----@field iconTab string|nil `UI_GetTabIcon` key
+---@field iconTab string|nil main tab key, resolved to a registry icon via `UI_GetTabRegistryIconKey`
 ---@field iconAtlas string|nil
 ---@field iconKey string|nil ns.UI_ICONS key (addon Media icon); `icon` carries its file
 ---@field icon string|nil texture path fallback

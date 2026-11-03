@@ -296,14 +296,7 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
         usedWnIcon = ns.UI_SetWnIconTexture(tabIcon, "credits", { 0.88, 0.88, 0.92, 1 })
     end
     if not usedWnIcon and ns.UI_ApplyMainNavTabGlyph then
-        ns.UI_ApplyMainNavTabGlyph(tabIcon, iconKey)
-    elseif not usedWnIcon then
-        local atlasNm = ns.UI_GetTabIcon and ns.UI_GetTabIcon(iconKey) or nil
-        local atlasOk = atlasNm and type(atlasNm) == "string" and pcall(tabIcon.SetAtlas, tabIcon, atlasNm, false)
-        if not atlasOk then
-            tabIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            tabIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
+        ns.UI_ApplyMainNavTabGlyph(tabIcon, iconKey)  -- addon registry icon (SharedWidgets_TitleCard)
     end
     tabIcon._wnNavPackagedIcon = usedWnIcon or nil
     tabIcon._wnNavRailIcon = true

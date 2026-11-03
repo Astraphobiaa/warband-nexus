@@ -1123,11 +1123,13 @@ local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, c
             if secH <= 0 then
                 secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
             end
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
+            -- iconFn returns an ns.UI_ICONS key; the header draws our media path as a file (nil -> "attention").
+            local catIconKey = cfg.iconFn(key)
+            local header, _, catIconTex = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 if isExpanded then
                     cfg.rebuildAndRefresh()
                 end
-            end, cfg.iconFn(key), true, 0, nil, SP.HeaderOpts(scrollChild, poolPrefix .. "hdr:" .. tostring(key), ns.UI_BuildCollapsibleSectionOpts({
+            end, catIconKey and ns.UI_GetIconFile(catIconKey), true, 0, nil, SP.HeaderOpts(scrollChild, poolPrefix .. "hdr:" .. tostring(key), ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
@@ -1146,6 +1148,9 @@ local function PopulateSectionedList(cfg, scrollChild, listWidth, groupedData, c
                     cfg.rebuildAndRefresh()
                 end,
             })))
+            if catIconTex and catIconKey then
+                ns.UI_SetIcon(catIconTex, catIconKey)  -- file + theme glyph tint
+            end
             SP.Remember(scrollChild, poolPrefix .. "hdr:" .. tostring(key), header)
             if ns.UI_AnchorSectionHeaderInWrap then
                 ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)

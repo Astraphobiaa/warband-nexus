@@ -56,18 +56,8 @@ local function PlanSourceAdvanceY(y, fontString, useIconFloor)
 end
 
 local function PlanSourceIconMarkup(kind, size)
-    if ns.UI_PlanSourceIconMarkup then
-        return ns.UI_PlanSourceIconMarkup(kind, size)
-    end
-    size = size or PLAN_SRC_ICON_LG
-    if kind == "loot" then
-        return format("|A:Banker:%d:%d|a", size, size)
-    elseif kind == "quest" then
-        return format("|A:Islands-QuestTurnin:%d:%d|a", size, size)
-    elseif kind == "location" then
-        return format("|A:poi-islands-table:%d:%d|a", size, size)
-    end
-    return format("|A:Class:%d:%d|a", size, size)
+    -- defined by PlanCardFactory.lua (loads after this file; only called at render time)
+    return ns.UI_PlanSourceIconMarkup(kind, size)
 end
 
 --[[

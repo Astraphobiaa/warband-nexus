@@ -1026,7 +1026,7 @@ function ns.UIShell.CreateMainWindow(self)
             activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
         end
 
-        -- Left nav glyph (WOW atlas bundle)
+        -- Left nav glyph (addon registry icon)
         local tabIcon = btn:CreateTexture(nil, "ARTWORK")
         tabIcon:SetSize(iconSz, iconSz)
         tabIcon:SetPoint("LEFT", btn, "LEFT", iconInsetL, 0)
@@ -1038,14 +1038,7 @@ function ns.UIShell.CreateMainWindow(self)
             usedPackagedIcon = ns.UI_SetWnIconTexture(tabIcon, "credits", { 0.88, 0.88, 0.92, 1 })
         end
         if not usedPackagedIcon and ns.UI_ApplyMainNavTabGlyph then
-            ns.UI_ApplyMainNavTabGlyph(tabIcon, key)
-        elseif not usedPackagedIcon then
-            local atlasNm = ns.UI_GetTabIcon and ns.UI_GetTabIcon(key) or nil
-            local atlasOk = atlasNm and type(atlasNm) == "string" and pcall(tabIcon.SetAtlas, tabIcon, atlasNm, false)
-            if not atlasOk then
-                tabIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-                tabIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            end
+            ns.UI_ApplyMainNavTabGlyph(tabIcon, key)  -- addon registry icon (SharedWidgets_TitleCard)
         end
         tabIcon._wnNavPackagedIcon = usedPackagedIcon or nil
         tabIcon._wnNavRailIcon = railLayout or nil

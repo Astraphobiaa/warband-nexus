@@ -7,8 +7,7 @@
 local _, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
--- IconRegistry (loads early in .toc) -- verified 12.1.5 atlases for category headers.
-local CLOCK_ATLAS = ns.UI_GetIconAtlas("clock") or "auctionhouse-icon-clock"
+-- Category `iconKey` values are ns.UI_ICONS keys (Modules/UI/IconRegistry.lua, loads early in .toc).
 
 -- MOUNT / PET / TOY SOURCE CLASSIFICATION (Pure API)
 --[[
@@ -30,19 +29,19 @@ local format = string.format
 
 -- Mount categories (Blizzard mount-source enum order; "other" = sourceType 0).
 local SOURCE_CATEGORIES = {
-    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
-    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
-    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
-    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = CLOCK_ATLAS },
-    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
-    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
-    { key = "discovery",   label = (L and L["PARSE_DISCOVERY"]) or "Discovery",                                     iconAtlas = "VignetteLoot" },
-    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
-    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
+    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconKey = "chest" },
+    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconKey = "scroll" },
+    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconKey = "stall" },
+    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconKey = "anvil" },
+    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconKey = "paw" },
+    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconKey = "trophy" },
+    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconKey = "calendar" },
+    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconKey = "gift" },
+    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconKey = "cards" },
+    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconKey = "shop_bag" },
+    { key = "discovery",   label = (L and L["PARSE_DISCOVERY"]) or "Discovery",                                     iconKey = "compass" },
+    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconKey = "tag" },
+    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconKey = "question" },
 }
 
 local SOURCE_CATEGORY_ORDER = {}
@@ -53,19 +52,19 @@ end
 
 -- Pet categories (Blizzard battle-pet source filter order, 1-indexed).
 local PET_SOURCE_CATEGORIES = {
-    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
-    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
-    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
-    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = CLOCK_ATLAS },
-    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
-    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
-    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
-    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                                           iconAtlas = "honorsystem-icon-prestige-9" },
-    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
+    { key = "drop",        label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconKey = "chest" },
+    { key = "quest",       label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconKey = "scroll" },
+    { key = "vendor",      label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconKey = "stall" },
+    { key = "profession",  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconKey = "anvil" },
+    { key = "petbattle",   label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconKey = "paw" },
+    { key = "achievement", label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconKey = "trophy" },
+    { key = "worldevent",  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconKey = "calendar" },
+    { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconKey = "gift" },
+    { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconKey = "cards" },
+    { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconKey = "shop_bag" },
+    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconKey = "tag" },
+    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                                           iconKey = "pvp" },
+    { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconKey = "question" },
 }
 
 local PET_SOURCE_CATEGORY_ORDER = {}
@@ -76,18 +75,18 @@ end
 
 -- Toy categories (Blizzard ToyBox source filter, BattlePetSources, 1-indexed).
 local TOY_SOURCE_CATEGORIES = {
-    { key = "drop",        sourceIndex = 1,  label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconAtlas = "ParagonReputation_Bag" },
-    { key = "quest",       sourceIndex = 2,  label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconAtlas = "quest-legendary-turnin" },
-    { key = "vendor",      sourceIndex = 3,  label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconAtlas = "coin-gold" },
-    { key = "profession",  sourceIndex = 4,  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconAtlas = "poi-workorders" },
-    { key = "petbattle",   sourceIndex = 5,  label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconAtlas = "WildBattlePetCapturable" },
-    { key = "achievement", sourceIndex = 6,  label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconAtlas = "UI-Achievement-Shield-NoPoints" },
-    { key = "worldevent",  sourceIndex = 7,  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconAtlas = CLOCK_ATLAS },
-    { key = "promotion",   sourceIndex = 8,  label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconAtlas = "Bonus-Objective-Star" },
-    { key = "tcg",         sourceIndex = 9,  label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
-    { key = "shop",        sourceIndex = 10, label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
-    { key = "tradingpost", sourceIndex = 11, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
-    { key = "unknown",     sourceIndex = 0,  label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
+    { key = "drop",        sourceIndex = 1,  label = (L and L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop",                  iconKey = "chest" },
+    { key = "quest",       sourceIndex = 2,  label = (L and L["SOURCE_TYPE_QUEST"]) or BATTLE_PET_SOURCE_2 or "Quest",                iconKey = "scroll" },
+    { key = "vendor",      sourceIndex = 3,  label = (L and L["SOURCE_TYPE_VENDOR"]) or BATTLE_PET_SOURCE_3 or "Vendor",              iconKey = "stall" },
+    { key = "profession",  sourceIndex = 4,  label = (L and L["SOURCE_TYPE_PROFESSION"]) or BATTLE_PET_SOURCE_4 or "Profession",      iconKey = "anvil" },
+    { key = "petbattle",   sourceIndex = 5,  label = (L and L["SOURCE_TYPE_PET_BATTLE"]) or BATTLE_PET_SOURCE_5 or "Pet Battle",      iconKey = "paw" },
+    { key = "achievement", sourceIndex = 6,  label = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",    iconKey = "trophy" },
+    { key = "worldevent",  sourceIndex = 7,  label = (L and L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",    iconKey = "calendar" },
+    { key = "promotion",   sourceIndex = 8,  label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconKey = "gift" },
+    { key = "tcg",         sourceIndex = 9,  label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconKey = "cards" },
+    { key = "shop",        sourceIndex = 10, label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconKey = "shop_bag" },
+    { key = "tradingpost", sourceIndex = 11, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconKey = "tag" },
+    { key = "unknown",     sourceIndex = 0,  label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconKey = "question" },
 }
 
 local TOY_SOURCE_CATEGORY_ORDER = {}
@@ -130,35 +129,35 @@ local BATTLEPET_SOURCETYPE_TO_CATEGORY = {
 }
 local SOURCE_INDEX_TO_TOY_CAT = BATTLEPET_SOURCETYPE_TO_CATEGORY
 
--- Category icon by key (atlas only; CreateCollapsibleHeader isAtlas=true).
--- No default atlas: a nil icon makes CreateCollapsibleHeader draw the registry "attention" file.
-local DEFAULT_CATEGORY_ATLAS = nil
+-- Category icon by key: an ns.UI_ICONS key (the list header draws its file with the theme tint).
+-- No default key: a nil icon makes CreateCollapsibleHeader draw the registry "attention" file.
+local DEFAULT_CATEGORY_ICON_KEY = nil
 local function GetMountCategoryIcon(catKey)
     for i = 1, #SOURCE_CATEGORIES do
         if SOURCE_CATEGORIES[i].key == catKey then
-            local a = SOURCE_CATEGORIES[i].iconAtlas
-            return (a and a ~= "") and a or DEFAULT_CATEGORY_ATLAS
+            local a = SOURCE_CATEGORIES[i].iconKey
+            return (a and a ~= "") and a or DEFAULT_CATEGORY_ICON_KEY
         end
     end
-    return DEFAULT_CATEGORY_ATLAS
+    return DEFAULT_CATEGORY_ICON_KEY
 end
 local function GetPetCategoryIcon(catKey)
     for i = 1, #PET_SOURCE_CATEGORIES do
         if PET_SOURCE_CATEGORIES[i].key == catKey then
-            local a = PET_SOURCE_CATEGORIES[i].iconAtlas
-            return (a and a ~= "") and a or DEFAULT_CATEGORY_ATLAS
+            local a = PET_SOURCE_CATEGORIES[i].iconKey
+            return (a and a ~= "") and a or DEFAULT_CATEGORY_ICON_KEY
         end
     end
-    return DEFAULT_CATEGORY_ATLAS
+    return DEFAULT_CATEGORY_ICON_KEY
 end
 local function GetToyCategoryIcon(catKey)
     for i = 1, #TOY_SOURCE_CATEGORIES do
         if TOY_SOURCE_CATEGORIES[i].key == catKey then
-            local a = TOY_SOURCE_CATEGORIES[i].iconAtlas
-            return (a and a ~= "") and a or DEFAULT_CATEGORY_ATLAS
+            local a = TOY_SOURCE_CATEGORIES[i].iconKey
+            return (a and a ~= "") and a or DEFAULT_CATEGORY_ICON_KEY
         end
     end
-    return DEFAULT_CATEGORY_ATLAS
+    return DEFAULT_CATEGORY_ICON_KEY
 end
 
 -- Pure-API classifier: takes the API source-type integer; returns a stable category key.
@@ -507,7 +506,7 @@ ns.CollectionsUI_SourceData = {
     MOUNT_SOURCETYPE_TO_CATEGORY = MOUNT_SOURCETYPE_TO_CATEGORY,
     BATTLEPET_SOURCETYPE_TO_CATEGORY = BATTLEPET_SOURCETYPE_TO_CATEGORY,
     SOURCE_INDEX_TO_TOY_CAT = SOURCE_INDEX_TO_TOY_CAT,
-    DEFAULT_CATEGORY_ATLAS = DEFAULT_CATEGORY_ATLAS,
+    DEFAULT_CATEGORY_ICON_KEY = DEFAULT_CATEGORY_ICON_KEY,
     GetMountCategoryIcon = GetMountCategoryIcon,
     GetPetCategoryIcon = GetPetCategoryIcon,
     GetToyCategoryIcon = GetToyCategoryIcon,

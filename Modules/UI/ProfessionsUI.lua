@@ -855,6 +855,10 @@ function PUI.ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     if not iconTex or not iconDef then return end
     iconTex:Hide()
     iconTex:SetTexture(nil)
+    if iconDef.iconKey and ns.UI_SetIcon and ns.UI_SetIcon(iconTex, iconDef.iconKey) then
+        iconTex:Show()
+        return
+    end
     local paths = iconDef.iconPaths
     if type(paths) ~= "table" then paths = {} end
     if iconDef.iconFallback and iconDef.iconFallback ~= "" then
@@ -926,7 +930,7 @@ end
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 -- sortable = true means clicking the header toggles ascending/descending sort
 --- Column header icons mapped to retail profession UI (Gethe/wow-ui-source live, May 2026).
---- Order: iconPaths (file) -> iconAtlases (C_Texture.GetAtlasInfo + SetAtlas) -> iconFallback.
+--- Order: iconKey (addon icon registry) -> iconPaths (file) -> iconAtlases (C_Texture.GetAtlasInfo + SetAtlas) -> iconFallback.
 --- Sources: Blizzard_ProfessionsTemplates (recipe/schematic), Blizzard_ProfessionsSpecializations (knowledge ring),
 --- Blizzard_ProfessionsRecipeList (skill tier icons), Blizzard_ProfessionsCurrencyTemplate (UI_Concentration),
 --- ProfessionsTemplates.lua (auctionhouse-icon-clock = expiration/recharge column).
@@ -947,8 +951,8 @@ local PROF_HEADER_ICON_BY_COL = {
     recipes     = { iconAtlases = { "Professions_Recipe_Active", "professions_recipes_abilitytab", "Professions_Recipe_Hover" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
     -- First-craft affordance (RecipeSchematicForm.xml)
     firstCraft  = { iconAtlases = { "professions_icon_firsttimecraft", "crafting-crafting-order-icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_04" },
-    -- Unique craft star + favorite affordance (RecipeSchematicForm.xml)
-    uniques     = { iconAtlases = { "tradeskills-star", "auctionhouse-icon-favorite" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Organizer_01" },
+    -- Unique recipes: addon icon registry sparkle (ns.UI_ICONS key, theme glyph tint)
+    uniques     = { iconKey = "sparkle", iconFallback = "Interface\\Icons\\INV_Misc_Organizer_01" },
     treatise    = { iconPaths = { "Interface\\Icons\\INV_Inscription_Tradeskill01" } },
     weeklyQuest = { iconAtlases = { "questlog-questtypeicon-weekly", "questlog-questtypeicon-daily" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_03" },
     -- Treasure discovery reward chest (Templates / CrafterOrderView)
@@ -2760,7 +2764,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             local iicon = ibtn:CreateTexture(nil, "ARTWORK")
             iicon:SetSize(14, 14)
             iicon:SetPoint("CENTER", 0, 0)
-            if not (iicon.SetAtlas and (pcall(iicon.SetAtlas, iicon, "QuestTurnin", false) or pcall(iicon.SetAtlas, iicon, "QuestTurnin", true))) then
+            if not (ns.UI_SetIcon and ns.UI_SetIcon(iicon, "scroll")) then
                 iicon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
                 iicon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end

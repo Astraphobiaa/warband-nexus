@@ -670,28 +670,14 @@ local function ClearTooltipInjectionTokens(tooltip)
     itemCountShiftStateByTooltip[tooltip] = nil
 end
 
-local function SafeAtlasMarkup(atlas, w, h)
-    if not CreateAtlasMarkup then return "" end
-    local ok, markup = pcall(CreateAtlasMarkup, atlas, w, h)
-    return (ok and markup) or ""
-end
-
-local GUILD_VAULT_ICON_ATLAS = "Warfronts-FieldMapIcons-Neutral-Banner-Minimap"
 local ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H = 16, 16
 local ITEM_COUNT_RIGHT_R, ITEM_COUNT_RIGHT_G, ITEM_COUNT_RIGHT_B = 0.3, 0.9, 0.3
 local ITEM_COUNT_BANK_R, ITEM_COUNT_BANK_G, ITEM_COUNT_BANK_B = 0.8, 0.8, 0.8
 
--- Item-count icon markup: fixed atlas + fixed ITEM_COUNT_ICON_W/H size (no theme/font input), so cache per
--- atlas once a non-empty markup was produced. Empty results are retried next hover.
-local itemCountAtlasMarkupCache = {}
-local function CachedItemCountAtlasMarkup(atlas)
-    local markup = itemCountAtlasMarkupCache[atlas]
-    if markup then return markup end
-    markup = SafeAtlasMarkup(atlas, ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
-    if markup ~= "" then
-        itemCountAtlasMarkupCache[atlas] = markup
-    end
-    return markup
+-- Item-count icon markup: addon registry icon at ITEM_COUNT_ICON_W/H. Mono glyphs take the current theme
+-- tint, so no local cache here: UI_GetIconMarkup caches per key + size + tint.
+local function ItemCountIconMarkup(key)
+    return (ns.UI_GetIconMarkup and ns.UI_GetIconMarkup(key, ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)) or ""
 end
 
 local function FormatBagBankCountText(bagIcon, bankIcon, bagCount, bankCount)
@@ -850,10 +836,10 @@ function GT.BuildWNItemCountRows(itemID, isShift, keystoneChecked)
     local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
     if not details then return nil, 0 end
 
-    local bagIcon = CachedItemCountAtlasMarkup("Banker")
-    local bankIcon = CachedItemCountAtlasMarkup("VignetteLoot")
-    local warbandIcon = CachedItemCountAtlasMarkup("warbands-icon")
-    local guildIcon = CachedItemCountAtlasMarkup(GUILD_VAULT_ICON_ATLAS)
+    local bagIcon = ItemCountIconMarkup("bag")
+    local bankIcon = ItemCountIconMarkup("vault")
+    local warbandIcon = ItemCountIconMarkup("warband")
+    local guildIcon = ItemCountIconMarkup("guild")
 
     local liveChar, otherChars = SplitLiveAndAltCharacters(details.characters)
     local guildTotal = SumGuildCounts(details.guilds)

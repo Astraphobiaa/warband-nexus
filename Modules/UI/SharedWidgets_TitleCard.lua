@@ -51,6 +51,20 @@ local TAB_HEADER_ICONS = {
 --- Tabs drawn from the addon icon registry (ns.UI_ICONS key) instead of a Blizzard atlas.
 local TAB_REGISTRY_ICON_KEYS = {
     settings = "settings",
+    chars = "character",
+    items = "bag",
+    storage = "crate",
+    plans = "checklist",
+    currency = "token",
+    reputations = "medal",
+    pve = "dungeon",
+    pvp = "pvp",
+    stats = "bar_chart",
+    collections = "book",
+    professions = "anvil",
+    gear = "cuirass",
+    about = "info",
+    qol = "wand",
 }
 
 --- Blizzard `Interface\\Icons\\...` fallback when atlases reject (broken/missing art in some patches).
@@ -81,6 +95,12 @@ local function NormalizeMainNavTabMediaKey(tabKey)
     return k
 end
 
+--- Registry icon key (ns.UI_ICONS) for a main tab key or legacy alias, or nil.
+function ns.UI_GetTabRegistryIconKey(tabKey)
+    if not tabKey then return nil end
+    return TAB_REGISTRY_ICON_KEYS[tabKey] or TAB_REGISTRY_ICON_KEYS[NormalizeMainNavTabMediaKey(tabKey)]
+end
+
 -- Tab title header icon (CreateHeaderIcon)
 local HEADER_ICON_SIZE = 44
 local HEADER_ICON_PAD = 5
@@ -89,6 +109,10 @@ local HEADER_ICON_INSET = 12
 -- Export icon mapping for external use
 ns.UI_GetTabIcon = function(tabName)
     local key = tabName
+    -- No atlas for registry tabs: callers fall through to UI_ApplyMainNavTabGlyph / their file path.
+    if TAB_REGISTRY_ICON_KEYS[key] or TAB_REGISTRY_ICON_KEYS[NormalizeMainNavTabMediaKey(key)] then
+        return nil
+    end
     -- Main window uses `reputations`; some cards use `reputation`.
     if key == "reputation" or key == "reputations" then
         local ok, fg = pcall(UnitFactionGroup, "player")
@@ -145,7 +169,7 @@ function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
     if not tex or not tabKey then return false end
 
     local canon = NormalizeMainNavTabMediaKey(tabKey)
-    local regKey = canon and TAB_REGISTRY_ICON_KEYS[canon]
+    local regKey = TAB_REGISTRY_ICON_KEYS[tabKey] or (canon and TAB_REGISTRY_ICON_KEYS[canon])
     tex._wnRegistryIcon = nil
     if regKey and ns.UI_SetIcon and ns.UI_SetIcon(tex, regKey) then
         tex._wnRegistryIcon = regKey
@@ -180,6 +204,39 @@ function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
         tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     end
     return false
+end
+
+-- Registry icons on cached surfaces (title cards, sub-tab bars, menus) are tinted once at build; theme
+-- refresh re-applies them so mono glyphs follow dark/light. Weak keys: released textures drop out.
+local registryTintTextures = setmetatable({}, { __mode = "k" })
+
+---@param tex Texture|nil
+---@param key string|nil ns.UI_ICONS key already applied to `tex` via ns.UI_SetIcon
+function ns.UI_TrackRegistryIconTint(tex, key)
+    if not tex or not key then return end
+    tex._wnRegistryTintKey = key
+    registryTintTextures[tex] = true
+end
+
+function ns.UI_RefreshRegistryIconTints()
+    if not ns.UI_SetIcon then return end
+    for tex in pairs(registryTintTextures) do
+        local key = tex._wnRegistryTintKey
+        if key then
+            ns.UI_SetIcon(tex, key)
+        end
+    end
+end
+
+do
+    -- Runs once at file load (wraps the SharedWidgets.lua refresh; later wrappers chain on top).
+    if ns.UI_RefreshColors then
+        local prevRefresh = ns.UI_RefreshColors
+        ns.UI_RefreshColors = function(...)
+            prevRefresh(...)
+            ns.UI_RefreshRegistryIconTints()
+        end
+    end
 end
 
 ns.UI_GetCharKey = function(char)
@@ -276,6 +333,8 @@ local function CreateHeaderIcon(parent, atlasName, options)
     -- Registry glyphs keep their theme vertex (mono: white dark / black light).
     if not icon._wnRegistryIcon then
         icon:SetVertexColor(1, 1, 1, 1)
+    else
+        ns.UI_TrackRegistryIconTint(icon, icon._wnRegistryIcon)
     end
 
     return {

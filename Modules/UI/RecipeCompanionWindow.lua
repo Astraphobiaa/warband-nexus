@@ -613,7 +613,7 @@ local function RenderContent(scrollChild)
                             local bagRow
                             bagRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
 
-                            local bagIcon = CreateStorageIcon(bagRow, "Banker")
+                            local bagIcon = CreateStorageIcon(bagRow, "bag")
                             local bagNameText = FontManager:CreateFontString(bagRow, "body", "OVERLAY")
                             bagNameText:SetPoint("LEFT", bagIcon, "RIGHT", 4, 0)
                             bagNameText:SetText(classColor .. charInfo.charName .. "|r")
@@ -634,7 +634,7 @@ local function RenderContent(scrollChild)
                             local bankRow
                             bankRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
 
-                            local bankIconTex = CreateStorageIcon(bankRow, "VignetteLoot")
+                            local bankIconTex = CreateStorageIcon(bankRow, "vault")
                             local bankNameText = FontManager:CreateFontString(bankRow, "body", "OVERLAY")
                             bankNameText:SetPoint("LEFT", bankIconTex, "RIGHT", 4, 0)
                             bankNameText:SetText(classColor .. charInfo.charName .. "|r")
