@@ -2329,7 +2329,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         ns.UI_ApplyVisuals(iconBorder, ns.UI_GetIconWellBackdrop(), ns.UI_GetIconWellBorder())
     end
     
-    local iconFrameObj = CreateIcon(iconBorder, "greatVault-whole-normal", 46, true, nil, true)
+    local iconFrameObj = CreateIcon(iconBorder, ns.UI_GetIconFile("great_vault"), 46, false, nil, true)
     iconFrameObj:ClearAllPoints()
     iconFrameObj:SetAllPoints(iconBorder)
     iconFrameObj:Show()

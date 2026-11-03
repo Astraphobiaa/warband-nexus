@@ -634,8 +634,7 @@ M.LAUNCHER_ACTION_DEFS = {
         kind = "vault",
         labelKey = "VAULT_BUTTON_MENU_TRACKER", labelFallback = "Vault Tracker",
         settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_VAULT", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_VAULT_DESC",
-        iconAtlas = "GreatVault-32x32",
-        icon = "Interface\\Icons\\Achievement_Boss_Argus",
+        iconKey = "great_vault",
     },
     saved = {
         kind = "saved_instances",

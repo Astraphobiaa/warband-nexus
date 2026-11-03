@@ -107,6 +107,7 @@ ns.UI_ICONS = {
     gathering      = { file = Icon("Gathering") },  -- colored
     try_counter    = { file = Icon("TryCounter") },  -- colored
     online         = { file = Icon("Online") },  -- colored
+    great_vault    = { file = Icon("GreatVault") },  -- colored
     quest_dungeon  = { file = Icon("QuestDungeon") },  -- colored
     quest_raid     = { file = Icon("QuestRaid") },  -- colored
     quest_delve    = { file = Icon("QuestDelve") },  -- colored

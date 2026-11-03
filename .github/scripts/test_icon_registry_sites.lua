@@ -146,6 +146,8 @@ do
         and has("Modules/UI/ReputationUI.lua", 'ns.UI_GetIconFile("faction_horde")'), "Reputation faction/guild/generic headers use registry icons")
     check(not has("Modules/UI/MailDetailsPopup.lua", "Tracking\\Mailbox") and not has("Modules/UI/MailDetailsPopup.lua", "INV_Letter_15"),
         "Mail details popup uses the registry envelope")
+    check(not has("Modules/NotificationManager.lua", "bountifulbags") and not has("Modules/UI/PlanCardFactory.lua", '"greatVault-whole-normal"')
+        and has("Modules/VaultButton_Core.lua", 'iconKey = "great_vault"'), "Great Vault toasts, plan card and vault menu use the registry vault icon")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

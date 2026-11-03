@@ -757,7 +757,7 @@ local CATEGORY_ICONS = {
     achievement = IconFile("trophy"),
     title = IconFile("title"),
     plan = IconFile("checklist"),
-    vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
+    vault = IconFile("great_vault"),
     mail = IconFile("mail"),
     reputation = IconFile("medal"),
     quest = IconFile("scroll"),
@@ -2712,7 +2712,7 @@ function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     if not data or not data.characterName or not data.category or not data.progress then return end
     if not self:CanShowToast("vault") then return end
     
-    local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
+    local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", icon = IconFile("great_vault"), atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local thresholds = cat.thresholds or {1, 4, 8}
     local maxT = thresholds[#thresholds] or 8
     local raw = tonumber(data.progress) or 0
@@ -2732,7 +2732,7 @@ function WarbandNexus:OnVaultSlotCompleted(event, data)
     if not data or not data.characterName or not data.category then return end
     if not self:CanShowToast("vault") then return end
 
-    local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
+    local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", icon = IconFile("great_vault"), atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local threshold = data.threshold or 0
 
     -- Do not use showCriteriaProgressNotifications here: that path is for achievement criteria toasts.
@@ -2749,8 +2749,7 @@ function WarbandNexus:OnVaultPlanCompleted(event, data)
     if not data or not data.characterName then return end
     if not self:CanShowToast("vault") then return end
     
-    self:Notify("vault", string.format((ns.L and ns.L["WEEKLY_VAULT_PLAN_FORMAT"]) or "Weekly Vault Plan - %s", data.characterName), nil, {
-        iconAtlas = "greatVault-whole-normal",
+    self:Notify("vault", string.format((ns.L and ns.L["WEEKLY_VAULT_PLAN_FORMAT"]) or "Weekly Vault Plan - %s", data.characterName), IconFile("great_vault"), {
         action = (ns.L and ns.L["ALL_SLOTS_COMPLETE"]) or "All Slots Complete!",
     })
 end
