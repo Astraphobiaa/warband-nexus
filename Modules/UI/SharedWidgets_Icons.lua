@@ -904,7 +904,7 @@ ns.UI_CreateFavoriteButton = CreateFavoriteButton
 -- ONLINE INDICATOR HELPERS
 
 -- Constants
-local ONLINE_ICON_TEXTURE = "Interface\\FriendsFrame\\StatusIcon-Online"
+local ONLINE_ICON_TEXTURE = ns.UI_GetIconFile and ns.UI_GetIconFile("online")  -- registry green gem
 local ONLINE_ICON_SIZE = 16
 
 --[[

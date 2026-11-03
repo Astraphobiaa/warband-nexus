@@ -106,6 +106,7 @@ ns.UI_ICONS = {
     wowhead        = { file = Icon("Wowhead") },  -- colored
     gathering      = { file = Icon("Gathering") },  -- colored
     try_counter    = { file = Icon("TryCounter") },  -- colored
+    online         = { file = Icon("Online") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },
