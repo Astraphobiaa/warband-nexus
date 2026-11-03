@@ -105,6 +105,7 @@ ns.UI_ICONS = {
     search         = { file = Icon("Search") },  -- colored
     wowhead        = { file = Icon("Wowhead") },  -- colored
     gathering      = { file = Icon("Gathering") },  -- colored
+    try_counter    = { file = Icon("TryCounter") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },

@@ -127,6 +127,8 @@ do
         and not has("Modules/UI/CharactersUI_Row.lua", "AvailableQuestIcon") and not has("Modules/UI/CharactersUI_Row.lua", "INV_Misc_Note_01")
         and not has("Core.lua", "UI-HUD-MicroMenu-Questlog-Mouseover") and not has("Modules/UI/StatisticsUI.lua", "DastardlyDuos"),
         "Gathering column, section dialogs, unspent points, assign button, update notice and progress card use registry icons")
+    check(has("Modules/NotificationManager.lua", 'tryCounter = IconFile("try_counter")') and not has("Modules/NotificationManager.lua", "INV_Misc_Lucky_MoneyEnvelope"),
+        "Try counter toasts use the registry try counter pouch")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

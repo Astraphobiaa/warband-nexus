@@ -763,7 +763,7 @@ local CATEGORY_ICONS = {
     quest = IconFile("scroll"),
     item = IconFile("bag"),
     reminder = IconFile("reminder"),
-    tryCounter = "Interface\\Icons\\INV_Misc_Lucky_MoneyEnvelope",
+    tryCounter = IconFile("try_counter"),
 }
 
 -- Action text mapping (subtitle line)
