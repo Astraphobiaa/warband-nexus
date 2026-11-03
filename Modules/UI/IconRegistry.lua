@@ -95,6 +95,10 @@ ns.UI_ICONS = {
     illusion       = { file = Icon("Illusion") },  -- colored
     title          = { file = Icon("TitleCrown") },  -- colored
     knowledge      = { file = Icon("Knowledge") },  -- colored
+    quest_weekly   = { file = Icon("QuestWeekly") },  -- colored
+    quest_daily    = { file = Icon("QuestDaily") },  -- colored
+    quest_important = { file = Icon("QuestImportant") },  -- colored
+    first_craft    = { file = Icon("FirstCraft") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },

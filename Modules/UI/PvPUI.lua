@@ -405,12 +405,7 @@ local ROSTER_STAT_HEADER_ICONS = {
         iconFallback = "Interface\\Icons\\Achievement_PVP_G_01",
         headerIconSize = 24,
     },
-    weekly = {
-        iconPaths = { "Interface\\Icons\\INV_Scroll_03" },
-        iconAtlases = { "questlog-questtypeicon-weekly", "questlog-questtypeicon-daily" },
-        iconIsAtlas = true,
-        iconFallback = "Interface\\Icons\\INV_Scroll_03",
-    },
+    weekly = { iconKey = "quest_weekly" },  -- ns.UI_ICONS key, drawn by ProfessionsUI.ApplyProfessionHeaderIconTexture
 }
 
 local PROGRESS_TITLE_ICONS = {

@@ -943,12 +943,12 @@ local PROF_HEADER_ICON_BY_COL = {
     -- Specialization knowledge: addon icon registry stack of books with the anvil emblem
     knowledge   = { iconKey = "knowledge" },
     recipes     = { iconKey = "scroll" },
-    -- First-craft affordance (RecipeSchematicForm.xml)
-    firstCraft  = { iconAtlases = { "professions_icon_firsttimecraft", "crafting-crafting-order-icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_04" },
+    -- First-craft bonus: addon icon registry golden book
+    firstCraft  = { iconKey = "first_craft" },
     -- Unique recipes: addon icon registry sparkle (ns.UI_ICONS key)
     uniques     = { iconKey = "sparkle" },
     treatise    = { iconPaths = { "Interface\\Icons\\INV_Inscription_Tradeskill01" } },
-    weeklyQuest = { iconAtlases = { "questlog-questtypeicon-weekly", "questlog-questtypeicon-daily" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_03" },
+    weeklyQuest = { iconKey = "quest_weekly" },
     treasure    = { iconKey = "chest" },
     gathering   = { iconAtlases = { "poi-gather", "Professions-Icon-Skill-Low" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Powder_Ardent" },
     catchUp     = { iconKey = "plus" },

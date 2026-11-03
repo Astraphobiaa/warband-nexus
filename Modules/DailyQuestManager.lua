@@ -145,7 +145,7 @@ local QUEST_CATEGORIES = {
 local CATEGORY_DISPLAY = {
     weeklyQuests = {
         name  = function() return (ns.L and ns.L["QUEST_CAT_WEEKLY"]) or "Weekly Quests" end,
-        iconKey = "calendar",  -- ns.UI_ICONS key
+        iconKey = "quest_weekly",  -- ns.UI_ICONS key
         color = { 0.90, 0.70, 0.20 },
     },
     worldQuests = {
@@ -155,12 +155,12 @@ local CATEGORY_DISPLAY = {
     },
     assignments = {
         name  = function() return (ns.L and ns.L["VAULT_SLOT_SA"]) or "Assignments" end,
-        iconKey = "attention",
+        iconKey = "quest_important",
         color = { 1.00, 0.55, 0.20 },
     },
     dailyQuests = {
         name  = function() return (ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily Quests" end,
-        iconKey = "calendar",
+        iconKey = "quest_daily",
         color = { 0.40, 0.90, 0.40 },
     },
     events = {

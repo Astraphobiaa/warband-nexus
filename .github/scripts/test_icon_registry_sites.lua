@@ -109,6 +109,10 @@ do
     check(not has("Modules/UI/PlansUI.lua", "UpgradeItem-32x32") and not has("Modules/UI/PlansUI_Browse.lua", "dragon-rostrum")
         and not has("Modules/UI/PlansTrackerWindow.lua", "INV_Enchant_Disenchant"), "Plans sub-tabs, browse and tracker use registry plan type icons")
     check(has("Modules/UI/ProfessionsUI.lua", 'knowledge   = { iconKey = "knowledge" }'), "Professions knowledge column uses the registry knowledge icon")
+    check(has("Modules/UI/ProfessionsUI.lua", 'firstCraft  = { iconKey = "first_craft" }') and has("Modules/UI/ProfessionsUI.lua", 'weeklyQuest = { iconKey = "quest_weekly" }')
+        and has("Modules/UI/PvPUI.lua", 'weekly = { iconKey = "quest_weekly" }'), "First craft and weekly quest columns use registry icons")
+    check(has("Modules/DailyQuestManager.lua", 'iconKey = "quest_daily"') and has("Modules/DailyQuestManager.lua", 'iconKey = "quest_important"')
+        and has("Modules/NotificationManager.lua", 'icon = IconFile("quest_weekly")'), "Quest type icons (daily, weekly, important) come from the registry")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

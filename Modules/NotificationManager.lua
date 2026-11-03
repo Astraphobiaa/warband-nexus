@@ -2698,12 +2698,12 @@ local VAULT_CATEGORIES = {
 ns.NotificationManagerHooks.VAULT_CATEGORIES = VAULT_CATEGORIES
 
 local QUEST_CATEGORIES = {
-    dailyQuests         = {name = (ns.L and ns.L["DAILY_QUEST_CAT"]) or "Daily Quest",         atlas = "questlog-questtypeicon-heroic"},
+    dailyQuests         = {name = (ns.L and ns.L["DAILY_QUEST_CAT"]) or "Daily Quest",         icon = IconFile("quest_daily"), atlas = "questlog-questtypeicon-heroic"},
     worldQuests         = {name = (ns.L and ns.L["WORLD_QUEST_CAT"]) or "World Quest",         atlas = "questlog-questtypeicon-Delves"},
-    weeklyQuests        = {name = (ns.L and ns.L["WEEKLY_QUEST_CAT"]) or "Weekly Quest",        atlas = "questlog-questtypeicon-raid"},
-    assignments         = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment",    atlas = "questlog-questtypeicon-heroic"},
+    weeklyQuests        = {name = (ns.L and ns.L["WEEKLY_QUEST_CAT"]) or "Weekly Quest",        icon = IconFile("quest_weekly"), atlas = "questlog-questtypeicon-raid"},
+    assignments         = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment",    icon = IconFile("quest_important"), atlas = "questlog-questtypeicon-heroic"},
     events              = {name = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Content Event", atlas = "worldquest-questmarker-epic"},
-    specialAssignments  = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Special Assignment",  atlas = "questlog-questtypeicon-heroic"},
+    specialAssignments  = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Special Assignment",  icon = IconFile("quest_important"), atlas = "questlog-questtypeicon-heroic"},
     delves              = {name = (ns.L and ns.L["DELVE_CAT"]) or "Delve",               atlas = "questlog-questtypeicon-Delves"},
 }
 
@@ -2762,8 +2762,9 @@ function WarbandNexus:OnQuestCompleted(event, data)
     
     local cat = QUEST_CATEGORIES[data.category] or {name = (ns.L and ns.L["QUEST_LABEL"]) or "Quest:", atlas = "questlog-questtypeicon-heroic"}
     
-    self:Notify("quest", cat.name .. " - " .. data.characterName, nil, {
-        iconAtlas = cat.atlas,
+    -- registry icon when the category has one; the atlas stays only as a fallback
+    self:Notify("quest", cat.name .. " - " .. data.characterName, cat.icon, {
+        iconAtlas = (not cat.icon) and cat.atlas or nil,
         action = data.questTitle .. " " .. ((ns.L and ns.L["QUEST_COMPLETED_SUFFIX"]) or "Completed"),
     })
 end
