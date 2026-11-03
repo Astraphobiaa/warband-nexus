@@ -103,6 +103,7 @@ ns.UI_ICONS = {
     link           = { file = Icon("ChatLink") },  -- colored
     reminder       = { file = Icon("Bell") },  -- colored
     search         = { file = Icon("Search") },  -- colored
+    wowhead        = { file = Icon("Wowhead") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },

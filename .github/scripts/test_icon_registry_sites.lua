@@ -121,6 +121,8 @@ do
         and has("Modules/VaultButton_SavedInstances.lua", 'ns.UI_SetIcon(titleIcon, "reminder")'), "Reminder alerts use the registry bell")
     check(has("Modules/UI/SharedWidgets_EmptyState.lua", 'search = "search"') and not has("Modules/UI/SharedWidgets_EmptyState.lua", "common-search-magnifyingglass"),
         "No-results empty state uses the registry magnifier")
+    check(not has("Modules/UI/PlanCardFactory.lua", "socialqueuing-icon-eye") and not has("Modules/UI/SharedWidgets_Factory.lua", "socialqueuing-icon-eye")
+        and has("Modules/UI/SharedWidgets_Factory.lua", 'SetNormalTexture(ns.UI_GetIconFile("wowhead"))'), "Wowhead buttons use the registry Wowhead rocket")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

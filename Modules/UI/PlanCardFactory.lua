@@ -625,7 +625,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         end
         whBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -whTop)
         card.wowheadBtn = whBtn
-        whBtn:SetNormalAtlas("socialqueuing-icon-eye")
+        whBtn:SetNormalTexture(ns.UI_GetIconFile("wowhead"))
         whBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
         whBtn:SetFrameLevel(card:GetFrameLevel() + 5)
         whBtn:SetScript("OnEnter", function(self)

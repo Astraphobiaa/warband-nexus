@@ -563,13 +563,7 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     local wowheadBtn = CreateFrame("Button", nil, wowheadParent)
     wowheadBtn:SetSize(whInner, whInner)
     wowheadBtn:SetPoint("CENTER", wowheadParent, "CENTER", 0, 0)
-    local whAtlasOk = pcall(function() wowheadBtn:SetNormalAtlas("socialqueuing-icon-eye") end)
-    if not whAtlasOk then
-        local whTex = wowheadBtn:CreateTexture(nil, "ARTWORK")
-        whTex:SetAllPoints()
-        ns.UI_SetWnIconTexture(whTex, "link", { vertexColor = ns.WN_ICON_VERTEX_WHITE })
-        wowheadBtn._wnIconTex = whTex
-    end
+    wowheadBtn:SetNormalTexture(ns.UI_GetIconFile("wowhead"))
     wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     wowheadBtn:SetFrameLevel((wowheadParent:GetFrameLevel() or 0) + 8)
     wowheadBtn._wnDetailIconShell = whShell
