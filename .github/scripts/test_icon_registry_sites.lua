@@ -123,6 +123,10 @@ do
         "No-results empty state uses the registry magnifier")
     check(not has("Modules/UI/PlanCardFactory.lua", "socialqueuing-icon-eye") and not has("Modules/UI/SharedWidgets_Factory.lua", "socialqueuing-icon-eye")
         and has("Modules/UI/SharedWidgets_Factory.lua", 'SetNormalTexture(ns.UI_GetIconFile("wowhead"))'), "Wowhead buttons use the registry Wowhead rocket")
+    check(has("Modules/UI/ProfessionsUI.lua", 'gathering   = { iconKey = "gathering" }') and not has("Modules/UI/CharactersUI_Dialogs.lua", "socialqueuing-icon-group")
+        and not has("Modules/UI/CharactersUI_Row.lua", "AvailableQuestIcon") and not has("Modules/UI/CharactersUI_Row.lua", "INV_Misc_Note_01")
+        and not has("Core.lua", "UI-HUD-MicroMenu-Questlog-Mouseover") and not has("Modules/UI/StatisticsUI.lua", "DastardlyDuos"),
+        "Gathering column, section dialogs, unspent points, assign button, update notice and progress card use registry icons")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

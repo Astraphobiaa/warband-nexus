@@ -493,7 +493,7 @@ function CharRowCb.ProfOnEnter(self)
             end
             if unspent > 0 then
                 lines[#lines + 1] = {
-                    left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"),
+                    left = ns.UI_GetIconMarkup("attention", 0, 0) .. " " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"),
                     leftColor = {1, 0.82, 0}
                 }
             end
@@ -1469,8 +1469,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             hb.isPersistentRowElement = true
             local htex = hb.GetNormalTexture and hb:GetNormalTexture()
             if htex then
-                htex:SetTexture("Interface\\Icons\\INV_Misc_Note_01")
-                htex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                ns.UI_SetIcon(htex, "checklist")
             end
             row.headerAssignBtn = hb
         else

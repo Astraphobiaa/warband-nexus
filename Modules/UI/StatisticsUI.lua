@@ -512,7 +512,7 @@ local ACH_COLL_ICON_SIZE = 36
 local STAT_CARD_ICON_LEFT = 15
 local ACH_ATLAS_SCORE = ns.UI_GetIconFile("trophy")
 local ACH_ATLAS_CHARACTER = ns.UI_GetIconFile("character")
-local ACH_ATLAS_PROGRESS = "UI-Frame-DastardlyDuos-icon-Speed"
+local ACH_ATLAS_PROGRESS = ns.UI_GetIconFile("bar_chart")
 
 local function FormatAchPointsCurrentMax(hex, current, max)
     local c = tonumber(current) or 0

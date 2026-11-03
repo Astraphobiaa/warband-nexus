@@ -950,7 +950,7 @@ local PROF_HEADER_ICON_BY_COL = {
     treatise    = { iconPaths = { "Interface\\Icons\\INV_Inscription_Tradeskill01" } },
     weeklyQuest = { iconKey = "quest_weekly" },
     treasure    = { iconKey = "chest" },
-    gathering   = { iconAtlases = { "poi-gather", "Professions-Icon-Skill-Low" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Powder_Ardent" },
+    gathering   = { iconKey = "gathering" },
     catchUp     = { iconKey = "plus" },
     moxie       = { iconAtlases = { "currency-icon-moxie" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Coin_01" },
     cooldowns   = { iconKey = "clock" },

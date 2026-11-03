@@ -188,8 +188,8 @@ function WarbandNexus:OpenRenameCustomSectionDialog(groupId, currentName)
     local dialog, contentFrame = CreateExternalWindow({
         name = "WnRenameCustomSectionDialog",
         title = (L and L["CUSTOM_HEADER_RENAME_DIALOG_TITLE"]) or "Rename section",
-        icon = "socialqueuing-icon-group",
-        iconIsAtlas = true,
+        icon = ns.UI_GetIconFile("character"),
+        iconIsAtlas = false,
         width = dialogW,
         height = 190,
     })
@@ -269,8 +269,8 @@ function WarbandNexus:OpenCustomCharacterHeaderDialog()
     local dialog, contentFrame = CreateExternalWindow({
         name = "WnNewCustomHeaderDialog",
         title = (L and L["CUSTOM_HEADER_NEW_DIALOG_TITLE"]) or "New custom section",
-        icon = "socialqueuing-icon-group",
-        iconIsAtlas = true,
+        icon = ns.UI_GetIconFile("character"),
+        iconIsAtlas = false,
         width = dialogW,
         height = 620,
     })
@@ -408,8 +408,8 @@ function WarbandNexus:OpenCustomHeaderRosterWindow(groupId)
     local dialog, contentFrame = CreateExternalWindow({
         name = safeName,
         title = gtitle,
-        icon = "socialqueuing-icon-group",
-        iconIsAtlas = true,
+        icon = ns.UI_GetIconFile("character"),
+        iconIsAtlas = false,
         width = dialogW,
         height = 620,
     })

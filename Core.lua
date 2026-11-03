@@ -929,7 +929,7 @@ function WarbandNexus:OnEnable()
             local updateIcon = dialog:CreateTexture(nil, "ARTWORK")
             updateIcon:SetSize(32, 32)
             updateIcon:SetPoint("TOP", titleText, "BOTTOM", 0, -12)
-            pcall(function() updateIcon:SetAtlas("UI-HUD-MicroMenu-Questlog-Mouseover", false) end)
+            ns.UI_SetIcon(updateIcon, "scroll")
 
             -- Description
             local descText = FontManager and FontManager:CreateFontString(dialog, "body", "OVERLAY")

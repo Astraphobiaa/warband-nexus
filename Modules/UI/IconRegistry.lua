@@ -104,6 +104,7 @@ ns.UI_ICONS = {
     reminder       = { file = Icon("Bell") },  -- colored
     search         = { file = Icon("Search") },  -- colored
     wowhead        = { file = Icon("Wowhead") },  -- colored
+    gathering      = { file = Icon("Gathering") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },
