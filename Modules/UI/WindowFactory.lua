@@ -248,16 +248,16 @@ local function CreateExternalWindow(config)
         if not closeBtn then AbortIncompleteExternalWindow() return nil end
         closeBtn:SetPoint("RIGHT", -8, 0)
 
-        -- Close icon (IconRegistry "close": WN stroke X, tinted below)
+        -- Close icon (IconRegistry "close": red X art, neutral vertex; idle/hover = alpha)
         local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
         ns.UI_SetIcon(closeIcon, "close")
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        closeIcon:SetVertexColor(1, 1, 1, 0.75)
 
         -- Hover effects
         closeBtn:SetScript("OnEnter", function()
-            closeIcon:SetVertexColor(1, 0.2, 0.2)
+            closeIcon:SetVertexColor(1, 1, 1, 1)
             if ApplyVisuals then
                 local negBg, negBorder
                 if ns.UI_GetSemanticNegativeCard then
@@ -270,7 +270,7 @@ local function CreateExternalWindow(config)
         end)
 
         closeBtn:SetScript("OnLeave", function()
-            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            closeIcon:SetVertexColor(1, 1, 1, 0.75)
             if ApplyVisuals then
                 local idle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or closeBg
                 ApplyVisuals(closeBtn, idle, headerBorder)

@@ -349,10 +349,10 @@ function ns.UIShell.CreateMainWindow(self)
             closeIcon:SetSize(16, 16)
             closeIcon:SetPoint("CENTER")
             ns.UI_SetIcon(closeIcon, "close")
-            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            closeIcon:SetVertexColor(1, 1, 1, 0.75)
 
             closeBtn:SetScript("OnEnter", function(self)
-                closeIcon:SetVertexColor(1, 0.2, 0.2)
+                closeIcon:SetVertexColor(1, 1, 1, 1)
                 if ns.UI_ApplyVisuals and ns.UI_GetSemanticNegativeCard then
                     local bg, border = ns.UI_GetSemanticNegativeCard(true)
                     ns.UI_ApplyVisuals(closeBtn, bg, border)
@@ -360,7 +360,7 @@ function ns.UIShell.CreateMainWindow(self)
             end)
 
             closeBtn:SetScript("OnLeave", function(self)
-                closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+                closeIcon:SetVertexColor(1, 1, 1, 0.75)
                 if ns.UI_ApplyVisuals then
                     local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
                     ns.UI_ApplyVisuals(closeBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
@@ -391,7 +391,7 @@ function ns.UIShell.CreateMainWindow(self)
     local reloadIcon = reloadDebugBtn:CreateTexture(nil, "ARTWORK")
     reloadIcon:SetSize(16, 16)
     reloadIcon:SetPoint("CENTER")
-    ns.UI_SetIcon(reloadIcon, "reset", { vertexColor = { 0.75, 0.92, 1, 1 } })
+    ns.UI_SetIcon(reloadIcon, "reset")  -- colored art; header utility style below sets the idle alpha
     reloadDebugBtn._wnUtilityIcon = reloadIcon
     if ns.UI_ApplyHeaderUtilityIconStyle then
         ns.UI_ApplyHeaderUtilityIconStyle(reloadIcon, false)
@@ -460,7 +460,7 @@ function ns.UIShell.CreateMainWindow(self)
     local trackingIcon = iconBack:CreateTexture(nil, "ARTWORK")
     trackingIcon:SetSize(14, 14)
     trackingIcon:SetPoint("CENTER", iconBack, "CENTER", 0, 0)
-    ns.UI_SetIcon(trackingIcon, "status_ok", { vertexColor = { 0.35, 1, 0.45, 1 } })
+    ns.UI_SetIcon(trackingIcon, "status_ok")  -- colored art: neutral vertex
     if ns.UI_ApplyHeaderUtilityIconStyle and ns.UI_IsLightMode and ns.UI_IsLightMode() then
         ns.UI_ApplyHeaderUtilityIconStyle(trackingIcon, false)
     end
@@ -1013,8 +1013,10 @@ function ns.UIShell.CreateMainWindow(self)
         if tabIcon.SetTexelSnappingBias then tabIcon:SetTexelSnappingBias(0) end
         btn.tabIcon = tabIcon
         local usedPackagedIcon = false
-        if key == "about" and ns.UI_SetWnIconTexture then
-            usedPackagedIcon = ns.UI_SetWnIconTexture(tabIcon, "credits", { 0.88, 0.88, 0.92, 1 })
+        if key == "about" and ns.UI_SetIcon and ns.UI_SetIcon(tabIcon, "credits") then
+            -- colored glyph; _wnRegistryIcon lets UI_ApplyNavTabIconStyle resolve it (it tints only mono entries)
+            usedPackagedIcon = true
+            tabIcon._wnRegistryIcon = "credits"
         end
         if not usedPackagedIcon and ns.UI_ApplyMainNavTabGlyph then
             ns.UI_ApplyMainNavTabGlyph(tabIcon, key)  -- addon registry icon (SharedWidgets_TitleCard)

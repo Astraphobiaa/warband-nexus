@@ -20,7 +20,7 @@ end
 
 local VAULT_SLOT_CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
 local VAULT_SLOT_CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
-local VAULT_SLOT_UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12, 0, 0, { 0.2, 1, 0.48 })  -- upgradeable: green
+local VAULT_SLOT_UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12)  -- upgradeable: green art, no tint
 local issecretvalue = issecretvalue
 
 local function SafeVaultNumber(v, default)
@@ -1092,13 +1092,12 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                     ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", rewardIlvl))
                 end
 
-                -- Upgrade arrow: registry `upgrade` tinted green (as the Gear tab); sublayer 7 so slot text stays underneath
+                -- Upgrade arrow: registry `upgrade` (green art, neutral vertex, as the Gear tab); sublayer 7 so slot text stays underneath
                 if hasArrow and slotFrame.stripe then
                     local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY", nil, 7)
                     arrowTexture:SetSize(compactSlotStyle and 18 or 22, compactSlotStyle and 18 or 22)
                     arrowTexture:SetPoint("LEFT", slotFrame.stripe, "RIGHT", 2, 0)
                     ns.UI_SetIcon(arrowTexture, "upgrade")
-                    arrowTexture:SetVertexColor(0.2, 1, 0.48)
                 end
 
                 -- Add tooltip for completed slots

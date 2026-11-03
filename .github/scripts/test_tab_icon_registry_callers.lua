@@ -1,5 +1,5 @@
 -- Behaviour test: tab icons and storage markers come from the addon icon registry (Media/Icon-*.tga),
--- never a Blizzard atlas / Interface\Icons file, and mono glyphs follow the theme tint on refresh.
+-- never a Blizzard atlas / Interface\Icons file; colored glyphs stay neutral, a mono entry follows the theme tint.
 -- Run from repo root: luajit <this file>
 local ROOT = os.getenv("WN_ROOT") or "."
 local failures, checks = 0, 0
@@ -90,13 +90,20 @@ do
     ns.UI_RefreshColors()
     check(ns.refreshCalls == 1, "theme refresh still runs the wrapped refresh")
     check(icon.vertex and icon.vertex[1] == 1, "colored header glyph keeps its own colors after a light theme refresh")
+    -- clock is colored art now: tracked, it stays neutral across a theme refresh
+    local clock = FakeTex()
+    ns.UI_SetIcon(clock, "clock")
+    if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(clock, "clock") end
+    -- no mono key ships; a stub mono entry keeps the re-tint path covered
+    ns.UI_ICONS.__stub_mono = { file = ns.UI_GetIconFile("clock"), mono = true }
     local tracked = FakeTex()
-    -- clock is still a mono key: a tracked mono icon is re-tinted on theme refresh
-    ns.UI_SetIcon(tracked, "clock")
-    if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(tracked, "clock") end
+    ns.UI_SetIcon(tracked, "__stub_mono")
+    if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(tracked, "__stub_mono") end
     themeVertex = { 0.9, 0.9, 0.9 }
     ns.UI_RefreshColors()
     check(tracked.vertex[1] == 0.9 and tracked.texture == ns.UI_GetIconFile("clock"), "tracked sub-tab/menu icon re-tinted, same file")
+    check(clock.vertex[1] == 1 and clock.vertex[2] == 1 and clock.vertex[3] == 1, "tracked clock (colored glyph) stays neutral on theme refresh")
+    ns.UI_ICONS.__stub_mono = nil
 end
 
 print("Phase 3: tooltip item-count markers are registry markup with the theme tint")
@@ -143,11 +150,16 @@ do
         check(light:find("|T" .. ns.UI_SmallIconFile(ns.UI_GetIconFile(key)) .. ":16:16:0:0:32:32:0:32:0:32:255:255:255|t", 1, true) ~= nil,
             "light theme: colored '" .. key .. "' marker keeps its own colors")
     end
-    -- a mono key's markup follows the theme tint (no stale cache across a theme switch)
+    -- clock is colored art: its markup stays neutral on the light theme
     local ck = ns.UI_SmallIconFile(ns.UI_GetIconFile("clock"))  -- 16 px markup draws the 32 px copy
-    local lightClock = ns.UI_GetIconMarkup("clock", 16, 16)
+    check(ns.UI_GetIconMarkup("clock", 16, 16):find("|T" .. ck .. ":16:16:0:0:32:32:0:32:0:32:255:255:255|t", 1, true) ~= nil,
+        "light theme: colored clock markup keeps its own colors")
+    -- a mono entry's markup follows the theme tint (no stale cache across a theme switch); none ship, so stub one
+    ns.UI_ICONS.__stub_mono = { file = ns.UI_GetIconFile("clock"), mono = true }
+    local lightClock = ns.UI_GetIconMarkup("__stub_mono", 16, 16)
     themeVertex = { 1, 1, 1 }
-    local darkClock = ns.UI_GetIconMarkup("clock", 16, 16)
+    local darkClock = ns.UI_GetIconMarkup("__stub_mono", 16, 16)
+    ns.UI_ICONS.__stub_mono = nil
     check(lightClock:find("|T" .. ck .. ":16:16:0:0:32:32:0:32:0:32:0:0:0|t", 1, true) ~= nil
         and darkClock:find("|T" .. ck .. ":16:16:0:0:32:32:0:32:0:32:255:255:255|t", 1, true) ~= nil,
         "light theme: markup follows the new tint (no stale cache)")

@@ -917,7 +917,6 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
         ns.UI_ApplyWnActionIcon(todoTex, "todo", onTodo, todoDisabled)
     else
         ns.UI_SetWnIconTexture(todoTex, "todo", {
-            desaturate = todoDisabled,
             vertexColor = ns.UI_WnIconVertexForKey("todo", onTodo, todoDisabled),
         })
     end
@@ -949,7 +948,6 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
             ns.UI_ApplyWnActionIcon(trackTex, "track", onTrack, trackDisabled)
         else
             ns.UI_SetWnIconTexture(trackTex, "track", {
-                desaturate = trackDisabled,
                 vertexColor = ns.UI_WnIconVertexForKey("track", onTrack, trackDisabled),
             })
         end

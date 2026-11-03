@@ -140,7 +140,7 @@ function ns.UI_RefreshHeaderUtilityIcons(mainFrame)
             apply(mainFrame.statusIcon, false)
         else
             mainFrame.statusIcon:SetDesaturated(false)
-            mainFrame.statusIcon:SetVertexColor(0.35, 1, 0.45, 1)
+            mainFrame.statusIcon:SetVertexColor(1, 1, 1, 1)  -- colored status art: neutral vertex
         end
     end
 end
@@ -2294,7 +2294,7 @@ function WarbandNexus:DrawTrackingRequiredBanner(parent)
     local icon = card:CreateTexture(nil, "ARTWORK")
     icon:SetSize(34, 34)
     icon:SetPoint("TOPLEFT", 14, -14)
-    ns.UI_SetIcon(icon, "status_fail", { vertexColor = { 1, 0.4, 0.4, 1 } })
+    ns.UI_SetIcon(icon, "status_fail")
 
     local title = GetFontManager():CreateFontString(card, GetFontManager():GetFontRole("trackingRequiredBannerTitle"), "OVERLAY")
     title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
@@ -2425,19 +2425,6 @@ function WarbandNexus:UpdateStatus()
         return 1, 0.72, 0.58
     end
 
-    local function StatusIconRGB(kind)
-        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-            if kind == "positive" then
-                return ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor() or 0.14, 0.52, 0.24
-            end
-            return ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor() or 0.78, 0.18, 0.18
-        end
-        if kind == "positive" then
-            return 0.45, 1, 0.55
-        end
-        return 1, 0.55, 0.42
-    end
-
     if mainFrame.statusText then
         if isOpen then
             mainFrame.statusText:SetText(BadgeOneLine((ns.L and ns.L["TRACKING_BADGE_BANK"]) or "Bank is Active"))
@@ -2466,22 +2453,19 @@ function WarbandNexus:UpdateStatus()
 
     if isOpen then
         if icon then
-            local r, g, b = StatusIconRGB("positive")
-            ns.UI_SetIcon(icon, "status_ok", { vertexColor = { r, g, b, 1 } })
+            ns.UI_SetIcon(icon, "status_ok")
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["BANK_IS_ACTIVE"]) or "Bank is Active", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
     elseif isTracked then
         if icon then
-            local r, g, b = StatusIconRGB("positive")
-            ns.UI_SetIcon(icon, "status_ok", { vertexColor = { r, g, b, 1 } })
+            ns.UI_SetIcon(icon, "status_ok")
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_ACTIVE_DESC"]) or "Data collection and updates are active.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
     else
         if icon then
-            local r, g, b = StatusIconRGB("negative")
-            ns.UI_SetIcon(icon, "status_fail", { vertexColor = { r, g, b, 1 } })
+            ns.UI_SetIcon(icon, "status_fail")
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_NOT_ENABLED_TOOLTIP"]) or "Character tracking is disabled.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to enable tracking.")
@@ -2740,7 +2724,7 @@ do
         local spinner = bar:CreateTexture(nil, "OVERLAY")
         spinner:SetSize(14, 14)
         spinner:SetPoint("LEFT", 8, 0)
-        ns.UI_SetIcon(spinner, "spinner", { vertexColor = { 0.3, 0.9, 0.4, 0.9 } })
+        ns.UI_SetIcon(spinner, "spinner", { alpha = 0.9 })  -- colored art: neutral vertex, no green tint
         bar.spinner = spinner
 
         local spinGroup = spinner:CreateAnimationGroup()

@@ -1,5 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-  <ellipse cx="32" cy="34" rx="14" ry="11"/>
-  <circle cx="26" cy="35" r="3" fill="#FFFFFF" stroke="none"/>
-  <circle cx="38" cy="35" r="3" fill="#FFFFFF" stroke="none"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><mask id="de" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><ellipse cx="9.1" cy="12.3" rx="1.6" ry="1.8" fill="#000"/><ellipse cx="14.9" cy="12.3" rx="1.6" ry="1.8" fill="#000"/></mask><path d="M8.7 5.3C7.2 5.5 5.8 6 4.6 6.7 2.9 9.4 2.4 12.9 2.7 16.3c1.5 1.2 3.1 2 4.7 2.5L8.6 17.1c2.2.5 4.6.5 6.8 0l1.2 1.7c1.6-.5 3.2-1.3 4.7-2.5.3-3.4-.2-6.9-1.9-9.6-1.2-.7-2.6-1.2-4.1-1.4l-.6 1.1c-1.8-.3-3.6-.3-5.4 0Z" fill="#FFFFFF" stroke-width="1" mask="url(#de)"/></svg>

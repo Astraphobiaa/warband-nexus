@@ -270,14 +270,14 @@ function M.BuildTableFrame()
         local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
-        ns.UI_SetIcon(closeIcon, "close", { vertexColor = { 0.9, 0.3, 0.3, 1 } })
+        ns.UI_SetIcon(closeIcon, "close", { alpha = 0.75 })
         closeBtn:SetScript("OnClick", HideTable)
         closeBtn:SetScript("OnEnter", function()
-            closeIcon:SetVertexColor(1, 0.2, 0.2)
+            closeIcon:SetVertexColor(1, 1, 1, 1)
             if ApplyVisuals then ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
         end)
         closeBtn:SetScript("OnLeave", function()
-            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            closeIcon:SetVertexColor(1, 1, 1, 0.75)
             if ApplyVisuals then ApplyVisuals(closeBtn, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
         end)
     end

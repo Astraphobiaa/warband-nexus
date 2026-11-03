@@ -491,7 +491,7 @@ local function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
         spinnerFrame:SetPoint("LEFT", 20, 0)
         spinnerFrame:Show()
         local spinner = spinnerFrame.texture
-        ns.UI_SetIcon(spinner, "spinner")  -- mono glyph: theme tint, re-applied on theme toggle
+        ns.UI_SetIcon(spinner, "spinner")  -- colored art (neutral vertex); tracked so a mono entry would re-tint on theme toggle
         ns.UI_TrackRegistryIconTint(spinner, "spinner")
         loadingCard._wnSpinGroup = AttachLoopingSpinnerRotation(loadingCard, spinner)
         loadingCard:HookScript("OnHide", function()

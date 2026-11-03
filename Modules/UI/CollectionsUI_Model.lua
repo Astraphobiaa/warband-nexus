@@ -397,7 +397,6 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
             ns.UI_ApplyWnActionIcon(iconTex, "todo", onTodo, disabled)
         elseif ns.UI_SetWnIconTexture then
             ns.UI_SetWnIconTexture(iconTex, "todo", {
-                desaturate = disabled,
                 vertexColor = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("todo", onTodo, disabled)
                     or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 }),
             })

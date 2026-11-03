@@ -386,13 +386,11 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         if header._wnSectionRowJoin then header._wnSectionRowJoin:Hide() end
     end
     
-    -- Expand/collapse: shared Button + single texture (parent header handles click)
-    local iconTint = COLORS.accent
+    -- Expand/collapse: shared Button + single texture (parent header handles click); chevron is colored art, no tint
     local chevSz = (ly and ly.SECTION_COLLAPSE_CHEVRON_SIZE) or (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
     local expandIcon = ns.UI_CreateCollapseExpandControl(header, isExpanded, {
         enableMouse = false,
         size = chevSz,
-        vertexColor = { iconTint[1] * 1.5, iconTint[2] * 1.5, iconTint[3] * 1.5, 1 },
     })
     expandIcon:SetPoint("LEFT", chevLeft + indent, 0)
 

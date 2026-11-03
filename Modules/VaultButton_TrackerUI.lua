@@ -140,14 +140,14 @@ function M.BuildOptionsFrame()
         closeIcon:SetSize(16, 16)
         closeIcon:SetPoint("CENTER")
         ns.UI_SetIcon(closeIcon, "close")
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        closeIcon:SetVertexColor(1, 1, 1, 0.75)
         close:SetScript("OnClick", function() f:Hide() end)
         close:SetScript("OnEnter", function()
-            closeIcon:SetVertexColor(1, 0.2, 0.2)
+            closeIcon:SetVertexColor(1, 1, 1, 1)
             if ApplyVisuals then ApplyVisuals(close, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
         end)
         close:SetScript("OnLeave", function()
-            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            closeIcon:SetVertexColor(1, 1, 1, 0.75)
             if ApplyVisuals then ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
         end)
     end

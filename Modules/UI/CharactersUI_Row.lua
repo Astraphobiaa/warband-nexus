@@ -178,16 +178,12 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
 end
 
 
+--- Close glyph is colored art: neutral vertex, hover state is alpha only.
 local function StyleCharacterDeleteIcon(icon, highlighted)
     if not icon then return end
     icon:SetDesaturated(false)
-    if highlighted then
-        icon:SetVertexColor(1, 0.5, 0.5)
-        icon:SetAlpha(1)
-    else
-        icon:SetVertexColor(0.95, 0.35, 0.35)
-        icon:SetAlpha(0.98)
-    end
+    icon:SetVertexColor(1, 1, 1, 1)
+    icon:SetAlpha(highlighted and 1 or 0.75)
 end
 
 local SECONDARY_PROF_KEYS = { "cooking" }
@@ -1257,11 +1253,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         row.keystoneText:SetText(keystoneText)
         
-        -- Dimmed monochrome icon (GRAY BAN: no desaturated grey; theme ink at 0.45 alpha)
-        local kvc = ns.UI_GetMonochromeIconVertex(0.45)
+        -- Dimmed colored item art (GRAY BAN: no desaturated grey or theme ink; alpha only)
         row.keystoneIcon:SetDesaturated(false)
-        row.keystoneIcon:SetVertexColor(kvc[1], kvc[2], kvc[3], kvc[4] or 0.45)
-        row.keystoneIcon:SetAlpha(1.0)
+        row.keystoneIcon:SetVertexColor(1, 1, 1, 1)
+        row.keystoneIcon:SetAlpha(0.45)
     end
     
     row.keystoneIcon:Show()
@@ -1321,10 +1316,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if row.trackingBtn.icon then
         if isCharTracked then
             if ns.UI_SetIcon then ns.UI_SetIcon(row.trackingBtn.icon, "status_ok") end
-            row.trackingBtn.icon:SetVertexColor(0.35, 1, 0.45)
         else
             if ns.UI_SetIcon then ns.UI_SetIcon(row.trackingBtn.icon, "status_fail") end
-            row.trackingBtn.icon:SetVertexColor(1, 0.55, 0.42)
         end
     end
     if row.trackingBtn.HasScript and row.trackingBtn:HasScript("OnClick") then
@@ -1345,7 +1338,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)
         if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(rb.up) end
         rb.up:SetPoint("CENTER", -11, 0)
-        -- registry glyph on a pooled row: theme tint, re-applied on theme toggle
+        -- registry glyph on a pooled row (colored art, neutral vertex); tracked so a mono entry would re-tint on theme toggle
         if ns.UI_GetIconFile then
             rb.up:SetNormalTexture(ns.UI_GetIconFile("chevron_up"))
             if ns.UI_SetIcon(rb.up:GetNormalTexture(), "chevron_up") and ns.UI_TrackRegistryIconTint then

@@ -1252,8 +1252,7 @@ local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable, canAff
         if upgradeArrow.SetFrameLevel and btn.GetFrameLevel then
             upgradeArrow:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
         end
-        ns.UI_SetIcon(upgradeArrow, "upgrade")
-        if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(0.2, 1, 0.48) end
+        ns.UI_SetIcon(upgradeArrow, "upgrade")  -- colored art (green): neutral vertex
         if upgradeArrow.SetDrawLayer then upgradeArrow:SetDrawLayer("OVERLAY", 7) end
         PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBd, upgradeBg, upgradeArrow, nil)
     end
@@ -1275,15 +1274,9 @@ local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable, canAff
         if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Show() end
         if btn._gearUpgradeArrowBg then btn._gearUpgradeArrowBg:Show() end
         if btn._gearUpgradeArrow.SetVertexColor then
-            if GEAR_DEBUG_ALWAYS_SHOW_UPGRADE or canAfford then
-                if btn._gearUpgradeArrowCraftedAtlas then
-                    btn._gearUpgradeArrow:SetVertexColor(1, 1, 1)
-                else
-                    btn._gearUpgradeArrow:SetVertexColor(0.2, 1, 0.5)
-                end
-            else
-                btn._gearUpgradeArrow:SetVertexColor(1, 0.9, 0.35)
-            end
+            -- colored art (upgrade / crafting_order): neutral vertex; a not-affordable state dims with alpha
+            local arrowA = (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE or canAfford) and 1 or 0.6
+            btn._gearUpgradeArrow:SetVertexColor(1, 1, 1, arrowA)
         end
     else
         btn._gearUpgradeArrow:Hide()

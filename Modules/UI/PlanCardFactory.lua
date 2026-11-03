@@ -70,7 +70,6 @@ local function BuildAchievementProgressLabelText(achievementID)
 end
 
 local REMINDER_ALERT_TEX = ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE  -- registry bell (media path)
-local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
 
 local function ApplyReminderCardButtonIcon(tex, hasReminder)
     if not tex then return end
@@ -81,12 +80,12 @@ local function ApplyReminderCardButtonIcon(tex, hasReminder)
     if ns.UI_SetWnIconTexture then
         local vc = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("alert", hasReminder, false)
             or (ns.UI_WnIconVertexForState and ns.UI_WnIconVertexForState(hasReminder, false))
-            or (hasReminder and (ns.WN_ICON_VERTEX_YELLOW or REMINDER_HORN_UI_COLOR) or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 }))
-        ns.UI_SetWnIconTexture(tex, "alert", { vertexColor = { vc[1], vc[2], vc[3], vc[4] or 1 }, desaturate = false })
+            or { 1, 1, 1, hasReminder and 1 or 0.65 }
+        ns.UI_SetWnIconTexture(tex, "alert", { vertexColor = vc })
         return
     end
-    -- Last resort: registry clock glyph (horn yellow when a reminder is set), then the registry bell file.
-    if ns.UI_SetIcon and ns.UI_SetIcon(tex, "clock", hasReminder and { vertexColor = REMINDER_HORN_UI_COLOR } or nil) then
+    -- Last resort: registry clock glyph (colored art: full alpha when a reminder is set, dimmed otherwise), then the bell file.
+    if ns.UI_SetIcon and ns.UI_SetIcon(tex, "clock", { alpha = hasReminder and 1 or 0.65 }) then
         return
     end
     tex:SetTexture(REMINDER_ALERT_TEX)
@@ -2276,8 +2275,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
             local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
             checkArrow:SetSize(24, 24)
             checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
-            ns.UI_SetIcon(checkArrow, "marker_up")
-            checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
+            ns.UI_SetIcon(checkArrow, "marker_up")  -- colored art: neutral vertex
             local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
             label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
             ns.UI_SetTextColorRole(label, "Bright")

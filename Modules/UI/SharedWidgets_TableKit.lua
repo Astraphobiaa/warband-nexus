@@ -122,7 +122,7 @@ ns.UI.TableKit = TK
 local TABLE = ns.UI_LAYOUT.TABLE
 
 -- Reused option tables (no allocation per paint).
-local SORT_ACTIVE_OPTS = { vertexColor = nil }
+local SORT_ACTIVE_OPTS = { alpha = 1 }  -- sort arrows are colored art: active = full alpha, no accent tint
 local SORT_HOVER_OPTS = { alpha = 0.7 }
 local ICON_CROP_L, ICON_CROP_R = 0.08, 0.92
 
@@ -378,10 +378,7 @@ end
 function TK.ApplyCellSortVisual(strip, cell)
     local active = cell._tkSortable and strip._sortKey ~= nil and strip._sortKey == cell._tkKey
     if active then
-        local colors = ns.UI_COLORS
-        SORT_ACTIVE_OPTS.vertexColor = colors and colors.accent or nil
         TK.ShowSortArrow(cell, strip._sortAscending and "sort_up" or "sort_down", SORT_ACTIVE_OPTS)
-        SORT_ACTIVE_OPTS.vertexColor = nil
     else
         cell._tkArrow:Hide()
     end

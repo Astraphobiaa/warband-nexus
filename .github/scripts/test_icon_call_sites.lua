@@ -5,7 +5,7 @@ local function check(c, msg) if c then pass = pass + 1 else fail = fail + 1; pri
 local function src(rel) local fh = assert(io.open(ROOT .. "/Modules/UI/" .. rel, "rb")); local t = fh:read("*a"); fh:close(); return t end
 local function has(t, s) return t:find(s, 1, true) ~= nil end
 local SITES = {
-  { "CollectionsUI_Recent.lua", "talents-button-reset", 'ns.UI_SetIcon(resetTex, "reset")' },
+  { "CollectionsUI_Recent.lua", "talents-button-reset", 'ns.UI_SetIcon(resetTex, "reset"' },
   { "CollectionsUI_Recent.lua", "UI-RefreshButton", nil },
   { "PlansUI_WeeklyProgress.lua", "common-icon-checkmark", 'ns.UI_SetIcon(statusIcon, "status_ok")' },
   { "PlansUI_WeeklyProgress.lua", nil, 'ns.UI_SetIcon(objIcon, "status_ok")' },
@@ -37,21 +37,26 @@ for i = 1, #SITES do
   if s[2] then check(not has(t, s[2]), s[1] .. ": no Blizzard art '" .. s[2] .. "'") end
   if s[3] then check(has(t, s[3]), s[1] .. ": uses " .. s[3]) end
 end
--- Tinted callers keep their tint AFTER the registry call (UI_SetIcon resets the vertex).
-local function after(rel, a, b)
-  local t = src(rel); local ia = t:find(a, 1, true); local ib = ia and t:find(b, ia, true)
-  check(ia and ib and (ib - ia) < 200, rel .. ": '" .. b .. "' follows '" .. a .. "'")
+-- Colored glyphs keep the neutral vertex UI_SetIcon applies: no color tint right after the registry call.
+local function untinted(rel, a, var)
+  local t = src(rel); local ia = t:find(a, 1, true)
+  local tail = ia and t:sub(ia, ia + 200) or ""
+  local args = tail:match(var .. ":SetVertexColor%(([^)]*)%)")
+  check(ia and (not args or args:match("^%s*1,%s*1,%s*1")), rel .. ": no tint follows '" .. a .. "'")
 end
-after("GearUI_Paperdoll.lua", 'ns.UI_SetIcon(upgradeArrow, "upgrade")', "SetVertexColor(0.2, 1, 0.48)")
-after("GearUI_Paperdoll_Slots.lua", 'ns.UI_SetIcon(upgradeArrow, "upgrade")', "SetVertexColor(0.2, 1, 0.48)")
-after("PvEUI_VaultGrid.lua", 'ns.UI_SetIcon(arrowTexture, "upgrade")', "SetVertexColor(0.2, 1, 0.48)")
-after("PlanCardFactory.lua", 'ns.UI_SetIcon(checkArrow, "marker_up")', "SetVertexColor(0.9, 0.9, 0.9, 1)")
--- Recent reset: OnLeave must restore the theme tint, not hard white (a mono glyph on a light card).
+untinted("GearUI_Paperdoll.lua", 'ns.UI_SetIcon(upgradeArrow, "upgrade")', "upgradeArrow")
+untinted("GearUI_Paperdoll_Slots.lua", 'ns.UI_SetIcon(upgradeArrow, "upgrade")', "upgradeArrow")
+untinted("PvEUI_VaultGrid.lua", 'ns.UI_SetIcon(arrowTexture, "upgrade")', "arrowTexture")
+untinted("PlanCardFactory.lua", 'ns.UI_SetIcon(checkArrow, "marker_up")', "checkArrow")
+-- Recent reset: OnLeave goes back through the registry (idle alpha; a mono entry would re-tint), hover adds no color.
 do
   local t = src("CollectionsUI_Recent.lua")
   local leave = t:match('resetBtn:SetScript%("OnLeave", function%(%)(.-)end%)')
-  check(leave and not leave:find("SetVertexColor(1, 1, 1, 1)", 1, true) and leave:find('UI_SetIcon(resetTex, "reset")', 1, true),
-    "CollectionsUI_Recent.lua: reset OnLeave restores the theme tint")
+  local enter = t:match('resetBtn:SetScript%("OnEnter", function%(self%)(.-)end%)')
+  check(leave and not leave:find("SetVertexColor", 1, true) and leave:find('UI_SetIcon(resetTex, "reset"', 1, true),
+    "CollectionsUI_Recent.lua: reset OnLeave restores the registry idle state")
+  local hv = enter and enter:match("resetTex:SetVertexColor%(([^)]*)%)")
+  check(enter and (not hv or hv:match("^1, 1, 1")), "CollectionsUI_Recent.lua: reset hover keeps a neutral vertex")
 end
 -- Dynamic: RecipeCompanionWindow CreateStorageIcon routes keys through the registry, atlases otherwise.
 do

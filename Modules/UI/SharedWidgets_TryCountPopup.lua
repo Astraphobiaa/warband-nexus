@@ -72,7 +72,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         headerTitle:SetPoint("CENTER")
         headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
 
-        -- Close button: same IconRegistry "close" glyph + red tint as WindowFactory dialogs.
+        -- Close button: same IconRegistry "close" glyph + idle/hover alpha as WindowFactory dialogs.
         local tryCloseSz = math.max(16, tryHdrH - 8)
         local tryCloseBtn = CreateFrame("Button", nil, header, "BackdropTemplate")
         tryCloseBtn:SetSize(tryCloseSz, tryCloseSz)
@@ -81,9 +81,9 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         tryCloseIcon:SetSize(tryCloseSz - 10, tryCloseSz - 10)
         tryCloseIcon:SetPoint("CENTER")
         ns.UI_SetIcon(tryCloseIcon, "close")
-        tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3)
-        tryCloseBtn:SetScript("OnEnter", function() tryCloseIcon:SetVertexColor(1, 0.2, 0.2) end)
-        tryCloseBtn:SetScript("OnLeave", function() tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3) end)
+        tryCloseIcon:SetVertexColor(1, 1, 1, 0.75)
+        tryCloseBtn:SetScript("OnEnter", function() tryCloseIcon:SetVertexColor(1, 1, 1, 1) end)
+        tryCloseBtn:SetScript("OnLeave", function() tryCloseIcon:SetVertexColor(1, 1, 1, 0.75) end)
         tryCloseBtn:SetScript("OnClick", function() f:Hide() end)
         f.closeBtn = tryCloseBtn
         ns.UI_SetTextColorRole(headerTitle, "Bright")

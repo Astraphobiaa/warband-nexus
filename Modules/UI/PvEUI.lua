@@ -134,7 +134,7 @@ end
 -- Great Vault slot glyphs — match Modules/VaultButton.lua SlotSymbols (12×12).
 local VAULT_SLOT_CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
 local VAULT_SLOT_CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
-local VAULT_SLOT_UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12, 0, 0, { 0.2, 1, 0.48 })  -- upgradeable: green
+local VAULT_SLOT_UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12)  -- upgradeable: green art, no tint
 
 local UI_GetAccentHexColor = ns.UI_GetAccentHexColor
 

@@ -247,9 +247,9 @@ local function NM_CreateWhatsNewCloseIcon(parent, onDismiss, popupLevel, ar, ag,
     local closeIcon = btn:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(18, 18)
     closeIcon:SetPoint("CENTER")
-    if not (ns.UI_SetMainChromeIcon and ns.UI_SetMainChromeIcon(closeIcon, "close", { 0.9, 0.3, 0.3 })) then
+    -- colored art: neutral vertex (no hover state here, so full alpha)
+    if not (ns.UI_SetMainChromeIcon and ns.UI_SetMainChromeIcon(closeIcon, "close")) then
         ns.UI_SetIcon(closeIcon, "close")
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
     end
     btn:SetScript("OnClick", onDismiss)
     return btn

@@ -266,8 +266,7 @@ local function ApplyTrackerUtilityIconStyle(tex, isHover)
     if ns.UI_ApplyHeaderUtilityIconStyle then
         ns.UI_ApplyHeaderUtilityIconStyle(tex, isHover)
     elseif tex.SetVertexColor then
-        local c = isHover and COLORS.textBright or COLORS.textNormal
-        tex:SetVertexColor(c[1], c[2], c[3])
+        tex:SetVertexColor(1, 1, 1, isHover and 1 or 0.85)
     end
 end
 
@@ -1987,15 +1986,13 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected, opts)
     dropdown:SetHeight(26)
     ApplyTrackerDropdownChrome(dropdown)
 
-    -- Dropdown affordance: monochrome chevron on the right edge (the control read as a dead box without it).
+    -- Dropdown affordance: chevron on the right edge (the control read as a dead box without it).
+    -- Colored art: neutral vertex, slight alpha dim.
     local ddChevron = dropdown:CreateTexture(nil, "OVERLAY")
     ddChevron:SetSize(12, 12)
     ddChevron:SetPoint("RIGHT", dropdown, "RIGHT", -10, 0)
-    do
-        local tn = COLORS.textNormal
-        if not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(ddChevron, "chevron_down", { vertexColor = { tn[1], tn[2], tn[3], 0.9 } })) then
-            ddChevron:Hide()
-        end
+    if not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(ddChevron, "chevron_down", { vertexColor = { 1, 1, 1, 0.9 } })) then
+        ddChevron:Hide()
     end
 
     -- Plan count inside the control, left of the chevron (RefreshTrackerContentImmediate writes it).
@@ -2366,8 +2363,6 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- One chrome pair for all three header utility buttons (close / collapse / gear), matching the
     -- main window exactly: UI_GetCloseButtonBackdrop + UI_GetNavRailDividerColor.
     local chromeBorder = GetUtilityButtonBorder()
-    local closeR, closeG, closeB = 0.9, 0.3, 0.3
-    if ns.UI_GetSemanticRedColor then closeR, closeG, closeB = ns.UI_GetSemanticRedColor() end
     closeBtn = CreateTrackerHeaderIconButton(header, utilityBtnSize)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -headerUtilityRight, 0)
     if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals then
@@ -2377,17 +2372,17 @@ function WarbandNexus:CreatePlansTrackerWindow()
     closeTex:SetSize(16, 16)
     closeTex:SetPoint("CENTER")
     ns.UI_SetIcon(closeTex, "close")
-    closeTex:SetVertexColor(closeR, closeG, closeB)
+    closeTex:SetVertexColor(1, 1, 1, 0.75)  -- colored art: idle dims with alpha, no red tint
     closeBtn._wnCloseTex = closeTex
     closeBtn:SetScript("OnEnter", function()
-        closeTex:SetVertexColor(1, 0.2, 0.2)
+        closeTex:SetVertexColor(1, 1, 1, 1)
         if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals and ns.UI_GetSemanticNegativeCard then
             local bg, border = ns.UI_GetSemanticNegativeCard(true)
             ApplyVisuals(closeBtn, bg, border)
         end
     end)
     closeBtn:SetScript("OnLeave", function()
-        closeTex:SetVertexColor(closeR, closeG, closeB)
+        closeTex:SetVertexColor(1, 1, 1, 0.75)
         if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals then
             ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
@@ -2566,7 +2561,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
             ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
         if closeBtn and closeBtn._wnCloseTex then
-            closeBtn._wnCloseTex:SetVertexColor(closeR, closeG, closeB)
+            closeBtn._wnCloseTex:SetVertexColor(1, 1, 1, 0.75)
         end
         ApplyTrackerUtilityIconStyle(collapseTex, false)
         ApplyTrackerUtilityIconStyle(gearTex, false)

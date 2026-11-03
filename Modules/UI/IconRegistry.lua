@@ -3,10 +3,9 @@
     Semantic icon keys -> the addon's own icon files under Media/ (no Blizzard UI art, so every
     client and port renders the same set). Source + rebuild: scripts/build_ui_icons.py (SVG -> 64 px TGA).
 
-    Two families:
-      mono    = white glyphs tinted at call time (theme vertex via UI_GetMonochromeIconVertex,
-                or a caller color such as the accent for scroll arrows).
-      colored = flat fills with a dark outline (status, favorite, money); drawn with a neutral vertex.
+    Every shipped icon is colored art with a dark rim, readable on dark and light panels; it is drawn
+    with a neutral vertex. Dim states use alpha, never a color tint (that would muddy the art).
+    The mono flag stays supported for white glyphs (tinted by UI_GetMonochromeIconVertex), none ship today.
 
     Loads early (after Constants.lua, .toc) so load-time markup constants in services,
     FormatHelpers and VaultButton can use it. Theme helpers from SharedWidgets.lua
@@ -53,36 +52,37 @@ local SORT_UP_TC = { 0, 1, 1, 0 }
 local SORT_DOWN_TC = { 0, 1, 0, 1 }
 
 ns.UI_ICONS = {
-    -- mono
-    sort_up        = { file = Icon("TriangleDown"), texCoord = SORT_UP_TC, mono = true },
-    sort_down      = { file = Icon("TriangleDown"), mono = true },
-    marker_up      = { file = Icon("TriangleDown"), texCoord = SORT_UP_TC, mono = true },
-    arrow_left     = { file = Icon("TriangleLeft"), mono = true },  -- scroll buttons rotate it
-    arrow_right    = { file = Icon("TriangleRight"), mono = true },
-    status_pending = { file = Icon("StatusPending"), mono = true },
-    clock          = { file = Icon("Clock"), mono = true },
-    lock           = { file = Icon("Lock"), mono = true },
-    plus           = { file = Icon("Plus"), mono = true },
-    minus          = { file = Icon("Minus"), mono = true },
-    settings       = { file = Icon("Settings"), mono = true },
-    filter         = { file = Icon("Filter"), mono = true },
-    sound_play     = { file = Icon("Sound"), mono = true },
-    spinner        = { file = Icon("Spinner"), mono = true },
-    reset          = { file = Icon("Reset"), mono = true },
-    upgrade        = { file = Icon("Upgrade"), mono = true },        -- callers tint it green
-    crafting_order = { file = Icon("CraftingOrder"), mono = true },
+    -- UI glyphs (colored line art, scripts/build_ui_icons.py GLYPH_COLOR)
+    sort_up        = { file = Icon("TriangleDown"), texCoord = SORT_UP_TC },
+    sort_down      = { file = Icon("TriangleDown") },
+    marker_up      = { file = Icon("TriangleDown"), texCoord = SORT_UP_TC },
+    arrow_left     = { file = Icon("TriangleLeft") },  -- scroll buttons rotate it
+    arrow_right    = { file = Icon("TriangleRight") },
+    status_pending = { file = Icon("StatusPending") },
+    clock          = { file = Icon("Clock") },
+    lock           = { file = Icon("Lock") },
+    plus           = { file = Icon("Plus") },
+    minus          = { file = Icon("Minus") },
+    settings       = { file = Icon("Settings") },
+    filter         = { file = Icon("Filter") },
+    sound_play     = { file = Icon("Sound") },
+    spinner        = { file = Icon("Spinner") },
+    reset          = { file = Icon("Reset") },
+    upgrade        = { file = Icon("Upgrade") },        -- green art; never tint it
+    crafting_order = { file = Icon("CraftingOrder") },
     -- settings category rail
-    modules        = { file = Icon("Modules"), mono = true },
-    keyboard       = { file = Icon("Keyboard"), mono = true },
-    notifications  = { file = Icon("BellLine"), mono = true },
-    palette        = { file = Icon("Palette"), mono = true },
-    sliders        = { file = Icon("Sliders"), mono = true },
+    modules        = { file = Icon("Modules") },
+    keyboard       = { file = Icon("Keyboard") },
+    notifications  = { file = Icon("BellLine") },
+    palette        = { file = Icon("Palette") },
+    sliders        = { file = Icon("Sliders") },
+    credits        = { file = Icon("Credits") },  -- About tab
     warband        = { file = Icon("Campfire") },  -- colored
-    close          = { file = Constants.WN_ICON_CLOSE or Icon("Close"), mono = true },
-    clear          = { file = Constants.WN_ICON_CLOSE or Icon("Close"), mono = true },
-    chevron_up     = { file = Constants.WN_ICON_CHEVRON_UP or Icon("ChevronUp"), mono = true },
-    chevron_down   = { file = Constants.WN_ICON_CHEVRON_DOWN or Icon("ChevronDown"), mono = true },
-    -- mono: tab headers, source categories, storage markers (key = concept; file = WoW-flavoured glyph)
+    close          = { file = Constants.WN_ICON_CLOSE or Icon("Close") },
+    clear          = { file = Constants.WN_ICON_CLOSE or Icon("Close") },
+    chevron_up     = { file = Constants.WN_ICON_CHEVRON_UP or Icon("ChevronUp") },
+    chevron_down   = { file = Constants.WN_ICON_CHEVRON_DOWN or Icon("ChevronDown") },
+    -- tab headers, source categories, storage markers (key = concept; file = WoW-flavoured glyph)
     character      = { file = Icon("FactionPortraits") },  -- colored
     faction_alliance = { file = Icon("FactionAlliance") },  -- colored
     faction_horde  = { file = Icon("FactionHorde") },  -- colored
