@@ -107,6 +107,10 @@ ns.UI_ICONS = {
     gathering      = { file = Icon("Gathering") },  -- colored
     try_counter    = { file = Icon("TryCounter") },  -- colored
     online         = { file = Icon("Online") },  -- colored
+    quest_raid     = { file = Icon("QuestRaid") },  -- colored
+    quest_delve    = { file = Icon("QuestDelve") },  -- colored
+    arrow_gold     = { file = Icon("ArrowGold") },  -- colored (points up; down = flipped texCoord)
+    resize_grip    = { file = Icon("ResizeGrip") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },

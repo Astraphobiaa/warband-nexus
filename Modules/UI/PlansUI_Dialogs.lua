@@ -1035,7 +1035,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             -- Dungeons (column 1)
             CreateProgressCol(
                 1,
-                "questlog-questtypeicon-heroic",
+                ns.UI_GetIconFile("dungeon"),
                 (ns.L and ns.L["MYTHIC_PLUS_LABEL"]) or "Mythic+",
                 progress.dungeonCount,
                 {1, 4, 8},  -- Thresholds
@@ -1045,7 +1045,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             -- Raids (column 2)
             CreateProgressCol(
                 2,
-                "questlog-questtypeicon-raid",
+                ns.UI_GetIconFile("quest_raid"),
                 (ns.L and ns.L["RAIDS_LABEL"]) or "Raids",
                 progress.raidBossCount,
                 {2, 4, 6},  -- Thresholds
@@ -1055,7 +1055,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             -- World (column 3)
             CreateProgressCol(
                 3,
-                "questlog-questtypeicon-Delves",
+                ns.UI_GetIconFile("quest_delve"),
                 (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World",
                 progress.worldActivityCount,
                 {2, 4, 8},  -- Thresholds

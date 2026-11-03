@@ -2690,9 +2690,9 @@ end
 
 -- Shared vault/quest lookup tables (defined once, used by multiple handlers)
 local VAULT_CATEGORIES = {
-    dungeon = {name = (ns.L and ns.L["DUNGEON_CAT"]) or "Dungeon", atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
-    raid    = {name = (ns.L and ns.L["RAID_CAT"]) or "Raid",    atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
-    world   = {name = (ns.L and ns.L["WORLD_CAT"]) or "World",   atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
+    dungeon = {name = (ns.L and ns.L["DUNGEON_CAT"]) or "Dungeon", icon = IconFile("dungeon"), atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
+    raid    = {name = (ns.L and ns.L["RAID_CAT"]) or "Raid",    icon = IconFile("quest_raid"), atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
+    world   = {name = (ns.L and ns.L["WORLD_CAT"]) or "World",   icon = IconFile("quest_delve"), atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
     specialAssignment = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment", icon = IconFile("attention"), thresholds = {1, 2}},
 }
 ns.NotificationManagerHooks.VAULT_CATEGORIES = VAULT_CATEGORIES
@@ -2704,7 +2704,7 @@ local QUEST_CATEGORIES = {
     assignments         = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment",    icon = IconFile("quest_important"), atlas = "questlog-questtypeicon-heroic"},
     events              = {name = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Content Event", atlas = "worldquest-questmarker-epic"},
     specialAssignments  = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Special Assignment",  icon = IconFile("quest_important"), atlas = "questlog-questtypeicon-heroic"},
-    delves              = {name = (ns.L and ns.L["DELVE_CAT"]) or "Delve",               atlas = "questlog-questtypeicon-Delves"},
+    delves              = {name = (ns.L and ns.L["DELVE_CAT"]) or "Delve",               icon = IconFile("quest_delve"), atlas = "questlog-questtypeicon-Delves"},
 }
 
 ---Vault checkpoint completed handler (individual progress gain)
@@ -2722,7 +2722,7 @@ function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     local dispCap = maxT
     
     self:Notify("vault", cat.name .. " - " .. data.characterName, cat.icon, {
-        iconAtlas = cat.atlas,
+        iconAtlas = (not cat.icon) and cat.atlas or nil,
         action = string.format((ns.L and ns.L["PROGRESS_COUNT_FORMAT"]) or "%d/%d Progress", dispCur, dispCap),
     })
 end
@@ -2739,7 +2739,7 @@ function WarbandNexus:OnVaultSlotCompleted(event, data)
     -- Vault slot completion already uses the full Notify line below; a second compact toast duplicated the same milestone.
 
     self:Notify("vault", cat.name .. " - " .. data.characterName, cat.icon, {
-        iconAtlas = cat.atlas,
+        iconAtlas = (not cat.icon) and cat.atlas or nil,
         action = string.format((ns.L and ns.L["PROGRESS_COMPLETED_FORMAT"]) or "%d/%d Progress Completed", threshold, threshold),
     })
 end

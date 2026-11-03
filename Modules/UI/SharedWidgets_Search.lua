@@ -962,7 +962,7 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
         local arrowSize = 20
         local secIdx = tonumber(opts.sectionIndex) or 0
         local secCount = tonumber(opts.sectionCount) or 0
-        local function EnsureArrow(existing, atlas, delta, enabled, tipKey, tipFallback)
+        local function EnsureArrow(existing, flipDown, delta, enabled, tipKey, tipFallback)
             local btn = existing
             if not btn then
                 btn = ns.UI.Factory:CreateButton(headerFrame, arrowSize, arrowSize, true)
@@ -971,11 +971,17 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
                 btn:EnableMouse(true)
             end
             btn:SetSize(arrowSize, arrowSize)
-            -- Same crisp Blizzard atlas the character-row reorder arrows use (the faint chevron TGAs
-            -- barely showed). Disabled ends use the monochrome disabled tint instead of vanishing.
-            btn:SetNormalAtlas(atlas)
-            btn:SetHighlightAtlas(atlas)
+            -- Registry gold arrowhead (crisp at small sizes); the down arrow is the same file flipped.
+            -- Disabled ends use the monochrome disabled tint instead of vanishing.
+            local arrowFile = ns.UI_GetIconFile("arrow_gold")
+            btn:SetNormalTexture(arrowFile)
+            btn:SetHighlightTexture(arrowFile, "ADD")
+            local t1, t2 = 0, 1
+            if flipDown then t1, t2 = 1, 0 end
             local nt = btn.GetNormalTexture and btn:GetNormalTexture()
+            if nt then nt:SetTexCoord(0, 1, t1, t2) end
+            local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
+            if ht then ht:SetTexCoord(0, 1, t1, t2) end
             if nt then
                 nt:SetDesaturated(false)
                 if enabled then
@@ -1008,9 +1014,9 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
         -- Grey out (and no-op) the arrow that would run off the ends of the list.
         local upEnabled = (secIdx == 0) or (secIdx > 1)
         local downEnabled = (secCount == 0) or (secIdx < secCount)
-        upBtn = EnsureArrow(upBtn, "housing-floor-arrow-up-default", -1, upEnabled,
+        upBtn = EnsureArrow(upBtn, false, -1, upEnabled,
             "CUSTOM_HEADER_MOVE_UP", "Move section up")
-        downBtn = EnsureArrow(downBtn, "housing-floor-arrow-down-default", 1, downEnabled,
+        downBtn = EnsureArrow(downBtn, true, 1, downEnabled,
             "CUSTOM_HEADER_MOVE_DOWN", "Move section down")
         headerFrame._wnCustomHeaderUpBtn = upBtn
         headerFrame._wnCustomHeaderDownBtn = downBtn

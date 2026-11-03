@@ -400,9 +400,9 @@ function M.BuildSavedInstancesFrame()
     else
         resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -lay.pad, lay.pad)
     end
-    resizeGrip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    resizeGrip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    resizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    resizeGrip:SetNormalTexture(ns.UI_GetIconFile("resize_grip"))
+    resizeGrip:SetHighlightTexture(ns.UI_GetIconFile("resize_grip"))
+    resizeGrip:SetPushedTexture(ns.UI_GetIconFile("resize_grip"))
     resizeGrip:SetScript("OnMouseDown", function()
         if not InCombatLockdown or not InCombatLockdown() then
             f:StartSizing("BOTTOMRIGHT")

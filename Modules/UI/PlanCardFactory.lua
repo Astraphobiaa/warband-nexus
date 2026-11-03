@@ -2400,7 +2400,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     local allSlots = {
         {
             key = "dungeon",
-            atlas = "questlog-questtypeicon-heroic",
+            atlas = ns.UI_GetIconFile("dungeon"),  -- registry file (field name kept)
             title = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon",
             current = currentProgress.dungeonCount,
             max = 8,
@@ -2409,7 +2409,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         },
         {
             key = "raid",
-            atlas = "questlog-questtypeicon-raid",
+            atlas = ns.UI_GetIconFile("quest_raid"),
             title = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",
             current = currentProgress.raidBossCount,
             max = 6,
@@ -2418,7 +2418,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         },
         {
             key = "world",
-            atlas = "questlog-questtypeicon-Delves",
+            atlas = ns.UI_GetIconFile("quest_delve"),
             title = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",
             current = currentProgress.worldActivityCount,
             max = 8,

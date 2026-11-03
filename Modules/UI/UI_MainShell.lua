@@ -198,11 +198,11 @@ function ns.UIShell.CreateMainWindow(self)
     
     local resizeNormal = resizeBtn:CreateTexture(nil, "ARTWORK")
     resizeNormal:SetAllPoints()
-    resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    resizeNormal:SetTexture(ns.UI_GetIconFile("resize_grip"))
     
     local resizeHighlight = resizeBtn:CreateTexture(nil, "HIGHLIGHT")
     resizeHighlight:SetAllPoints()
-    resizeHighlight:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    resizeHighlight:SetTexture(ns.UI_GetIconFile("resize_grip"))
     
     local isResizing = false
     resizeBtn:SetScript("OnMouseDown", function(self, button)
@@ -211,14 +211,14 @@ function ns.UIShell.CreateMainWindow(self)
                 return
             end
             isResizing = true
-            resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+            resizeNormal:SetTexture(ns.UI_GetIconFile("resize_grip"))
             StartCustomResize(f)
         end
     end)
     local function FinishMainFrameResizeMouseUp()
         if not isResizing then return end
         isResizing = false
-        resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        resizeNormal:SetTexture(ns.UI_GetIconFile("resize_grip"))
         StopCustomResize(f)
         SaveWindowGeometry(f)
         NormalizeFramePosition(f)

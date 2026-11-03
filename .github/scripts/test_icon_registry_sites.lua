@@ -131,6 +131,15 @@ do
         "Try counter toasts use the registry try counter pouch")
     check(not has("Modules/UI/SharedWidgets_Icons.lua", "StatusIcon-Online") and has("Modules/UI/SharedWidgets_Icons.lua", 'ns.UI_GetIconFile("online")'),
         "Online indicator uses the registry green gem")
+    local grips = { "Modules/UI/UI_MainShell.lua", "Modules/UI/PlansTrackerWindow.lua", "Modules/UI/RecipeCompanionWindow.lua", "Modules/UI/ProfessionInfoWindow.lua", "Modules/VaultButton_SavedInstances.lua" }
+    for i = 1, #grips do
+        check(not has(grips[i], "SizeGrabber") and has(grips[i], 'ns.UI_GetIconFile("resize_grip")'), grips[i] .. ": resize grip from the registry")
+    end
+    check(not has("Modules/UI/SharedWidgets_Search.lua", "housing-floor-arrow") and has("Modules/UI/SharedWidgets_Search.lua", 'ns.UI_GetIconFile("arrow_gold")'),
+        "Sort arrows use the registry gold arrow")
+    check(not has("Modules/UI/PlanCardFactory.lua", "questtypeicon-heroic") and not has("Modules/UI/PlanCardFactory.lua", "questtypeicon-raid")
+        and not has("Modules/UI/PlansUI_Dialogs.lua", "questtypeicon")
+        and has("Modules/NotificationManager.lua", 'icon = IconFile("quest_raid")'), "Great Vault dungeon/raid/world markers use registry icons")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))
