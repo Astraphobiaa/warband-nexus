@@ -71,6 +71,12 @@ ns.UI_ICONS = {
     reset          = { file = Icon("Reset"), mono = true },
     upgrade        = { file = Icon("Upgrade"), mono = true },        -- callers tint it green
     crafting_order = { file = Icon("CraftingOrder"), mono = true },
+    -- settings category rail
+    modules        = { file = Icon("Modules"), mono = true },
+    keyboard       = { file = Icon("Keyboard"), mono = true },
+    notifications  = { file = Icon("BellLine"), mono = true },
+    palette        = { file = Icon("Palette"), mono = true },
+    sliders        = { file = Icon("Sliders"), mono = true },
     warband        = { file = Icon("Campfire") },  -- colored
     close          = { file = Constants.WN_ICON_CLOSE or Icon("Close"), mono = true },
     clear          = { file = Constants.WN_ICON_CLOSE or Icon("Close"), mono = true },

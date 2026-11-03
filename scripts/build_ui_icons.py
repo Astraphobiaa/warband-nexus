@@ -5,7 +5,7 @@ Two families, both drawn on a 24-unit grid:
 - mono:    white 2-unit round strokes / fills, tinted in game (theme vertex or caller color).
 - colored: flat fills with a dark outline so yellow / gold stays readable on light and dark UI.
 
-Requires the `resvg` CLI (brew install resvg) for rasterizing. Run: python3 scripts/build_ui_icons.py
+Requires the `resvg` CLI (brew install resvg) for rasterizing. Run: python3 scripts/build_ui_icons.py [Name ...]
 Keys -> files are wired in Modules/UI/IconRegistry.lua (ns.UI_ICONS).
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -210,6 +211,34 @@ def crafting_order() -> str:
     # hammer: square head on a diagonal handle
     return ('<path d="M10.6 13.4L4.4 19.6"/>'
             '<path d="M11.2 5.2L18.8 12.8L15.9 15.7L8.3 8.1Z" fill="#FFFFFF"/>')
+
+
+# settings category rail
+def modules() -> str:
+    return ''.join(f'<rect x="{x}" y="{y}" width="7" height="7" rx="1.6"/>' for y in (3.5, 13.5) for x in (3.5, 13.5))
+
+
+def keyboard() -> str:
+    return ('<rect x="2.5" y="6" width="19" height="12.5" rx="2.2"/>'
+            '<path d="M6.3 9.8h.01M9.4 9.8h.01M12.5 9.8h.01M15.6 9.8h.01M18.2 9.8h.01'
+            'M7.5 12.6h.01M10.8 12.6h.01M14 12.6h.01M17 12.6h.01" stroke-width="2.2"/>'
+            '<path d="M8 15.4H16"/>')
+
+
+def bell_line() -> str:
+    return '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.8 2H4.2Z"/><path d="M10 20.8a2.2 2.2 0 0 0 4 0"/><path d="M12 3.2V5"/>'
+
+
+def palette() -> str:
+    return ('<path d="M12 3a9 9 0 1 0 0 18c1.4 0 2.1-1 1.6-2.2-.6-1.3.1-2.6 1.6-2.6H18a3 3 0 0 0 3-3C21 7.1 17 3 12 3Z"/>'
+            '<circle cx="7.6" cy="11.4" r="1.1" fill="#FFFFFF"/><circle cx="10.2" cy="7.4" r="1.1" fill="#FFFFFF"/>'
+            '<circle cx="15" cy="7.6" r="1.1" fill="#FFFFFF"/>')
+
+
+def sliders() -> str:
+    return ('<path d="M4 6.5H20M4 12H20M4 17.5H20" stroke-opacity="0.55"/>'
+            '<circle cx="15.5" cy="6.5" r="2.3" fill="#FFFFFF"/><circle cx="8.5" cy="12" r="2.3" fill="#FFFFFF"/>'
+            '<circle cx="13.5" cy="17.5" r="2.3" fill="#FFFFFF"/>')
 
 
 def warband() -> str:
@@ -493,6 +522,11 @@ ICONS = {
     "Reset": (reset, False),
     "Upgrade": (upgrade, False),
     "CraftingOrder": (crafting_order, False),
+    "Modules": (modules, False),
+    "Keyboard": (keyboard, False),
+    "BellLine": (bell_line, False),
+    "Palette": (palette, False),
+    "Sliders": (sliders, False),
     # category / header
     "CrossedSwords": (crossed_swords, False),
     "BarChart": (bar_chart, False),
@@ -525,8 +559,9 @@ if __name__ == "__main__":
     from ui_icon_art import ART  # illustrated tab / category / storage icons (shared material model)
     for name, build in ART.items():
         ICONS[name] = (build, True)
+    only = set(sys.argv[1:])  # optional icon names: rebuild just these
     for name, (build, colored) in ICONS.items():
-        if name in PAINTED:
+        if name in PAINTED or (only and name not in only):
             continue
         head = COLOR_HEAD if colored else MONO_HEAD
         render(name, head + build() + "</svg>\n")

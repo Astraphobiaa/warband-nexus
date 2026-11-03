@@ -38,42 +38,42 @@ local PANEL_META = {
         descLocale = "SETTINGS_PANEL_MODULES_DESC",
         fallback = "Modules",
         descFallback = "Turn data modules on or off and control which tabs appear.",
-        iconKey = "professions",
+        iconKey = "modules",
     },
     access = {
         locale = "SETTINGS_PANEL_ACCESS",
         descLocale = "SETTINGS_PANEL_ACCESS_DESC",
         fallback = "Shortcuts",
         descFallback = "Minimap button and the floating quick-access shortcut.",
-        iconKey = "pve",
+        iconKey = "keyboard",
     },
     filters = {
         locale = "SETTINGS_PANEL_FILTERS",
         descLocale = "SETTINGS_PANEL_FILTERS_DESC",
         fallback = "Tab filters",
         descFallback = "Choose which main tabs show in the navigation.",
-        iconKey = "items",
+        iconKey = "filter",
     },
     notifications = {
         locale = "SETTINGS_PANEL_NOTIFICATIONS",
         descLocale = "SETTINGS_PANEL_NOTIFICATIONS_DESC",
         fallback = "Notifications",
         descFallback = "Popups, chat alerts, collectibles, and try-counter behavior.",
-        iconKey = "plans",
+        iconKey = "notifications",
     },
     appearance = {
         locale = "SETTINGS_PANEL_APPEARANCE",
         descLocale = "SETTINGS_PANEL_APPEARANCE_DESC",
         fallback = "Theme",
         descFallback = "Theme colors, fonts, and preset palettes.",
-        iconKey = "collections",
+        iconKey = "palette",
     },
     advanced = {
         locale = "SETTINGS_PANEL_ADVANCED",
         descLocale = "SETTINGS_PANEL_ADVANCED_DESC",
         fallback = "Advanced",
         descFallback = "Debug logging, cache refresh, and item tracking.",
-        iconKey = "stats",
+        iconKey = "sliders",
     },
 }
 
@@ -295,8 +295,9 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
     if panelId == "about" and ns.UI_SetWnIconTexture then
         usedWnIcon = ns.UI_SetWnIconTexture(tabIcon, "credits", { 0.88, 0.88, 0.92, 1 })
     end
-    if not usedWnIcon and ns.UI_ApplyMainNavTabGlyph then
-        ns.UI_ApplyMainNavTabGlyph(tabIcon, iconKey)  -- addon registry icon (SharedWidgets_TitleCard)
+    if not usedWnIcon and ns.UI_SetIcon then
+        -- registry key; _wnRegistryIcon lets UI_ApplyNavTabIconStyle tint the mono glyph per theme
+        tabIcon._wnRegistryIcon = ns.UI_SetIcon(tabIcon, iconKey) and iconKey or nil
     end
     tabIcon._wnNavPackagedIcon = usedWnIcon or nil
     tabIcon._wnNavRailIcon = true

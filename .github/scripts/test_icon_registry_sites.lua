@@ -148,6 +148,15 @@ do
         "Mail details popup uses the registry envelope")
     check(not has("Modules/NotificationManager.lua", "bountifulbags") and not has("Modules/UI/PlanCardFactory.lua", '"greatVault-whole-normal"')
         and has("Modules/VaultButton_Core.lua", 'iconKey = "great_vault"'), "Great Vault toasts, plan card and vault menu use the registry vault icon")
+    local shellSrc = read("Modules/UI/SettingsUI_Shell.lua")
+    local railKeys = { general = "settings", modules = "modules", access = "keyboard", filters = "filter",
+        notifications = "notifications", appearance = "palette", advanced = "sliders" }
+    for panelId, key in pairs(railKeys) do
+        check(shellSrc:find("\n    " .. panelId .. " = {.-iconKey = \"" .. key .. "\"") ~= nil,
+            "Settings rail " .. panelId .. " uses its own glyph " .. key)
+    end
+    check(not has("Modules/UI/SettingsUI_Shell.lua", "UI_ApplyMainNavTabGlyph(tabIcon"),
+        "Settings rail draws registry glyphs, not the main tab icons")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))
