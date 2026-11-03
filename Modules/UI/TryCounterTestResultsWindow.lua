@@ -86,7 +86,7 @@ function ns.UI_ShowTryCounterTestResults(rows, totals)
     local dialog, contentFrame = CreateExternalWindow({
         name = "TryCounterTestResults",
         title = (ns.L and ns.L["TRYCOUNTER_TEST_RESULTS_TITLE"]) or "Try Counter self-test",
-        icon = "Interface\\Icons\\INV_Misc_Book_09",
+        icon = ns.UI_GetIconFile("book"),
         width = WINDOW_W,
         height = WINDOW_H,
         preventDuplicates = true,

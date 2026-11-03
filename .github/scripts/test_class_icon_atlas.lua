@@ -45,6 +45,7 @@ C_Item.GetItemClassInfo = C_Item.GetItemClassInfo or function() return nil end
 local ATLAS = "Interface\\AddOns\\WarbandNexus\\Media\\ClassIcons.tga"
 local ATLAS_BARE = "Interface\\AddOns\\WarbandNexus\\Media\\ClassIconsBare.tga"
 local ns = { Constants = { WN_CLASS_ICON_ATLAS = ATLAS, WN_CLASS_ICON_ATLAS_BARE = ATLAS_BARE } }
+LoadFile("Modules/UI/IconRegistry.lua", ns)
 LoadFile("Modules/UI/SharedWidgets_Icons.lua", ns)
 
 local CLASS_IDS = {
@@ -97,7 +98,7 @@ assert_eq(tex.atlas, nil, "no Blizzard atlas name is set")
 Apply(tex, "DRUID", true)
 assert_eq(tex.path, ATLAS_BARE, "bare atlas on request")
 Apply(tex, "ADVENTURER")
-assert_eq(tex.path, "Interface\\Icons\\INV_Misc_QuestionMark", "unknown class falls back to the question mark")
+assert_eq(tex.path, ns.UI_GetIconFile("question"), "unknown class falls back to the registry question icon")
 
 print("Phase 3: Lua cell table matches the atlas build script")
 local py = ReadFile("scripts/build_class_icon_atlas.py")

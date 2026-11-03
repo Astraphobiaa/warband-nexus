@@ -866,14 +866,17 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
             or ("All " .. labelCat .. "s collected!")
         descStr = (L and L["COLLECTED_EVERYTHING"]) or "You've collected everything in this category!"
     end
+    -- false = no atlas: the empty card draws its registry icon for "plans_<category>" (paw / trophy).
     local atlasByCategory = {
         mount = "dragon-rostrum",
-        pet = "WildBattlePetCapturable",
+        pet = false,
         toy = "CreationCatalyst-32x32",
         illusion = "UpgradeItem-32x32",
         title = "poi-legendsoftheharanir",
-        achievement = "Achievement-Icon",
+        achievement = false,
     }
+    local emptyAtlas = atlasByCategory[category]
+    if emptyAtlas == nil then emptyAtlas = "poi-workorders" end
     local tabKey = "plans_" .. (category or "mount")
     if ns.UI_ShowTabEmptyStateCard then
         return ns.UI_ShowTabEmptyStateCard(parent, tabKey, yOffset, {
@@ -882,7 +885,7 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
             cacheKey = "plans_browse_" .. (category or "browse"),
             titleText = titleStr,
             descText = descStr,
-            atlas = atlasByCategory[category] or "poi-workorders",
+            atlas = emptyAtlas or nil,
         })
     end
     return yOffset + 200
@@ -1220,7 +1223,7 @@ function ns.UI_PrewarmBrowseGrid()
             if #pool >= PREWARM_TARGET then break end
             local rowData = {
                 todoUnifiedHeader = true, summaryInHeader = true, canExpand = false,
-                icon = "Interface\\Icons\\INV_Misc_QuestionMark", iconIsAtlas = false,
+                icon = ns.UI_GetIconFile and ns.UI_GetIconFile("question"), iconIsAtlas = false,
                 iconSize = (PCM and PCM.todoUnifiedIconSize) or 40,
                 title = " ", summaryLines = {}, collapsedHeight = collapsedH,
                 criteriaData = {}, criteriaShowHeader = false, titleRightInset = 90,
@@ -1390,7 +1393,7 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
     local typeAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS[category]
 
     local displayName = FormatTextNumbers(item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
-    local iconTexture = item.iconAtlas or item.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local iconTexture = item.iconAtlas or item.icon or (ns.UI_GetIconFile and ns.UI_GetIconFile("question"))
     local iconIsAtlas = (item.iconAtlas ~= nil)
     local ACTION_SIZE = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or ((PCM and PCM.todoTypeBadgeSize) or 24)
     local ACTION_GAP = 4

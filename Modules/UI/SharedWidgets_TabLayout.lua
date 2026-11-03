@@ -135,12 +135,17 @@ function ns.UI_ApplySubTabButtonVisuals(btn, isActive, accent)
     end
 end
 
---- Atlas or file icon for sub-tab buttons (`icon`, `iconAtlas`, optional `iconFallback`).
+--- Sub-tab button icon: registry key (`iconKey`), atlas (`iconAtlas`), or file (`icon`, optional `iconFallback`).
 function ns.UI_ApplySubTabIcon(tex, tabInfo, iconSize)
     if not tex or not tabInfo then return end
     local L = GetSubTabLayout()
     local sz = (iconSize or L.iconSize) - 2
     tex:SetTexture(nil)
+    if tabInfo.iconKey and ns.UI_SetIcon(tex, tabInfo.iconKey) then
+        tex:SetSize(sz, sz)
+        if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(tex, tabInfo.iconKey) end
+        return
+    end
     if tabInfo.iconAtlas then
         local ok = pcall(function()
             tex:SetAtlas(tabInfo.iconAtlas, false)
@@ -152,8 +157,13 @@ function ns.UI_ApplySubTabIcon(tex, tabInfo, iconSize)
             return
         end
     end
-    tex:SetTexture(tabInfo.icon or tabInfo.iconFallback or "Interface\\Icons\\INV_Misc_QuestionMark")
-    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local file = tabInfo.icon or tabInfo.iconFallback
+    if file then
+        tex:SetTexture(file)
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    else
+        ns.UI_SetIcon(tex, "question")
+    end
     tex:SetSize(sz, sz)
 end
 

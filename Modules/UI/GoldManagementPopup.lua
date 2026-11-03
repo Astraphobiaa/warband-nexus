@@ -91,7 +91,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local dialog, contentFrame, header = CreateExternalWindow({
         name = "GoldManagementPopup",
         title = L["GOLD_MANAGEMENT_TITLE"] or "Gold Manager",
-        icon = "Interface\\Icons\\INV_Misc_Coin_01",
+        icon = ns.UI_GetIconFile("money_gold"),
         width = 440,
         height = 352,
         preventDuplicates = true,

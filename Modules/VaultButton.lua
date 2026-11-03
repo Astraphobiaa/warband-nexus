@@ -198,16 +198,7 @@ function M.CreateMenuItem(parent, opts, y)
     star:SetSize(STAR_SIZE, STAR_SIZE)
     star:SetPoint("RIGHT", btn, "RIGHT", -lay.innerPad, 0)
     star:Hide()
-    if star.SetAtlas then
-        local ok = pcall(star.SetAtlas, star, "PetJournal-FavoritesIcon", false)
-        if ok then
-            star:SetVertexColor(1, 0.9, 0.2)
-        else
-            star:SetTexture("Interface\\RaidFrame\\ReadyCheck-Waiting")
-        end
-    else
-        star:SetTexture("Interface\\RaidFrame\\ReadyCheck-Waiting")
-    end
+    ns.UI_SetIcon(star, "favorite_on")  -- colored gold star, drawn with a neutral vertex
     btn.selectionStar = star
     btn.leftClickAction = opts.leftClickAction
 
@@ -346,8 +337,7 @@ function M.BuildMenu()
     headerIcon:SetPoint("LEFT", lay.innerPad, 0)
     headerIcon:SetTexture(ICON_TEXTURE)
     if not headerIcon:GetTexture() then
-        headerIcon:SetTexture(ICON_FALLBACK)
-        headerIcon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+        ns.UI_SetIcon(headerIcon, "chest")
     else
         headerIcon:SetTexCoord(0, 1, 0, 1)
     end
@@ -577,8 +567,7 @@ function M.BuildButton()
     if icon.SetTexelSnappingBias then icon:SetTexelSnappingBias(0) end
     icon:SetTexture(ICON_TEXTURE)
     if not icon:GetTexture() then
-        icon:SetTexture(ICON_FALLBACK)
-        icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)  -- Blizzard inventory icons: slight inset
+        ns.UI_SetIcon(icon, "chest")
     else
         icon:SetTexCoord(0, 1, 0, 1) -- packaged square `Media/icon.tga`: full UV (inset distorted the glyph)
     end

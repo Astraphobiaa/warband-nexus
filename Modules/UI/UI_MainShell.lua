@@ -391,24 +391,7 @@ function ns.UIShell.CreateMainWindow(self)
     local reloadIcon = reloadDebugBtn:CreateTexture(nil, "ARTWORK")
     reloadIcon:SetSize(16, 16)
     reloadIcon:SetPoint("CENTER")
-    do
-        local picked = false
-        if C_Texture and C_Texture.GetAtlasInfo then
-            local atlases = { "StreamCinematic-Restart-button", "common-icon-rotateleft" }
-            for ai = 1, #atlases do
-                local ok, info = pcall(C_Texture.GetAtlasInfo, atlases[ai])
-                if ok and info then
-                    reloadIcon:SetAtlas(atlases[ai])
-                    picked = true
-                    break
-                end
-            end
-        end
-        if not picked then
-            reloadIcon:SetTexture("Interface\\COMMON\\StreamRestart")
-        end
-    end
-    reloadIcon:SetVertexColor(0.75, 0.92, 1)
+    ns.UI_SetIcon(reloadIcon, "reset", { vertexColor = { 0.75, 0.92, 1, 1 } })
     reloadDebugBtn._wnUtilityIcon = reloadIcon
     if ns.UI_ApplyHeaderUtilityIconStyle then
         ns.UI_ApplyHeaderUtilityIconStyle(reloadIcon, false)
@@ -477,11 +460,7 @@ function ns.UIShell.CreateMainWindow(self)
     local trackingIcon = iconBack:CreateTexture(nil, "ARTWORK")
     trackingIcon:SetSize(14, 14)
     trackingIcon:SetPoint("CENTER", iconBack, "CENTER", 0, 0)
-    local ok = pcall(trackingIcon.SetAtlas, trackingIcon, "common-icon-checkmark", false)
-    if not ok then
-        trackingIcon:SetTexture("Interface\\Icons\\Ability_Hunter_BeastTaming")
-    end
-    trackingIcon:SetVertexColor(0.35, 1, 0.45)
+    ns.UI_SetIcon(trackingIcon, "status_ok", { vertexColor = { 0.35, 1, 0.45, 1 } })
     if ns.UI_ApplyHeaderUtilityIconStyle and ns.UI_IsLightMode and ns.UI_IsLightMode() then
         ns.UI_ApplyHeaderUtilityIconStyle(trackingIcon, false)
     end

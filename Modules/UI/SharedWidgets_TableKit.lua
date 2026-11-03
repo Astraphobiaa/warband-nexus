@@ -721,13 +721,12 @@ function TK.GetTextCell(row, ci)
 end
 
 local MONEY_PARTS = {}  -- scratch for TK.FormatSignedMoneyPlain
-local COIN_ICON_FMT = "|TInterface\\MoneyFrame\\UI-%sIcon:%d:%d:0:0|t"
 
 --- Signed money without embedded digit colors, so one ink (green / red) covers the whole amount.
 --- Part rules mirror ns.UI_FormatMoney: gold when > 0, silver padded under gold, copper always when nothing else.
 function TK.FormatSignedMoneyPlain(copper, iconSize)
     copper = tonumber(copper) or 0
-    iconSize = iconSize or 12
+    iconSize = math.floor(tonumber(iconSize) or 12)  -- whole pixels, as the old %d markup did
     local sign = ""
     if copper < 0 then
         sign = "-"
@@ -740,15 +739,15 @@ function TK.FormatSignedMoneyPlain(copper, iconSize)
     if gold > 0 then
         local gs = ns.UI_FormatNumber and ns.UI_FormatNumber(gold) or tostring(gold)
         n = n + 1
-        MONEY_PARTS[n] = gs .. string.format(COIN_ICON_FMT, "Gold", iconSize, iconSize)
+        MONEY_PARTS[n] = gs .. ns.UI_GetIconMarkup("money_gold", iconSize, iconSize)
     end
     if silver > 0 then
         n = n + 1
-        MONEY_PARTS[n] = string.format((gold > 0) and "%02d" or "%d", silver) .. string.format(COIN_ICON_FMT, "Silver", iconSize, iconSize)
+        MONEY_PARTS[n] = string.format((gold > 0) and "%02d" or "%d", silver) .. ns.UI_GetIconMarkup("money_silver", iconSize, iconSize)
     end
     if cop > 0 or n == 0 then
         n = n + 1
-        MONEY_PARTS[n] = string.format((n > 1) and "%02d" or "%d", cop) .. string.format(COIN_ICON_FMT, "Copper", iconSize, iconSize)
+        MONEY_PARTS[n] = string.format((n > 1) and "%02d" or "%d", cop) .. ns.UI_GetIconMarkup("money_copper", iconSize, iconSize)
     end
     for i = n + 1, #MONEY_PARTS do MONEY_PARTS[i] = nil end
     return sign .. table.concat(MONEY_PARTS, " ")

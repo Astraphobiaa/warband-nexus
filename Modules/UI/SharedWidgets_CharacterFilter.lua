@@ -721,11 +721,7 @@ function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onD
 
     local function GetLockAtlasMarkup(sz)
         sz = sz or 12
-        local markup = ns.UI_GetIconMarkup and ns.UI_GetIconMarkup("lock", sz, sz)
-        if markup and markup ~= "" then
-            return markup
-        end
-        return string.format("|TInterface\\Common\\LockIcon:%d:%d:0:0|t", sz, sz)
+        return ns.UI_GetIconMarkup("lock", sz, sz)
     end
 
     if assignedGroupId then

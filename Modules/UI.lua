@@ -2294,11 +2294,7 @@ function WarbandNexus:DrawTrackingRequiredBanner(parent)
     local icon = card:CreateTexture(nil, "ARTWORK")
     icon:SetSize(34, 34)
     icon:SetPoint("TOPLEFT", 14, -14)
-    local ok = pcall(icon.SetAtlas, icon, "common-icon-redx", false)
-    if not ok then
-        icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
-    end
-    icon:SetVertexColor(1, 0.4, 0.4)
+    ns.UI_SetIcon(icon, "status_fail", { vertexColor = { 1, 0.4, 0.4, 1 } })
 
     local title = GetFontManager():CreateFontString(card, GetFontManager():GetFontRole("trackingRequiredBannerTitle"), "OVERLAY")
     title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
@@ -2470,28 +2466,22 @@ function WarbandNexus:UpdateStatus()
 
     if isOpen then
         if icon then
-            pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
             local r, g, b = StatusIconRGB("positive")
-            icon:SetVertexColor(r, g, b)
+            ns.UI_SetIcon(icon, "status_ok", { vertexColor = { r, g, b, 1 } })
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["BANK_IS_ACTIVE"]) or "Bank is Active", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
     elseif isTracked then
         if icon then
-            pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
             local r, g, b = StatusIconRGB("positive")
-            icon:SetVertexColor(r, g, b)
+            ns.UI_SetIcon(icon, "status_ok", { vertexColor = { r, g, b, 1 } })
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_ACTIVE_DESC"]) or "Data collection and updates are active.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
     else
         if icon then
-            local ok = pcall(icon.SetAtlas, icon, "common-icon-redx", false)
-            if not ok then
-                icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
-            end
             local r, g, b = StatusIconRGB("negative")
-            icon:SetVertexColor(r, g, b)
+            ns.UI_SetIcon(icon, "status_fail", { vertexColor = { r, g, b, 1 } })
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_NOT_ENABLED_TOOLTIP"]) or "Character tracking is disabled.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to enable tracking.")
@@ -2750,8 +2740,7 @@ do
         local spinner = bar:CreateTexture(nil, "OVERLAY")
         spinner:SetSize(14, 14)
         spinner:SetPoint("LEFT", 8, 0)
-        spinner:SetTexture("Interface\\COMMON\\StreamCircle")
-        spinner:SetVertexColor(0.3, 0.9, 0.4, 0.9)
+        ns.UI_SetIcon(spinner, "spinner", { vertexColor = { 0.3, 0.9, 0.4, 0.9 } })
         bar.spinner = spinner
 
         local spinGroup = spinner:CreateAnimationGroup()

@@ -744,22 +744,24 @@ ns.NotificationManagerHooks.ProcessNotificationQueue = ProcessNotificationQueue
 ============================================================================]]
 
 local DEFAULT_GLOW = "TopBottom:UI-Frame-DastardlyDuos-Line"
-local DEFAULT_NOTIFICATION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+-- Registry files (IconRegistry loads before this file in the TOC; nil only in standalone test harnesses).
+local IconFile = ns.UI_GetIconFile or function() return nil end
+local DEFAULT_NOTIFICATION_ICON = IconFile("question")
 
 -- Category fallback icons (when item-specific icon is missing)
 local CATEGORY_ICONS = {
-    mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-    pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
-    toy = "Interface\\Icons\\INV_Misc_Toy_07",
-    illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
-    achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
-    title = "Interface\\Icons\\INV_Scroll_11",
-    plan = "Interface\\Icons\\INV_Misc_Note_06",
+    mount = IconFile("book"),
+    pet = IconFile("paw"),
+    toy = IconFile("gift"),
+    illusion = IconFile("sparkle"),
+    achievement = IconFile("trophy"),
+    title = IconFile("scroll"),
+    plan = IconFile("checklist"),
     vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
     mail = "Interface\\Icons\\INV_Letter_15",
-    reputation = "Interface\\Icons\\INV_Scroll_11",
-    quest = "Interface\\Icons\\INV_Misc_Map_01",
-    item = "Interface\\Icons\\INV_Misc_Bag_10",
+    reputation = IconFile("medal"),
+    quest = IconFile("scroll"),
+    item = IconFile("bag"),
     reminder = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager",
     tryCounter = "Interface\\Icons\\INV_Misc_Lucky_MoneyEnvelope",
 }
@@ -1126,10 +1128,13 @@ function WarbandNexus:ShowModalNotification(config)
             iconCompact:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             if type(iconTexture) == "number" then
                 iconCompact:SetTexture(iconTexture)
+            elseif ns.UI_IsAddonMediaTexture(iconTexture) then
+                iconCompact:SetTexture(iconTexture)
+                iconCompact:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
             elseif iconTexture and iconTexture ~= "" then
                 iconCompact:SetTexture(iconTexture:gsub("\\", "/"))
             else
-                iconCompact:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
+                ns.UI_SetIcon(iconCompact, "question")
             end
         end
         iconCompact:SetVertexColor(1, 1, 1, 1)
@@ -1420,10 +1425,13 @@ function WarbandNexus:ShowModalNotification(config)
         icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         if type(iconTexture) == "number" then
             icon:SetTexture(iconTexture)
+        elseif ns.UI_IsAddonMediaTexture(iconTexture) then
+            icon:SetTexture(iconTexture)
+            icon:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
         elseif iconTexture and iconTexture ~= "" then
             icon:SetTexture(iconTexture:gsub("\\", "/"))
         else
-            icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
+            ns.UI_SetIcon(icon, "question")
         end
     end
     
@@ -2685,7 +2693,7 @@ local VAULT_CATEGORIES = {
     dungeon = {name = (ns.L and ns.L["DUNGEON_CAT"]) or "Dungeon", atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
     raid    = {name = (ns.L and ns.L["RAID_CAT"]) or "Raid",    atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
     world   = {name = (ns.L and ns.L["WORLD_CAT"]) or "World",   atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
-    specialAssignment = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment", atlas = "questlog-questtypeicon-important", thresholds = {1, 2}},
+    specialAssignment = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment", icon = IconFile("attention"), thresholds = {1, 2}},
 }
 ns.NotificationManagerHooks.VAULT_CATEGORIES = VAULT_CATEGORIES
 
@@ -2713,7 +2721,7 @@ function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     local dispCur = math.min(raw, maxT)
     local dispCap = maxT
     
-    self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
+    self:Notify("vault", cat.name .. " - " .. data.characterName, cat.icon, {
         iconAtlas = cat.atlas,
         action = string.format((ns.L and ns.L["PROGRESS_COUNT_FORMAT"]) or "%d/%d Progress", dispCur, dispCap),
     })
@@ -2730,7 +2738,7 @@ function WarbandNexus:OnVaultSlotCompleted(event, data)
     -- Do not use showCriteriaProgressNotifications here: that path is for achievement criteria toasts.
     -- Vault slot completion already uses the full Notify line below; a second compact toast duplicated the same milestone.
 
-    self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
+    self:Notify("vault", cat.name .. " - " .. data.characterName, cat.icon, {
         iconAtlas = cat.atlas,
         action = string.format((ns.L and ns.L["PROGRESS_COMPLETED_FORMAT"]) or "%d/%d Progress Completed", threshold, threshold),
     })

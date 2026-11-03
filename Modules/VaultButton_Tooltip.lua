@@ -630,7 +630,7 @@ BuildEasyAccessTooltipData = function(charKey, entry)
     end
     if charKey and not warbandSummary and ShowEasyAccessDisplay("tooltipTodo") then
         lines[#lines + 1] = {
-            left = EAIconLabel("Interface\\Icons\\INV_Misc_Map_01", nil, "EA_TOOLTIP_LINE_TODO", "To-Do"),
+            left = EAIconLabel(ns.UI_GetIconFile("checklist"), nil, "EA_TOOLTIP_LINE_TODO", "To-Do"),
             right = EAFormatTodoValue(GetActiveTodoCountForChar(tooltipEntry.name, tooltipEntry.realm)),
             leftColor = M.EA_LABEL_COLOR,
             rightColor = M.EA_VALUE_COLOR,

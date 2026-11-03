@@ -88,8 +88,6 @@ local UI_SPACING = {
     COLLAPSE_EXPAND_BUTTON_SIZE = 22,
     --- Section headers (`CreateCollapsibleHeader`): slightly larger than generic collapse controls.
     SECTION_COLLAPSE_CHEVRON_SIZE = 26,
-    COLLAPSE_EXPAND_ATLAS_EXPANDED = "UI-HUD-ActionBar-PageUpArrow-Mouseover",
-    COLLAPSE_EXPAND_ATLAS_COLLAPSED = "UI-HUD-ActionBar-PageDownArrow-Mouseover",
 
     --- Storage / Bank item rows: location label inset from row edge (scrollbar + padding)
     LIST_ROW_LOCATION_RIGHT_INSET = 28,

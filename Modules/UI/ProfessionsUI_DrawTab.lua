@@ -688,7 +688,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             (ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites",
             "profFavoritesExpanded",
             true,
-            "GM-icon-assistActive-hover",
+            ns.UI_GetIconFile("favorite_on"),
             { sectionPreset = "gold" }
         )
     end
@@ -707,7 +707,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 gMeta.name or gid,
                 "profCGrp_" .. tostring(gid),
                 false,
-                goldStyle and "GM-icon-assistActive-hover" or "GM-icon-headCount",
+                goldStyle and ns.UI_GetIconFile("favorite_on") or ns.UI_GetIconFile("character"),
                 { sectionPreset = goldStyle and "gold" or "accent", useCharacterGroupExpand = true, groupId = gid }
             )
         end
@@ -719,7 +719,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             (ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters",
             "profCharactersExpanded",
             true,
-            "GM-icon-headCount",
+            ns.UI_GetIconFile("character"),
             nil
         )
     end

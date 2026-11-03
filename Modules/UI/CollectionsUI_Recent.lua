@@ -253,7 +253,7 @@ end
 
 function M.GetRecentSectionCategoryIcon(ctype)
     if ctype == "achievement" then
-        return "UI-Achievement-Shield-NoPoints", true
+        return ns.UI_GetIconFile("trophy"), false
     elseif ctype == "mount" then
         return DEFAULT_ICON_MOUNT, false
     elseif ctype == "pet" then

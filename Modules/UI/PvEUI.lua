@@ -1763,7 +1763,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                         local dungeon = dungeons[colIndex]
                         local iconX = startX + ((colIndex - 1) * (iconSize + consistentSpacing))
                         
-                        local iconFrame = CreateIcon(mplusCard, dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, false, nil, false)
+                        local iconFrame = CreateIcon(mplusCard, dungeon.texture or ns.UI_GetIconFile("question"), iconSize, false, nil, false)
                         local roundedX = math.floor(iconX + 0.5)
                         local roundedY = math.floor(rowY + 0.5)
                         iconFrame:SetPoint("TOPLEFT", roundedX, -roundedY)
@@ -1867,7 +1867,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                             end
                             ShowTooltip(self, {
                                 type = "custom",
-                                icon = dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark",
+                                icon = dungeon.texture or ns.UI_GetIconFile("question"),
                                 title = dungeon.name or (GetLocalizedText("VAULT_DUNGEON", "Dungeon")),
                                 lines = tooltipLines,
                             })
@@ -2130,7 +2130,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                     ["M+"] = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
                     ["World"] = "Interface\\Icons\\INV_Misc_Map_01"
                 }
-                return icons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark"
+                return icons[typeName] or ns.UI_GetIconFile("question")
             end
             
             local vaultY = 0  -- No top padding - start from 0
@@ -2800,9 +2800,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
 
     ShowTooltip(anchorFrame, {
         type = "custom",
-        -- Blizzard UI atlas (same pattern as StatisticsUI CreateIcon); avoids missing Interface\\Icons paths on some builds.
-        icon = "BonusLoot-Chest",
-        iconIsAtlas = true,
+        icon = ns.UI_GetIconFile("chest"),
         title = title,
         lines = lines,
         maxWidth = maxW,

@@ -266,7 +266,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local dialog, contentFrame = CreateExternalWindow({
         name = "CharacterBankMoneyLogPopup",
         title = (ns.L and ns.L["MONEY_LOGS_TITLE"]) or "Money Logs",
-        icon = "Interface\\Icons\\INV_Misc_Coin_01",
+        icon = ns.UI_GetIconFile("money_gold"),
         width = WINDOW_W,
         height = WINDOW_H,
         preventDuplicates = true,

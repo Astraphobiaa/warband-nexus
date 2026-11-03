@@ -271,8 +271,12 @@ local function ItemsBankSubTabIconApply(tex, tabInfo)
             return
         end
     end
-    tex:SetTexture(tabInfo.icon or tabInfo.iconFallback or "Interface\\Icons\\INV_Misc_QuestionMark")
-    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if tabInfo.icon or tabInfo.iconFallback then
+        tex:SetTexture(tabInfo.icon or tabInfo.iconFallback)
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    else
+        ns.UI_SetIcon(tex, "question")
+    end
     tex:SetSize(sz, sz)
 end
 

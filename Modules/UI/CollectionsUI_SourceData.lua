@@ -195,7 +195,7 @@ end
 
 -- Currency icon: shown next to the price on cost/amount rows.
 -- Default gold icon (fallback when currency cannot be identified)
-local CURRENCY_ICON_GOLD = "|TInterface\\Icons\\INV_Misc_Coin_01:14:14:0:0:64:64:4:60:4:60|t"
+local CURRENCY_ICON_GOLD = ns.UI_GetIconMarkup("money_gold", 14, 14)
 
 -- Smart currency icon resolver: parse cost text to identify actual currency and return correct icon.
 -- Uses C_CurrencyInfo API for dynamic lookup; caches results to avoid repeated API calls.

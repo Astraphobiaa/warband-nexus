@@ -95,6 +95,13 @@ do
     check(not has("Modules/UI/CharactersUI_Row.lua", '"AllianceEmblem"') and has("Modules/UI/CharactersUI_Row.lua", 'ns.UI_SetIcon(row.factionIcon, "faction_alliance")')
         and has("Modules/UI/CharactersUI_Row.lua", 'ns.UI_SetIcon(row.factionIcon, "faction_horde")'), "Character row faction column via registry emblems")
     check(not has("Modules/UI/SharedWidgets_Icons.lua", "PlusManz-") and has("Modules/UI/SharedWidgets_Icons.lua", 'ns.UI_GetIconFile("faction_horde")'), "GetFactionIcon: registry emblems, no PlusManz files")
+    local tc = "Modules/UI/SharedWidgets_TitleCard.lua"
+    check(not has(tc, "TAB_HEADER_ICONS") and not has(tc, "TAB_NAV_TEXTURE_FALLBACK") and not has(tc, "AssaultsMapBanner"),
+        "TitleCard: no Blizzard tab atlas or Interface\\Icons fallback tables")
+    check(not has(tc, "honorsystem-icon-prestige") and has(tc, 'ns.UI_GetIconFile("character")'), "Character-specific headers use the registry character icon")
+    check(not has(tc, "INV_Misc_QuestionMark") and not has("Modules/UI/SharedWidgets_Icons.lua", "INV_Misc_QuestionMark"),
+        "Unknown tab / failed atlas fall back to the registry question icon")
+    check(has("Modules/UI/SharedWidgets_Icons.lua", "if isAtlas and not (ns.UI_IsAddonMediaTexture"), "CreateIcon draws addon media as a file even with isAtlas")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

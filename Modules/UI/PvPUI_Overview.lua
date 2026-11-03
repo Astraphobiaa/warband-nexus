@@ -848,7 +848,7 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
                 headerLabel = GetLocalizedText("HEADER_FAVORITES", "Favorites"),
                 sectionUiKey = "pvpFavoritesExpanded",
                 defaultExpanded = false,
-                headerAtlas = "GM-icon-assistActive-hover",
+                headerAtlas = ns.UI_GetIconFile("favorite_on"),
                 visualOpts = { sectionPreset = "gold" },
             }
         end
@@ -858,7 +858,7 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
                 headerLabel = GetLocalizedText("HEADER_CHARACTERS", "Characters"),
                 sectionUiKey = "pvpCharactersExpanded",
                 defaultExpanded = false,
-                headerAtlas = "GM-icon-headCount",
+                headerAtlas = ns.UI_GetIconFile("character"),
                 visualOpts = nil,
             }
         end
@@ -878,7 +878,7 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
                 headerLabel = gName,
                 sectionUiKey = nil,
                 defaultExpanded = false,
-                headerAtlas = goldStyle and "GM-icon-assistActive-hover" or "GM-icon-headCount",
+                headerAtlas = goldStyle and ns.UI_GetIconFile("favorite_on") or ns.UI_GetIconFile("character"),
                 visualOpts = {
                     sectionPreset = goldStyle and "gold" or "accent",
                     useCharacterGroupExpand = true,

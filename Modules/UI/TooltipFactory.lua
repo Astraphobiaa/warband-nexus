@@ -114,7 +114,6 @@ end
 -- Layout constants
 local ICON_SIZE = 32
 local ICON_PADDING = 8
-local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 local function TintTooltipAccentLines(frame)
     if not frame then return end
@@ -414,9 +413,16 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     end
     
     -- API: Set icon (top-left corner)
+    -- iconPath: registry key (ns.UI_ICONS), atlas name (isAtlas), fileID or texture path.
     frame.SetIcon = function(self, iconPath, isAtlas)
         local tex = self.iconFrame.texture
-        if iconPath then
+        tex:SetVertexColor(1, 1, 1, 1)
+        if type(iconPath) == "string" and ns.UI_ICONS and ns.UI_ICONS[iconPath] then
+            ns.UI_SetIcon(tex, iconPath)
+        elseif iconPath and ns.UI_IsAddonMediaTexture and ns.UI_IsAddonMediaTexture(iconPath) then
+            tex:SetTexture(iconPath, nil, nil, "TRILINEAR")
+            tex:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
+        elseif iconPath then
             if isAtlas then
                 local ok = pcall(function()
                     tex:SetAtlas(iconPath, false)
@@ -424,8 +430,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 if ok then
                     tex:SetTexCoord(0, 1, 0, 1)
                 else
-                    tex:SetTexture("Interface\\Icons\\INV_Misc_Chest_03")
-                    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    ns.UI_SetIcon(tex, "chest")
                 end
             elseif type(iconPath) == "number" then
                 tex:SetTexture(iconPath)
@@ -435,8 +440,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
         else
-            tex:SetTexture(FALLBACK_ICON)
-            tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            ns.UI_SetIcon(tex, "question")
         end
         self.hasIcon = true
         self.iconFrame:Show()

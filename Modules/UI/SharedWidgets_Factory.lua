@@ -394,7 +394,7 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
     return row
 end
 
---- Blizzard achievement objective tracking: symmetric star (PetJournal-FavoritesIcon) + vertex tint by state.
+--- Blizzard achievement objective tracking: WN "track" action icon + vertex tint by state.
 --- Caller anchors the button from the right. Optional `opts.isDisabled` boolean or `function(): boolean` (e.g. plan complete).
 ---@return Button|nil
 function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, opts)
@@ -424,17 +424,7 @@ function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, op
 
     local function applyVisual(tracked, disabled)
         tex:SetTexCoord(0, 1, 0, 1)
-        local usedWnPin = ns.UI_ApplyWnActionIcon
-            and ns.UI_ApplyWnActionIcon(tex, "track", tracked, disabled)
-        if not usedWnPin then
-            if not (tex.SetAtlas and pcall(tex.SetAtlas, tex, "PetJournal-FavoritesIcon", true)) then
-                tex:SetTexture("Interface\\Icons\\INV_Misc_GroupLooking")
-                tex:SetTexCoord(0.12, 0.88, 0.12, 0.88)
-            end
-            tex:SetDesaturated(disabled)
-            local vc = ns.UI_WnIconVertexForState(tracked and not disabled, disabled)
-            tex:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 1)
-        end
+        ns.UI_ApplyWnActionIcon(tex, "track", tracked, disabled)
     end
 
     function btn:WnRefreshAchievementTrackPin()
@@ -2412,9 +2402,7 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
         local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
         closeIcon:SetSize(14, 14)
         closeIcon:SetPoint("CENTER")
-        if not (ns.UI_SetIcon and ns.UI_SetIcon(closeIcon, "close")) then
-            closeIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
-        end
+        ns.UI_SetIcon(closeIcon, "close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         closeBtn:SetScript("OnEnter", function() closeIcon:SetVertexColor(1, 0.2, 0.2) end)
         closeBtn:SetScript("OnLeave", function() closeIcon:SetVertexColor(0.9, 0.3, 0.3) end)

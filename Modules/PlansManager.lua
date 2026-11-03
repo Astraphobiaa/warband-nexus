@@ -26,6 +26,9 @@ end
 -- Unique AceEvent handler identity for PlansManager
 local PlansManagerEvents = {}
 
+-- Persisted on every custom plan row (db.global.customPlans[].icon); kept as-is for saved data.
+local CUSTOM_PLAN_STORED_ICON = "Bonus-Objective-Star"
+
 
 -- GetIllusions() is huge; To-Do / tracker call CheckPlanProgress many times per redraw.
 -- Short TTL avoids O(plans * illusions) while staying fresh enough for collection learns.
@@ -447,7 +450,7 @@ function WarbandNexus:GetResolvedPlanName(plan)
 end
 
 function WarbandNexus:GetResolvedPlanIcon(plan)
-    if not plan then return "Interface\\Icons\\INV_Misc_Note_06" end
+    if not plan then return ns.UI_GetIconFile and ns.UI_GetIconFile("checklist") end
     -- Toys: always try API (Blizzard_Collections may not have been loaded at resolve time)
     if plan.type == "toy" and plan.itemID then
         local apiIcon = self:GetPlanDisplayIcon(plan)
@@ -455,7 +458,12 @@ function WarbandNexus:GetResolvedPlanIcon(plan)
             return apiIcon
         end
     end
-    return plan.resolvedIcon or plan.icon or "Interface\\Icons\\INV_Misc_Note_06"
+    local icon = plan.resolvedIcon or plan.icon
+    -- Saved custom plans keep the atlas SaveCustomPlan stored; display the registry to-do icon instead.
+    if not icon or icon == CUSTOM_PLAN_STORED_ICON then
+        return ns.UI_GetIconFile and ns.UI_GetIconFile("checklist") or icon
+    end
+    return icon
 end
 
 function WarbandNexus:GetResolvedPlanSource(plan)
@@ -1512,7 +1520,7 @@ function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount, 
         type = "custom",
         name = title,
         source = description or ((ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan"),
-        icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
+        icon = CUSTOM_PLAN_STORED_ICON,  -- persisted atlas; GetResolvedPlanIcon displays the registry icon
         iconIsAtlas = true,  -- Mark as atlas
         isCustom = true,
         completed = false,

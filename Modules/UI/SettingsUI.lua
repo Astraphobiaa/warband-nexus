@@ -996,8 +996,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
     local arrow = dropdown:CreateTexture(nil, "ARTWORK")
     arrow:SetSize(16, 16)
     arrow:SetPoint("RIGHT", -12, 0)
-    arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
-    arrow:SetTexCoord(0, 1, 0, 1)
+    ns.UI_SetIcon(arrow, "chevron_down")
     
     -- Get values function
     local function GetValues()

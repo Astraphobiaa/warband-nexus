@@ -70,10 +70,10 @@ local function ResolvePopupWidth()
 end
 
 local MAIL_ICON_FROM = "Interface\\Icons\\INV_Letter_15"
-local MAIL_ICON_SUBJECT = "Interface\\Icons\\INV_Misc_Note_06"
-local MAIL_ICON_GOLD = "Interface\\MoneyFrame\\UI-GoldIcon"
+local MAIL_ICON_SUBJECT = ns.UI_GetIconFile("scroll")
+local MAIL_ICON_GOLD = ns.UI_GetIconFile("money_gold")
 local MAIL_ICON_COD = "Interface\\Icons\\INV_Letter_16"
-local MAIL_ICON_ITEMS = "Interface\\Icons\\INV_Misc_Enggizmos_19"
+local MAIL_ICON_ITEMS = ns.UI_GetIconFile("crate")
 
 local function L(key, fallback)
     return (ns.L and ns.L[key]) or fallback
@@ -127,8 +127,15 @@ local function ApplyRowIcon(host, iconPath, size)
     local tex = host:CreateTexture(nil, "ARTWORK")
     tex:SetSize(size, size)
     tex:SetPoint("LEFT", 0, 0)
-    tex:SetTexture(iconPath or "Interface\\Icons\\INV_Misc_QuestionMark")
-    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if not iconPath then
+        ns.UI_SetIcon(tex, "question")
+    elseif ns.UI_IsAddonMediaTexture(iconPath) then
+        tex:SetTexture(iconPath)
+        tex:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
+    else
+        tex:SetTexture(iconPath)
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
     return tex
 end
 
@@ -303,7 +310,7 @@ local function PaintItemRow(parent, item, y, x, cellW)
         if ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
             ApplyVisuals(iconHost, ns.UI_GetIconWellBackdrop(), ns.UI_GetIconWellBorder())
         end
-        local iconPath = item.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+        local iconPath = item.icon or ns.UI_GetIconFile("question")
         if type(iconPath) == "string" and iconPath ~= "" then
             if CreateIcon then
                 local iconFrame = CreateIcon(iconHost, iconPath, iconTexSz, false, nil, true)
@@ -316,7 +323,11 @@ local function PaintItemRow(parent, item, y, x, cellW)
                 iconTex:SetSize(iconTexSz, iconTexSz)
                 iconTex:SetPoint("CENTER")
                 iconTex:SetTexture(iconPath)
-                iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                if ns.UI_IsAddonMediaTexture(iconPath) then
+                    iconTex:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
+                else
+                    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                end
             end
         end
     end

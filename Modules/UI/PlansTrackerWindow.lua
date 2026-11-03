@@ -194,14 +194,17 @@ local MAX_HEIGHT = 800
 -- Fallback icons by plan type (ensures every card type has a visible icon)
 local PLAN_TYPE_FALLBACK_ICONS = {
     mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-    pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
     toy = "Interface\\Icons\\INV_Misc_Toy_07",
     illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
-    achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
     title = "Interface\\Icons\\INV_Scroll_11",
     weekly_vault = "Interface\\Icons\\INV_Misc_Chest_03",
-    daily_quests = "Interface\\Icons\\INV_Misc_Note_06",
-    custom = "Interface\\Icons\\INV_Misc_Map_01",
+}
+-- Plan types whose fallback is an addon icon registry glyph (ns.UI_ICONS key, resolved at draw time).
+local PLAN_TYPE_FALLBACK_ICON_KEYS = {
+    pet = "paw",
+    achievement = "trophy",
+    daily_quests = "calendar",
+    custom = "checklist",
 }
 
 -- Display order and labels for categories (localized at runtime)
@@ -819,11 +822,11 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
     local rows = {}
     local szLg = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
-    local classMk = IconMk and IconMk("class", szLg) or format("|A:Class:%d:%d|a", szLg, szLg)
-    local lootMk = IconMk and IconMk("loot", szLg) or format("|A:Banker:%d:%d|a", szLg, szLg)
-    local questMk = IconMk and IconMk("quest", szLg) or format("|A:Islands-QuestTurnin:%d:%d|a", szLg, szLg)
-    local locMk = IconMk and IconMk("location", szLg) or format("|A:poi-islands-table:%d:%d|a", szLg, szLg)
-    -- Inline markup matches PlanCardFactory:CreateSourceInfo (Loot / Quest / Location atlases).
+    local classMk = IconMk and IconMk("class", szLg) or ""
+    local lootMk = IconMk and IconMk("loot", szLg) or ""
+    local questMk = IconMk and IconMk("quest", szLg) or ""
+    local locMk = IconMk and IconMk("location", szLg) or ""
+    -- Inline markup matches PlanCardFactory:CreateSourceInfo (Loot / Quest / Location registry icons).
     local function addRow(iconMarkup, labelKey, fallback, value, valueColor)
         if not value or value == "" then return end
         local label = ns.UI_NormalizeColonLabelSpacing((L and L[labelKey]) or fallback)
@@ -896,10 +899,10 @@ local function BuildPlanCriteriaItems(plan)
     end
     local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
-    local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
-    local lootMk14 = IconMk and IconMk("loot", szMd) or format("|A:Banker:%d:%d|a", szMd, szMd)
-    local questMk14 = IconMk and IconMk("quest", szMd) or format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
-    local locMk14 = IconMk and IconMk("location", szMd) or format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
+    local classMk14 = IconMk and IconMk("class", szMd) or ""
+    local lootMk14 = IconMk and IconMk("loot", szMd) or ""
+    local questMk14 = IconMk and IconMk("quest", szMd) or ""
+    local locMk14 = IconMk and IconMk("location", szMd) or ""
     if first.vendor then
         row(classMk14, "VENDOR_LABEL", "Vendor:", first.vendor)
     elseif first.npc then
@@ -950,10 +953,10 @@ function ns.UI_BuildPlanCriteriaItemsAll(plan)
     local body = PCol("body")
     local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
-    local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
-    local lootMk14 = IconMk and IconMk("loot", szMd) or format("|A:Banker:%d:%d|a", szMd, szMd)
-    local questMk14 = IconMk and IconMk("quest", szMd) or format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
-    local locMk14 = IconMk and IconMk("location", szMd) or format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
+    local classMk14 = IconMk and IconMk("class", szMd) or ""
+    local lootMk14 = IconMk and IconMk("loot", szMd) or ""
+    local questMk14 = IconMk and IconMk("quest", szMd) or ""
+    local locMk14 = IconMk and IconMk("location", szMd) or ""
     local function row(iconMarkup, key, fallback, value)
         if not value or value == "" then return end
         local label = ns.UI_NormalizeColonLabelSpacing((L and L[key]) or fallback)
@@ -1098,10 +1101,10 @@ function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
     local body = PCol("body")
     local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
-    local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
-    local lootMk14 = IconMk and IconMk("loot", szMd) or format("|A:Banker:%d:%d|a", szMd, szMd)
-    local questMk14 = IconMk and IconMk("quest", szMd) or format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
-    local locMk14 = IconMk and IconMk("location", szMd) or format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
+    local classMk14 = IconMk and IconMk("class", szMd) or ""
+    local lootMk14 = IconMk and IconMk("loot", szMd) or ""
+    local questMk14 = IconMk and IconMk("quest", szMd) or ""
+    local locMk14 = IconMk and IconMk("location", szMd) or ""
     local function row(iconMarkup, key, fallback, value)
         if not value or value == "" then return end
         local label = ns.UI_NormalizeColonLabelSpacing((L and L[key]) or fallback)
@@ -1611,7 +1614,9 @@ local function RefreshTrackerContentImmediate(reuseFullWidth)
             end
 
             local resolvedName = FormatTextNumbers((WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
-            local resolvedIcon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
+            local fallbackIconKey = PLAN_TYPE_FALLBACK_ICON_KEYS[plan.type]
+            local resolvedIcon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon
+                or (fallbackIconKey and ns.UI_GetIconFile(fallbackIconKey)) or PLAN_TYPE_FALLBACK_ICONS[plan.type]
             local iconIsAtlas = plan.iconAtlas ~= nil
             if plan.type == "custom" and plan.icon and plan.icon ~= "" then iconIsAtlas = true end
             if type(resolvedIcon) == "string" and ns.Utilities and ns.Utilities.IsAtlasName and ns.Utilities:IsAtlasName(resolvedIcon) then
@@ -2476,15 +2481,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local gearTex = gearBtn:CreateTexture(nil, "ARTWORK")
     gearTex:SetSize(16, 16)
     gearTex:SetPoint("CENTER")
-    -- IconRegistry "settings" (questlog-icon-setting; "mechagon-projects" has no 12.1.5 FrameXML ref).
-    -- The old Trade_Engineering spell icon, desaturated, rendered as a muddy blob that matched
-    -- neither the chevron next to it nor the other windows.
-    if not ns.UI_SetIcon(gearTex, "settings") then
-        gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
-        gearTex:SetTexCoord(0.06, 0.94, 0.06, 0.94)
-        gearTex:SetDesaturated(true)
-    end
-    -- Idle tint on BOTH paths, same as the chevron beside it, so hover/leave stay symmetric.
+    -- IconRegistry "settings" glyph, matching the chevron next to it and the other windows.
+    ns.UI_SetIcon(gearTex, "settings")
+    -- Idle tint, same as the chevron beside it, so hover/leave stay symmetric.
     ApplyTrackerUtilityIconStyle(gearTex, false)
 
     titleText:SetPoint("RIGHT", gearBtn, "LEFT", -10, 0)

@@ -79,45 +79,39 @@ end
 -- EMPTY STATE CARD (Standardized "no data" state for all tabs)
 
 -- Per-tab empty state configuration
--- Uses the same atlas icons as TAB_HEADER_ICONS but larger and desaturated
+-- Icons come from EMPTY_STATE_ICON_KEYS (registry); `atlas` only where no registry key exists yet
 local EMPTY_STATE_CONFIG = {
     characters = {
-        atlas = "poi-town",
         titleKey = "EMPTY_CHARACTERS_TITLE",
         descKey = "EMPTY_CHARACTERS_DESC",
         titleFallback = "No Characters Found",
         descFallback = "Log in to your characters to start tracking them.\nCharacter data is collected automatically on each login.",
     },
     items = {
-        atlas = "Banker",
         titleKey = "EMPTY_ITEMS_TITLE",
         descKey = "EMPTY_ITEMS_DESC",
         titleFallback = "No Items Cached",
         descFallback = "Open your Warband Bank or Personal Bank to scan items.\nItems are cached automatically on first visit.",
     },
     items_inventory = {
-        atlas = "Backpack",
         titleKey = "EMPTY_INVENTORY_TITLE",
         descKey = "EMPTY_INVENTORY_DESC",
         titleFallback = "No Items in Inventory",
         descFallback = "Your inventory bags are empty.",
     },
     items_personal = {
-        atlas = "Banker",
         titleKey = "EMPTY_PERSONAL_BANK_TITLE",
         descKey = "EMPTY_PERSONAL_BANK_DESC",
         titleFallback = "No Items in Personal Bank",
         descFallback = "Open your Personal Bank to scan items.\nItems are cached automatically on first visit.",
     },
     items_warband = {
-        atlas = "Mobile-WarbandIcon",
         titleKey = "EMPTY_WARBAND_BANK_TITLE",
         descKey = "EMPTY_WARBAND_BANK_DESC",
         titleFallback = "No Items in Warband Bank",
         descFallback = "Open your Warband Bank to scan items.\nItems are cached automatically on first visit.",
     },
     items_guild = {
-        atlas = "communities-icon-chat",
         titleKey = "EMPTY_GUILD_BANK_TITLE",
         descKey = "EMPTY_GUILD_BANK_DESC",
         titleFallback = "No Items in Guild Bank",
@@ -130,49 +124,42 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "No results",
     },
     storage = {
-        atlas = "Quartermaster",
         titleKey = "EMPTY_STORAGE_TITLE",
         descKey = "EMPTY_STORAGE_DESC",
         titleFallback = "No Storage Data",
         descFallback = "Items are scanned when you open banks or bags.\nVisit a bank to start tracking your storage.",
     },
     plans = {
-        atlas = "poi-workorders",
         titleKey = "EMPTY_PLANS_TITLE",
         descKey = "EMPTY_PLANS_DESC",
         titleFallback = "No Plans Yet",
         descFallback = "Browse Mounts, Pets, Toys, or Achievements above\nto add collection goals and track your progress.",
     },
     plans_active = {
-        atlas = "poi-workorders",
         titleKey = "EMPTY_PLANS_ACTIVE_TITLE",
         descKey = "EMPTY_PLANS_ACTIVE_DESC",
         titleFallback = "No To-Do Items Yet",
         descFallback = "Browse Mounts, Pets, Toys, or Achievements above to add goals to your list,\nor use Add Vault to track Great Vault progress.",
     },
     plans_daily_tasks = {
-        atlas = "questlog-questtypeicon-weekly",
         titleKey = "EMPTY_PLANS_WEEKLY_TITLE",
         descKey = "EMPTY_PLANS_WEEKLY_DESC",
         titleFallback = "No Weekly Progress Yet",
         descFallback = "Use Add Quest above to start tracking weekly quest progress\non your characters.",
     },
     reputation = {
-        atlas = "MajorFactions_MapIcons_Centaur64",
         titleKey = "EMPTY_REPUTATION_TITLE",
         descKey = "EMPTY_REPUTATION_DESC",
         titleFallback = "No Reputation Data",
         descFallback = "Reputations are scanned automatically on login.\nLog in to a character to start tracking faction standings.",
     },
     currency = {
-        atlas = "AzeriteReady",
         titleKey = "EMPTY_CURRENCY_TITLE",
         descKey = "EMPTY_CURRENCY_DESC",
         titleFallback = "No Currency Data",
         descFallback = "Currencies are tracked automatically across your characters.\nLog in to a character to start tracking currencies.",
     },
     pve = {
-        atlas = "Tormentors-Boss",
         titleKey = "EMPTY_PVE_TITLE",
         descKey = "EMPTY_PVE_DESC",
         titleFallback = "No PvE Data",
@@ -180,126 +167,110 @@ local EMPTY_STATE_CONFIG = {
     },
     -- Weekly Vault Tracker filter: no character has claimable vault (cached + live check)
     pve_vault = {
-        atlas = "Tormentors-Boss",
         titleKey = "PVE_VAULT_TRACKER_EMPTY_TITLE",
         descKey = "PVE_VAULT_TRACKER_EMPTY_DESC",
         titleFallback = "No vault rows yet",
         descFallback = "No tracked character has weekly vault progress saved yet.\nTurn off Weekly Vault Tracker to see full PvE progress.",
     },
     statistics = {
-        atlas = "racing",
         titleKey = "EMPTY_STATISTICS_TITLE",
         descKey = "EMPTY_STATISTICS_DESC",
         titleFallback = "No Statistics Available",
         descFallback = "Statistics are gathered from your tracked characters.\nLog in to a character to start collecting data.",
     },
     collections = {
-        atlas = "dragon-rostrum",
         titleKey = "COLLECTIONS_COMING_SOON_TITLE",
         descKey = "COLLECTIONS_COMING_SOON_DESC",
         titleFallback = "Coming Soon",
         descFallback = "Collection overview (mounts, pets, toys) will be available here.",
     },
     collections_recent = {
-        atlas = "poi-workorders",
         titleKey = "COLLECTIONS_RECENT_TAB_EMPTY",
         descKey = "COLLECTIONS_RECENT_TAB_EMPTY_DESC",
         titleFallback = "Nothing recorded yet.",
         descFallback = "Recent mounts, pets, toys, and achievements you earn will appear here.",
     },
     collections_mounts = {
-        atlas = "dragon-rostrum",
         titleKey = "EMPTY_COLLECTIONS_MOUNTS_TITLE",
         descKey = "EMPTY_COLLECTIONS_MOUNTS_DESC",
         titleFallback = "No mounts to show",
         descFallback = "Adjust search or filters, or wait for the mount journal to finish loading.",
     },
     collections_pets = {
-        atlas = "WildBattlePetCapturable",
         titleKey = "EMPTY_COLLECTIONS_PETS_TITLE",
         descKey = "EMPTY_COLLECTIONS_PETS_DESC",
         titleFallback = "No pets to show",
         descFallback = "Adjust search or filters, or wait for the pet journal to finish loading.",
     },
     collections_toys = {
-        atlas = "CreationCatalyst-32x32",
         titleKey = "EMPTY_COLLECTIONS_TOYS_TITLE",
         descKey = "EMPTY_COLLECTIONS_TOYS_DESC",
         titleFallback = "No toys to show",
         descFallback = "Adjust search or filters, or wait for the toy box to finish loading.",
     },
     collections_achievements = {
-        atlas = "Achievement-Icon",
         titleKey = "EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE",
         descKey = "EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC",
         titleFallback = "No achievements to show",
         descFallback = "Adjust search or filters, or try /reload if the achievement list stays blank.",
     },
     plans_achievement = {
-        atlas = "Achievement-Icon",
         titleKey = "PLANS_ACHIEVEMENTS_EMPTY_TITLE",
         descKey = "PLANS_ACHIEVEMENTS_EMPTY_HINT",
         titleFallback = "No achievements to display",
         descFallback = "Add achievements from this list to your To-Do, or change Show Planned / Show Completed. The list fills as achievements are scanned; try /reload if nothing appears.",
     },
     plans_mount = {
-        atlas = "dragon-rostrum",
         titleKey = "EMPTY_PLANS_MOUNT_TITLE",
         descKey = "EMPTY_PLANS_MOUNT_DESC",
         titleFallback = "No mounts to show",
         descFallback = "Add mounts from this tab to your To-Do, or adjust Show Planned / Show Completed.",
     },
     plans_pet = {
-        atlas = "WildBattlePetCapturable",
         titleKey = "EMPTY_PLANS_PET_TITLE",
         descKey = "EMPTY_PLANS_PET_DESC",
         titleFallback = "No pets to show",
         descFallback = "Add pets from this tab to your To-Do, or adjust Show Planned / Show Completed.",
     },
     plans_toy = {
-        atlas = "CreationCatalyst-32x32",
         titleKey = "EMPTY_PLANS_TOY_TITLE",
         descKey = "EMPTY_PLANS_TOY_DESC",
         titleFallback = "No toys to show",
         descFallback = "Add toys from this tab to your To-Do, or adjust Show Planned / Show Completed.",
     },
     plans_illusion = {
-        atlas = "UpgradeItem-32x32",
         titleKey = "EMPTY_PLANS_ILLUSION_TITLE",
         descKey = "EMPTY_PLANS_ILLUSION_DESC",
         titleFallback = "No illusions to show",
         descFallback = "Add illusions from this tab to your To-Do, or adjust Show Planned / Show Completed.",
     },
     plans_title = {
-        atlas = "poi-legendsoftheharanir",
         titleKey = "EMPTY_PLANS_TITLE_TAB_TITLE",
         descKey = "EMPTY_PLANS_TITLE_TAB_DESC",
         titleFallback = "No titles to show",
         descFallback = "Add titles from this tab to your To-Do, or adjust Show Planned / Show Completed.",
     },
     gear = {
-        atlas = "poi-helm",
         titleKey = "GEAR_NO_TRACKED_CHARACTERS_TITLE",
         descKey = "GEAR_NO_TRACKED_CHARACTERS_DESC",
         titleFallback = "No tracked characters",
         descFallback = "Log in to a character to start tracking gear.",
     },
     gear_filter = {
-        atlas = "poi-helm",
         titleKey = "GEAR_FILTER_EMPTY_TITLE",
         descKey = "GEAR_FILTER_EMPTY_DESC",
         titleFallback = "No characters match the level filter",
         descFallback = "Turn off Hide or lower the level threshold using the Hide button above to show characters again.",
     },
     professions = {
-        atlas = "Professions-Icon-Accept-Order",
         titleFallback = "No profession data",
         descKey = "NO_PROFESSIONS_DATA",
         descFallback = "Open your profession window (default: K) on each character to collect data.",
     },
 }
 
---- Registry icon per empty-state key (Modules/UI/IconRegistry.lua). Keys without an entry keep their atlas.
+--- Registry icon per empty-state key (Modules/UI/IconRegistry.lua). Keys without an entry keep their atlas,
+--- or fall back to the generic "character" icon when they have none.
 local EMPTY_STATE_ICON_KEYS = {
     characters = "character",
     items = "bag", items_inventory = "bag", items_personal = "vault", items_warband = "warband", items_guild = "guild",
@@ -396,7 +367,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     if opts.titleText or opts.descText or opts.atlas then
         local base = config or {}
         config = {
-            atlas = opts.atlas or base.atlas or "shop-icon-housing-characters-up",
+            atlas = opts.atlas or base.atlas,
             titleKey = base.titleKey,
             descKey = base.descKey,
             titleFallback = opts.titleText or base.titleFallback or "No Data",
@@ -405,7 +376,6 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     end
     if not config then
         config = {
-            atlas = "shop-icon-housing-characters-up",
             titleKey = "NO_DATA",
             descKey = nil,
             titleFallback = "No Data",
@@ -415,7 +385,10 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
 
     local atlasForIcon = opts.atlas or config.atlas
     -- Empty states show the addon registry icon (theme tint) for their tab / sub-view instead of a Blizzard atlas.
-    local registryIconKey = (not opts.atlas) and EMPTY_STATE_ICON_KEYS[configTabName] or nil
+    local registryIconKey = nil
+    if not opts.atlas then
+        registryIconKey = EMPTY_STATE_ICON_KEYS[configTabName] or ((not config.atlas) and "character") or nil
+    end
     local function ApplyEmptyStateIcon(tex)
         if registryIconKey and ns.UI_SetIcon and ns.UI_SetIcon(tex, registryIconKey) then
             if ns.UI_TrackRegistryIconTint then ns.UI_TrackRegistryIconTint(tex, registryIconKey) end

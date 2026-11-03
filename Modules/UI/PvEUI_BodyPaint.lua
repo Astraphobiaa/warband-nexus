@@ -1391,7 +1391,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     headerLabel = GetLocalizedText("HEADER_FAVORITES", "Favorites"),
                     sectionUiKey = "pveFavoritesExpanded",
                     defaultExpanded = false,
-                    headerAtlas = "GM-icon-assistActive-hover",
+                    headerAtlas = ns.UI_GetIconFile("favorite_on"),
                     visualOpts = { sectionPreset = "gold" },
                     layoutTailFrame = layoutTailForShell,
                     totalLH = totalLHBox,
@@ -1409,7 +1409,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     headerLabel = GetLocalizedText("HEADER_CHARACTERS", "Characters"),
                     sectionUiKey = "pveCharactersExpanded",
                     defaultExpanded = false,
-                    headerAtlas = "GM-icon-headCount",
+                    headerAtlas = ns.UI_GetIconFile("character"),
                     visualOpts = nil,
                     layoutTailFrame = layoutTailForShell,
                     totalLH = totalLHBox,
@@ -1437,7 +1437,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     headerLabel = gName,
                     sectionUiKey = nil,
                     defaultExpanded = false,
-                    headerAtlas = goldStyle and "GM-icon-assistActive-hover" or "GM-icon-headCount",
+                    headerAtlas = goldStyle and ns.UI_GetIconFile("favorite_on") or ns.UI_GetIconFile("character"),
                     visualOpts = {
                         sectionPreset = goldStyle and "gold" or "accent",
                         useCharacterGroupExpand = true,
@@ -2190,7 +2190,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                             else
                                 L.ShowTooltip(self, {
                                     type = "custom",
-                                    icon = val.tooltipIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
+                                    icon = val.tooltipIcon or ns.UI_GetIconFile("question"),
                                     title = val.tooltipTitle or (GetLocalizedText("TAB_CURRENCY", "Currency")),
                                     lines = val.tooltip,
                                 })

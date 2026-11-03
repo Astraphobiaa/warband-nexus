@@ -284,11 +284,12 @@ function M.BuildInstanceCard(parent, group, cardSize)
     art:SetPoint("BOTTOM", card, "BOTTOM", 0, 28)
     art:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     local instanceArt = GetSavedInstanceArt(group)
-    art:SetTexture(instanceArt or "Interface\\Icons\\INV_Misc_QuestionMark")
     if not instanceArt then
+        ns.UI_SetIcon(art, "question")
         art:SetDesaturated(true)
         art:SetVertexColor(0.65, 0.65, 0.65, 1)
     else
+        art:SetTexture(instanceArt)
         art:SetDesaturated(false)
         art:SetVertexColor(1, 1, 1, 1)
     end

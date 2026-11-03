@@ -929,8 +929,13 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
         local trackIcon = rowFrame:CreateTexture(nil, "ARTWORK")
         trackIcon:SetSize(trackIconSize, trackIconSize)
         trackIcon:SetPoint("LEFT", rowFrame, "LEFT", leftPad, 0)
-        trackIcon:SetTexture(trackIcons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark")
-        trackIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local trackFile = trackIcons[typeName]
+        if trackFile then
+            trackIcon:SetTexture(trackFile)
+            trackIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        else
+            ns.UI_SetIcon(trackIcon, "question")
+        end
 
         local typeDisplayName = typeName
         if typeName == "Raid" then

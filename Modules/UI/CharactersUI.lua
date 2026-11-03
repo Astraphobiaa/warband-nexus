@@ -436,18 +436,8 @@ function WarbandNexus:DrawCharacterList(parent)
                 if secQuick.RegisterForClicks then
                     secQuick:RegisterForClicks("LeftButtonUp")
                 end
-                local okAtlas = false
-                if secQuick.SetNormalAtlas then
-                    okAtlas = pcall(function()
-                        secQuick:SetNormalAtlas("GM-icon-assistActive-hover")
-                    end)
-                end
-                if not okAtlas then
-                    local tex = (secQuick.GetNormalTexture and secQuick:GetNormalTexture())
-                    if tex then
-                        tex:SetTexture("Interface\\Icons\\Achievement_Reputation_08")
-                        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                    end
+                if secQuick.SetNormalTexture then
+                    secQuick:SetNormalTexture(ns.UI_GetIconFile("favorite_on"))
                 end
                 secQuick:SetScript("OnClick", function(btn)
                     if ns.UI_ShowCharacterSectionsToolbarMenu then
@@ -712,7 +702,7 @@ function WarbandNexus:DrawCharacterList(parent)
     divider:SetColorTexture(divBorder[1], divBorder[2], divBorder[3], 0.45)
 
     -- Left block: Total Gold (icon + label + value)
-    local tgIcon = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)
+    local tgIcon = CreateIcon(totalGoldCard, ns.UI_GetIconFile("chest"), 36, false, nil, true)
     tgIcon:Show()
 
     local tgTextContainer = (ns.UI.Factory and ns.UI.Factory:CreateContainer(totalGoldCard, 220, 64, false))
@@ -1345,8 +1335,8 @@ function WarbandNexus:DrawCharacterList(parent)
                 end
                 ApplySectionToggleHeight(favoritesContent, isExpanded)
             end,
-            "GM-icon-assistActive-hover",
-            true,
+            ns.UI_GetIconFile("favorite_on"),
+            false,
             nil,
             nil,
             SP.HeaderOpts(parent, "chr:hdr:favorites", favoritesVisualOpts)
@@ -1405,7 +1395,7 @@ function WarbandNexus:DrawCharacterList(parent)
             grpVisualOpts.useFullParentWidth = true
             grpVisualOpts.sectionStackWidth = sectionStackW
             local grpTitle = gMeta.name or gid
-            local grpHeaderAtlas = isFavHeader and "GM-icon-assistActive-hover" or "GM-icon-headCount"
+            local grpHeaderIcon = ns.UI_GetIconFile(isFavHeader and "favorite_on" or "character")
             local grpHeader, grpExpandIcon, grpIcon, grpHeaderText = CreateCollapsibleHeader(
                 parent,
                 grpTitle,
@@ -1424,8 +1414,8 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                     ApplySectionToggleHeight(grpContent, isExpanded)
                 end,
-                grpHeaderAtlas,
-                true,
+                grpHeaderIcon,
+                false,
                 nil,
                 nil,
                 SP.HeaderOpts(parent, "chr:hdr:cgrp_" .. tostring(gid), grpVisualOpts)
@@ -1508,8 +1498,8 @@ function WarbandNexus:DrawCharacterList(parent)
                 end
                 ApplySectionToggleHeight(charactersContent, isExpanded)
             end,
-            "GM-icon-headCount",
-            true,
+            ns.UI_GetIconFile("character"),
+            false,
             nil,
             nil,
             SP.HeaderOpts(parent, "chr:hdr:characters", charVisualOpts)

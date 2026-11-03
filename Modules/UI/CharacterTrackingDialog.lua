@@ -327,7 +327,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
         dialog, contentFrame, header = CreateExternalWindow({
             name = "TrackingChangeDialog",
             title = (ns.L and ns.L["CONFIRM_ACTION"]) or "Confirm Action",
-            icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+            icon = ns.UI_GetIconFile("question"),
             width = 320,
             height = 160,
             preventDuplicates = true,

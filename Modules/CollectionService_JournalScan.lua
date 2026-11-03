@@ -576,7 +576,7 @@ COLLECTION_CONFIGS = {
                 titleString = titleString,  -- Original format with %s
                 playerTitle = playerTitle,  -- Boolean: true = suffix (name Title), false = prefix (Title name)
                 collected = isKnown,
-                iconAtlas = "poi-legendsoftheharanir",  -- Atlas icon for titles (matches TYPE_ICONS.title)
+                iconAtlas = ns.UI_GetIconFile and ns.UI_GetIconFile("scroll"),  -- registry scroll file; CreateIcon draws our media as a file even when flagged atlas (RAM-only field)
                 icon = nil,  -- No texture icon, use atlas only
                 source = (ns.L and ns.L["FALLBACK_PLAYER_TITLE"]) or "Player Title",
                 type = "title",

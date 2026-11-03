@@ -351,7 +351,7 @@ function CharRowCb.FavOnEnter(self)
     local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, self.charKey)
     ShowTooltip(self, {
         type = "custom",
-        icon = "Interface\\Icons\\Achievement_GuildPerk_HappyHour",
+        icon = "favorite_on",
         title = isFav and ((ns.L and ns.L["REMOVE_FROM_FAVORITES"]) or "Remove from Favorites") or ((ns.L and ns.L["ADD_TO_FAVORITES"]) or "Add to Favorites"),
         description = (ns.L and ns.L["FAVORITES_TOOLTIP"]) or "Favorite characters appear at the top of the list",
         lines = {
@@ -709,7 +709,7 @@ function CharRowCb.DeleteOnClick(self)
     local dialog, contentFrame = CreateExternalWindow({
         name = "DeleteCharacterDialog",
         title = (ns.L and ns.L["DELETE_CHARACTER_TITLE"]) or "Delete Character?",
-        icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        icon = ns.UI_GetIconFile("warning"),
         width = 420,
         height = 180,
     })
@@ -804,7 +804,7 @@ function CharRowCb.DeleteOnEnter(self)
     local removeFromTrackingFmt = (ns.L and ns.L["REMOVE_FROM_TRACKING_FORMAT"]) or "Remove %s from tracking"
     ShowTooltip(self, {
         type = "custom",
-        icon = "Interface\\Icons\\Spell_Shadow_SacrificialShield",
+        icon = "close",
         title = (ns.L and ns.L["DELETE_CHARACTER"]) or "Delete Character",
         titleColor = {1, 0.4, 0},
         description = string.format(removeFromTrackingFmt, self.charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")),
@@ -975,7 +975,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         elseif char.faction == "Horde" then
             ns.UI_SetIcon(row.factionIcon, "faction_horde")
         else
-            row.factionIcon:SetAtlas("bfa-landingbutton-alliance-up")
+            ns.UI_SetIcon(row.factionIcon, "faction_alliance")  -- unknown faction keeps the Alliance emblem
         end
         row.factionIcon:Show()
     elseif row.factionIcon then
@@ -1343,16 +1343,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.trackingBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     if row.trackingBtn.icon then
         if isCharTracked then
-            local ok = pcall(row.trackingBtn.icon.SetAtlas, row.trackingBtn.icon, "common-icon-checkmark", false)
-            if not ok then
-                row.trackingBtn.icon:SetTexture("Interface\\Icons\\Ability_Hunter_BeastTaming")
-            end
+            if ns.UI_SetIcon then ns.UI_SetIcon(row.trackingBtn.icon, "status_ok") end
             row.trackingBtn.icon:SetVertexColor(0.35, 1, 0.45)
         else
-            local ok = pcall(row.trackingBtn.icon.SetAtlas, row.trackingBtn.icon, "common-icon-redx", false)
-            if not ok then
-                row.trackingBtn.icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
-            end
+            if ns.UI_SetIcon then ns.UI_SetIcon(row.trackingBtn.icon, "status_fail") end
             row.trackingBtn.icon:SetVertexColor(1, 0.55, 0.42)
         end
     end
@@ -1374,12 +1368,23 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)
         if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(rb.up) end
         rb.up:SetPoint("CENTER", -11, 0)
-        rb.up:SetNormalAtlas("housing-floor-arrow-up-default")
+        -- registry glyph on a pooled row: theme tint, re-applied on theme toggle
+        if ns.UI_GetIconFile then
+            rb.up:SetNormalTexture(ns.UI_GetIconFile("chevron_up"))
+            if ns.UI_SetIcon(rb.up:GetNormalTexture(), "chevron_up") and ns.UI_TrackRegistryIconTint then
+                ns.UI_TrackRegistryIconTint(rb.up:GetNormalTexture(), "chevron_up")
+            end
+        end
         rb.up:EnableMouse(true)
         rb.down = ns.UI.Factory:CreateButton(rb, 18, 18, true)
         if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(rb.down) end
         rb.down:SetPoint("CENTER", 11, 0)
-        rb.down:SetNormalAtlas("housing-floor-arrow-down-default")
+        if ns.UI_GetIconFile then
+            rb.down:SetNormalTexture(ns.UI_GetIconFile("chevron_down"))
+            if ns.UI_SetIcon(rb.down:GetNormalTexture(), "chevron_down") and ns.UI_TrackRegistryIconTint then
+                ns.UI_TrackRegistryIconTint(rb.down:GetNormalTexture(), "chevron_down")
+            end
+        end
         rb.down:EnableMouse(true)
         row.reorderButtons = rb
     else
@@ -1518,7 +1523,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             -- Add icon texture
             local icon = deleteBtn:CreateTexture(nil, "ARTWORK")
             icon:SetAllPoints()
-            icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+            if ns.UI_SetIcon then ns.UI_SetIcon(icon, "close") end
             StyleCharacterDeleteIcon(icon, false)
             deleteBtn.texture = icon
             deleteBtn.icon = icon

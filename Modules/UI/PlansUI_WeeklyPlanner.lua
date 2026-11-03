@@ -143,7 +143,7 @@ function M.ShowDailyPlanDialog(editPlan)
     local dialog, contentFrame = CreateExternalWindow({
         name = isEdit and "WeeklyProgressEditDialog" or "DailyPlanDialog",
         title = (ns.L and ns.L[titleKey]) or (isEdit and "Edit Weekly Progress" or "Track Weekly Progress"),
-        icon = "Interface\\Icons\\INV_Misc_Note_06",
+        icon = ns.UI_GetIconFile("calendar"),
         width = DIALOG_W,
         height = DIALOG_H,
     })
@@ -156,7 +156,7 @@ function M.ShowDailyPlanDialog(editPlan)
 
     local _, englishRace = UnitRace("player")
     local gender = UnitSex("player")
-    local raceAtlas = ns.UI_GetRaceIcon and ns.UI_GetRaceIcon(englishRace, gender) or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local raceAtlas = ns.UI_GetRaceIcon and ns.UI_GetRaceIcon(englishRace, gender) or ns.UI_GetIconFile("question")
 
     local iconContainer = Factory:CreateContainer(charFrame, 32, 32)
     iconContainer:SetPoint("LEFT", 10, 0)
@@ -542,13 +542,13 @@ function WarbandNexus:ShowDailyPlanExistsDialog(characterName, characterRealm)
     local dialog, contentFrame = CreateExternalWindow({
         name = "DailyPlanDialog",
         title = (ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Midnight Quest Tracker",
-        icon = "Interface\\Icons\\INV_Misc_Note_06",
+        icon = ns.UI_GetIconFile("calendar"),
         width = EXISTS_DLG_W,
         height = 220,
     })
     if not dialog then return end
 
-    local warningIconFrame = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", LAYOUT.EXISTS_ICON, false, nil, true)
+    local warningIconFrame = CreateIcon(contentFrame, ns.UI_GetIconFile("warning"), LAYOUT.EXISTS_ICON, false, nil, true)
     warningIconFrame:SetPoint("TOP", 0, -LAYOUT.STACK_SECTION_GAP)
     warningIconFrame:Show()
 

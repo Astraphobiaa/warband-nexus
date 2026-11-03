@@ -200,7 +200,7 @@ local function GetWnIconPaths()
         donate = (C and C.WN_ICON_DONATE) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Donate.tga",
         credits = (C and C.WN_ICON_CREDITS) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
         tracking = (C and C.WN_ICON_TRACKING) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
-        complete = "Interface\\RaidFrame\\ReadyCheck-Ready", -- file fallback; atlas via UI_ICONS.status_ok
+        complete = ns.UI_GetIconFile("status_ok"), -- texCoord callers; plain calls go through UI_SetIcon
     }
     return WN_ICON_PATHS
 end
@@ -215,7 +215,7 @@ function ns.UI_SetWnIconTexture(tex, iconKey, opts)
     if not path then return false end
     local usedAtlas = false
     if iconKey == "complete" and not opts.texCoord then
-        -- Registry atlas (common-icon-checkmark); file path above stays the fallback.
+        -- Registry icon (trilinear, neutral vertex); file path above stays the fallback.
         usedAtlas = ns.UI_SetIcon(tex, "status_ok") and true or false
     end
     if not usedAtlas then
@@ -1651,18 +1651,18 @@ local function CreateNoticeFrame(parent, title, description, iconType, width, he
     frame:SetSize(frameWidth, frameHeight)
     
     -- Icon selection
-    local iconTextures = {
-        alert = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
-        info = "Interface\\FriendsFrame\\InformationIcon",
-        warning = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+    local iconKeys = {
+        alert = "warning",
+        info = "info",
+        warning = "warning",
     }
-    local iconTexture = iconTextures[iconType] or iconTextures.info
+    local iconKey = iconKeys[iconType] or iconKeys.info
     
     -- Icon
     local icon = frame:CreateTexture(nil, "ARTWORK")
     icon:SetSize(24, 24)
     icon:SetPoint("LEFT", 10, 0)
-    icon:SetTexture(iconTexture)
+    ns.UI_SetIcon(icon, iconKey)
     
     -- Title
     local titleText = FontManager:CreateFontString(frame, UIFontRole("noticeTitle"), "OVERLAY")

@@ -332,8 +332,9 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     local iconID = currency.iconFileID or currency.icon
     if iconID then
         row.icon:SetTexture(iconID)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- pooled row may still carry the registry icon's full crop
     else
-        row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        if ns.UI_SetIcon then ns.UI_SetIcon(row.icon, "question") end
     end
     
     if not hasQuantity then

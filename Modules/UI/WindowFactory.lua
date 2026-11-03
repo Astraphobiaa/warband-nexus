@@ -606,7 +606,11 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     
     -- Populate data
     popup._currentID = achievementID
-    popup._icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+    if icon then
+        popup._icon:SetTexture(icon)
+    else
+        ns.UI_SetIcon(popup._icon, "question")
+    end
     
     -- Title: status icon + achievement name + (Planned) indicator
     local statusIcon = completed

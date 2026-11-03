@@ -478,7 +478,7 @@ function ns.UI_ShowConfirmDialog(opts)
     local dialog, contentFrame = CreateExternalWindow({
         name = opts.name or "WnConfirmDialog",
         title = opts.title or ((ns.L and ns.L["CONFIRM"]) or "Confirm"),
-        icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        icon = ns.UI_GetIconFile("warning"),
         width = 420,
         height = 170,
     })
@@ -519,7 +519,7 @@ function WarbandNexus:ConfirmDeleteCustomCharacterHeader(groupId, groupName)
     local dialog, contentFrame = CreateExternalWindow({
         name = "WnDeleteCustomHeaderDialog",
         title = (ns.L and ns.L["CUSTOM_HEADER_DELETE_DIALOG_TITLE"]) or "Delete custom header?",
-        icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        icon = ns.UI_GetIconFile("warning"),
         width = 420,
         height = 190,
     })

@@ -1085,7 +1085,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     end
                     
                     -- Placeholder so the header creates its icon slot; the class crest is applied after creation.
-                    local charIcon = "Interface\\Icons\\Achievement_Character_Human_Male"
+                    local charIcon = ns.UI_GetIconFile("character")
                     
                     -- Character block: wrapped header + body (major section); types always built inside body.
                     local charIndent = BASE_INDENT * 1  -- 15px
@@ -1897,7 +1897,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             guildWrap._wnStorageMajorPopulateFn()
                         end
                     end,
-                    "Interface\\Icons\\INV_Shirt_GuildTabard_01",
+                    ns.UI_GetIconFile("guild"),
                     false,
                     nil,
                     nil,
@@ -1907,8 +1907,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 )
                 StorPool.Remember(parent, "hdr:" .. guildCategoryKey, guildHeader)
                 if guildIcon then
-                    guildIcon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
-                    guildIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    ns.UI_SetIcon(guildIcon, "guild")
                     guildIcon:SetSize(28, 28)
                 end
                 if ns.UI_AnchorSectionHeaderInWrap then

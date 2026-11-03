@@ -63,7 +63,7 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     local dialog, contentFrame, header = CreateExternalWindow({
         name = "WarbandBankDepositPopup",
         title = (L and L["REAGENT_DEPOSIT_TITLE"]) or "Reagent Deposit Manager",
-        icon = "Interface\\Icons\\INV_Misc_Bag_08",
+        icon = ns.UI_GetIconFile("bag"),
         width = 460,
         height = 566,
         preventDuplicates = true,

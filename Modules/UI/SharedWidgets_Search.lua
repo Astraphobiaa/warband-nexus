@@ -36,11 +36,7 @@ end
 
 local function GetLockAtlasMarkup(sz)
     sz = sz or 14
-    local markup = ns.UI_GetIconMarkup and ns.UI_GetIconMarkup("lock", sz, sz)
-    if markup and markup ~= "" then
-        return markup
-    end
-    return string.format("|TInterface\\Common\\LockIcon:%d:%d:0:0|t", sz, sz)
+    return ns.UI_GetIconMarkup("lock", sz, sz)
 end
 
 --- Surface tier color: single implementation lives in SharedWidgets.lua (`ns.UI_ResolveSurfaceTierColor`).

@@ -126,8 +126,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     local dialog, contentFrame, header = CreateExternalWindow({
         name = "CustomPlanDialog",
         title = (ns.L and ns.L["CREATE_CUSTOM_PLAN"]) or "Create Custom Plan",
-        icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
-        iconIsAtlas = true,
+        icon = ns.UI_GetIconFile("checklist"),
         width = LAYOUT.DIALOG_W,
         height = DIALOG_H,
         onClose = function()
@@ -770,7 +769,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     local dialog, contentFrame, header = CreateExternalWindow({
         name = "WeeklyPlanDialog",
         title = (ns.L and ns.L["WEEKLY_VAULT_TRACKER"]) or "Weekly Vault Tracker",
-        icon = "Interface\\Icons\\INV_Misc_Note_06",  -- Same as Daily Quest
+        icon = ns.UI_GetIconFile("calendar"),  -- Same as Daily Quest
         width = VAULT_DLG_W,
         height = existingPlan and LAYOUT.DIALOG_H_HAS or VAULT_DLG_H_NEW
     })
@@ -786,7 +785,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     -- Show existing plan message or creation form
     if existingPlan then
         -- Character already has a weekly plan
-        local warningIconFrame3 = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther", 48, false, nil, true)
+        local warningIconFrame3 = CreateIcon(contentFrame, ns.UI_GetIconFile("attention"), 48, false, nil, true)
         warningIconFrame3:SetPoint("TOP", contentFrame, "TOP", 0, contentY)
         warningIconFrame3:Show()
         local warningIcon = warningIconFrame3.texture

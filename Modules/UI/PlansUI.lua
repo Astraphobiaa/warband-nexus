@@ -361,12 +361,12 @@ local PLAN_TYPES = ns.PLAN_TYPES
 
 -- Category definitions – My Plans always first, rest alphabetical
 local CATEGORIES = {
-    { key = "active", name = (ns.L and ns.L["CATEGORY_MY_PLANS"]) or "To-Do List", icon = "Interface\\Icons\\INV_Misc_Map_01" },
-    { key = "achievement", name = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
-    { key = "daily_tasks", name = (ns.L and ns.L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress", icon = "Interface\\Icons\\INV_Misc_Note_06" },
+    { key = "active", name = (ns.L and ns.L["CATEGORY_MY_PLANS"]) or "To-Do List", iconKey = "checklist" },
+    { key = "achievement", name = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", iconKey = "trophy" },
+    { key = "daily_tasks", name = (ns.L and ns.L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress", iconKey = "calendar" },
     { key = "illusion", name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions", iconAtlas = "UpgradeItem-32x32" },
     { key = "mount", name = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts", iconAtlas = "dragon-rostrum" },
-    { key = "pet", name = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets", iconAtlas = "WildBattlePetCapturable" },
+    { key = "pet", name = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets", iconKey = "paw" },
     { key = "title", name = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles", iconAtlas = "poi-legendsoftheharanir" },
     { key = "toy", name = (ns.L and ns.L["CATEGORY_TOYS"]) or "Toys", iconAtlas = "CreationCatalyst-32x32" },
 }
@@ -1245,6 +1245,7 @@ function WarbandNexus:DrawPlansTab(parent)
             label = cat.name,
             icon = cat.icon,
             iconAtlas = cat.iconAtlas,
+            iconKey = cat.iconKey,
         }
     end
 
@@ -1655,7 +1656,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then iconIsAtlas = true
             elseif type(resolvedIcon) == "string" and ns.Utilities and ns.Utilities.IsAtlasName and ns.Utilities:IsAtlasName(resolvedIcon) then iconIsAtlas = true
             end
-            if not resolvedIcon or resolvedIcon == "" then resolvedIcon = "Interface\\Icons\\INV_Misc_QuestionMark" end
+            if not resolvedIcon or resolvedIcon == "" then resolvedIcon = ns.UI_GetIconFile and ns.UI_GetIconFile("question") end
 
             local isExpanded = expandedPlans[plan.id] or false
             if plan.type ~= "achievement" then

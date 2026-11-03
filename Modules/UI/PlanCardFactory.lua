@@ -241,8 +241,11 @@ local function CreatePlanCardDeleteButton(parent, plan, opts)
     else
         removeBtn:SetPoint(opts.point or "TOPRIGHT", parent, opts.point or "TOPRIGHT", opts.x or -8, opts.y or -8)
     end
-    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+    local closeFile = ns.UI_GetIconFile("close")
+    removeBtn:SetNormalTexture(closeFile)
+    removeBtn:SetHighlightTexture(closeFile)
+    ns.UI_SetIcon(removeBtn:GetNormalTexture(), "close")
+    ns.UI_SetIcon(removeBtn:GetHighlightTexture(), "close")
     removeBtn:SetScript("OnClick", onRemove)
     removeBtn:SetScript("OnEnter", function(self)
         if ns.TooltipService and ns.TooltipService.Show then
@@ -515,7 +518,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     end
     
     -- Determine icon: resolve from WoW API first, then fallback chain
-    local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+    local FALLBACK_ICON = ns.UI_GetIconFile("question")
     local WarbandNexus = ns.WarbandNexus
     local apiIcon = (WarbandNexus and WarbandNexus.GetResolvedPlanIcon) and WarbandNexus:GetResolvedPlanIcon(plan) or nil
     local iconTexture = apiIcon or plan.iconAtlas or plan.icon
@@ -2493,10 +2496,11 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         ns.UI_ApplyVisuals(iconBorder, ns.UI_GetIconWellBackdrop(), ns.UI_GetIconWellBorder())
     end
     
-    local FALLBACK_ATLAS = "questlog-questtypeicon-daily"
+    -- Daily plans persist this atlas as plan.iconAtlas (DailyQuestManager); display the registry calendar instead.
+    local STORED_DAILY_ATLAS = "questlog-questtypeicon-daily"
     local iconTexture = plan.iconAtlas or plan.icon
     local iconIsAtlas = false
-    
+
     if plan.iconAtlas then
         iconIsAtlas = true
     elseif plan.iconIsAtlas then
@@ -2505,13 +2509,11 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         local ok, result = pcall(ns.Utilities.IsAtlasName, ns.Utilities, plan.icon)
         iconIsAtlas = ok and result or false
     end
-    
-    if not iconTexture or iconTexture == "" then
-        iconTexture = FALLBACK_ATLAS
-        iconIsAtlas = true
-    elseif not iconIsAtlas and plan.type == "daily_quests" then
-        iconTexture = FALLBACK_ATLAS
-        iconIsAtlas = true
+
+    if not iconTexture or iconTexture == "" or iconTexture == STORED_DAILY_ATLAS
+        or (not iconIsAtlas and plan.type == "daily_quests") then
+        iconTexture = ns.UI_GetIconFile("calendar")
+        iconIsAtlas = false
     end
     
     local iconFrameObj = CreateIcon(iconBorder, iconTexture, 46, iconIsAtlas, nil, true)

@@ -37,12 +37,14 @@ local ITEM_CLASS_TRADEGOODS = LE_ITEM_CLASS_TRADEGOODS or 7
 local ITEM_CLASS_CONSUMABLE = LE_ITEM_CLASS_CONSUMABLE or 0
 local MAIL_SNAPSHOT_VERSION = 2
 local MAX_PLAUSIBLE_STACK = 5000
+-- Registry files (IconRegistry loads before this file in the TOC; nil only in standalone test harnesses).
+local IconFile = ns.UI_GetIconFile or function() return nil end
 local MAIL_ICON_FROM = "Interface\\Icons\\INV_Letter_15"
-local MAIL_ICON_SUBJECT = "Interface\\Icons\\INV_Misc_Note_06"
-local MAIL_ICON_CONTAINS = "Interface\\Icons\\INV_Misc_Bag_10"
-local MAIL_ICON_GOLD = "Interface\\MoneyFrame\\UI-GoldIcon"
+local MAIL_ICON_SUBJECT = IconFile("scroll")
+local MAIL_ICON_CONTAINS = IconFile("bag")
+local MAIL_ICON_GOLD = IconFile("money_gold")
 local MAIL_ICON_COD = "Interface\\Icons\\INV_Letter_16"
-local MAIL_ICON_ITEMS = "Interface\\Icons\\INV_Misc_Enggizmos_19"
+local MAIL_ICON_ITEMS = IconFile("crate")
 local MAIL_TOOLTIP_ICON_SIZE = 14
 local MAIL_ITEM_INDENT = "    "
 

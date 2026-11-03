@@ -41,7 +41,7 @@ local function FormatGold(copper)
         goldStr, k = gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
         if k == 0 then break end
     end
-    return goldStr .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
+    return goldStr .. ns.UI_GetIconMarkup("money_gold", 12, 12, 2, 0)
 end
 local function FormatNumber(number)
     if not number or number == 0 then return "0" end
@@ -128,6 +128,7 @@ local function FormatMoney(copper, iconSize, showZero)
     -- Clamp iconSize to safe range to prevent integer overflow in texture rendering
     if iconSize < 8 then iconSize = 8 end
     if iconSize > 32 then iconSize = 32 end
+    iconSize = floor(iconSize)  -- whole pixels, as the old %d markup did
     showZero = showZero or false
     
     -- Calculate gold, silver, copper with explicit floor operations
@@ -147,19 +148,19 @@ local function FormatMoney(copper, iconSize, showZero)
             goldStr, k = gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
             if k == 0 then break end
         end
-        insert(parts, format("%s%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", GetMoneyGoldHex(), goldStr, iconSize, iconSize))
+        insert(parts, format("%s%s|r%s", GetMoneyGoldHex(), goldStr, ns.UI_GetIconMarkup("money_gold", iconSize, iconSize)))
     end
     
     -- Silver (silver/gray) - Only pad if gold exists
     if silver > 0 or (showZero and gold > 0) then
         local fmt = (gold > 0) and "%02d" or "%d"
-        insert(parts, format("|cffc7c7cf" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", silver, iconSize, iconSize))
+        insert(parts, format("|cffc7c7cf" .. fmt .. "|r%s", silver, ns.UI_GetIconMarkup("money_silver", iconSize, iconSize)))
     end
     
     -- Copper (bronze/copper) - Only pad if silver or gold exists
     if copperAmount > 0 or showZero or (gold == 0 and silver == 0) then
         local fmt = (gold > 0 or silver > 0) and "%02d" or "%d"
-        insert(parts, format("|cffeda55f" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", copperAmount, iconSize, iconSize))
+        insert(parts, format("|cffeda55f" .. fmt .. "|r%s", copperAmount, ns.UI_GetIconMarkup("money_copper", iconSize, iconSize)))
     end
     
     return table.concat(parts, " ")
@@ -173,6 +174,7 @@ local function FormatMoneyPartsColumn(copper, iconSize)
     iconSize = tonumber(iconSize) or 12
     if iconSize < 8 then iconSize = 8 end
     if iconSize > 32 then iconSize = 32 end
+    iconSize = floor(iconSize)  -- whole pixels, as the old %d markup did
 
     local gold = floor(copper / 10000)
     local silver = floor((copper % 10000) / 100)
@@ -185,9 +187,9 @@ local function FormatMoneyPartsColumn(copper, iconSize)
         if k == 0 then break end
     end
 
-    local gIcon = format("|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", iconSize, iconSize)
-    local sIcon = format("|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", iconSize, iconSize)
-    local cIcon = format("|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", iconSize, iconSize)
+    local gIcon = ns.UI_GetIconMarkup("money_gold", iconSize, iconSize)
+    local sIcon = ns.UI_GetIconMarkup("money_silver", iconSize, iconSize)
+    local cIcon = ns.UI_GetIconMarkup("money_copper", iconSize, iconSize)
 
     local gStr = format("%s%s|r%s", GetMoneyGoldHex(), goldStr, gIcon)
     local sStr = format("|cffc7c7cf%02d|r%s", silver, sIcon)

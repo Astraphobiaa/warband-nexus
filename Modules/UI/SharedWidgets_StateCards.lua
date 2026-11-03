@@ -487,10 +487,12 @@ local function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
         ApplyStandardCardElevatedChrome(loadingCard)
         
         -- Animated spinner (AnimationGroup rotation; replays on card OnShow).
-        local spinnerFrame = ns.UI_CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
+        local spinnerFrame = ns.UI_CreateIcon(loadingCard, ns.UI_GetIconFile("spinner"), 40, true, nil, true)
         spinnerFrame:SetPoint("LEFT", 20, 0)
         spinnerFrame:Show()
         local spinner = spinnerFrame.texture
+        ns.UI_SetIcon(spinner, "spinner")  -- mono glyph: theme tint, re-applied on theme toggle
+        ns.UI_TrackRegistryIconTint(spinner, "spinner")
         loadingCard._wnSpinGroup = AttachLoopingSpinnerRotation(loadingCard, spinner)
         loadingCard:HookScript("OnHide", function()
             loadingCard:SetScript("OnUpdate", nil)
@@ -591,9 +593,11 @@ end
 local function UI_CreateInlineLoadingSpinner(parent, anchorFrame, anchorPoint, xOffset, yOffset, size)
     size = size or 16
     
-    local spinnerFrame = ns.UI_CreateIcon(parent, "auctionhouse-ui-loadingspinner", size, true, nil, true)
+    local spinnerFrame = ns.UI_CreateIcon(parent, ns.UI_GetIconFile("spinner"), size, true, nil, true)
     spinnerFrame:SetPoint(anchorPoint, anchorFrame, anchorPoint, xOffset, yOffset)
     spinnerFrame:Show()
+    ns.UI_SetIcon(spinnerFrame.texture, "spinner")
+    ns.UI_TrackRegistryIconTint(spinnerFrame.texture, "spinner")
     
     -- Animate rotation (AnimationGroup; no per-frame OnUpdate)
     spinnerFrame._wnSpinGroup = AttachLoopingSpinnerRotation(spinnerFrame, spinnerFrame.texture)
@@ -612,11 +616,13 @@ local function UI_CreateLoadingStatePanel(parent)
     panel:SetFrameLevel(parent:GetFrameLevel() + 10)
     panel:Hide()
 
-    -- Spinner (same atlas as transient card)
-    local spinnerFrame = ns.UI_CreateIcon(panel, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
+    -- Spinner (same registry glyph as transient card)
+    local spinnerFrame = ns.UI_CreateIcon(panel, ns.UI_GetIconFile("spinner"), 40, true, nil, true)
     spinnerFrame:SetPoint("CENTER", 0, 20)
     spinnerFrame:Show()
     local spinnerTex = spinnerFrame.texture
+    ns.UI_SetIcon(spinnerTex, "spinner")
+    ns.UI_TrackRegistryIconTint(spinnerTex, "spinner")
     panel._spinnerTex = spinnerTex
 
     panel._wnSpinGroup = AttachLoopingSpinnerRotation(panel, spinnerTex)

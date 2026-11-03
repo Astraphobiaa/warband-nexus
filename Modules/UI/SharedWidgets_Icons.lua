@@ -171,13 +171,7 @@ end
 
 local function WnCollapseExpandApply(tex, isExpanded)
     if not tex then return end
-    local key = isExpanded and "chevron_up" or "chevron_down"
-    if not ns.UI_SetWnIconTexture(tex, key, nil) then
-        local sp = UI_SPACING
-        local up = sp.COLLAPSE_EXPAND_ATLAS_EXPANDED
-        local down = sp.COLLAPSE_EXPAND_ATLAS_COLLAPSED
-        tex:SetAtlas(isExpanded and up or down, false)
-    end
+    ns.UI_SetWnIconTexture(tex, isExpanded and "chevron_up" or "chevron_down", nil)
 end
 
 function ns.UI_CollapseExpandSetState(btn, isExpanded)
@@ -238,7 +232,8 @@ end
 
 local function ApplyIconTexture(tex, texture, isAtlas)
     if not tex or not texture then return end
-    if isAtlas then
+    -- our media files are never atlases, whatever the caller passed for isAtlas
+    if isAtlas and not (ns.UI_IsAddonMediaTexture and ns.UI_IsAddonMediaTexture(texture)) then
         local success = pcall(tex.SetAtlas, tex, texture, false)
         if not success then
             success = pcall(tex.SetAtlas, tex, texture, true)
@@ -250,8 +245,7 @@ local function ApplyIconTexture(tex, texture, isAtlas)
                     DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texName) .. "' failed, using fallback")
                 end
             end
-            tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            ns.UI_ApplyFileIconTexCoord(tex)
+            ns.UI_SetIcon(tex, "question")
         end
         return
     end
@@ -816,8 +810,7 @@ local function ApplyClassIconTexture(tex, classFile, bare)
         tex:SetTexture(bare and CLASS_ICON_ATLAS_BARE or CLASS_ICON_ATLAS, nil, nil, "TRILINEAR")
         tex:SetTexCoord(l, r, t, b)
     else
-        tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        ns.UI_ApplyFileIconTexCoord(tex)
+        ns.UI_SetIcon(tex, "question")
     end
     EnsureTextureFullColor(tex)
 end
@@ -849,36 +842,14 @@ ns.UI_CreateClassIcon = CreateClassIcon
 
 -- FAVORITE ICON HELPERS
 
--- Constants
-local FAVORITE_ICON_ATLAS = "transmog-icon-favorite"  -- fallback only; registry favorite_on/_off first
-
---[[
-    Get favorite icon atlas name
-    @return string - Atlas name
-]]
-local function GetFavoriteIconTexture()
-    return FAVORITE_ICON_ATLAS
-end
-
 --[[
     Apply favorite icon styling
     @param texture texture - Texture object to style
     @param isFavorite boolean - Whether character is favorited
 ]]
 local function StyleFavoriteIcon(texture, isFavorite)
-    -- No desaturated grey off state (GRAY BAN): Blizzard's own on/off star atlases.
-    if isFavorite then
-        if not ns.UI_SetIcon(texture, "favorite_on") then
-            texture:SetAtlas(FAVORITE_ICON_ATLAS)
-            texture:SetVertexColor(1, 1, 1, 1)
-        end
-    else
-        if not ns.UI_SetIcon(texture, "favorite_off") then
-            texture:SetAtlas(FAVORITE_ICON_ATLAS)
-            local vc = ns.UI_GetMonochromeIconVertex(0.45)
-            texture:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 0.45)
-        end
-    end
+    -- No desaturated grey off state (GRAY BAN): registry on/off star icons.
+    ns.UI_SetIcon(texture, isFavorite and "favorite_on" or "favorite_off")
     texture:SetDesaturated(false)
 end
 

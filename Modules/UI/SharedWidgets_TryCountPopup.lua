@@ -80,9 +80,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local tryCloseIcon = tryCloseBtn:CreateTexture(nil, "ARTWORK")
         tryCloseIcon:SetSize(tryCloseSz - 10, tryCloseSz - 10)
         tryCloseIcon:SetPoint("CENTER")
-        if not (ns.UI_SetIcon and ns.UI_SetIcon(tryCloseIcon, "close")) then
-            tryCloseIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
-        end
+        ns.UI_SetIcon(tryCloseIcon, "close")
         tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3)
         tryCloseBtn:SetScript("OnEnter", function() tryCloseIcon:SetVertexColor(1, 0.2, 0.2) end)
         tryCloseBtn:SetScript("OnLeave", function() tryCloseIcon:SetVertexColor(0.9, 0.3, 0.3) end)

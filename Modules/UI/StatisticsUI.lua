@@ -510,8 +510,8 @@ end
 local ACH_HEADER_CARD_VER = 6
 local ACH_COLL_ICON_SIZE = 36
 local STAT_CARD_ICON_LEFT = 15
-local ACH_ATLAS_SCORE = "UI-Achievement-Shield-NoPoints"
-local ACH_ATLAS_CHARACTER = "shop-icon-housing-characters-up"
+local ACH_ATLAS_SCORE = ns.UI_GetIconFile("trophy")
+local ACH_ATLAS_CHARACTER = ns.UI_GetIconFile("character")
 local ACH_ATLAS_PROGRESS = "UI-Frame-DastardlyDuos-icon-Speed"
 
 local function FormatAchPointsCurrentMax(hex, current, max)
@@ -627,7 +627,7 @@ local function PositionStatsCollectionCard(card, parent, colIndex, rowIndex, lef
 end
 
 local function PaintTodoSummaryCard(card, bundle, completed, total)
-    local todoIcon = CreateIcon(card, "Interface\\Icons\\INV_Misc_Note_06", 36, false, nil, true)
+    local todoIcon = CreateIcon(card, ns.UI_GetIconFile("checklist"), 36, false, nil, true)
     todoIcon:SetPoint("TOPLEFT", card, "TOPLEFT", 15, -14)
     todoIcon:Show()
 
@@ -822,7 +822,7 @@ function WarbandNexus:DrawStatistics(parent)
     PositionStatsCollectionCard(mountCard, parent, 1, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
     local mountLayout = CreateCardHeaderLayout(
         mountCard,
-        "Interface\\Icons\\Ability_Mount_RidingHorse",
+        ns.UI_GetIconFile("book"),
         36,
         false,
         (ns.L and ns.L["MOUNTS_COLLECTED"]) or "MOUNTS COLLECTED",
@@ -838,7 +838,7 @@ function WarbandNexus:DrawStatistics(parent)
 
     petCard = CreateCard(parent, STAT_CARD_H)
     PositionStatsCollectionCard(petCard, parent, 2, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
-    local petIcon = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false, nil, true)
+    local petIcon = CreateIcon(petCard, ns.UI_GetIconFile("paw"), 36, false, nil, true)
     petIcon:SetPoint("CENTER", petCard, "LEFT", 15 + 18, 0)
     petIcon:Show()
     local bpLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
@@ -866,7 +866,7 @@ function WarbandNexus:DrawStatistics(parent)
     PositionStatsCollectionCard(toyCard, parent, 3, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
     local toyLayout = CreateCardHeaderLayout(
         toyCard,
-        "Interface\\Icons\\INV_Misc_Toy_10",
+        ns.UI_GetIconFile("gift"),
         36,
         false,
         (ns.L and ns.L["CATEGORY_TOYS"]) or "TOYS",
@@ -988,7 +988,7 @@ function WarbandNexus:DrawStatistics(parent)
             goldCard = CreateCard(parent, goldCardHeight)
             if ApplyPanelCardChrome then ApplyPanelCardChrome(goldCard) end
 
-            local gwIcon = CreateIcon(goldCard, "BonusLoot-Chest", 28, true, nil, true)
+            local gwIcon = CreateIcon(goldCard, ns.UI_GetIconFile("chest"), 28, false, nil, true)
             gwIcon:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, -10)
             gwIcon:Show()
 

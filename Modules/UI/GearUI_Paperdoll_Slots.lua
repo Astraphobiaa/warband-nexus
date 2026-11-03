@@ -124,8 +124,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                 tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             elseif not (issecretvalue and issecretvalue(data.itemLink)) then
                 -- Item cache not warmed yet — avoid empty-slot art while link is valid.
-                tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-                tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                ns.UI_SetIcon(tex, "question")
             else
                 tex:SetTexture(EMPTY_SLOT_TEXTURE[slotID] or SLOT_FALLBACK_TEXTURE)
                 tex:SetTexCoord(0, 1, 0, 1)

@@ -26,29 +26,7 @@ end
 
 -- HEADER ICON SYSTEM (Standardized icon+border for all tab headers)
 
--- Centralized icon mapping for all tabs (keys match `Modules/UI.lua` MAIN_TAB_ORDER + legacy aliases).
-local TAB_HEADER_ICONS = {
-    chars = "warbands-icon",
-    characters = "warbands-icon",
-    items = "Banker",
-    storage = "Quartermaster",
-    plans = "poi-workorders",
-    currency = "AzeriteReady",
-    --- Overridden below for reputations vs reputation key
-    reputations = "MajorFactions_MapIcons_Centaur64",
-    reputation = "MajorFactions_MapIcons_Centaur64",
-    pve = "Tormentors-Boss",
-    pvp = "questlog-questtypeicon-pvp",
-    stats = "racing",
-    statistics = "racing",
-    collections = "dragon-rostrum",
-    professions = "Vehicle-HammerGold",
-    gear = "VignetteEventElite",
-    about = "Campaign-QuestLog-Legendaryicon",
-    qol = "Soulbinds_Tree_Conduit_Icon_Utility",
-}
-
---- Tabs drawn from the addon icon registry (ns.UI_ICONS key) instead of a Blizzard atlas.
+--- Tabs drawn from the addon icon registry (ns.UI_ICONS key); keys match MAIN_TAB_ORDER + legacy aliases.
 local TAB_REGISTRY_ICON_KEYS = {
     settings = "settings",
     chars = "character",
@@ -66,24 +44,6 @@ local TAB_REGISTRY_ICON_KEYS = {
     about = "info",
     qol = "wand",
 }
-
---- Blizzard `Interface\\Icons\\...` fallback when atlases reject (broken/missing art in some patches).
-local TAB_NAV_TEXTURE_FALLBACK = {
-    chars = "Interface\\Icons\\Achievement_Character_Human_Male",
-    items = "Interface\\Icons\\INV_Misc_Bag_08",
-    gear = "Interface\\Icons\\INV_Chest_Chain_06",
-    currency = "Interface\\Icons\\INV_Misc_Coin_02",
-    reputations = "Interface\\Icons\\Achievement_Reputation_01",
-    pve = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-    pvp = "Interface\\Icons\\Achievement_PVP_A_A",
-    professions = "Interface\\Icons\\Trade_Engineering",
-    collections = "Interface\\Icons\\INV_Misc_Head_Dragon_Nexus",
-    plans = "Interface\\Icons\\INV_Misc_Map_01",
-    stats = "Interface\\Icons\\Achievement_General_StayClassy",
-    settings = "Interface\\Icons\\Trade_Engineering",
-    about = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
-}
-
 
 local function NormalizeMainNavTabMediaKey(tabKey)
     if not tabKey then return nil end
@@ -106,37 +66,10 @@ local HEADER_ICON_SIZE = 44
 local HEADER_ICON_PAD = 5
 local HEADER_ICON_INSET = 12
 
--- Export icon mapping for external use
-ns.UI_GetTabIcon = function(tabName)
-    local key = tabName
-    -- No atlas for registry tabs: callers fall through to UI_ApplyMainNavTabGlyph / their file path.
-    if TAB_REGISTRY_ICON_KEYS[key] or TAB_REGISTRY_ICON_KEYS[NormalizeMainNavTabMediaKey(key)] then
-        return nil
-    end
-    -- Main window uses `reputations`; some cards use `reputation`.
-    if key == "reputation" or key == "reputations" then
-        local ok, fg = pcall(UnitFactionGroup, "player")
-        if ok and fg == "Alliance" then
-            return "AllianceAssaultsMapBanner"
-        end
-        if ok and fg == "Horde" then
-            return "HordeAssaultsMapBanner"
-        end
-        return TAB_HEADER_ICONS.reputations or "MajorFactions_MapIcons_Centaur64"
-    end
-    if key == "statistics" then
-        key = "stats"
-    end
-    if key == "characters" then
-        key = "chars"
-    end
-    -- No atlas for registry tabs: callers fall through to UI_ApplyMainNavTabGlyph / their file path.
-    if TAB_REGISTRY_ICON_KEYS[key] then
-        return nil
-    end
-    return TAB_HEADER_ICONS[key]
-        or TAB_HEADER_ICONS[tabName]
-        or "shop-icon-housing-characters-up"
+-- Tabs have no Blizzard atlas: every tab draws its registry icon (UI_ApplyMainNavTabGlyph).
+-- Kept as an export so older callers get nil and fall through to the registry.
+ns.UI_GetTabIcon = function()
+    return nil
 end
 
 --- Title card glyph: atlas/tab icon in a square tile (never override atlas UV with icon crop).
@@ -152,18 +85,11 @@ function ns.UI_ApplyTitleCardGlyph(tex, tabKey, atlasName)
         ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
         return false
     end
-    if not pcall(tex.SetAtlas, tex, "shop-icon-housing-characters-up", false) then
-        tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        if ns.UI_ApplyFileIconTexCoord then
-            ns.UI_ApplyFileIconTexCoord(tex)
-        else
-            tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-        end
-    end
+    ns.UI_SetIcon(tex, "question")
     return false
 end
 
---- Main nav strip / rail: registry icon (TAB_REGISTRY_ICON_KEYS), Blizzard atlas (`UI_GetTabIcon`), then built-in texture paths.
+--- Main nav strip / rail: registry icon (TAB_REGISTRY_ICON_KEYS); unknown tab keys get the registry question mark.
 ---@return boolean usedPackaged true only for a registry icon (tex._wnRegistryIcon set); callers may ignore it.
 function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
     if not tex or not tabKey then return false end
@@ -175,34 +101,7 @@ function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
         tex._wnRegistryIcon = regKey
         return true
     end
-
-    local atlasNm = ns.UI_GetTabIcon(tabKey)
-    if atlasNm and type(atlasNm) == "string" then
-        if pcall(tex.SetAtlas, tex, atlasNm, false) then
-            return false
-        end
-        if pcall(tex.SetAtlas, tex, atlasNm, true) then
-            return false
-        end
-    end
-
-    local iconPath = canon and TAB_NAV_TEXTURE_FALLBACK[canon]
-    if type(iconPath) == "string" and iconPath ~= "" then
-        tex:SetTexture(iconPath)
-        if ns.UI_ApplyFileIconTexCoord then
-            ns.UI_ApplyFileIconTexCoord(tex)
-        else
-            tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-        end
-        return false
-    end
-
-    tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-    if ns.UI_ApplyFileIconTexCoord then
-        ns.UI_ApplyFileIconTexCoord(tex)
-    else
-        tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    end
+    ns.UI_SetIcon(tex, "question")
     return false
 end
 
@@ -510,11 +409,7 @@ local function CreateStandardTabTitleCard(headerParent, opts)
             ApplyStandardCardElevatedChrome(titleCard)
         end
     end
-    local atlas = opts.atlasName
-    if (not atlas or atlas == "") and opts.tabKey and ns.UI_GetTabIcon then
-        atlas = ns.UI_GetTabIcon(opts.tabKey)
-    end
-    local headerIcon = CreateHeaderIcon(titleCard, atlas, {
+    local headerIcon = CreateHeaderIcon(titleCard, opts.atlasName, {
         tabKey = opts.tabKey,
         tileOuter = tileOuter,
         glyphInset = opts.glyphInset or sp.TITLE_CARD_ICON_GLYPH_PAD,
@@ -608,47 +503,11 @@ function ns.UI_ReanchorStandardTabTitleLayout(headerIcon, titleCard, textContain
     end
 end
 
--- CURRENT CHARACTER ICON (Global, easily customizable)
-
---[[
-    Get the atlas name for "Current Character" icon
-    This is a global setting that applies to all "Current Character" displays
-    Change this function to customize the icon globally
-    @return string - Atlas name for the current character icon
-]]
-local function GetCurrentCharacterIcon()
-    -- CUSTOMIZE HERE: Change this atlas to change all "Current Character" icons
-    -- Default: "charactercreate-gendericon-female-selected" (generic character icon)
-    -- Alternatives: 
-    --   "shop-icon-housing-characters-up" (house character)
-    --   "charactercreate-icon-customize-body" (body customization)
-    --   "Banker" (banker icon)
-    return "charactercreate-gendericon-female-selected"
-end
-
--- Export
-
--- CHARACTER-SPECIFIC ICON (Used in headers across multiple tabs)
-
---[[
-    Get the atlas name for "Character-Specific" contexts
-    This icon is used for headers and sections that represent character-specific data
-    
-    Used in:
-    - Characters tab ÔåÆ "Characters" header
-    - Storage tab ÔåÆ "Personal Banks" header
-    - Reputations tab ÔåÆ "Character-Based Reputations" header
-    
-    @return string - Atlas name for character-specific icon
-]]
+-- CHARACTER-SPECIFIC ICON (headers for per-character sections: Characters, Storage personal banks,
+-- character-based reputations and currencies). Returns the registry file, not a Blizzard atlas;
+-- CreateIcon / collapsible headers draw addon media as a file even when called with isAtlas = true.
 local function GetCharacterSpecificIcon()
-    -- CUSTOMIZE HERE: Change this atlas to change all character-specific headers
-    -- Current: "honorsystem-icon-prestige-9" (honor prestige badge, character-specific indicator)
-    -- Alternatives:
-    --   "charactercreate-gendericon-female-selected" (generic character)
-    --   "shop-icon-housing-characters-up" (house character)
-    --   "charactercreate-icon-customize-body" (body customization)
-    return "honorsystem-icon-prestige-9"
+    return ns.UI_GetIconFile("character")
 end
 
 -- Export
@@ -666,14 +525,14 @@ ns.UI_GetCharacterSpecificIcon = GetCharacterSpecificIcon
 ]]
 local function GetCurrencyHeaderIcon(headerName)
     if issecretvalue and issecretvalue(headerName) then
-        return "Interface\\Icons\\INV_Misc_Coin_01"
+        return ns.UI_GetIconFile("money_gold")
     end
     if not headerName or headerName == "" then
-        return "Interface\\Icons\\INV_Misc_Coin_01"
+        return ns.UI_GetIconFile("money_gold")
     end
     -- Legacy (all old expansions)
     if headerName:find("Legacy") then
-        return "Interface\\Icons\\INV_Misc_Coin_01"
+        return ns.UI_GetIconFile("money_gold")
     -- Midnight (12.0) — night/shadow theme (path that exists in the client)
     elseif headerName:find("Midnight") or headerName:find("Quel'Thalas") or headerName:find("Coiled Isle") or headerName:find("Ula'tek") then
         return "Interface\\Icons\\Spell_Shadow_Teleport"
@@ -715,7 +574,7 @@ local function GetCurrencyHeaderIcon(headerName)
         return "Interface\\Icons\\INV_Misc_Gear_01"
     end
     -- Unknown header: generic currency-related icon (never use a question mark)
-    return "Interface\\Icons\\INV_Misc_Coin_01"
+    return ns.UI_GetIconFile("money_gold")
 end
 
 -- Export

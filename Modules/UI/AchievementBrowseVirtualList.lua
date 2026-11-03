@@ -337,7 +337,7 @@ local function AcquireAchievementHeader(state, scrollChild, item, listWidth, onT
         RebindCollapsibleHeader(header, item.label, not item.isCollapsed, onToggle, 0)
     else
         header = CreateCollapsibleHeader(scrollChild, item.label, item.key, not item.isCollapsed, onToggle,
-            "UI-Achievement-Shield-NoPoints", true, 0, nil, nil)
+            ns.UI_GetIconFile("trophy"), false, 0, nil, nil)
         if not header then return nil end
         header._wnAchPooledHeader = true
         header._wnCollOnToggle = onToggle

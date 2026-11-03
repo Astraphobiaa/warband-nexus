@@ -396,6 +396,21 @@ local function PaintWeeklyQuestRow(row, quest, width)
     AttachQuestRowTooltip(row, quest)
 end
 
+--- Registry glyph (ns.UI_ICONS key) as the button's normal + highlight texture, theme tint kept on toggle.
+local function ApplyWeeklyHeaderButtonIcon(btn, key)
+    local file = ns.UI_GetIconFile and ns.UI_GetIconFile(key)
+    if not file then return end
+    btn:SetNormalTexture(file)
+    btn:SetHighlightTexture(file)
+    local normal, highlight = btn:GetNormalTexture(), btn:GetHighlightTexture()
+    ns.UI_SetIcon(normal, key)
+    ns.UI_SetIcon(highlight, key)
+    if ns.UI_TrackRegistryIconTint then
+        ns.UI_TrackRegistryIconTint(normal, key)
+        ns.UI_TrackRegistryIconTint(highlight, key)
+    end
+end
+
 --- Weekly Progress character-header controls (remove / configure): one stable handler each, reading
 --- the plan bound to the button this paint.
 local function WeeklyRemoveBtnOnClick(btn)
@@ -737,14 +752,12 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         if not removeBtn then
             removeBtn = Factory:CreateButton(charHeader, 24, 24, true)
             removeBtn:SetPoint("RIGHT", -8, 0)
-            removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-            removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+            ApplyWeeklyHeaderButtonIcon(removeBtn, "close")
             removeBtn:SetScript("OnClick", WeeklyRemoveBtnOnClick)
 
             configBtn = Factory:CreateButton(charHeader, 24, 24, true)
             configBtn:SetPoint("RIGHT", removeBtn, "LEFT", -4, 0)
-            configBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-            configBtn:SetHighlightTexture("Interface\\Buttons\\UI-OptionsButton")
+            ApplyWeeklyHeaderButtonIcon(configBtn, "settings")
             configBtn:SetScript("OnClick", WeeklyConfigBtnOnClick)
             configBtn:SetScript("OnEnter", WeeklyConfigBtnOnEnter)
             configBtn:SetScript("OnLeave", WeeklyConfigBtnOnLeave)
@@ -835,7 +848,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 local isExpanded = (expandedGroups[groupKey] == true)
 
                 local SECTION_HDR_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
-                local catAtlas = (display and display.atlas) or "questlog-questtypeicon-weekly"
+                -- registry key (DailyQuestManager CATEGORY_DISPLAY.iconKey) first; header draws addon media as a file
+                local catIconKey = display.iconKey or ((not display.atlas) and "calendar") or nil
+                local catAtlas = (catIconKey and ns.UI_GetIconFile and ns.UI_GetIconFile(catIconKey)) or display.atlas
                 local catTitleHex = format(
                     "|cff%02x%02x%02x%s|r",
                     math.floor(catColor[1] * 255),

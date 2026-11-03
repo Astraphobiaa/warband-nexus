@@ -929,39 +929,31 @@ end
 -- Column header definitions â€” alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 -- sortable = true means clicking the header toggles ascending/descending sort
---- Column header icons mapped to retail profession UI (Gethe/wow-ui-source live, May 2026).
+--- Column header icons: generic columns use the addon icon registry (iconKey); columns that show a
+--- game concept (concentration, knowledge, first craft, weekly quest, ...) keep the retail profession art.
 --- Order: iconKey (addon icon registry) -> iconPaths (file) -> iconAtlases (C_Texture.GetAtlasInfo + SetAtlas) -> iconFallback.
---- Sources: Blizzard_ProfessionsTemplates (recipe/schematic), Blizzard_ProfessionsSpecializations (knowledge ring),
---- Blizzard_ProfessionsRecipeList (skill tier icons), Blizzard_ProfessionsCurrencyTemplate (UI_Concentration),
---- ProfessionsTemplates.lua (auctionhouse-icon-clock = expiration/recharge column).
+--- Sources: Blizzard_ProfessionsSpecializations (knowledge ring), Blizzard_ProfessionsCurrencyTemplate (UI_Concentration).
 local PROF_HEADER_ICON_BY_COL = {
-    -- Recipe list / profession book tab parity
-    profName    = { iconAtlases = { "professions-icon-book", "professions_recipes_abilitytab", "Professions-recipe-header-left" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
-    -- Equipment slots: Professions-Slot-Plus (Templates); legacy creationgear fallback
-    equipment   = { iconAtlases = { "Professions-Slot-Plus", "creationgear-32x32", "ItemUpgrade_Icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Hammer_20" },
-    -- Skill-ups: Professions-Icon-Skill-* (RecipeList.lua); in_progress is reliable legacy fallback
-    skill       = { iconAtlases = { "professions_recipes_in_progress", "Professions-Icon-Skill-Medium", "Professions-Icon-Skill-High", "Professions-Icon-Skill-Low" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Trade_Engineering" },
+    profName    = { iconKey = "anvil" },
+    equipment   = { iconKey = "cuirass" },
+    skill       = { iconKey = "upgrade" },
     -- Concentration currency icon (ProfessionsCurrencyTemplate XML â€” file, not atlas)
     conc        = { iconPaths = { "Interface\\ICONS\\UI_Concentration" }, iconAtlases = { "Capacitance-General-32x32" }, iconFallback = "Interface\\Icons\\Spell_Nature_Manaregen" },
-    -- Recharge / expiration: auctionhouse-icon-clock (Templates sort header)
-    recharge    = { iconAtlases = { "auctionhouse-icon-clock", "Capacitance-General-WorkOrderArrow", "Capacitance-General-32x32" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_TimeStop" },
+    recharge    = { iconKey = "clock" },
     -- Specialization knowledge sample ring (Specializations.xml); unspent badge alt
     knowledge   = { iconAtlases = { "QuestDaily", "spec-sampleabilityring" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
-    -- Active recipe row overlay (RecipeList.xml)
-    recipes     = { iconAtlases = { "Professions_Recipe_Active", "professions_recipes_abilitytab", "Professions_Recipe_Hover" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
+    recipes     = { iconKey = "scroll" },
     -- First-craft affordance (RecipeSchematicForm.xml)
     firstCraft  = { iconAtlases = { "professions_icon_firsttimecraft", "crafting-crafting-order-icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_04" },
-    -- Unique recipes: addon icon registry sparkle (ns.UI_ICONS key, theme glyph tint)
-    uniques     = { iconKey = "sparkle", iconFallback = "Interface\\Icons\\INV_Misc_Organizer_01" },
+    -- Unique recipes: addon icon registry sparkle (ns.UI_ICONS key)
+    uniques     = { iconKey = "sparkle" },
     treatise    = { iconPaths = { "Interface\\Icons\\INV_Inscription_Tradeskill01" } },
     weeklyQuest = { iconAtlases = { "questlog-questtypeicon-weekly", "questlog-questtypeicon-daily" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_03" },
-    -- Treasure discovery reward chest (Templates / CrafterOrderView)
-    treasure    = { iconAtlases = { "ui_icon_chest_npcreward", "worldquest-questmarker-rare" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_TreasureMap" },
+    treasure    = { iconKey = "chest" },
     gathering   = { iconAtlases = { "poi-gather", "Professions-Icon-Skill-Low" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Powder_Ardent" },
-    -- Catch-up reagent affordance (RecipeReagentSlotBase.xml)
-    catchUp     = { iconAtlases = { "tradeskills-icon-add", "XPBarAnim-OrangeSpark" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\XPBarAnim-OrangeSpark" },
+    catchUp     = { iconKey = "plus" },
     moxie       = { iconAtlases = { "currency-icon-moxie" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Coin_01" },
-    cooldowns   = { iconAtlases = { "auctionhouse-icon-clock", "ui-hud-refreshbutton-icon", "Capacitance-General-WorkOrderArrow" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Holy_GreaterHeal" },
+    cooldowns   = { iconKey = "clock" },
 }
 
 local HEADER_DEFS = {
@@ -2410,7 +2402,7 @@ function PUI.ResolveProfessionEquipmentData(charKey, profName)
 end
 
 -- Profession icon column: resolve stored icon, skillLineID API, or fallback (missing DB icon / bad fileID).
-local PROF_ICON_FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark"
+local PROF_EMPTY_SLOT_ICON_OPTS = { vertexColor = { 0.55, 0.56, 0.62, 1 } }
 
 function PUI.ResolveProfessionIconForDisplay(prof)
     if not prof then return nil end
@@ -2475,9 +2467,7 @@ function PUI.SetProfessionLineIconTexture(tex, prof, isEmptySlot)
     if not tex then return end
     if tex.SetDesaturated then tex:SetDesaturated(false) end
     if isEmptySlot then
-        tex:SetTexture(PROF_ICON_FALLBACK)
-        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        tex:SetVertexColor(0.55, 0.56, 0.62, 1)
+        ns.UI_SetIcon(tex, "question", PROF_EMPTY_SLOT_ICON_OPTS)
         tex:Show()
         return
     end
@@ -2496,7 +2486,10 @@ function PUI.SetProfessionLineIconTexture(tex, prof, isEmptySlot)
         if not ok then applied = false end
     end
     if not applied then
-        tex:SetTexture(PROF_ICON_FALLBACK)
+        -- registry file is drawn edge to edge: no icon-border crop
+        ns.UI_SetIcon(tex, "question")
+        tex:Show()
+        return
     end
     tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     if ns.UI_EnsureTextureFullColor then
@@ -2764,10 +2757,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             local iicon = ibtn:CreateTexture(nil, "ARTWORK")
             iicon:SetSize(14, 14)
             iicon:SetPoint("CENTER", 0, 0)
-            if not (ns.UI_SetIcon and ns.UI_SetIcon(iicon, "scroll")) then
-                iicon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
-                iicon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            end
+            ns.UI_SetIcon(iicon, "scroll")
             ibtn.iconTex = iicon
         end
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(ibtn) end
