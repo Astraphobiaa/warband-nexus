@@ -2690,7 +2690,7 @@ end
 
 -- Shared vault/quest lookup tables (defined once, used by multiple handlers)
 local VAULT_CATEGORIES = {
-    dungeon = {name = (ns.L and ns.L["DUNGEON_CAT"]) or "Dungeon", icon = IconFile("dungeon"), atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
+    dungeon = {name = (ns.L and ns.L["DUNGEON_CAT"]) or "Dungeon", icon = IconFile("quest_dungeon"), atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
     raid    = {name = (ns.L and ns.L["RAID_CAT"]) or "Raid",    icon = IconFile("quest_raid"), atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
     world   = {name = (ns.L and ns.L["WORLD_CAT"]) or "World",   icon = IconFile("quest_delve"), atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
     specialAssignment = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Assignment", icon = IconFile("attention"), thresholds = {1, 2}},

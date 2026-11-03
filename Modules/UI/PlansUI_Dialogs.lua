@@ -1035,7 +1035,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             -- Dungeons (column 1)
             CreateProgressCol(
                 1,
-                ns.UI_GetIconFile("dungeon"),
+                ns.UI_GetIconFile("quest_dungeon"),
                 (ns.L and ns.L["MYTHIC_PLUS_LABEL"]) or "Mythic+",
                 progress.dungeonCount,
                 {1, 4, 8},  -- Thresholds
