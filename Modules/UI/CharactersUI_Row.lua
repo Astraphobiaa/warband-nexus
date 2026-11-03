@@ -971,9 +971,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.factionIcon = CreateFactionIcon(row, char.faction, CHAR_ROW_COLUMNS.faction.width, "LEFT", factionOffset + (CHAR_ROW_COLUMNS.faction.spacing / 2), 0)
         end
         if char.faction == "Alliance" then
-            row.factionIcon:SetAtlas("AllianceEmblem")
+            ns.UI_SetIcon(row.factionIcon, "faction_alliance")
         elseif char.faction == "Horde" then
-            row.factionIcon:SetAtlas("HordeEmblem")
+            ns.UI_SetIcon(row.factionIcon, "faction_horde")
         else
             row.factionIcon:SetAtlas("bfa-landingbutton-alliance-up")
         end

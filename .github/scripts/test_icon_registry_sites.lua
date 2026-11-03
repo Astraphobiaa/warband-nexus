@@ -88,6 +88,9 @@ do
     check(not has("Modules/VaultButton_Table.lua", "mechagon-projects"), "Vault table settings: no mechagon atlas")
     check(not has("Modules/VaultButton_Tooltip.lua", '"coin-gold"'), "Vault tooltip gold label: no coin-gold atlas")
     check(not has("Modules/UI/PvEUI_BodyPaint.lua", "ReadyCheck-Ready"), "PvE status column: no ReadyCheck file")
+    check(not has("Modules/UI/CharactersUI_Row.lua", '"AllianceEmblem"') and has("Modules/UI/CharactersUI_Row.lua", 'ns.UI_SetIcon(row.factionIcon, "faction_alliance")')
+        and has("Modules/UI/CharactersUI_Row.lua", 'ns.UI_SetIcon(row.factionIcon, "faction_horde")'), "Character row faction column via registry emblems")
+    check(not has("Modules/UI/SharedWidgets_Icons.lua", "PlusManz-") and has("Modules/UI/SharedWidgets_Icons.lua", 'ns.UI_GetIconFile("faction_horde")'), "GetFactionIcon: registry emblems, no PlusManz files")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

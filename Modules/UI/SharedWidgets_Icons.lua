@@ -672,9 +672,9 @@ ns.UI_ResolveItemCategoryIcon = ResolveItemCategoryIcon
 ]]
 local function GetFactionIcon(faction)
     if faction == "Alliance" then
-        return "Interface\\FriendsFrame\\PlusManz-Alliance"
+        return ns.UI_GetIconFile("faction_alliance")
     elseif faction == "Horde" then
-        return "Interface\\FriendsFrame\\PlusManz-Horde"
+        return ns.UI_GetIconFile("faction_horde")
     else
         -- Neutral (Pandaren starting zone or unknown)
         return "Interface\\Icons\\Achievement_Character_Pandaren_Female"

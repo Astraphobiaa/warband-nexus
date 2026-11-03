@@ -60,6 +60,8 @@ ns.UI_ICONS = {
     chevron_up     = { file = Constants.WN_ICON_CHEVRON_UP or Icon("ChevronUp"), mono = true },
     chevron_down   = { file = Constants.WN_ICON_CHEVRON_DOWN or Icon("ChevronDown"), mono = true },
     -- colored
+    faction_alliance = { file = Icon("FactionAlliance") },
+    faction_horde  = { file = Icon("FactionHorde") },
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },
     status_warn    = { file = Icon("StatusWarn") },
