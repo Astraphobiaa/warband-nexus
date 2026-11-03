@@ -866,17 +866,6 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
             or ("All " .. labelCat .. "s collected!")
         descStr = (L and L["COLLECTED_EVERYTHING"]) or "You've collected everything in this category!"
     end
-    -- false = no atlas: the empty card draws its registry icon for "plans_<category>" (paw / trophy).
-    local atlasByCategory = {
-        mount = "dragon-rostrum",
-        pet = false,
-        toy = "CreationCatalyst-32x32",
-        illusion = "UpgradeItem-32x32",
-        title = "poi-legendsoftheharanir",
-        achievement = false,
-    }
-    local emptyAtlas = atlasByCategory[category]
-    if emptyAtlas == nil then emptyAtlas = "poi-workorders" end
     local tabKey = "plans_" .. (category or "mount")
     if ns.UI_ShowTabEmptyStateCard then
         return ns.UI_ShowTabEmptyStateCard(parent, tabKey, yOffset, {
@@ -885,7 +874,6 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
             cacheKey = "plans_browse_" .. (category or "browse"),
             titleText = titleStr,
             descText = descStr,
-            atlas = emptyAtlas or nil,
         })
     end
     return yOffset + 200

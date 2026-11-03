@@ -358,6 +358,10 @@ local function ApplyTypeAtlasTexture(tex, parent, atlas, size)
     tex:SetPoint("CENTER", parent, "CENTER", 0, 0)
     tex:SetSnapToPixelGrid(false)
     tex:SetTexelSnappingBias(0)
+    -- plan type badges pass a registry key (PlanCardFactory.TYPE_ICONS); the points shield stays an atlas
+    if ns.UI_ICONS and ns.UI_ICONS[atlas] then
+        return ns.UI_SetIcon(tex, atlas) and true or false
+    end
     return pcall(function() tex:SetAtlas(atlas, false) end)
 end
 
@@ -822,7 +826,12 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         local inset = tonumber(PCM.rowTypeBadgeInset) or math.max(1, math.floor(TYPE_BADGE_SIZE * 0.10 + 0.5))
         typeTex:SetPoint("TOPLEFT", typeBadgeFrame, "TOPLEFT", inset, -inset)
         typeTex:SetPoint("BOTTOMRIGHT", typeBadgeFrame, "BOTTOMRIGHT", -inset, inset)
-        local ok = pcall(function() typeTex:SetAtlas(data.typeAtlas, false) end)
+        local ok
+        if ns.UI_ICONS and ns.UI_ICONS[data.typeAtlas] then
+            ok = ns.UI_SetIcon(typeTex, data.typeAtlas) and true or false
+        else
+            ok = pcall(function() typeTex:SetAtlas(data.typeAtlas, false) end)
+        end
         if ok then
             typeBadgeFrame:Show()
             row.typeBadge = typeBadgeFrame

@@ -879,9 +879,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     local PCF = ns.UI_PlanCardFactory
     local typeAtlas = PCF and PCF.TYPE_ICONS and plan.type and PCF.TYPE_ICONS[plan.type]
     if typeAtlas and f.planTypeTex and f.planTypeBadge then
-        local ok = pcall(function()
-            f.planTypeTex:SetAtlas(typeAtlas, false)
-        end)
+        local ok = ns.UI_SetIcon(f.planTypeTex, typeAtlas) and true or false  -- TYPE_ICONS holds registry keys
         if ok then
             f.planTypeBadge:Show()
         else

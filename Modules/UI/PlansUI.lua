@@ -364,11 +364,11 @@ local CATEGORIES = {
     { key = "active", name = (ns.L and ns.L["CATEGORY_MY_PLANS"]) or "To-Do List", iconKey = "checklist" },
     { key = "achievement", name = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", iconKey = "trophy" },
     { key = "daily_tasks", name = (ns.L and ns.L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress", iconKey = "calendar" },
-    { key = "illusion", name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions", iconAtlas = "UpgradeItem-32x32" },
-    { key = "mount", name = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts", iconAtlas = "dragon-rostrum" },
+    { key = "illusion", name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions", iconKey = "illusion" },
+    { key = "mount", name = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts", iconKey = "book" },
     { key = "pet", name = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets", iconKey = "paw" },
-    { key = "title", name = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles", iconAtlas = "poi-legendsoftheharanir" },
-    { key = "toy", name = (ns.L and ns.L["CATEGORY_TOYS"]) or "Toys", iconAtlas = "CreationCatalyst-32x32" },
+    { key = "title", name = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles", iconKey = "title" },
+    { key = "toy", name = (ns.L and ns.L["CATEGORY_TOYS"]) or "Toys", iconKey = "gift" },
 }
 
 -- Module state

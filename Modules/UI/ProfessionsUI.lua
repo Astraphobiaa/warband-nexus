@@ -940,8 +940,8 @@ local PROF_HEADER_ICON_BY_COL = {
     -- Concentration currency icon (ProfessionsCurrencyTemplate XML â€” file, not atlas)
     conc        = { iconPaths = { "Interface\\ICONS\\UI_Concentration" }, iconAtlases = { "Capacitance-General-32x32" }, iconFallback = "Interface\\Icons\\Spell_Nature_Manaregen" },
     recharge    = { iconKey = "clock" },
-    -- Specialization knowledge sample ring (Specializations.xml); unspent badge alt
-    knowledge   = { iconAtlases = { "QuestDaily", "spec-sampleabilityring" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
+    -- Specialization knowledge: addon icon registry stack of books with the anvil emblem
+    knowledge   = { iconKey = "knowledge" },
     recipes     = { iconKey = "scroll" },
     -- First-craft affordance (RecipeSchematicForm.xml)
     firstCraft  = { iconAtlases = { "professions_icon_firsttimecraft", "crafting-crafting-order-icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_04" },

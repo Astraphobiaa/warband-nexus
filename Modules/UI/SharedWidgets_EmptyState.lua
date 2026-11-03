@@ -276,7 +276,7 @@ local EMPTY_STATE_ICON_KEYS = {
     items = "bag", items_inventory = "bag", items_personal = "vault", items_warband = "warband", items_guild = "guild",
     storage = "crate",
     plans = "checklist", plans_active = "checklist", plans_daily_tasks = "calendar",
-    plans_achievement = "trophy", plans_mount = "book", plans_pet = "paw", plans_toy = "gift", plans_illusion = "sparkle", plans_title = "scroll",
+    plans_achievement = "trophy", plans_mount = "book", plans_pet = "paw", plans_toy = "gift", plans_illusion = "illusion", plans_title = "title",
     reputation = "medal",
     currency = "token",
     pve = "dungeon", pve_vault = "dungeon",

@@ -92,6 +92,9 @@ ns.UI_ICONS = {
     question       = { file = Icon("RedQuestion") },  -- colored
     sparkle        = { file = Icon("Sparkle") },  -- colored
     pin            = { file = Icon("GoldPin") },  -- colored
+    illusion       = { file = Icon("Illusion") },  -- colored
+    title          = { file = Icon("TitleCrown") },  -- colored
+    knowledge      = { file = Icon("Knowledge") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },

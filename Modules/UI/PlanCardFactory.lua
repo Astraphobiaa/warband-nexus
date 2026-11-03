@@ -355,20 +355,14 @@ local TYPE_NAMES = {
     custom = (ns.L and ns.L["TYPE_CUSTOM"]) or "Custom",
 }
 
--- Type icon atlas mapping (used by both PlanCardFactory and PlansTrackerWindow as the canonical
--- "what type of plan is this?" visual cue rendered before the name).
+-- Plan type -> registry icon key (ns.UI_ICONS): the canonical "what type of plan is this?" cue drawn
+-- before the name on cards, browse rows, the tracker and the reminder dialog.
 local TYPE_ICONS = {
-    mount = "dragon-rostrum",
-    pet = "WildBattlePetCapturable",
-    toy = "CreationCatalyst-32x32",
-    illusion = "UpgradeItem-32x32",
-    title = "poi-legendsoftheharanir",
-    achievement = "UI-Achievement-Shield-NoPoints",
-}
--- Plan types drawn from the addon icon registry (ns.UI_ICONS key) on the card badge instead of TYPE_ICONS.
--- TYPE_ICONS stays the exported atlas map for the other plan surfaces.
-local TYPE_ICON_KEYS = {
+    mount = "book",
     pet = "paw",
+    toy = "gift",
+    illusion = "illusion",
+    title = "title",
     achievement = "trophy",
 }
 
@@ -735,12 +729,11 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
     local typeName = TYPE_NAMES[plan.type] or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     local COLORS = ns.UI_COLORS
     local typeColor = TYPE_COLORS[plan.type] or {0.6, 0.6, 0.6}
-    local typeIconAtlas = TYPE_ICONS[plan.type]
-    local typeIconKey = TYPE_ICON_KEYS[plan.type]
-    
+    local typeIconKey = TYPE_ICONS[plan.type]
+
     -- Create icon frame if available
     local iconFrame = nil
-    if typeIconKey or typeIconAtlas then
+    if typeIconKey then
         iconFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
         if anchorFrame == card then
             iconFrame:SetPoint("TOPLEFT", 10, -60)
@@ -751,14 +744,7 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
         
         local iconTexture = iconFrame:CreateTexture(nil, "OVERLAY")
         iconTexture:SetAllPoints()
-        local iconSuccess
-        if typeIconKey then
-            iconSuccess = ns.UI_SetIcon(iconTexture, typeIconKey) and true or false
-        else
-            iconSuccess = pcall(function()
-                iconTexture:SetAtlas(typeIconAtlas, false)
-            end)
-        end
+        local iconSuccess = ns.UI_SetIcon(iconTexture, typeIconKey) and true or false
         if not iconSuccess then
             iconFrame:Hide()
             iconFrame = nil
@@ -3008,7 +2994,7 @@ function PlanCardFactory.CreateReminderAlertButton(parent, plan)
 end
 
 -- Export
-PlanCardFactory.TYPE_ICONS = TYPE_ICONS  -- Export atlas mapping for use in other modules
+PlanCardFactory.TYPE_ICONS = TYPE_ICONS  -- Export registry key mapping for use in other modules
 PlanCardFactory.TYPE_NAMES = TYPE_NAMES
 PlanCardFactory.TYPE_COLORS = TYPE_COLORS
 ns.UI_PlanCardFactory = PlanCardFactory

@@ -2063,9 +2063,9 @@ end
 local SUB_TABS = {
     { key = "recent", label = (ns.L and ns.L["COLLECTIONS_SUBTAB_RECENT"]) or "Recent", iconKey = "clock" },
     { key = "achievements", label = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", iconKey = "trophy" },
-    { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
+    { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", iconKey = "book" },
     { key = "pets", label = (ns.L and ns.L["CATEGORY_PETS"]) or PETS or "Pets", iconKey = "paw" },
-    { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), icon = "Interface\\Icons\\INV_Misc_Toy_07" },
+    { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), iconKey = "gift" },
 }
 
 function M.CreateSubTabBar(parent, onTabSelect)

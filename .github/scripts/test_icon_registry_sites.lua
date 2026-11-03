@@ -102,6 +102,13 @@ do
     check(not has(tc, "INV_Misc_QuestionMark") and not has("Modules/UI/SharedWidgets_Icons.lua", "INV_Misc_QuestionMark"),
         "Unknown tab / failed atlas fall back to the registry question icon")
     check(has("Modules/UI/SharedWidgets_Icons.lua", "if isAtlas and not (ns.UI_IsAddonMediaTexture"), "CreateIcon draws addon media as a file even with isAtlas")
+    local pcf = "Modules/UI/PlanCardFactory.lua"
+    check(has(pcf, 'illusion = "illusion"') and has(pcf, 'title = "title"') and has(pcf, 'mount = "book"') and not has(pcf, "dragon-rostrum")
+        and not has(pcf, "UpgradeItem-32x32") and not has(pcf, "poi-legendsoftheharanir") and not has(pcf, "CreationCatalyst"),
+        "Plan type icons are registry keys (no Blizzard type atlases)")
+    check(not has("Modules/UI/PlansUI.lua", "UpgradeItem-32x32") and not has("Modules/UI/PlansUI_Browse.lua", "dragon-rostrum")
+        and not has("Modules/UI/PlansTrackerWindow.lua", "INV_Enchant_Disenchant"), "Plans sub-tabs, browse and tracker use registry plan type icons")
+    check(has("Modules/UI/ProfessionsUI.lua", 'knowledge   = { iconKey = "knowledge" }'), "Professions knowledge column uses the registry knowledge icon")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

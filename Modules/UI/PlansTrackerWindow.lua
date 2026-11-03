@@ -193,15 +193,15 @@ local MAX_HEIGHT = 800
 
 -- Fallback icons by plan type (ensures every card type has a visible icon)
 local PLAN_TYPE_FALLBACK_ICONS = {
-    mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-    toy = "Interface\\Icons\\INV_Misc_Toy_07",
-    illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
-    title = "Interface\\Icons\\INV_Scroll_11",
     weekly_vault = "Interface\\Icons\\INV_Misc_Chest_03",
 }
 -- Plan types whose fallback is an addon icon registry glyph (ns.UI_ICONS key, resolved at draw time).
 local PLAN_TYPE_FALLBACK_ICON_KEYS = {
+    mount = "book",
     pet = "paw",
+    toy = "gift",
+    illusion = "illusion",
+    title = "title",
     achievement = "trophy",
     daily_quests = "calendar",
     custom = "checklist",
