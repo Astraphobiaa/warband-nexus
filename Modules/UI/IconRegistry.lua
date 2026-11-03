@@ -101,6 +101,8 @@ ns.UI_ICONS = {
     first_craft    = { file = Icon("FirstCraft") },  -- colored
     mail           = { file = Icon("Mail") },  -- colored
     link           = { file = Icon("ChatLink") },  -- colored
+    reminder       = { file = Icon("Bell") },  -- colored
+    search         = { file = Icon("Search") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },

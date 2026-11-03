@@ -117,6 +117,10 @@ do
         and has("Modules/MailSnapshotService.lua", 'IconFile("mail")'), "Pending mail badge and mail tooltip use the registry envelope")
     check(has("Modules/UI/PlanCardFactory.lua", 'SetNormalTexture(ns.UI_GetIconFile("link"))') and not has("Modules/UI/PlanCardFactory.lua", "UI-ChatIcon-Chat"),
         "Plan chat link button uses the registry chat bubble")
+    check(not has("Modules/Constants.lua", "icon_cooldownmanager") and not has("Modules/ReminderService.lua", "icon_cooldownmanager")
+        and has("Modules/VaultButton_SavedInstances.lua", 'ns.UI_SetIcon(titleIcon, "reminder")'), "Reminder alerts use the registry bell")
+    check(has("Modules/UI/SharedWidgets_EmptyState.lua", 'search = "search"') and not has("Modules/UI/SharedWidgets_EmptyState.lua", "common-search-magnifyingglass"),
+        "No-results empty state uses the registry magnifier")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))

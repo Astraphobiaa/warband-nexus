@@ -119,7 +119,6 @@ local EMPTY_STATE_CONFIG = {
     },
     --- Unified search-no-results card (all tabs; description built from query at show time).
     search = {
-        atlas = "common-search-magnifyingglass",
         titleKey = "NO_RESULTS",
         titleFallback = "No results",
     },
@@ -272,6 +271,7 @@ local EMPTY_STATE_CONFIG = {
 --- Registry icon per empty-state key (Modules/UI/IconRegistry.lua). Keys without an entry keep their atlas,
 --- or fall back to the generic "character" icon when they have none.
 local EMPTY_STATE_ICON_KEYS = {
+    search = "search",
     characters = "character",
     items = "bag", items_inventory = "bag", items_personal = "vault", items_warband = "warband", items_guild = "guild",
     storage = "crate",

@@ -348,8 +348,8 @@ local Constants = {
 
     -- PLAN REMINDERS / ALERTS (card badge, Set Alert dialog, toasts)
     -- Primary: Blizzard UI atlas (SetAtlas). If SetAtlas fails, PlanCardFactory / CreateIcon fall back to texture.
-    REMINDER_ALERT_ATLAS = "icon_cooldownmanager",
-    REMINDER_ALERT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Horn_01",
+    -- Reminder alert glyph: the addon registry bell (ns.UI_ICONS.reminder), as a media path for file APIs.
+    REMINDER_ALERT_ICON_TEXTURE = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Bell.tga",
     -- RGB for reminder chrome: card glow, compact To-Do reminder toast (border, icon ring, TopBottom glow).
     REMINDER_HORN_UI_COLOR = { 1, 0.82, 0.22 },
 

@@ -69,7 +69,7 @@ local function BuildAchievementProgressLabelText(achievementID)
     return label .. progressColor .. header .. "|r"
 end
 
-local REMINDER_ALERT_TEX = (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE) or "Interface\\Icons\\INV_Misc_Horn_01"
+local REMINDER_ALERT_TEX = ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE  -- registry bell (media path)
 local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
 
 local function ApplyReminderCardButtonIcon(tex, hasReminder)
@@ -85,7 +85,7 @@ local function ApplyReminderCardButtonIcon(tex, hasReminder)
         ns.UI_SetWnIconTexture(tex, "alert", { vertexColor = { vc[1], vc[2], vc[3], vc[4] or 1 }, desaturate = false })
         return
     end
-    -- Last resort: registry clock glyph (horn yellow when a reminder is set), then the horn item icon.
+    -- Last resort: registry clock glyph (horn yellow when a reminder is set), then the registry bell file.
     if ns.UI_SetIcon and ns.UI_SetIcon(tex, "clock", hasReminder and { vertexColor = REMINDER_HORN_UI_COLOR } or nil) then
         return
     end

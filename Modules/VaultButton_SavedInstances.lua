@@ -271,7 +271,7 @@ function M.BuildSavedInstancesFrame()
     local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
     titleIcon:SetSize(24, 24)
     titleIcon:SetPoint("LEFT", 15, 0)
-    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Bell_01")
+    ns.UI_SetIcon(titleIcon, "reminder")
 
     local FontManager = ns.FontManager
     local title  -- was missing: wrote a shared env field (2026-10-22)

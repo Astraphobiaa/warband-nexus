@@ -106,7 +106,7 @@ local function LoginBurstMarkCalendarActivated(plan)
 end
 
 local function GetReminderToastIconTexture()
-    return (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager"
+    return (ns.UI_GetIconFile and ns.UI_GetIconFile("reminder")) or (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE)
 end
 
 --- Prefer plan journal icon (fileID); fallback reminder atlas for toast.

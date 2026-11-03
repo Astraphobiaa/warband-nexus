@@ -762,7 +762,7 @@ local CATEGORY_ICONS = {
     reputation = IconFile("medal"),
     quest = IconFile("scroll"),
     item = IconFile("bag"),
-    reminder = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager",
+    reminder = IconFile("reminder"),
     tryCounter = "Interface\\Icons\\INV_Misc_Lucky_MoneyEnvelope",
 }
 
