@@ -39,7 +39,7 @@ local MAIL_SNAPSHOT_VERSION = 2
 local MAX_PLAUSIBLE_STACK = 5000
 -- Registry files (IconRegistry loads before this file in the TOC; nil only in standalone test harnesses).
 local IconFile = ns.UI_GetIconFile or function() return nil end
-local MAIL_ICON_FROM = "Interface\\Icons\\INV_Letter_15"
+local MAIL_ICON_FROM = IconFile("mail")
 local MAIL_ICON_SUBJECT = IconFile("scroll")
 local MAIL_ICON_CONTAINS = IconFile("bag")
 local MAIL_ICON_GOLD = IconFile("money_gold")

@@ -99,6 +99,8 @@ ns.UI_ICONS = {
     quest_daily    = { file = Icon("QuestDaily") },  -- colored
     quest_important = { file = Icon("QuestImportant") },  -- colored
     first_craft    = { file = Icon("FirstCraft") },  -- colored
+    mail           = { file = Icon("Mail") },  -- colored
+    link           = { file = Icon("ChatLink") },  -- colored
     -- colored
     status_ok      = { file = Icon("StatusOk") },
     status_fail    = { file = Icon("StatusFail") },

@@ -658,7 +658,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
             linkBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -whTop)
         end
         linkBtn:SetFrameLevel(card:GetFrameLevel() + 5)
-        linkBtn:SetNormalTexture("Interface\\CHATFRAME\\UI-ChatIcon-Chat")
+        linkBtn:SetNormalTexture(ns.UI_GetIconFile("link"))
         linkBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
         local capPlan = plan
         linkBtn:SetScript("OnEnter", function(self)

@@ -191,32 +191,9 @@ local function StyleCharacterDeleteIcon(icon, highlighted)
 end
 
 local SECONDARY_PROF_KEYS = { "cooking" }
----Pending-mail badge next to character name. Inline |T paths are unreliable in modern clients; use a Texture.
+---Pending-mail badge next to character name: the registry envelope (a Texture; inline |T paths are unreliable).
 local function ApplyPendingMailIconTexture(tex)
-    tex:SetTexCoord(0, 1, 0, 1)
-    if C_Texture and C_Texture.GetAtlasInfo then
-        local atlasTry = { "Mail-Icon", "minimap-tracking-mailbox", "Mailbox-Tracking" }
-        for i = 1, #atlasTry do
-            local name = atlasTry[i]
-            local ok, info = pcall(C_Texture.GetAtlasInfo, name)
-            if ok and info then
-                tex:SetAtlas(name)
-                return
-            end
-        end
-    end
-    if C_Texture and C_Texture.GetFileIDFromPath then
-        local paths = { "interface/minimap/tracking/mailbox", "Interface/Minimap/Tracking/Mailbox" }
-        for i = 1, #paths do
-            local p = paths[i]
-            local ok, fid = pcall(C_Texture.GetFileIDFromPath, p)
-            if ok and fid and type(fid) == "number" and fid > 0 then
-                tex:SetTexture(fid)
-                return
-            end
-        end
-    end
-    tex:SetTexture("Interface/Minimap/Tracking/Mailbox")
+    ns.UI_SetIcon(tex, "mail")
 end
 
 ---Expiry reminder tint on the envelope: green over a week left, orange within the last

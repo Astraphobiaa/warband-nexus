@@ -113,6 +113,10 @@ do
         and has("Modules/UI/PvPUI.lua", 'weekly = { iconKey = "quest_weekly" }'), "First craft and weekly quest columns use registry icons")
     check(has("Modules/DailyQuestManager.lua", 'iconKey = "quest_daily"') and has("Modules/DailyQuestManager.lua", 'iconKey = "quest_important"')
         and has("Modules/NotificationManager.lua", 'icon = IconFile("quest_weekly")'), "Quest type icons (daily, weekly, important) come from the registry")
+    check(has("Modules/UI/CharactersUI_Row.lua", 'ns.UI_SetIcon(tex, "mail")') and not has("Modules/UI/CharactersUI_Row.lua", "minimap-tracking-mailbox")
+        and has("Modules/MailSnapshotService.lua", 'IconFile("mail")'), "Pending mail badge and mail tooltip use the registry envelope")
+    check(has("Modules/UI/PlanCardFactory.lua", 'SetNormalTexture(ns.UI_GetIconFile("link"))') and not has("Modules/UI/PlanCardFactory.lua", "UI-ChatIcon-Chat"),
+        "Plan chat link button uses the registry chat bubble")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))
