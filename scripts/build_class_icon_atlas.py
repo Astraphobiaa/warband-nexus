@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build the class crest atlases: two 512x512 RGBA TGAs, 4x4 grid of 128 px cells.
+"""Build the class crests: one 128x128 RGBA TGA per class and variant.
 
-Media/ClassIcons.tga      crest with the class-colored ring
-Media/ClassIconsBare.tga  crest art only
+Media/ClassCrest-<CLASS>.tga       crest with the class-colored ring
+Media/ClassCrest-<CLASS>-Bare.tga  crest art only
 
-Cell index = classID - 1, row-major (WARRIOR top-left ... EVOKER on row 4, column 1).
-Keep CLASS_ORDER in sync with CLASS_ICON_CELL in Modules/UI/SharedWidgets_Icons.lua.
+<CLASS> is the upper-case classFile (DEATHKNIGHT). One small file per crest, not a 512 px atlas:
+the shipped addon only ever used textures up to 256 px, and the client crashed drawing the atlas.
+Keep CLASS_ORDER in sync with CLASS_CREST in Modules/UI/SharedWidgets_Icons.lua.
 Sources: scripts/assets/class_icons/<class>_ring.png and <class>.png (512 px, transparent).
 """
 from __future__ import annotations
@@ -18,9 +19,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "scripts" / "assets" / "class_icons"
 MEDIA = ROOT / "Media"
-ATLAS = 512
-CELL = 128
-COLS = ATLAS // CELL
+SIZE = 128
 
 CLASS_ORDER = [
     "warrior", "paladin", "hunter", "rogue",
@@ -30,19 +29,17 @@ CLASS_ORDER = [
 ]
 
 
-def build(suffix: str, out_name: str) -> None:
-    atlas = Image.new("RGBA", (ATLAS, ATLAS), (0, 0, 0, 0))
-    for i, key in enumerate(CLASS_ORDER):
-        cell = Image.open(SRC / f"{key}{suffix}.png").convert("RGBA").resize((CELL, CELL), Image.LANCZOS)
-        atlas.paste(cell, ((i % COLS) * CELL, (i // COLS) * CELL))
-    out = MEDIA / out_name
-    # Write beside the target, then rename: the addon folder is live in the game, which must never read a half-written file.
-    tmp = out.with_name(out.name + ".tmp")
-    atlas.save(tmp, format="TGA")
-    os.replace(tmp, out)
-    print(f"wrote {out.name}")
+def build(suffix: str, file_suffix: str) -> None:
+    for key in CLASS_ORDER:
+        img = Image.open(SRC / f"{key}{suffix}.png").convert("RGBA").resize((SIZE, SIZE), Image.LANCZOS)
+        out = MEDIA / f"ClassCrest-{key.upper()}{file_suffix}.tga"
+        # Write beside the target, then rename: the addon folder is live in the game, which must never read a half-written file.
+        tmp = out.with_name(out.name + ".tmp")
+        img.save(tmp, format="TGA")
+        os.replace(tmp, out)
+        print(f"wrote {out.name}")
 
 
 if __name__ == "__main__":
-    build("_ring", "ClassIcons.tga")
-    build("", "ClassIconsBare.tga")
+    build("_ring", "")
+    build("", "-Bare")

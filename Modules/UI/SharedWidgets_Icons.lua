@@ -768,29 +768,23 @@ ns.UI_GetRaceIcon = GetRaceIcon
 ns.UI_GetRaceGenderAtlas = GetRaceGenderAtlas
 ns.UI_CreateFactionIcon = CreateFactionIcon
 ns.UI_CreateRaceIcon = CreateRaceIcon
--- Painted class crest atlas (Media/ClassIcons*.tga): 4x4 grid, cell index = classID - 1.
+-- Painted class crests: one 128 px file per class (Media/ClassCrest-<CLASS>[-Bare].tga).
 -- Keep in sync with CLASS_ORDER in scripts/build_class_icon_atlas.py.
-local CLASS_ICON_CELL = {
-    WARRIOR = 0, PALADIN = 1, HUNTER = 2, ROGUE = 3,
-    PRIEST = 4, DEATHKNIGHT = 5, SHAMAN = 6, MAGE = 7,
-    WARLOCK = 8, MONK = 9, DRUID = 10, DEMONHUNTER = 11,
-    EVOKER = 12,
+local CLASS_CREST = {
+    WARRIOR = true, PALADIN = true, HUNTER = true, ROGUE = true,
+    PRIEST = true, DEATHKNIGHT = true, SHAMAN = true, MAGE = true,
+    WARLOCK = true, MONK = true, DRUID = true, DEMONHUNTER = true,
+    EVOKER = true,
 }
-local CLASS_ICON_GRID = 4
-local CLASS_ICON_INSET = 0.5 / 512  -- half a texel: bilinear sampling never bleeds into the neighbour cell
-local CLASS_ICON_ATLAS = (Constants and Constants.WN_CLASS_ICON_ATLAS) or "Interface\\AddOns\\WarbandNexus\\Media\\ClassIcons.tga"
-local CLASS_ICON_ATLAS_BARE = (Constants and Constants.WN_CLASS_ICON_ATLAS_BARE) or "Interface\\AddOns\\WarbandNexus\\Media\\ClassIconsBare.tga"
+local CLASS_CREST_PREFIX = (Constants and Constants.WN_CLASS_CREST_PREFIX) or "Interface\\AddOns\\WarbandNexus\\Media\\ClassCrest-"
 
---- TexCoord (left, right, top, bottom) of a class crest cell; nil for an unknown class.
-local function GetClassIconTexCoord(classFile)
-    local cell = type(classFile) == "string" and CLASS_ICON_CELL[string.upper(classFile)]
-    if not cell then return nil end
-    local step = 1 / CLASS_ICON_GRID
-    local col, row = cell % CLASS_ICON_GRID, math.floor(cell / CLASS_ICON_GRID)
-    return col * step + CLASS_ICON_INSET, (col + 1) * step - CLASS_ICON_INSET,
-        row * step + CLASS_ICON_INSET, (row + 1) * step - CLASS_ICON_INSET
+--- Crest file of a class (ring art, or bare = true for art only); nil for an unknown class.
+local function GetClassIconFile(classFile, bare)
+    local cf = type(classFile) == "string" and string.upper(classFile)
+    if not cf or not CLASS_CREST[cf] then return nil end
+    return CLASS_CREST_PREFIX .. cf .. (bare and "-Bare" or "") .. ".tga"
 end
-ns.UI_GetClassIconTexCoord = GetClassIconTexCoord
+ns.UI_GetClassIconFile = GetClassIconFile
 
 --- Reset pooled/reused icon textures to full color (atlas + file icons).
 local function EnsureTextureFullColor(tex)
@@ -801,14 +795,14 @@ local function EnsureTextureFullColor(tex)
 end
 ns.UI_EnsureTextureFullColor = EnsureTextureFullColor
 
---- Apply the painted class crest from the addon atlas (no Blizzard class art, so it works on every client);
+--- Apply the painted class crest file (no Blizzard class art, so it works on every client);
 --- safe for pooled textures. bare = true uses the ring-less art for surfaces that draw their own frame.
 local function ApplyClassIconTexture(tex, classFile, bare)
     if not tex or not classFile or classFile == "" then return end
-    local l, r, t, b = GetClassIconTexCoord(classFile)
-    if l then
-        tex:SetTexture(bare and CLASS_ICON_ATLAS_BARE or CLASS_ICON_ATLAS)
-        tex:SetTexCoord(l, r, t, b)
+    local file = GetClassIconFile(classFile, bare)
+    if file then
+        tex:SetTexture(file)
+        tex:SetTexCoord(0, 1, 0, 1)
     else
         ns.UI_SetIcon(tex, "question")
     end

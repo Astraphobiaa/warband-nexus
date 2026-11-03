@@ -90,10 +90,9 @@ local Constants = {
     WN_ICON_CREDITS = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
     WN_ICON_TRACKING = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
 
-    --- Painted class crests: 512x512 atlas, 4x4 cells of 128 px, cell = classID - 1 (see UI_GetClassIconTexCoord).
-    --- Rebuild: scripts/build_class_icon_atlas.py. ATLAS = crest with class-colored ring; ATLAS_BARE = art only.
-    WN_CLASS_ICON_ATLAS = "Interface\\AddOns\\WarbandNexus\\Media\\ClassIcons.tga",
-    WN_CLASS_ICON_ATLAS_BARE = "Interface\\AddOns\\WarbandNexus\\Media\\ClassIconsBare.tga",
+    --- Painted class crests: prefix .. CLASSFILE .. ".tga" (ring) or .. "-Bare.tga" (art only), 128 px each.
+    --- Rebuild: scripts/build_class_icon_atlas.py. Lookup: ns.UI_GetClassIconFile(classFile, bare).
+    WN_CLASS_CREST_PREFIX = "Interface\\AddOns\\WarbandNexus\\Media\\ClassCrest-",
     
     -- DATABASE VERSIONS
     
