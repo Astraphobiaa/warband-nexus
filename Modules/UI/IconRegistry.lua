@@ -204,8 +204,7 @@ function ns.UI_SetIcon(tex, key, opts)
         end
     end
     if not applied and entry.file then
-        -- trilinear: these 64 px files are mostly drawn at 12-20 px
-        tex:SetTexture(entry.file, nil, nil, "TRILINEAR")
+        tex:SetTexture(entry.file)
         local tc = entry.texCoord or SORT_DOWN_TC
         tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
         applied = "file"

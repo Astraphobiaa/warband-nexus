@@ -807,7 +807,7 @@ local function ApplyClassIconTexture(tex, classFile, bare)
     if not tex or not classFile or classFile == "" then return end
     local l, r, t, b = GetClassIconTexCoord(classFile)
     if l then
-        tex:SetTexture(bare and CLASS_ICON_ATLAS_BARE or CLASS_ICON_ATLAS, nil, nil, "TRILINEAR")
+        tex:SetTexture(bare and CLASS_ICON_ATLAS_BARE or CLASS_ICON_ATLAS)
         tex:SetTexCoord(l, r, t, b)
     else
         ns.UI_SetIcon(tex, "question")
