@@ -420,7 +420,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         if type(iconPath) == "string" and ns.UI_ICONS and ns.UI_ICONS[iconPath] then
             ns.UI_SetIcon(tex, iconPath)
         elseif iconPath and ns.UI_IsAddonMediaTexture and ns.UI_IsAddonMediaTexture(iconPath) then
-            tex:SetTexture(iconPath, nil, nil, "TRILINEAR")
+            tex:SetTexture(iconPath)
             tex:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
         elseif iconPath then
             if isAtlas then

@@ -32,6 +32,23 @@ local tostring = tostring
 local WN_MEDIA = "Interface\\AddOns\\WarbandNexus\\Media\\"
 local function Icon(name) return WN_MEDIA .. "Icon-" .. name .. ".tga" end
 
+-- Loose TGAs get no mipmaps (TRILINEAR on them crashes the client), so a 64 px file drawn at 16-24 px
+-- aliases. Media/Small/ holds 32 px copies (scripts/build_small_icons.py); use them for small draws.
+local SMALL_ICON_MAX = 24
+local smallFileCache = {}
+local function SmallIconFile(file)
+    local v = smallFileCache[file]
+    if v == nil then
+        v = false
+        if type(file) == "string" and file:sub(1, #WN_MEDIA + 5) == WN_MEDIA .. "Icon-" then
+            v = WN_MEDIA .. "Small\\" .. file:sub(#WN_MEDIA + 1)
+        end
+        smallFileCache[file] = v
+    end
+    return v or file
+end
+ns.UI_SmallIconFile = SmallIconFile
+
 local SORT_UP_TC = { 0, 1, 1, 0 }
 local SORT_DOWN_TC = { 0, 1, 0, 1 }
 
@@ -204,8 +221,10 @@ function ns.UI_SetIcon(tex, key, opts)
         end
     end
     if not applied and entry.file then
-        -- TRILINEAR: mipmaps, so 64-128 px art stays smooth at 16-24 px (Blizzard map tiles use the same mode).
-        tex:SetTexture(entry.file, nil, nil, "TRILINEAR")
+        local file = entry.file
+        local h = tex.GetHeight and tex:GetHeight()
+        if h and h > 0 and h <= SMALL_ICON_MAX then file = SmallIconFile(file) end
+        tex:SetTexture(file)
         local tc = entry.texCoord or SORT_DOWN_TC
         tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
         applied = "file"
@@ -242,9 +261,14 @@ function ns.UI_GetIconMarkup(key, width, height, offsetX, offsetY, tint)
         markup = CreateAtlasMarkup(atlas, width, height, offsetX, offsetY)
     elseif entry and entry.file then
         if ns.UI_IsAddonMediaTexture(entry.file) and not entry.texCoord then
-            -- our icons are 64x64: full texel range, plus the tint
-            markup = "|T" .. entry.file .. ":" .. height .. ":" .. width .. ":" .. offsetX .. ":" .. offsetY
-                .. ":64:64:0:64:0:64:" .. r .. ":" .. g .. ":" .. b .. "|t"
+            -- our icons are 64x64 (32x32 in Media/Small for line-height draws): full texel range, plus the tint
+            local file, px = entry.file, 64
+            if height <= SMALL_ICON_MAX then
+                local small = SmallIconFile(file)
+                if small ~= file then file, px = small, 32 end
+            end
+            markup = "|T" .. file .. ":" .. height .. ":" .. width .. ":" .. offsetX .. ":" .. offsetY
+                .. ":" .. px .. ":" .. px .. ":0:" .. px .. ":0:" .. px .. ":" .. r .. ":" .. g .. ":" .. b .. "|t"
         else
             markup = "|T" .. tostring(entry.file) .. ":" .. height .. ":" .. width .. ":" .. offsetX .. ":" .. offsetY .. "|t"
         end

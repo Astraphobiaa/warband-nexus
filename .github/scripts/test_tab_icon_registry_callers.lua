@@ -129,7 +129,8 @@ do
     local dark = joined()
     for _, key in ipairs({ "bag", "vault", "warband", "guild" }) do
         local file = ns.UI_GetIconFile(key)
-        check(type(file) == "string" and ns.UI_IsAddonMediaTexture(file) and dark:find("|T" .. file .. ":16:16", 1, true) ~= nil,
+        local small = ns.UI_SmallIconFile(file)  -- 16 px markup draws the 32 px copy
+        check(type(file) == "string" and ns.UI_IsAddonMediaTexture(file) and dark:find("|T" .. small .. ":16:16", 1, true) ~= nil,
             "marker '" .. key .. "' is the registry Media file at 16x16")
     end
     check(not dark:find("|A:", 1, true) and not dark:find("Banker", 1, true) and not dark:find("warbands-icon", 1, true),
@@ -139,16 +140,16 @@ do
     local light = joined()
     -- all four storage markers are colored: they keep their own colors on the light theme too
     for _, key in ipairs({ "bag", "vault", "warband", "guild" }) do
-        check(light:find("|T" .. ns.UI_GetIconFile(key) .. ":16:16:0:0:64:64:0:64:0:64:255:255:255|t", 1, true) ~= nil,
+        check(light:find("|T" .. ns.UI_SmallIconFile(ns.UI_GetIconFile(key)) .. ":16:16:0:0:32:32:0:32:0:32:255:255:255|t", 1, true) ~= nil,
             "light theme: colored '" .. key .. "' marker keeps its own colors")
     end
     -- a mono key's markup follows the theme tint (no stale cache across a theme switch)
-    local ck = ns.UI_GetIconFile("clock")
+    local ck = ns.UI_SmallIconFile(ns.UI_GetIconFile("clock"))  -- 16 px markup draws the 32 px copy
     local lightClock = ns.UI_GetIconMarkup("clock", 16, 16)
     themeVertex = { 1, 1, 1 }
     local darkClock = ns.UI_GetIconMarkup("clock", 16, 16)
-    check(lightClock:find("|T" .. ck .. ":16:16:0:0:64:64:0:64:0:64:0:0:0|t", 1, true) ~= nil
-        and darkClock:find("|T" .. ck .. ":16:16:0:0:64:64:0:64:0:64:255:255:255|t", 1, true) ~= nil,
+    check(lightClock:find("|T" .. ck .. ":16:16:0:0:32:32:0:32:0:32:0:0:0|t", 1, true) ~= nil
+        and darkClock:find("|T" .. ck .. ":16:16:0:0:32:32:0:32:0:32:255:255:255|t", 1, true) ~= nil,
         "light theme: markup follows the new tint (no stale cache)")
 end
 

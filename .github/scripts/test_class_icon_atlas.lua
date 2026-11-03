@@ -86,11 +86,21 @@ local Apply = ns.UI_ApplyClassIconTexture
 local tex = FakeTexture()
 Apply(tex, "MAGE")
 assert_eq(tex.path, GetFile("MAGE"), "ring crest by default")
-assert_eq(tex.filter, "TRILINEAR", "trilinear filtering for scaled crests")
+assert_eq(tex.filter, nil, "no TRILINEAR (crashes the client on loose TGAs)")
 assert_eq(tex.tc and tex.tc[1] == 0 and tex.tc[2] == 1 and tex.tc[3] == 0 and tex.tc[4] == 1, true, "full TexCoord")
 assert_eq(tex.atlas, nil, "no Blizzard atlas name is set")
 Apply(tex, "DRUID", true)
 assert_eq(tex.path, GetFile("DRUID", true), "bare crest on request")
+local rowTex = FakeTexture()
+function rowTex:GetHeight() return 24 end
+Apply(rowTex, "MAGE")
+assert_eq(rowTex.path, "Interface\\AddOns\\WarbandNexus\\Media\\Small\\ClassCrest-MAGE.tga", "24 px row crest uses the 32 px copy")
+for classFile in pairs(CLASS_IDS) do
+    local fh = io.open(ROOT .. "/Media/Small/ClassCrest-" .. classFile .. ".tga", "rb")
+    local head = fh and fh:read(18)
+    if fh then fh:close() end
+    assert_eq(head and head:byte(13), 32, "Media/Small/ClassCrest-" .. classFile .. ".tga is 32 px")
+end
 Apply(tex, "ADVENTURER")
 assert_eq(tex.path, ns.UI_GetIconFile("question"), "unknown class falls back to the registry question icon")
 

@@ -250,7 +250,9 @@ local function ApplyIconTexture(tex, texture, isAtlas)
         return
     end
     if ns.UI_IsAddonMediaTexture and ns.UI_IsAddonMediaTexture(texture) then
-        tex:SetTexture(texture, nil, nil, "TRILINEAR")  -- mipmapped: smooth when drawn below file size
+        local h = tex.GetHeight and tex:GetHeight()
+        local small = h and h > 0 and h <= 24 and ns.UI_SmallIconFile
+        tex:SetTexture(small and small(texture) or texture)
         tex:SetTexCoord(0, 1, 0, 1)  -- our icons have no Blizzard icon border to crop
     else
         tex:SetTexture(texture)
@@ -785,6 +787,9 @@ local function GetClassIconFile(classFile, bare)
     if not cf or not CLASS_CREST[cf] then return nil end
     return CLASS_CREST_PREFIX .. cf .. (bare and "-Bare" or "") .. ".tga"
 end
+-- Row-sized crests (<= 40 px) use the 32 px copies in Media/Small: loose TGAs have no mipmaps.
+local CLASS_CREST_SMALL_MAX = 40
+local CLASS_CREST_SMALL_PREFIX = (CLASS_CREST_PREFIX:gsub("ClassCrest%-$", "Small\\ClassCrest-"))
 ns.UI_GetClassIconFile = GetClassIconFile
 
 --- Reset pooled/reused icon textures to full color (atlas + file icons).
@@ -801,8 +806,12 @@ ns.UI_EnsureTextureFullColor = EnsureTextureFullColor
 local function ApplyClassIconTexture(tex, classFile, bare)
     if not tex or not classFile or classFile == "" then return end
     local file = GetClassIconFile(classFile, bare)
+    local h = file and tex.GetHeight and tex:GetHeight()
+    if h and h > 0 and h <= CLASS_CREST_SMALL_MAX then
+        file = CLASS_CREST_SMALL_PREFIX .. file:sub(#CLASS_CREST_PREFIX + 1)
+    end
     if file then
-        tex:SetTexture(file, nil, nil, "TRILINEAR")  -- smooth at 24 px row size
+        tex:SetTexture(file)
         tex:SetTexCoord(0, 1, 0, 1)
     else
         ns.UI_SetIcon(tex, "question")

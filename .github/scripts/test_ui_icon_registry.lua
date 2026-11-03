@@ -84,7 +84,7 @@ local tex = FakeTexture()
 local ok, how = ns.UI_SetIcon(tex, "settings")
 assert_eq(ok and how, "file", "settings applied from file")
 assert_eq(tex.path, ns.UI_ICONS.settings.file, "settings uses its registry file")
-assert_eq(tex.filter, "TRILINEAR", "trilinear filter")
+assert_eq(tex.filter, nil, "no TRILINEAR (crashes the client on loose TGAs)")
 assert_eq(tex.atlas, nil, "no atlas set")
 assert_eq(tex.vc and tex.vc[1], 0.1, "mono key follows the theme vertex")
 ns.UI_SetIcon(tex, "favorite_on")
@@ -94,6 +94,37 @@ assert_eq(tex.tc and tex.tc[3] == 1 and tex.tc[4] == 0, true, "sort_up flips the
 assert_eq(ns.UI_GetIconFile("attention"), ns.UI_ICONS.attention.file, "UI_GetIconFile returns the entry file")
 assert_eq(ns.UI_IsAddonMediaTexture(ns.UI_ICONS.lock.file), true, "own media is recognised")
 assert_eq(ns.UI_IsAddonMediaTexture("Interface\\Icons\\INV_Misc_Coin_01"), false, "Blizzard icons are not")
+
+print("Phase 3: small draws use the 32 px copies; TRILINEAR never ships")
+local small = FakeTexture()
+function small:GetHeight() return 18 end
+ns.UI_SetIcon(small, "settings")
+local smallPath = ns.UI_ICONS.settings.file:gsub("\\Media\\", "\\Media\\Small\\")
+assert_eq(small.path, smallPath, "18 px draw uses Media/Small")
+local big = FakeTexture()
+function big:GetHeight() return 44 end
+ns.UI_SetIcon(big, "settings")
+assert_eq(big.path, ns.UI_ICONS.settings.file, "44 px draw keeps the 64 px file")
+assert_eq(ns.UI_GetIconMarkup("lock", 0, 0):find("\\Small\\Icon%-Lock%.tga:0:0:0:0:32:32:0:32:0:32") ~= nil, true,
+    "line-height markup uses the small file with 32 px coords")
+for k, entry in pairs(ns.UI_ICONS) do
+    local sf = type(entry.file) == "string" and ns.UI_SmallIconFile(entry.file)
+    if sf and sf ~= entry.file then
+        local rel = sf:gsub("^Interface\\AddOns\\WarbandNexus\\", ""):gsub("\\", "/")
+        local fh = io.open(ROOT .. "/" .. rel, "rb")
+        local h = fh and fh:read(18)
+        if fh then fh:close() end
+        assert_eq(h and h:byte(13) == 32 and h:byte(15) == 32, true, k .. " has a 32 px small copy")
+    end
+end
+local lsh = io.popen("ls " .. ROOT .. "/Core.lua " .. ROOT .. "/Modules/*.lua " .. ROOT .. "/Modules/UI/*.lua")
+for path in lsh:lines() do
+    local fh = io.open(path, "rb")
+    local src = fh:read("*a")
+    fh:close()
+    assert_eq(src:find("\"TRILINEAR\"", 1, true), nil, path:match("[^/]+$") .. " never passes \"TRILINEAR\"")
+end
+lsh:close()
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")
 
