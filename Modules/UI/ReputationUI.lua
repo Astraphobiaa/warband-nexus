@@ -1776,6 +1776,10 @@ end
 -- MAIN DRAW FUNCTION
 
 function WarbandNexus:DrawReputationList(container, width)
+    -- Paint counter: a deferred first paint (DrawReputationTab) skips itself if a list paint ran meanwhile.
+    if container then
+        container._wnRepListPaintGen = (container._wnRepListPaintGen or 0) + 1
+    end
     if not container then return 0 end
     ForgetReputationPaint()
     
@@ -2870,9 +2874,11 @@ function WarbandNexus:DrawReputationTab(parent)
         local deferContainer = container
         local deferBodyW = bodyWidth
         local deferScrollTopY = scrollTopY
+        local deferListGen = container._wnRepListPaintGen or 0
         C_Timer.After(0, function()
             deferParent._wnRepListDeferScheduled = nil
             if not mf or mf.currentTab ~= "reputations" or mf._tabSwitchGen ~= deferGen then return end
+            if (deferContainer._wnRepListPaintGen or 0) ~= deferListGen then return end
             local listHeight = deferSelf:DrawReputationList(deferContainer, deferBodyW)
             ApplyReputationResultsHeight(mf, deferParent, deferContainer, listHeight, false)
             if ns.UI_SyncMainTabScrollChrome then

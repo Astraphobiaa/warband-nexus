@@ -143,6 +143,9 @@ end
 local _achievementCharacterPointsCache = nil
 local _collectionCountsAPICache = nil
 local COLLECTION_COUNTS_API_TTL = 60
+-- Achievement points moved: only the cheap achievement fields of the counts cache are stale.
+local _collectionCountsAchDirty = false
+local _collectionCountsAPIRefreshQueued = false
 
 local function SafeAchievementCountPair()
     if not GetNumCompletedAchievements then return 0, 0 end
@@ -194,7 +197,7 @@ local function PersistCharacterAchievementPoints(addon, points)
         points = n,
         timestamp = GetTime(),
     }
-    _collectionCountsAPICache = nil
+    _collectionCountsAchDirty = true
 end
 
 local function ResolveCharacterAchievementPoints(addon)
@@ -1805,12 +1808,8 @@ function WarbandNexus:GetCollectionCountsFromStore()
     return data
 end
 
-function WarbandNexus:GetCollectionCountsFromAPI()
-    local now = GetTime()
-    if _collectionCountsAPICache and (now - _collectionCountsAPICache.timestamp) < COLLECTION_COUNTS_API_TTL then
-        return _collectionCountsAPICache.data
-    end
-
+---Full journal pass (mount / pet / toy / achievement). O(journal size); never call per frame.
+local function ComputeCollectionCountsFromAPI(self, now)
     local data = {
         mounts = { collected = 0, total = 0 },
         pets = { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
@@ -1934,7 +1933,34 @@ function WarbandNexus:GetCollectionCountsFromAPI()
     end
 
     _collectionCountsAPICache = { timestamp = now, data = data }
+    _collectionCountsAchDirty = false
     return data
+end
+
+function WarbandNexus:GetCollectionCountsFromAPI()
+    local now = GetTime()
+    local cache = _collectionCountsAPICache
+    if not cache then
+        return ComputeCollectionCountsFromAPI(self, now)
+    end
+    if _collectionCountsAchDirty then
+        _collectionCountsAchDirty = false
+        ApplyAchievementSummaryToData(self, cache.data)
+    end
+    if (now - cache.timestamp) >= COLLECTION_COUNTS_API_TTL and not _collectionCountsAPIRefreshQueued then
+        -- Stale-while-revalidate: Collections / Stats call this inside their paint. Totals change only on
+        -- patch day and obtains already adjust the counters in place, so serve the cached numbers and run
+        -- the journal pass (thousands of API calls + ToyBox refilter) outside the paint frame.
+        _collectionCountsAPIRefreshQueued = true
+        local addon = self
+        C_Timer.After(0.5, function()
+            _collectionCountsAPIRefreshQueued = false
+            local c = _collectionCountsAPICache
+            if c and (GetTime() - c.timestamp) < COLLECTION_COUNTS_API_TTL then return end
+            ComputeCollectionCountsFromAPI(addon, GetTime())
+        end)
+    end
+    return cache.data
 end
 
 ---Invalidate the API counts cache so next GetCollectionCountsFromAPI() recomputes.
@@ -2278,7 +2304,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnA
                             points = row.achievementPointsEarned,
                             timestamp = GetTime(),
                         }
-                        _collectionCountsAPICache = nil
+                        _collectionCountsAchDirty = true
                     end
                 end
             end

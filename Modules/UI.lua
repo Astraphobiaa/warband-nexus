@@ -1131,12 +1131,9 @@ local function RefreshFixedHeaderChrome(frame)
         local m = ns.UI_GetMainTabLayoutMetrics(frame)
         if m and m.sideMargin then side = m.sideMargin end
     end
-    local n = 0
-    if fh.GetNumChildren then
-        n = fh:GetNumChildren() or 0
-    end
-    for i = 1, n do
-        local child = select(i, fh:GetChildren())
+    local kids = fh.GetChildren and { fh:GetChildren() } or {}
+    for i = 1, #kids do
+        local child = kids[i]
         if child and child.IsShown and child:IsShown() and child.GetPoint then
             local p1, rel1, rp1, x1, y1 = child:GetPoint(1)
             local p2, rel2, rp2, x2, y2 = child:GetPoint(2)

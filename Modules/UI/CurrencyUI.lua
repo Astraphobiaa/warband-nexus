@@ -1521,11 +1521,25 @@ function WarbandNexus:DrawCurrencyTab(parent)
             return mf and mf:IsShown() and mf.currentTab == "currency"
         end
         
+        -- ClearCurrencyCache sends CACHE_CLEARED then LOADING_STARTED in the same frame: one next-frame
+        -- draw for the pair instead of two synchronous full chrome rebuilds.
+        local currencyLoadingDrawPending = false
+        local function ScheduleCurrencyLoadingDraw()
+            if currencyLoadingDrawPending then return end
+            currencyLoadingDrawPending = true
+            C_Timer.After(0, function()
+                currencyLoadingDrawPending = false
+                if parent and IsCurrencyTabActive() then
+                    WarbandNexus:DrawCurrencyTab(parent)
+                end
+            end)
+        end
+
         -- NOTE: Uses CurrencyUIEvents as 'self' key to avoid overwriting other modules' handlers.
         -- Loading / cache: redraw only when Currency tab is active; tab switch runs DrawCurrencyTab via PopulateContent.
         WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_LOADING_STARTED, function()
             if parent and IsCurrencyTabActive() then
-                WarbandNexus:DrawCurrencyTab(parent)
+                ScheduleCurrencyLoadingDraw()
             end
         end)
         
@@ -1534,7 +1548,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         
         WarbandNexus.RegisterMessage(CurrencyUIEvents, E.CURRENCY_CACHE_CLEARED, function()
             if parent and IsCurrencyTabActive() then
-                WarbandNexus:DrawCurrencyTab(parent)
+                ScheduleCurrencyLoadingDraw()
             end
         end)
         

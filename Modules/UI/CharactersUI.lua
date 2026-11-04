@@ -37,6 +37,11 @@ end
 -- Unique AceEvent handler identity for CharactersUI
 local CharactersUIEvents = {}
 
+-- Guild column: rendered width per guild label (labels rarely change; measuring every roster row on
+-- every paint was a SetText + GetStringWidth per character). Dropped when fonts change.
+local _guildTextWidthCache = {}
+local _guildWidthFontListener = false
+
 -- Throttle WoW Token market request (C_WowTokenPublic.UpdateMarketPrice) â€” avoid per-tab-draw Blizzard work.
 local _wnCharsTabLastTokenReq = 0
 local WN_CHARS_TAB_TOKEN_REQ_INTERVAL = 600
@@ -817,19 +822,8 @@ function WarbandNexus:DrawCharacterList(parent)
     else
         tkValueRef:SetText(ThemeTextHex("Dim") .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
         PresentFS(tkValueRef)
-        -- One-shot retry if price not ready yet (event-driven path is primary).
-        if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
-            C_Timer.After(1.25, function()
-                local addon = _G.WarbandNexus
-                if not addon or not addon.UI or not addon.UI.mainFrame then return end
-                local mf = addon.UI.mainFrame
-                if not mf:IsShown() or mf.currentTab ~= "chars" then return end
-                local p = select(1, C_WowTokenPublic.GetCurrentMarketPrice and C_WowTokenPublic.GetCurrentMarketPrice() or 0)
-                if p and p > 0 and addon.SendMessage then
-                    addon:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
-                end
-            end)
-        end
+        -- No retry timer: TOKEN_MARKET_PRICE_UPDATED (Core.lua) repaints when the price arrives; a timed
+        -- retry repainted the whole roster a second time right after that event.
     end
 
     charGoldCard:Show()
@@ -1001,6 +995,12 @@ function WarbandNexus:DrawCharacterList(parent)
             parent.guildMeasureFs:Hide()
         end
         local fs = parent.guildMeasureFs
+        if not _guildWidthFontListener and E.FONT_CHANGED then
+            _guildWidthFontListener = true
+            WarbandNexus.RegisterMessage(CharactersUIEvents, E.FONT_CHANGED, function()
+                wipe(_guildTextWidthCache)
+            end)
+        end
         local maxW = 0
         local GUILD_PADDING = 20
         local GUILD_MIN = 60
@@ -1016,8 +1016,13 @@ function WarbandNexus:DrawCharacterList(parent)
             for i = 1, #list do
                 local char = list[i]
                 local isCurrent = IsCharLoggedInSession(char)
-                fs:SetText(BuildGuildText(char, isCurrent))
-                local w = fs:GetStringWidth()
+                local guildText = BuildGuildText(char, isCurrent)
+                local w = _guildTextWidthCache[guildText]
+                if not w then
+                    fs:SetText(guildText)
+                    w = fs:GetStringWidth() or 0
+                    _guildTextWidthCache[guildText] = w
+                end
                 if w > maxW then maxW = w end
                 if maxW >= rawCap then
                     break
@@ -1626,10 +1631,10 @@ end
 
 --- Section headers created by `CreateCollapsibleHeader` (stripe texture marker).
 local function ForEachCharactersSectionHeader(scrollChild, fn)
-    if not scrollChild or not fn or not scrollChild.GetNumChildren then return end
-    local n = scrollChild:GetNumChildren() or 0
-    for i = 1, n do
-        local ch = select(i, scrollChild:GetChildren())
+    if not scrollChild or not fn or not scrollChild.GetChildren then return end
+    local kids = { scrollChild:GetChildren() }
+    for i = 1, #kids do
+        local ch = kids[i]
         if ch and ch._wnSectionStripe then
             fn(ch)
         end
@@ -1642,10 +1647,11 @@ local function ForEachCharactersVirtualContainer(root, fn)
     if root._vlm_flatList and root._virtualUpdater then
         fn(root)
     end
-    if not root.GetNumChildren then return end
-    local n = root:GetNumChildren() or 0
-    for i = 1, n do
-        ForEachCharactersVirtualContainer(select(i, root:GetChildren()), fn)
+    if not root.GetChildren then return end
+    -- One child-list fetch per node (select(i, GetChildren()) per index was O(n^2) at every level).
+    local kids = { root:GetChildren() }
+    for i = 1, #kids do
+        ForEachCharactersVirtualContainer(kids[i], fn)
     end
 end
 

@@ -2284,7 +2284,7 @@ function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
     local function runBodyRedraw()
         if not (self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "items") then return end
         if sub == "personal" and self.RequestPersonalBankScanIfNeeded then
-            self:RequestPersonalBankScanIfNeeded()
+            self:RequestPersonalBankScanIfNeeded(true)
         end
         self:RedrawItemsResultsOnly()
         finishPerf()

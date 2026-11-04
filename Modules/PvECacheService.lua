@@ -1523,7 +1523,7 @@ function WarbandNexus:UpdatePvEData()
 
     -- Update all PvE data (API > DB)
     self:UpdateMythicPlusAffixes()
-    self:UpdateCharacterKeystone(charKey)
+    local keyChanged = self:UpdateCharacterKeystone(charKey)
     self:UpdateMythicPlusBestRuns(charKey)
     self:UpdateDungeonScores(charKey)
     self:UpdateGreatVaultRewards(charKey)
@@ -1547,14 +1547,27 @@ function WarbandNexus:UpdatePvEData()
     end
 
     PrunePvECacheAliasKeys(self.db.global.pveCache, charKey)
-    
+
     -- Update timestamp (data already in DB)
     self:SavePvECache()
+    -- A full API pass ran this session: a still-missing keystone means "no key", not "not loaded yet"
+    -- (PvE tab paint stops re-requesting this scan on every open).
+    if ns.PvELoadingState then
+        ns.PvELoadingState.sessionScannedKey = charKey
+    end
     
     local afterSig = BuildPvESignature(self.db.global.pveCache, charKey)
     if beforeSig ~= afterSig then
         -- Fire event only when API→DB produced a real data change.
         self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    end
+    -- The keystone mirror on the character row changed: Characters reads it from there (RequestKeystoneRefresh
+    -- sends the same message; this direct call did not).
+    if keyChanged and self.InvalidateGetAllCharactersCache then
+        self:InvalidateGetAllCharactersCache()
+    end
+    if keyChanged and self.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.CHARACTER_UPDATED then
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "mythicKey" })
     end
     
 end
@@ -1622,6 +1635,31 @@ function WarbandNexus:GetPvEVaultActivities(charKey)
     return LookupPvECharSub(gv and gv.activities, charKey)
 end
 
+-- Season dungeon list: GetPvEData runs once per PvE row, and the map table + names are fixed for the
+-- session. Sorted by name once; not cached while the API is empty or a name comes back secret.
+local _seasonChallengeMaps = nil
+local function GetSeasonChallengeMaps()
+    if _seasonChallengeMaps then return _seasonChallengeMaps end
+    if not C_ChallengeMode or not C_ChallengeMode.GetMapTable then return nil end
+    local maps = C_ChallengeMode.GetMapTable()
+    if not maps or #maps == 0 then return nil end
+    local list, complete = {}, true
+    for i = 1, #maps do
+        local mapID = maps[i]
+        local mapName, _, _, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+        if issecretvalue and issecretvalue(mapName) then
+            mapName = nil
+            complete = false
+        elseif not mapName then
+            complete = false
+        end
+        list[#list + 1] = { mapID = mapID, name = mapName or ("Dungeon " .. mapID), texture = texture }
+    end
+    table.sort(list, CmpNameSort)
+    if complete then _seasonChallengeMaps = list end
+    return list
+end
+
 ---Get PvE data for a specific character or all characters
 ---@return table PvE data
 function WarbandNexus:GetPvEData(charKey)
@@ -1651,13 +1689,12 @@ function WarbandNexus:GetPvEData(charKey)
         -- Build dungeon list from dungeonScores (for UI rendering)
         local dungeons = {}
         
-        if C_ChallengeMode then
-            local maps = C_ChallengeMode.GetMapTable()
-            if maps then
+        local maps = GetSeasonChallengeMaps()
+        if maps then
                 for i = 1, #maps do
-                    local mapID = maps[i]
-                    local mapName, _, _, texture = C_ChallengeMode.GetMapUIInfo(mapID)
-                    if issecretvalue and issecretvalue(mapName) then mapName = nil end
+                    local mapInfo = maps[i]
+                    local mapID = mapInfo.mapID
+                    local mapName, texture = mapInfo.name, mapInfo.texture
                     
                     local dungeonScore = 0
                     local bestLevel = 0
@@ -1682,10 +1719,7 @@ function WarbandNexus:GetPvEData(charKey)
                         score = dungeonScore,  -- From dungeonScores cache
                     })
                 end
-                
-                -- Sort by name
-                table.sort(dungeons, CmpNameSort)
-            end
+                -- Already in name order (GetSeasonChallengeMaps sorts once).
         end
         
         -- Hydrate lockouts: raids vs dungeons (Instance Tracker merges both; PvE raid panel uses raids only).

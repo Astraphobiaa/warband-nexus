@@ -35,8 +35,8 @@ function WarbandNexus:InitializeStatisticsUI()
     -- Same-frame bursts (COLLECTION_UPDATED + PLANS_UPDATED + MONEY_UPDATED for one loot) collapse
     -- into one refresh request; the shell's populate debounce then coalesces across frames.
     local statsRefreshPending = false
-    local function refreshStatsIfVisible()
-        InvalidateStatsCache()
+    -- Gold / money / To-Do only repaint: the stats cache holds collection counts, which they do not touch.
+    local function requestStatsRepaint()
         if statsRefreshPending then return end
         statsRefreshPending = true
         C_Timer.After(0, function()
@@ -47,6 +47,10 @@ function WarbandNexus:InitializeStatisticsUI()
                 end
             end
         end)
+    end
+    local function refreshStatsIfVisible()
+        InvalidateStatsCache()
+        requestStatsRepaint()
     end
 
     -- Register for collection and character wealth update events
@@ -64,11 +68,11 @@ function WarbandNexus:InitializeStatisticsUI()
     end)
     -- Stats tab shows collections, To-Do counts, Warband Wealth (character gold + warband bank money)
     -- and Most Played. Nothing reads bag/item contents, so ITEMS_UPDATED / BAGS_UPDATED are not wired.
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.MONEY_UPDATED, refreshStatsIfVisible)
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.PLANS_UPDATED, refreshStatsIfVisible)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.MONEY_UPDATED, requestStatsRepaint)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.PLANS_UPDATED, requestStatsRepaint)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.CHARACTER_UPDATED, function(_, payload)
         if payload and payload.dataType == "gold" then
-            refreshStatsIfVisible()
+            requestStatsRepaint()
         end
     end)
     
@@ -411,14 +415,9 @@ local function GetCachedCollectionStats()
     local api
     if WarbandNexus.GetCollectionCountsFromStore and WarbandNexus.IsCollectionEnsureDataComplete
         and WarbandNexus:IsCollectionEnsureDataComplete() then
+        -- No API pre-warm here: the stats cache is dropped on every gold change, and the journal pass it
+        -- queued (unused by this tab) ran right after each repaint. The API counts cache refreshes itself.
         api = WarbandNexus:GetCollectionCountsFromStore()
-        if api and C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if WarbandNexus.GetCollectionCountsFromAPI then
-                    WarbandNexus:GetCollectionCountsFromAPI()
-                end
-            end)
-        end
     end
     if not api then
         api = WarbandNexus.GetCollectionCountsFromAPI and WarbandNexus:GetCollectionCountsFromAPI()
@@ -1296,6 +1295,9 @@ function WarbandNexus:DrawStatistics(parent)
     return yOffset
     end -- PaintHeavyStatisticsBody
 
+    -- Every body paint bumps the gen: a deferred paint superseded by a later sync one must not repaint.
+    local heavyGen = (parent._wnStatsHeavyPaintGen or 0) + 1
+    parent._wnStatsHeavyPaintGen = heavyGen
     if parent._preparedByPopulate and not parent._wnStatsHeavyDeferScheduled then
         parent._wnStatsHeavyDeferScheduled = true
         local deferParent = parent
@@ -1304,6 +1306,7 @@ function WarbandNexus:DrawStatistics(parent)
         C_Timer.After(0, function()
             deferParent._wnStatsHeavyDeferScheduled = nil
             if not deferMf or deferMf.currentTab ~= "stats" then return end
+            if deferParent._wnStatsHeavyPaintGen ~= heavyGen then return end
             local endY = PaintHeavyStatisticsBody(deferStartY)
             deferParent._wnStatsHeavyPaintDone = true
             if ns.UI_SyncMainTabScrollChrome then

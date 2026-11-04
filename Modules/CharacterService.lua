@@ -1853,12 +1853,11 @@ function CharacterService:SortCharacterRosterList(list, profile, orderKey, opts)
     elseif not sortMode then
         sortMode = self:GetTabSortKey(profile, "characters")
     end
+    -- One opts table per sort, not per comparison (the comparator runs O(n log n) times).
+    local cmpOpts = { compareNameFn = compareName, isLoggedInFn = opts.isLoggedInFn }
     if sortMode ~= "manual" then
         table.sort(list, function(a, b)
-            return self:CompareCharactersBySortKey(a, b, sortMode, {
-                compareNameFn = compareName,
-                isLoggedInFn = opts.isLoggedInFn,
-            })
+            return self:CompareCharactersBySortKey(a, b, sortMode, cmpOpts)
         end)
         return list
     end
@@ -1890,10 +1889,7 @@ function CharacterService:SortCharacterRosterList(list, profile, orderKey, opts)
             table.insert(remaining, char)
         end
         table.sort(remaining, function(a, b)
-            return self:CompareCharactersBySortKey(a, b, "default", {
-                compareNameFn = compareName,
-                isLoggedInFn = opts.isLoggedInFn,
-            })
+            return self:CompareCharactersBySortKey(a, b, "default", cmpOpts)
         end)
         for i = 1, #remaining do
             table.insert(ordered, remaining[i])

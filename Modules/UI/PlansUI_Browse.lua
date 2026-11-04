@@ -1824,8 +1824,14 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         return DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlannedBrowse, showCompletedBrowse)
     end
 
+    -- Lower each name once (thousands of entries); the comparator used to lower both names per comparison.
+    local lowerName = {}
+    for i = 1, #results do
+        local r = results[i]
+        lowerName[r] = SafeLower(r.name) or ""
+    end
     table.sort(results, function(a, b)
-        return SafeLower(a.name) < SafeLower(b.name)
+        return lowerName[a] < lowerName[b]
     end)
 
     -- Phase 4.4: Limit browse results rendering for performance

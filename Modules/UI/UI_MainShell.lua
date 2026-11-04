@@ -1510,6 +1510,10 @@ function ns.UIShell.CreateMainWindow(self)
         gearStorageRecRefreshTimer = nil,
         gearStorageRecRefreshEquipOnly = false,
         dirtyWhileHidden = false,
+        -- Monotonic request counter: PopulateContentBody stamps populatedThroughSeq when a full paint
+        -- starts, so a deferred request that predates that paint is already on screen and is dropped.
+        scheduleSeq = 0,
+        populatedThroughSeq = 0,
     }
     -- PopulateContentBody (file scope) clears dirtyWhileHidden through this reference.
     f._shellRefreshState = shellRefresh
@@ -1623,6 +1627,13 @@ function ns.UIShell.CreateMainWindow(self)
             f._wnDeferredPopulateAfterResize = true
             return
         end
+        -- Every request in this batch arrived before the last full paint started (tab switch, instant
+        -- UI refresh, resize commit): that paint already read the data, a second one is a pure double draw.
+        if shellRefresh.scheduleSeq <= shellRefresh.populatedThroughSeq then
+            shellRefresh.pendingPopulateSkipCooldown = false
+            shellRefresh.bypassQuietForSync = false
+            return
+        end
         -- Read once up-front: gear+defer gate used to clear this before evaluating skipCooldown,
         -- which dropped GET_ITEM_INFO_RECEIVED / ITEM_METADATA repaints for the entire storage defer window.
         local useSkip = shellRefresh.pendingPopulateSkipCooldown
@@ -1685,6 +1696,7 @@ function ns.UIShell.CreateMainWindow(self)
 
     function SchedulePopulateContent(skipCooldown, opts)
         if not f or not f:IsShown() then return end
+        shellRefresh.scheduleSeq = shellRefresh.scheduleSeq + 1
         if skipCooldown then
             shellRefresh.pendingPopulateSkipCooldown = true
         end

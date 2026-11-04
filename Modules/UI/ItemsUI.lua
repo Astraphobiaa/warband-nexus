@@ -601,7 +601,7 @@ local function ResolveItemsSubTabStatsMetrics(addon, currentItemsSubTab)
             charKey = ns.CharacterService:ResolveSubsidiaryCharacterKey(addon, nil)
         end
         if addon.RequestPersonalBankScanIfNeeded then
-            addon:RequestPersonalBankScanIfNeeded()
+            addon:RequestPersonalBankScanIfNeeded(true)
         elseif addon.EnsurePersonalBankScannedForDisplay then
             addon:EnsurePersonalBankScannedForDisplay()
         end
@@ -890,7 +890,7 @@ local function RegisterStorageEvents(parent)
     end
     parent.storageUpdateHandler = true
     
-    -- WN_ITEM_METADATA_READY: sync redraw when in-place row refresh cannot run (no timer defer).
+    -- WN_ITEM_METADATA_READY: debounced tree redraw when in-place row refresh cannot run (see below).
     -- WN_ITEMS_UPDATED is handled by UI.lua PopulateContent only.
     local function IsItemsStorageTreeViewActive()
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
@@ -922,9 +922,11 @@ local function RegisterStorageEvents(parent)
     end
     
     -- WN_ITEM_METADATA_READY: prefer in-place row text refresh (TryRefreshStorageRowsMetadataInPlace).
-    -- Full tree redraw is rate-limited when refs are missing (e.g. before first draw completes).
-    local lastMetadataRefreshDraw = 0
-    local METADATA_REFRESH_COOLDOWN = 0.12
+    -- Full tree redraw (refs missing, e.g. before first draw completes) is a trailing debounce: a cold-cache
+    -- warm-up sends many batches, and a leading-edge limit rebuilt the tree (restarting its chunk pump)
+    -- every 0.12s while dropping the last batch.
+    local METADATA_REFRESH_DEBOUNCE = 0.35
+    local metadataRedrawTimer = nil
 
     WarbandNexus.RegisterMessage(ItemsStorageEmbedEvents, E.ITEM_METADATA_READY, function(_, achievementID)
         if achievementID ~= nil then return end  -- achievement reward item, not an Items batch (2026-10-22)
@@ -933,10 +935,14 @@ local function RegisterStorageEvents(parent)
         if rc and TryRefreshStorageRowsMetadataInPlace(rc) then
             return
         end
-        local now = GetTime()
-        if now - lastMetadataRefreshDraw < METADATA_REFRESH_COOLDOWN then return end
-        lastMetadataRefreshDraw = now
-        RunItemsStorageTreeEmbedRedraw()
+        if metadataRedrawTimer then
+            metadataRedrawTimer:Cancel()
+        end
+        metadataRedrawTimer = C_Timer.NewTimer(METADATA_REFRESH_DEBOUNCE, function()
+            metadataRedrawTimer = nil
+            if not IsItemsStorageTreeViewActive() then return end
+            RunItemsStorageTreeEmbedRedraw()
+        end)
     end)
 end
 
@@ -2019,7 +2025,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     end
     HideAllItemsEmptyStateCards(parent)
     if currentItemsSubTab == "personal" and self.RequestPersonalBankScanIfNeeded then
-        self:RequestPersonalBankScanIfNeeded()
+        self:RequestPersonalBankScanIfNeeded(true)
     elseif currentItemsSubTab == "personal" and self.EnsurePersonalBankScannedForDisplay then
         self:EnsurePersonalBankScannedForDisplay()
     end

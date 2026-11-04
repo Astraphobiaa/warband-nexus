@@ -56,6 +56,12 @@ local _uiRegionEnumScratch = B._uiRegionEnumScratch
 local TAB_DRAW_PERF_TRACE = B.TAB_DRAW_PERF_TRACE
 local WarbandNexus = ns.WarbandNexus
 
+-- Tabs that need a tracked character; untracked ones show the tracking banner instead.
+local TRACKED_ONLY_TABS = {
+    items = true, pve = true, pvp = true, reputations = true,
+    currency = true, professions = true, gear = true, collections = true,
+    plans = true, stats = true,
+}
 
 local function PopulateContentBody(self, forceRepaint)
     local mainFrame = S.getMainFrame()
@@ -187,6 +193,12 @@ local function PopulateContentBody(self, forceRepaint)
 
     mainFrame._prevPopulatedTab = mainFrame.currentTab
 
+    -- Full paint starts here: every populate request queued so far is satisfied by it (UI_MainShell debounce).
+    local shellSt = mainFrame._shellRefreshState
+    if shellSt and shellSt.scheduleSeq then
+        shellSt.populatedThroughSeq = shellSt.scheduleSeq
+    end
+
     -- GearUI FinishGearOpenTrace emits one summary line (verbose phases gated in GearUI).
 
     -- Teardown collapses scrollChild to 1px until post-layout re-expands it; a forced child-rect
@@ -317,11 +329,7 @@ local function PopulateContentBody(self, forceRepaint)
     -- Draw based on current tab
     local height
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
-    local trackedOnlyTabs = {
-        items = true, pve = true, pvp = true, reputations = true,
-        currency = true, professions = true, gear = true, collections = true,
-        plans = true, stats = true,
-    }
+    local trackedOnlyTabs = TRACKED_ONLY_TABS
 
     -- Dev-only: wall time for scroll-heavy mains (WN-PERF checklist). Complements tab-switch clickâ†’populate log + `Pop_drawTab`.
     local drawPerfT0 = (isTracked and IsTabPerfMonitorEnabled() and TAB_DRAW_PERF_TRACE[tab]) and GetTime() or nil

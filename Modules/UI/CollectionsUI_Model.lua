@@ -15,6 +15,21 @@ local Constants = M.Constants
 local Utilities = M.Utilities
 local issecretvalue = M.issecretvalue
 local SafeLower = M.SafeLower
+
+-- Sort category item lists by lowered name. Each name is lowered once per sort: big categories (thousands
+-- of mounts) lowered both names on every comparison, in the build's final, single-frame chunk.
+local _sortLowerScratch = {}
+local function CompareByLowerScratch(a, b)
+    return _sortLowerScratch[a] < _sortLowerScratch[b]
+end
+local function SortItemsByLowerName(items)
+    for i = 1, #items do
+        local it = items[i]
+        _sortLowerScratch[it] = SafeLower(it.name) or ""
+    end
+    table.sort(items, CompareByLowerScratch)
+    wipe(_sortLowerScratch)
+end
 local CreateCard = M.CreateCard
 local CreateEmptyStateCard = M.CreateEmptyStateCard
 local HideEmptyStateCard = M.HideEmptyStateCard
@@ -2216,9 +2231,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
     end
 
     for _, items in pairs(grouped) do
-        table.sort(items, function(a, b)
-            return SafeLower(a.name) < SafeLower(b.name)
-        end)
+        SortItemsByLowerName(items)
     end
 
     return grouped, totalCount
@@ -2297,7 +2310,7 @@ function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncoll
         startIdx = limit + 1
         if startIdx > total then
             for _, items in pairs(grouped) do
-                table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
+                SortItemsByLowerName(items)
             end
             onComplete(grouped)
         else
@@ -2379,7 +2392,7 @@ function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollecte
         startIdx = limit + 1
         if startIdx > total then
             for _, items in pairs(grouped) do
-                table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
+                SortItemsByLowerName(items)
             end
             onComplete(grouped)
         else
@@ -2528,9 +2541,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
     end
 
     for _, items in pairs(grouped) do
-        table.sort(items, function(a, b)
-            return SafeLower(a.name) < SafeLower(b.name)
-        end)
+        SortItemsByLowerName(items)
     end
 
     return grouped, totalCount
@@ -2621,7 +2632,7 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
     end
 
     for _, items in pairs(grouped) do
-        table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
+        SortItemsByLowerName(items)
     end
     return grouped
 end

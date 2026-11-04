@@ -974,8 +974,9 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             local oldContainer = card._sourceContainer
             local bin = ns.UI_RecycleBin
             -- Clear all children first
-            for i = oldContainer:GetNumChildren(), 1, -1 do
-                local child = select(i, oldContainer:GetChildren())
+            local oldKids = { oldContainer:GetChildren() }
+            for i = #oldKids, 1, -1 do
+                local child = oldKids[i]
                 if child then
                     child:Hide()
                     child:ClearAllPoints()
@@ -1375,8 +1376,11 @@ function PlanCardFactory:ReflowSourcePlanCard(card, opts)
     if card._sourceContainer and card._sourceContainer:IsShown() then
         card._sourceContainer:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
         local sumH = 0
-        for i = 1, card._sourceContainer:GetNumChildren() do
-            local ch = select(i, card._sourceContainer:GetChildren())
+        -- Source lines are FontStrings, i.e. regions: GetChildren() never returned them, so the reflow
+        -- collapsed the block to 1px and left line widths stale.
+        local regions = { card._sourceContainer:GetRegions() }
+        for i = 1, #regions do
+            local ch = regions[i]
             if ch and ch:IsObjectType("FontString") and ch:IsShown() then
                 ch:SetWidth(tw)
                 sumH = sumH + math.max(ch:GetStringHeight(), 14) + 4

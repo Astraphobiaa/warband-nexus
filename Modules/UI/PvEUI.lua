@@ -2677,8 +2677,9 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
             local charKey = PvE_GetCanonicalKeyForChar(char)
             if charKey then
                 listed = listed + 1
-                local pveData = self:GetPvEData(charKey) or {}
-                local vaultActs = pveData.vaultActivities or {}
+                -- Vault columns only: the full GetPvEData hydration (dungeons, lockouts, sorts) per
+                -- roster row made every hover cost N full reads.
+                local vaultActs = (self.GetPvEVaultActivities and self:GetPvEVaultActivities(charKey)) or {}
                 local raidT = vaultActs.raids and #vaultActs.raids or 3
                 local dT = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
                 local wT = vaultActs.world and #vaultActs.world or 3
@@ -2688,6 +2689,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                     local vs = self:GetVaultStatusForChar(charKey)
                     claim = vs and vs.isReady == true
                 else
+                    local pveData = self:GetPvEData(charKey) or {}
                     claim = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards == true
                 end
 
@@ -2729,7 +2731,12 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
         local hdrWorld = GetLocalizedText("VAULT_WORLD", "World")
 
         local FontManager = ns.FontManager
-        local measure = FontManager and FontManager:CreateFontString(UIParent, "body", "OVERLAY")
+        -- One hidden measure string for the session (regions are never collected; this leaked one per hover).
+        local measure = ns._pveVaultSummaryMeasureFS
+        if not measure and FontManager then
+            measure = FontManager:CreateFontString(UIParent, "body", "OVERLAY")
+            ns._pveVaultSummaryMeasureFS = measure
+        end
         local maxN, maxRm, maxVR, maxVM, maxVW = 52, 52, 40, 40, 40
         if measure and #rows > 0 then
             measure:Hide()
@@ -2756,7 +2763,6 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                 measure:SetText(rd.w)
                 maxVW = math.max(maxVW, measure:GetStringWidth() or 0)
             end
-            measure:SetParent(nil)
         end
 
         -- Raid / M+ / World: identical width (match TooltipFactory VAULT_GRID_TRACK_MIN_W); center via SetJustifyH there.

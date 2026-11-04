@@ -237,7 +237,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     
     -- Check multiple data completeness signals, not just keystone
     local needsRefresh = false
-    if not pveData or not pveData.keystone then
+    -- No keystone is a normal state once this session's scan ran; only an unscanned cache is incomplete.
+    local sessionScanned = L.ns.PvELoadingState and L.ns.PvELoadingState.sessionScannedKey ~= nil
+    if not pveData or (not pveData.keystone and not sessionScanned) then
         needsRefresh = true
     elseif pveData.vaultActivities and not pveData.vaultActivities.isPostReset then
         -- Check if any unlocked vault slot is missing iLvl (server was slow)
@@ -2285,6 +2287,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 end
                 if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then
                     parent._pveChunkPaintPending = nil
+                    -- Rows past the cursor were never painted: the next draw must not take the
+                    -- "body ready, same sig" fast path over a half-built body.
+                    parent._pveBodyReady = nil
+                    parent._pveDrawSig = nil
                     return
                 end
                 local toI = math.min(pvePaintCursor + pveChunkSize - 1, #paintOrder)

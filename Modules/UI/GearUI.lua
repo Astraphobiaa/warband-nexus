@@ -630,9 +630,14 @@ local function GetTrackedCharacters()
         end
     end
 
+    -- Resolve each rank once; the comparator runs O(n log n) times.
+    for i = 1, #chars do
+        local c = chars[i]
+        c.rank = rankOf[orderCanon(c.key)]
+    end
     table.sort(chars, function(a, b)
-        local ra = rankOf[orderCanon(a.key)]
-        local rb = rankOf[orderCanon(b.key)]
+        local ra = a.rank
+        local rb = b.rank
         if ra and rb then return ra < rb end
         if ra and not rb then return true end
         if rb and not ra then return false end
@@ -1175,8 +1180,9 @@ local function RelayoutGearStorageRecColumns(recContent, contentW)
     if not recContent or not contentW or contentW < 40 then return end
     recContent:SetWidth(contentW)
     local lay = GetGearStorageRecColumnLayout(contentW)
-    for i = 1, select("#", recContent:GetChildren()) do
-        local line = select(i, recContent:GetChildren())
+    local lines = { recContent:GetChildren() }
+    for i = 1, #lines do
+        local line = lines[i]
         if line and line.slotText then
             local innerH = line:GetHeight() or 32
             line:SetSize(contentW, innerH)

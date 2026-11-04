@@ -732,7 +732,15 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     if self.RequestKeystoneRefresh then
         self:RequestKeystoneRefresh("vaultClaim", true)
     else
-        self:UpdateCharacterKeystone(charKey)
+        local keyChanged = self:UpdateCharacterKeystone(charKey)
+        -- The keystone mirror on the character row changed: Characters reads it from there (RequestKeystoneRefresh
+        -- sends the same message; this direct call did not).
+        if keyChanged and self.InvalidateGetAllCharactersCache then
+        self:InvalidateGetAllCharactersCache()
+    end
+    if keyChanged and self.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.CHARACTER_UPDATED then
+            self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "mythicKey" })
+        end
     end
     self:UpdateGreatVaultRewards(charKey, true)
     local claimableNow = IsSessionPvECharacter(charKey) and ns.WeeklyVaultHasPendingRewards()
@@ -871,7 +879,15 @@ local function ApplyVaultDataReceived(self)
     -- Calling it here would overwrite VaultScanner's enhanced data with basic data.
     
     -- Update non-vault PvE data
-    self:UpdateCharacterKeystone(charKey)
+    local keyChanged = self:UpdateCharacterKeystone(charKey)
+    -- The keystone mirror on the character row changed: Characters reads it from there (RequestKeystoneRefresh
+    -- sends the same message; this direct call did not).
+    if keyChanged and self.InvalidateGetAllCharactersCache then
+        self:InvalidateGetAllCharactersCache()
+    end
+    if keyChanged and self.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.CHARACTER_UPDATED then
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "mythicKey" })
+    end
     self:UpdateMythicPlusBestRuns(charKey)
     self:UpdateGreatVaultRewards(charKey)
 

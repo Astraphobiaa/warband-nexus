@@ -629,11 +629,21 @@ function WarbandNexus:DrawCollectionsTab(parent)
         WarbandNexus.RegisterMessage(CUIListeners, updatedName, function(_, updatedType)
             if updatedType ~= "mount" and updatedType ~= "pet" and updatedType ~= "toy" and updatedType ~= "achievement" then return end
             InvalidateCollectionCachesForType(updatedType)
+            -- Other sub-tabs re-read the invalidated cache on their next draw; a mount update must not
+            -- rebuild the Achievements tree that is on screen.
+            local cur = M.state.currentSubTab
+            if cur ~= "recent" and cur ~= SCAN_CATEGORY_SUBTAB[updatedType] then return end
             ScheduleCoalescedCollectionRedraw()
         end)
 
         local plansUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.PLANS_UPDATED) or "WN_PLANS_UPDATED"
-        WarbandNexus.RegisterMessage(CUIListeners, plansUpdatedName, function()
+        -- Daily / weekly plan waves (background quest-log rescans, vault progress) are not collectibles.
+        local NON_COLLECTIBLE_PLAN_ACTIONS = {
+            daily_plan_updated = true, weekly_created = true, weekly_progress_updated = true,
+        }
+        WarbandNexus.RegisterMessage(CUIListeners, plansUpdatedName, function(_, payload)
+            local action = type(payload) == "table" and payload.action or nil
+            if action and NON_COLLECTIBLE_PLAN_ACTIONS[action] then return end
             ScheduleCoalescedCollectionRedraw()
         end)
 
@@ -665,6 +675,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 return
             end
             InvalidateCollectionCachesForType(data.type)
+            local cur = M.state.currentSubTab
+            if cur ~= "recent" and cur ~= SCAN_CATEGORY_SUBTAB[data.type] then return end
             ScheduleCoalescedCollectionRedraw()
         end)
 
