@@ -10,7 +10,6 @@
     SPLIT (TOC order, all after this file; satellites read the bind table at the end of this file):
       CharactersUI_GoldCards.lua    gold summary card geometry
       CharactersUI_Row.lua          DrawCharacterRow, row interior relayout, mail column
-      CharactersUI_ColumnHeader.lua optional TableKit column header strip above the roster
       CharactersUI_Dialogs.lua      manual reorder + custom section dialogs
 ]]
 
@@ -1076,11 +1075,6 @@ function WarbandNexus:DrawCharacterList(parent)
     local previousSectionContent = nil
     local isFirstSection = true
 
-    -- Optional column header strip (TableKit, display-only) directly above the first section.
-    if ns.CharactersUI.PlaceCharactersColumnHeader and ns.CharactersUI.IsCharactersColumnHeaderEnabled(self.db.profile) then
-        yOffset = ns.CharactersUI.PlaceCharactersColumnHeader(parent, yOffset, contentSide, sectionStackW, SECTION_HEADER_GAP)
-    end
-
     -- Section headers, their count labels and content frames are pooled on the scroll child
     -- (SectionPool, "chr:" keys) and re-bound every paint; each CHARACTER_UPDATED repaint used to
     -- create them anew and park the old ones in the recycle bin forever (2026-10-22).
@@ -1672,9 +1666,6 @@ local function RelayoutCharactersSectionBodyWidths(scrollChild, viewportW, sideM
     end
     stackW = math.max(1, stackW or 1)
     scrollChild._charsSectionStackW = stackW
-    if ns.CharactersUI.RelayoutCharactersColumnHeader then
-        ns.CharactersUI.RelayoutCharactersColumnHeader(scrollChild, stackW)
-    end
     ForEachCharactersSectionHeader(scrollChild, function(header)
         if header.SetWidth then
             header:SetWidth(stackW)

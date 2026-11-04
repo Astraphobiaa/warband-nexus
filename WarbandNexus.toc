@@ -228,7 +228,6 @@ Modules\UI\MailDetailsPopup.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CharactersUI_GoldCards.lua
 Modules\UI\CharactersUI_Row.lua
-Modules\UI\CharactersUI_ColumnHeader.lua
 Modules\UI\CharactersUI_Dialogs.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua

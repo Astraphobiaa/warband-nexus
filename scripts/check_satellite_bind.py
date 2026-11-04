@@ -49,7 +49,6 @@ SPLIT_GROUPS: list[dict] = [
         "satellites": [
             ROOT / "Modules" / "UI" / "CharactersUI_GoldCards.lua",
             ROOT / "Modules" / "UI" / "CharactersUI_Row.lua",
-            ROOT / "Modules" / "UI" / "CharactersUI_ColumnHeader.lua",
             ROOT / "Modules" / "UI" / "CharactersUI_Dialogs.lua",
         ],
         "export_ns": "ns.CharactersUI",
