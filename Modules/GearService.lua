@@ -202,7 +202,7 @@ local GEAR_CRAFTED_PROBE_CACHE_CAP = 512
 
 -- Session-only: canonical gear row key -> { lastScan = number, upgrades = table } for GetPersistedUpgradeInfo.
 local persistedUpgradeInfoSessionCache = {}
-local PERSISTED_UPGRADE_INFO_LOGIC_VER = 16
+local PERSISTED_UPGRADE_INFO_LOGIC_VER = 18  -- 17: previous-season gear not upgradeable; 18: noTrack (no upgrade line)
 
 -- Session-only: offline-view canonical key -> currency array from GetGearUpgradeCurrenciesFromDB (amounts follow Currency UI snapshot).
 local gearUpgradeCurrencyOfflineCache = {}
@@ -1019,10 +1019,30 @@ local function ResolveNextUpgradeCosts(slot, trackName, hasNext)
     return currencyID, crestCost, moneyCost, isDiscounted
 end
 
+--- True when `ilvl` is a rank on one of the current season's upgrade tracks (TRACK_ILVLS is refilled
+--- in place on a season flip). Previous-season gear sits off these ranks (Midnight S2 starts at 265 and
+--- skips 276 / 289) and can no longer be upgraded; its persisted S1 track must not be re-read against
+--- the S2 tables ("Veteran 4/6" on an S1 Myth 6/6 289 item). Crafted gear is handled by its own path.
+local function IsIlvlOnCurrentSeasonTrack(ilvl)
+    ilvl = tonumber(ilvl)
+    if not ilvl or ilvl <= 0 then return false end
+    for _, tiers in pairs(TRACK_ILVLS) do
+        for i = 1, #tiers do
+            if tiers[i] == ilvl then return true end
+        end
+    end
+    return false
+end
+ns.Gear_IsIlvlOnCurrentSeasonTrack = IsIlvlOnCurrentSeasonTrack
+
 local function ResolveSlotUpgradeTrackAndTier(slot)
     if not slot then return nil, nil, nil end
     local ilvl = tonumber(slot.itemLevel) or 0
     if ilvl <= 0 then return nil, nil, nil end
+    -- Off the season's ranks (previous-season gear) or a tooltip without an upgrade line: no track, no tier.
+    if not slot.isCrafted and (slot.noUpgradeTrack or not IsIlvlOnCurrentSeasonTrack(ilvl)) then
+        return nil, nil, nil
+    end
 
     local labelTrack, labelCur, labelMax = ResolveTrackFromSlotLabels(slot)
     local track = labelTrack or NormalizeUpgradeTrackName(slot.upgradeTrack)
@@ -1073,6 +1093,8 @@ local CRAFTED_CREST_TIERS = {}
 ns.CRAFTED_CREST_TIERS = CRAFTED_CREST_TIERS
 
 ns.SeasonData:RegisterRebuild(function(season)
+    -- Upgrade verdicts (tracks, off-season, crafted caps) were computed against the previous tables.
+    table.wipe(persistedUpgradeInfoSessionCache)
     table.wipe(CRAFTED_CREST_TIERS)
     local tiers = season.craftedTiers or {}
     for i = 1, #tiers do
@@ -1614,10 +1636,14 @@ end
 
 -- TOOLTIP UPGRADE SCAN  (authoritative source for track + tier)
 
+---@return table|nil result track/tier from the ItemUpgradeLevel line
+---@return boolean read the tooltip had item lines (equipped items are always client-cached), so a nil
+---        result means the item has no upgrade track at all rather than "not loaded yet"
 local function ScanUpgradeFromTooltip(slotID)
-    if not C_TooltipInfo or not C_TooltipInfo.GetInventoryItem then return nil end
+    if not C_TooltipInfo or not C_TooltipInfo.GetInventoryItem then return nil, false end
     local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotID)
-    if not ok or not data or not data.lines then return nil end
+    if not ok or not data or not data.lines then return nil, false end
+    local read = #data.lines >= 2
 
     -- Find the line by its structured type (Enum.TooltipDataLineType.ItemUpgradeLevel, 11.1.5+)
     -- rather than by matching English text. The old "Upgrade Level: %s %d/%d" match failed on
@@ -1665,7 +1691,7 @@ local function ScanUpgradeFromTooltip(slotID)
         result.trackName = NormalizeUpgradeTrackName(result.trackName) or result.trackName
         result.isCrafted = isCrafted or (result.trackName == "Crafted")
     end
-    return result
+    return result, read
 end
 
 -- UPGRADE DATA PERSISTENCE  (Captures C_ItemUpgrade state during gear scan)
@@ -1687,9 +1713,15 @@ local function ScanSlotUpgradeData(slotEntry, slotID, skipTooltip)
     if not C_ItemUpgrade or not ItemLocation then return end
 
     pcall(function()
-        local tooltipInfo = nil
+        local tooltipInfo, tooltipRead = nil, false
         if not skipTooltip then
-            tooltipInfo = ScanUpgradeFromTooltip(slotID)
+            tooltipInfo, tooltipRead = ScanUpgradeFromTooltip(slotID)
+            -- No ItemUpgradeLevel line on a read tooltip: the item is on no upgrade track.
+            if tooltipInfo then
+                slotEntry.noUpgradeTrack = nil
+            elseif tooltipRead then
+                slotEntry.noUpgradeTrack = true
+            end
         end
         -- Do NOT gate this on trackName: crafted and PvP gear report "Upgrade Level: 1/6"
         -- with no track word, and gating threw their tier away along with the missing name,
@@ -1883,15 +1915,30 @@ function WarbandNexus:OverlayLiveEquippedIlvlOnGearData(gearData)
                 slot = {}
                 gearData.slots[slotID] = slot
             end
+            -- A different item in the slot: its upgrade fields belong to the old item (a stale
+            -- notUpgradeable / isCrafted hid real upgrades, a stale tier or step showed wrong ones).
+            -- ScanSlotUpgradeData below re-reads them for the new link.
+            local oldLink = slot.itemLink
+            if oldLink and oldLink ~= itemLink and not (issecretvalue and issecretvalue(oldLink)) then
+                slot.upgradeTrack, slot.currUpgrade, slot.maxUpgrade = nil, nil, nil
+                slot.itemUpgradeable, slot.notUpgradeable, slot.isCrafted = nil, nil, nil
+                slot.nextStepIlvl, slot.nextUpgradeCosts = nil, nil
+                slot.nextUpgradeMoneyCost, slot.nextUpgradeIsDiscounted = nil, nil
+                slot.noUpgradeTrack = nil
+            end
             slot.itemLink = itemLink
             slot.itemID = itemID or slot.itemID
-            slot.itemLevel = ilvl
+            -- Cold item cache returns 0: keep the persisted ilvl (this table is the saved row; a 0 also
+            -- read as "off the season's ranks" and hid the item's track until the next scan).
+            if ilvl > 0 then
+                slot.itemLevel = ilvl
+            end
             if quality > 0 then
                 slot.quality = quality
             end
             ScanSlotUpgradeData(slot, slotID)
             local tn = NormalizeUpgradeTrackName(slot.upgradeTrack)
-            if tn and TRACK_ILVLS[tn] and slot.currUpgrade and slot.maxUpgrade then
+            if tn and TRACK_ILVLS[tn] and slot.currUpgrade and slot.maxUpgrade and ilvl > 0 then
                 local tc, tm = ReconcileUpgradeTierForSlot(tn, ilvl, slot.currUpgrade, slot.maxUpgrade)
                 slot.upgradeTrack = tn
                 slot.currUpgrade = tc
@@ -2034,14 +2081,19 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                 slotEntry.isMissingGem = isMissingGem or nil
                 slotEntry.isEnchantable = IsPrimaryEnchantExpected(slotID, equipLoc) or nil
 
-                local tooltipInfo = ScanUpgradeFromTooltip(slotID)
+                local tooltipInfo, tooltipRead = ScanUpgradeFromTooltip(slotID)
                 if tooltipInfo then
                     slotEntry.upgradeTrack = tooltipInfo.trackName
                     slotEntry.currUpgrade  = tooltipInfo.currUpgrade
                     slotEntry.maxUpgrade   = tooltipInfo.maxUpgrade
+                    slotEntry.noUpgradeTrack = nil
                     if tooltipInfo.isCrafted then
                         slotEntry.isCrafted = true
                     end
+                elseif tooltipRead then
+                    -- Read tooltip without an ItemUpgradeLevel line: no upgrade track (quest / world /
+                    -- previous-season gear). Persisted so offline views show no track either.
+                    slotEntry.noUpgradeTrack = true
                 end
                 -- Tooltip already read just above for this slot. (2026-10-22)
                 ScanSlotUpgradeData(slotEntry, slotID, true)
@@ -2051,7 +2103,10 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                     slotEntry.upgradeTrack = tn
                     slotEntry.currUpgrade = tc
                     slotEntry.maxUpgrade = tm
-                elseif not slotEntry.upgradeTrack and ilvl > 0 and (ilvl < 220 or ilvl > 289) then
+                elseif not slotEntry.upgradeTrack and ilvl > 0 and not slotEntry.isCrafted
+                    and not IsIlvlOnCurrentSeasonTrack(ilvl) then
+                    -- Off the current season's ranks (was a hard-coded S1 220..289 window that locked
+                    -- every S2 item above 289 whose tooltip did not parse).
                     slotEntry.notUpgradeable = true
                 end
 
@@ -2521,15 +2576,26 @@ local function SyncUpgradeEntryFromPersistedSlot(up, slot)
     if ilvl <= 0 then return up end
     local trackName = NormalizeUpgradeTrackName(slot.upgradeTrack) or up.trackName
     local tCur, tMax = slot.currUpgrade, slot.maxUpgrade
+    local guessed = false
     if trackName and TRACK_ILVLS[trackName] and tCur and tMax and tMax > 0 then
         tCur, tMax = ReconcileUpgradeTierForSlot(trackName, ilvl, tCur, tMax)
     else
+        -- The slot carries no tier. An entry already resolved for this same item level (tooltip /
+        -- persisted scan) is authoritative: the ilvl guess cannot tell overlapping tracks apart
+        -- (Hero 6/6 == Myth 2/6) and turned maxed items into "upgradeable".
+        if up.trackName and up.currUpgrade and up.maxUpgrade and tonumber(up.currentIlvl) == ilvl then
+            return up
+        end
         trackName, tCur, tMax = ResolveSlotUpgradeTrackAndTier(slot)
+        guessed = true
     end
     if not trackName or not tCur or not tMax then return up end
-    slot.upgradeTrack = trackName
-    slot.currUpgrade = tCur
-    slot.maxUpgrade = tMax
+    -- Never persist a guess: `slot` can be the saved row of an offline character.
+    if not guessed then
+        slot.upgradeTrack = trackName
+        slot.currUpgrade = tCur
+        slot.maxUpgrade = tMax
+    end
     up.trackName = trackName
     up.currUpgrade = tCur
     up.maxUpgrade = tMax
@@ -2548,6 +2614,14 @@ local function SyncUpgradeEntryFromPersistedSlot(up, slot)
             up.nextIlvl = tiers[tCur + 1]
         end
         local currencyID, crestCost, moneyCost, isDiscounted = ResolveNextUpgradeCosts(slot, trackName, true)
+        -- Same account watermark rule as GetPersistedUpgradeInfo (the entry carries its watermark): a step to
+        -- an ilvl any character already reached in this slot costs no crests. Dropping it here turned
+        -- gold-only steps back into 20-crest steps after every in-place refresh.
+        local acctWm = tonumber(up.accountWatermarkIlvl) or 0
+        if acctWm > 0 and up.nextIlvl and up.nextIlvl <= acctWm then
+            crestCost = 0
+            isDiscounted = true
+        end
         up.currencyID = currencyID
         up.crestCost = crestCost
         up.moneyCost = moneyCost
@@ -2628,23 +2702,17 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
             slot.isCrafted = true
         end
 
-        if slot.notUpgradeable then
-            -- Keep the track that was just resolved above. "Maxed out" and "unknown" are
-            -- different states: only canUpgrade should gate spending crests, but blanking
-            -- trackName/currUpgrade here erased the rank from the UI entirely. Voidcore
-            -- pushes gear past the Myth 6/6 cap (289 -> 298) and flips itemUpgradeable to
-            -- false, which is why 298 weapons and trinkets showed no rank at all while every
-            -- item at or below 289 showed one.
-            upgrades[slotID] = {
-                canUpgrade = false, notUpgradeable = true,
-                currentIlvl = itemLevel, nextIlvl = itemLevel, maxIlvl = 0,
-                currUpgrade = tonumber(currUpgrade) or 0,
-                maxUpgrade = tonumber(maxUpgrade) or 0,
-                trackName = trackName or "",
-                currencyID = 0, crestCost = 0, moneyCost = 0,
-                watermarkIlvl = math.max(watermarks[slotID] or 0, WarbandNexus:GetAccountWatermarkForSlot(slotID)),
-            }
-        elseif slot.isCrafted or trackName == "Crafted" then
+        -- Previous-season gear: no current-season rank at this ilvl, so it cannot take an upgrade and its
+        -- persisted (old-season) track is not shown. Not written to the slot: a season flip re-decides it.
+        local offSeason = not slot.isCrafted and trackName ~= "Crafted" and itemLevel > 0
+            and (slot.noUpgradeTrack == true or not IsIlvlOnCurrentSeasonTrack(itemLevel))
+        if offSeason then
+            trackName, currUpgrade, maxUpgrade = nil, 0, 0
+        end
+
+        -- Crafted first: the Item Upgrade API can report itemUpgradeable=false for crafted gear, which
+        -- used to drop it into the lock branch and hide its recraft path.
+        if slot.isCrafted or trackName == "Crafted" then
             -- Crafted items: NO Hero/Myth crest-track upgrades — they recraft with
             -- crests to jump tiers (separate system). Caps at 285 (Myth), not 289.
             -- Tier name = the RANGE the ilvl falls in: above the next-lower tier's cap.
@@ -2657,7 +2725,12 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                     break
                 end
             end
-            local canUpgrade = (itemLevel < CRAFTED_CREST_TIERS[1].maxIlvl)
+            local craftedCap = CRAFTED_CREST_TIERS[1] and CRAFTED_CREST_TIERS[1].maxIlvl or 0
+            -- Current-season crafted gear carries a trackless "Upgrade Level" line; a read tooltip without
+            -- one is previous-season crafted gear (S1 285 sits inside the S2 crafted range, so the ilvl
+            -- cannot tell). No recraft target for it. VERIFY in-game on an S1 crafted item.
+            local craftedNoRecraft = slot.noUpgradeTrack == true
+            local canUpgrade = (not craftedNoRecraft) and (itemLevel < craftedCap)
             -- Crafted gear caps at tier 5/6 on EVERY track (285 Myth, 272 Hero, ...),
             -- not only on Myth; the Blizzard maxUpgrade=6 comes from the dropped track.
             local craftedMaxTier = maxUpgrade or 0
@@ -2670,9 +2743,10 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
             upgrades[slotID] = {
                 canUpgrade      = canUpgrade,
                 isCrafted       = true,
+                craftedNoRecraft = craftedNoRecraft or nil,
                 currentIlvl     = itemLevel,
                 nextIlvl        = itemLevel,
-                maxIlvl         = 285,
+                maxIlvl         = (CRAFTED_CREST_TIERS[1] and CRAFTED_CREST_TIERS[1].maxIlvl) or itemLevel,
                 currUpgrade     = currUpgrade or 0,
                 maxUpgrade      = craftedMaxTier,
                 trackName       = "Crafted",
@@ -2681,6 +2755,24 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 crestCost       = 0,
                 moneyCost       = 0,
                 watermarkIlvl   = math.max(watermarks[slotID] or 0, WarbandNexus:GetAccountWatermarkForSlot(slotID)),
+            }
+        elseif slot.notUpgradeable or offSeason then
+            -- Keep the track that was just resolved above. "Maxed out" and "unknown" are
+            -- different states: only canUpgrade should gate spending crests, but blanking
+            -- trackName/currUpgrade here erased the rank from the UI entirely. Voidcore
+            -- pushes gear past the Myth 6/6 cap (289 -> 298) and flips itemUpgradeable to
+            -- false, which is why 298 weapons and trinkets showed no rank at all while every
+            -- item at or below 289 showed one.
+            upgrades[slotID] = {
+                canUpgrade = false, notUpgradeable = true,
+                currentIlvl = itemLevel, nextIlvl = itemLevel, maxIlvl = 0,
+                currUpgrade = tonumber(currUpgrade) or 0,
+                maxUpgrade = tonumber(maxUpgrade) or 0,
+                trackName = trackName or "",
+                -- No upgrade track at all (previous season / untracked): the paperdoll shows no rank label.
+                noTrack = offSeason or nil,
+                currencyID = 0, crestCost = 0, moneyCost = 0,
+                watermarkIlvl = math.max(watermarks[slotID] or 0, WarbandNexus:GetAccountWatermarkForSlot(slotID)),
             }
         elseif trackName and currUpgrade and maxUpgrade and maxUpgrade > 0 then
             local hasNext = (currUpgrade < maxUpgrade) and slot.itemUpgradeable ~= false

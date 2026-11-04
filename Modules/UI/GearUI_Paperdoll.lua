@@ -934,13 +934,16 @@ function PD.ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
             n = tonumber(C_Item.GetItemNumSockets(itemLink)) or 0
         end
     end)
-    if (not n or n <= 0) and useLiveSlot and slotID and ItemLocation and ItemLocation.CreateFromEquipmentSlot and C_Item and C_Item.GetItemNumSockets then
-        pcall(function()
-            local loc = ItemLocation:CreateFromEquipmentSlot(slotID)
-            if loc and loc:IsValid() then
-                n = tonumber(C_Item.GetItemNumSockets(loc)) or 0
-            end
-        end)
+    -- C_Item.GetItemNumSockets takes ItemInfo (id / link / name), not an ItemLocation (Blizzard
+    -- APIDocumentationGenerated ItemDocumentation, checked 2026-11-04): the old location fallback always
+    -- errored inside the pcall. Retry with the slot's live link when the stored one may be stale.
+    if (not n or n <= 0) and useLiveSlot and slotID and GetInventoryItemLink and C_Item and C_Item.GetItemNumSockets then
+        local liveLink = GetInventoryItemLink("player", slotID)
+        if type(liveLink) == "string" and not (issecretvalue and issecretvalue(liveLink)) and liveLink ~= itemLink then
+            pcall(function()
+                n = tonumber(C_Item.GetItemNumSockets(liveLink)) or 0
+            end)
+        end
     end
     local stats = (C_Item.GetItemStats and C_Item.GetItemStats(itemLink)) or {}
     local emptyFromStats = 0
@@ -1283,6 +1286,16 @@ local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable, canAff
         if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Hide() end
         if btn._gearUpgradeArrowBg then btn._gearUpgradeArrowBg:Hide() end
     end
+    -- Crafted badge shares the chip's corner (CreateSlotButton builds it): never both at once.
+    local badge = btn._gearCraftedBadge
+    if badge then
+        local lockShown = btn._gearLockIcon and btn._gearLockIcon:IsShown()
+        if showUpChip or lockShown or not (up and up.isCrafted) then
+            badge:Hide()
+        else
+            badge:Show()
+        end
+    end
     GearSlotHideLegacyIncreaseLabels(btn)
     btn._gearLastCanAffordNext = canAfford == true
 end
@@ -1613,6 +1626,9 @@ function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slot
         return nil
     end
     if not up then return nil end
+    -- No upgrade track (previous-season / untracked gear): no rank label at all. The legacy fallback
+    -- below would otherwise rebuild one from the slot's old-season upgradeTrack fields.
+    if up.noTrack then return nil end
     if slotData and ns.Gear_SyncUpgradeEntryFromSlot then
         up = ns.Gear_SyncUpgradeEntryFromSlot(up, slotData) or up
     end
@@ -1640,14 +1656,17 @@ function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slot
         local craftedWord = (ns.L and ns.L["GEAR_TRACK_CRAFTED_FALLBACK"]) or "Crafted"
         local curIlvl = tonumber(up.currentIlvl) or 0
         local craftedLabel = (curIlvl > 0) and (craftedWord .. " " .. tostring(curIlvl)) or craftedWord
+        -- The crafted mark sits on the item icon (slot badge). Arrow: the addon's glyph -- the label font has
+        -- no U+2192, which drew as an empty box between the two tiers.
         local range = currencyAmounts and ns.GearUI_GetCraftedIlvlRange and ns.GearUI_GetCraftedIlvlRange(up, currencyAmounts) or nil
         local canRecast = range and range.maxIlvl > (up.currentIlvl or 0)
             and (up.canAffordNext == true
                 or (currencyAmounts and ns.GearUI_CanAffordNextUpgrade and ns.GearUI_CanAffordNextUpgrade(up, currencyAmounts)))
         if canRecast then
             local bestEnglish = range.bestCrestName or ""
+            local arrowMark = ns.UI_GetIconMarkup and ns.UI_GetIconMarkup("arrow_right", 10, 10) or ""
             return PD.FormatTrackMarkup(currentEnglish, craftedLabel, quality)
-                .. " → "
+                .. " " .. arrowMark .. " "
                 .. PD.FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
         end
         return PD.FormatTrackMarkup(currentEnglish, craftedLabel, quality)
@@ -2301,18 +2320,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
         if not IsViewingLoggedInGear() or not ns.GearUI_BuildLiveEquippedSlotSnapshot then
             return persisted
         end
-        local live = ns.GearUI_BuildLiveEquippedSlotSnapshot(slotID)
-        if not live then return persisted end
-        if not persisted then return live end
-        local merged = {}
-        for k, v in pairs(persisted) do
-            merged[k] = v
-        end
-        if live.itemLink then merged.itemLink = live.itemLink end
-        if live.itemID then merged.itemID = live.itemID end
-        if live.itemLevel and live.itemLevel > 0 then merged.itemLevel = live.itemLevel end
-        if live.quality and live.quality > 0 then merged.quality = live.quality end
-        return merged
+        return PD.MergeLiveEquippedSlot(persisted, ns.GearUI_BuildLiveEquippedSlotSnapshot(slotID))
     end
     local function SlotAffordsUpgrade(slotID)
         local up = upgradeInfo and upgradeInfo[slotID]
@@ -3431,7 +3439,7 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
                 ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, sbCol, 0)
                 sbCol:Show()
             end
-            local contentW = math.max(120, storageW - storagePad * 2 - storageLane)
+            local contentW = ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLane)
             storageContentW = contentW
             local contentH = math.max(#storageRows * rowH + storageHdrScroll, viewportH)
             local content = sc.content
@@ -3874,7 +3882,7 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
         local storagePad = layout.storagePad or 8
         local storageBarW = layout.storageBarW or 0
         local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
-        local contentW = math.max(120, layout.storageW - storagePad * 2 - storageLane)
+        local contentW = ns.GearUI_ResolveStorageRecContentWidth(layout.storageW, storagePad, storageLane)
         ns.GearUI_RelayoutStorageRecColumns(recContent, contentW)
     end
 
@@ -3988,6 +3996,26 @@ function PD.BuildLiveEquippedSlotSnapshot(slotID)
     }
 end
 
+--- Logged-in paperdoll slot = persisted row + live link / ilvl / quality. The persisted upgrade fields
+--- (tier, track, notUpgradeable, crafted, costs) belong to the item they were scanned from: carry them only
+--- while the live link is the same item. A swapped item gets the live snapshot alone until ScanEquippedGear
+--- persists it, instead of inheriting the previous item's tier or "not upgradeable" flag.
+function PD.MergeLiveEquippedSlot(persisted, live)
+    if not live then return persisted end
+    if not persisted then return live end
+    local pl, ll = persisted.itemLink, live.itemLink
+    if issecretvalue and (issecretvalue(pl) or issecretvalue(ll)) then return live end
+    if pl ~= ll then return live end
+    local merged = {}
+    for k, v in pairs(persisted) do
+        merged[k] = v
+    end
+    if live.itemID then merged.itemID = live.itemID end
+    if live.itemLevel and live.itemLevel > 0 then merged.itemLevel = live.itemLevel end
+    if live.quality and live.quality > 0 then merged.quality = live.quality end
+    return merged
+end
+
 function PD.GearSlotHasInspectableItemLink(slotRef)
     if not slotRef then return false end
     if issecretvalue and issecretvalue(slotRef.itemLink) then return true end
@@ -4082,6 +4110,7 @@ ns.GearUI_GetSlotTrackText = PD.GetSlotTrackText
 ns.GearUI_GearSlotApplyDeferredEnchantGemInspect = PD.GearSlotApplyDeferredEnchantGemInspect
 ns.GearUI_GearSlotPaperdollVisualEquals = PD.GearSlotPaperdollVisualEquals
 ns.GearUI_BuildLiveEquippedSlotSnapshot = PD.BuildLiveEquippedSlotSnapshot
+ns.GearUI_MergeLiveEquippedSlot = PD.MergeLiveEquippedSlot
 ns.GearUI_GearSlotHasInspectableItemLink = PD.GearSlotHasInspectableItemLink
 
 function ns.GearUI_Paperdoll.RefreshTheme()

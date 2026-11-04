@@ -193,6 +193,39 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         and ns.GearUI_GetUpgradeArrowDisplay(upSlot, currencyAmounts) or nil
     if upSlot then upSlot.upgradeArrowDisplay = arrowDisplay end
     local statusUpgradeSz = STATUS_UPGRADE_ICON - 2 * STATUS_ICON_INSET
+    --- Lock chip for maxed / not-upgradeable items. Also used by the in-place refresh: a slot built with an
+    --- upgrade arrow that later maxes out had no lock texture to show.
+    local function EnsureSlotLockIcon()
+        local lockIcon = btn._gearLockIcon
+        if not lockIcon then
+            lockIcon = btn:CreateTexture(nil, "OVERLAY")
+            btn._gearLockIcon = lockIcon
+        end
+        lockIcon:SetSize(statusUpgradeSz, statusUpgradeSz)
+        if lockIcon.SetDrawLayer then lockIcon:SetDrawLayer("OVERLAY", 7) end
+        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, lockIcon)
+        ns.UI_SetIcon(lockIcon, "lock", { alpha = 0.6 })  -- colored art: locked reads dimmed (alpha), never grey
+        return lockIcon
+    end
+    --- Crafted mark on the item icon (same corner as the lock). Hidden while the upgrade / recraft chip or
+    --- the lock occupies that corner: the recraft chip already carries the hammer.
+    local function UpdateSlotCraftedBadge(isCrafted, hasItem)
+        local chipShown = btn._gearUpgradeArrow and btn._gearUpgradeArrow:IsShown()
+        local lockShown = btn._gearLockIcon and btn._gearLockIcon:IsShown()
+        if isCrafted and hasItem and not chipShown and not lockShown then
+            local badge = btn._gearCraftedBadge
+            if not badge then
+                badge = btn:CreateTexture(nil, "OVERLAY")
+                btn._gearCraftedBadge = badge
+            end
+            if badge.SetDrawLayer then badge:SetDrawLayer("OVERLAY", 7) end
+            PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, badge)
+            ns.UI_SetIcon(badge, "crafting_order")
+            badge:Show()
+        elseif btn._gearCraftedBadge then
+            btn._gearCraftedBadge:Hide()
+        end
+    end
     local wantDebugUpgrade = GEAR_DEBUG_ALWAYS_SHOW_UPGRADE == true and slotData and slotData.itemLink
         and not (issecretvalue and issecretvalue(slotData.itemLink))
     -- Always reserve an arrow texture when the slot has an item (unless lock-only), so a late upgradeInfo refresh can still show/hide in _gearApplySlotVisual.
@@ -250,19 +283,12 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
             upgradeBd:Show()
         end
     elseif lockOnly then
-        local lockIcon = btn._gearLockIcon
-        if not lockIcon then
-            lockIcon = btn:CreateTexture(nil, "OVERLAY")
-            btn._gearLockIcon = lockIcon
-        end
-        lockIcon:SetSize(statusUpgradeSz, statusUpgradeSz)
-        if lockIcon.SetFrameLevel and btn.GetFrameLevel then
-            lockIcon:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
-        end
-        if lockIcon.SetDrawLayer then lockIcon:SetDrawLayer("OVERLAY", 7) end
-        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, lockIcon)
-        ns.UI_SetIcon(lockIcon, "lock", { alpha = 0.6 })  -- colored art: locked reads dimmed (alpha), never grey
+        EnsureSlotLockIcon()
     end
+    if not lockOnly and btn._gearLockIcon then
+        btn._gearLockIcon:Hide()
+    end
+    UpdateSlotCraftedBadge(isCraftedSlot == true, hasItemNow and true or false)
 
     -- Tooltip: item link + simplified upgrade info (custom tooltip service)
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
@@ -600,9 +626,14 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         end
         GearSlotRefreshUpgradeArrow(self, slotData, notUpgradeable, canUpgrade)
         GearSlotHideLegacyIncreaseLabels(self)
-        if self._gearLockIcon then
-            if notUpgradeable and slotData and slotData.itemLink then self._gearLockIcon:Show() else self._gearLockIcon:Hide() end
+        if notUpgradeable and slotData and slotData.itemLink then
+            EnsureSlotLockIcon():Show()
+        elseif self._gearLockIcon then
+            self._gearLockIcon:Hide()
         end
+        local upNow = self._gearUpgradeInfo and self._gearUpgradeInfo[slotID]
+        UpdateSlotCraftedBadge(upNow and upNow.isCrafted == true,
+            slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) and true or false)
         self._gearLastCanAffordNext = canUpgrade == true
     end
 

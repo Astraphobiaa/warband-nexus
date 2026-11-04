@@ -770,7 +770,7 @@ end
 --- Also returns the next unaffordable tier info so UI can show what's needed.
 ---@return table|nil { minIlvl, maxIlvl, bestCrestName, bestCrestCost, nextTierName, nextTierCost, nextTierHave, nextTierMaxIlvl } or nil if no crests
 local function GetCraftedIlvlRange(upInfo, currencyAmounts)
-    if not upInfo or not upInfo.isCrafted then return nil end
+    if not upInfo or not upInfo.isCrafted or upInfo.craftedNoRecraft then return nil end
     local currentIlvl = upInfo.currentIlvl or 0
     local tiers = ns.CRAFTED_CREST_TIERS
     if not tiers or not currencyAmounts then return nil end
@@ -1192,6 +1192,13 @@ local function ApplyGearStorageRecRowAnchors(line, lay)
     if line.sourceText then
         AnchorGearStorageRecColText(line.sourceText, line, lay.xLocation + colInset, math.max(8, lay.locationW - colInset * 2), "LEFT")
     end
+end
+
+--- Recommendation row width = the rec scroll viewport: it is anchored storagePad from the panel's left
+--- and storageLane (scrollbar lane) from its right, so the pad comes off once. Subtracting it twice left
+--- a storagePad-wide strip on the right of every row.
+function ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLane)
+    return math.max(120, (storageW or 0) - (storagePad or 0) - (storageLane or 0))
 end
 
 --- Live resize: reflow recommendation table columns without rebuilding rows.
@@ -1840,7 +1847,7 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
     local rowsOverflow = (#rows * rowH + hdrExtra) > viewportH
 
-    local contentW = math.max(120, storageW - storagePad * 2 - storageLane)
+    local contentW = ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLane)
 
     local paintTok = (self.GetGearStorageFindingsDedupeToken and self:GetGearStorageFindingsDedupeToken()) or "0"
     paintTok = paintTok .. ":" .. tostring(#rows) .. ":" .. (rowsOverflow and "1" or "0") .. ":" .. tostring(math.floor(contentW + 0.5))
@@ -2114,7 +2121,12 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
             end
             local slotData
             if isViewingCurrent then
-                slotData = liveSnap or (slots and slots[slotID])
+                -- Same merge as the full paint: a live-only snapshot has no upgrade tier, and Sync then
+                -- re-guessed it from ilvl (Hero 6/6 == Myth 2/6) and flashed an upgrade arrow until the
+                -- next full paint hid it again.
+                local persistedSlot = slots and slots[slotID]
+                slotData = (liveSnap and ns.GearUI_MergeLiveEquippedSlot
+                    and ns.GearUI_MergeLiveEquippedSlot(persistedSlot, liveSnap)) or liveSnap or persistedSlot
             else
                 slotData = slots and slots[slotID]
             end
