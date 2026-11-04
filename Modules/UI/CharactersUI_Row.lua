@@ -798,35 +798,6 @@ function CharRowCb.DeleteOnLeave(self)
     end
 end
 
-function CharRowCb.GradientRefresh(row)
-    if not row.nameText or not row.realmText or not ns.UI_ApplyCharacterRowClassGradientAccent then
-        return
-    end
-    if not row._wnCharRowChar then return end
-    local nameLeft = row._wnCharGradNameLeft or 0
-    local parent, width = row._wnCharGradParent, row._wnCharGradWidth
-    local char = row._wnCharRowChar
-    local nameColW = CHAR_ROW_COLUMNS.name.width
-    local swName = row.nameText:GetStringWidth() or 0
-    local swRealm = row.realmText:GetStringWidth() or 0
-    local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + 4)
-    local gradientEnd = nameBlockRight
-    local rowW = row._wnRowPaintWidth
-    if not rowW or rowW < 2 then
-        rowW = row:GetWidth() or 0
-    end
-    if rowW < 2 and parent and parent.GetWidth then
-        rowW = parent:GetWidth() or rowW
-    end
-    if rowW < 2 then
-        rowW = width or 800
-    end
-    if gradientEnd > rowW - 2 then
-        gradientEnd = rowW - 2
-    end
-    ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
-end
-
 local function SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     local hasMail = ns.MailSnapshot and ns.MailSnapshot.CharHasPendingMail(char)
     if not hasMail then
@@ -983,50 +954,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN 5: Name
     local nameOffset = GetColumnOffset("name")
     local nameLeftPadding = 4
-    -- Realm subline is optional (profile.showCharacterRealmName, nil = shown); without it the name
-    -- centers vertically in the row. Pooled rows re-anchor every paint.
-    local showRealm = WarbandNexus.db.profile.showCharacterRealmName ~= false
-    
-    if not row.nameText then
-        row.nameText = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
-        row.nameText:SetWidth(CHAR_ROW_COLUMNS.name.width)
-        row.nameText:SetJustifyH("LEFT")
-        row.nameText:SetWordWrap(false)
-        row.nameText:SetNonSpaceWrap(false)
-        row.nameText:SetMaxLines(1)
-    end
-    row.nameText:ClearAllPoints()
-    if showRealm then
-        row.nameText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -8)
-    else
-        row.nameText:SetPoint("LEFT", nameOffset + nameLeftPadding, 0)
-    end
-    row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
-        classColor.r * 255, classColor.g * 255, classColor.b * 255,
-        char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
-    PresentFS(row.nameText)
+    -- Name + realm subline + class gradient: shared roster identity (SharedWidgets_RowPool); PvE, PvP and
+    -- Professions rows paint the same block. Pooled rows re-anchor every paint.
+    ns.UI_ApplyCharacterRowIdentity(row, char, nameOffset + nameLeftPadding, CHAR_ROW_COLUMNS.name.width)
     if row.mailIcon then
         row.mailIcon:Hide()
-    end
-    if not row.realmText then
-        row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        row.realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -23)
-        row.realmText:SetWidth(CHAR_ROW_COLUMNS.name.width)
-        row.realmText:SetJustifyH("LEFT")
-        row.realmText:SetWordWrap(false)
-        row.realmText:SetNonSpaceWrap(false)  -- Prevent long word overflow
-        row.realmText:SetMaxLines(1)  -- Single line only
-        ns.UI_SetTextColorRole(row.realmText, "Normal")
-    end
-    if showRealm then
-        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        ns.UI_SetTextColorRole(row.realmText, "Normal")
-        row.realmText:SetText(displayRealm)
-        PresentFS(row.realmText)
-    else
-        -- Empty text keeps the class-gradient width (max of name/realm) on the name alone.
-        row.realmText:SetText("")
-        row.realmText:Hide()
     end
     
     -- COLUMN: Guild — after mail column; width from max guild name; text centered before Level
@@ -1535,16 +1467,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    -- One thunk per row frame (created once); the paint inputs live on the row (2026-10-22: was a
-    -- new closure per paint).
-    if not row._wnCharGradientThunk then
-        row._wnCharGradientThunk = function() CharRowCb.GradientRefresh(row) end
+    -- Re-run the identity gradient now that the row has its final width (thunk set by UI_ApplyCharacterRowIdentity).
+    if row._wnGradientRefresh then
+        row._wnGradientRefresh()
     end
-    row._wnCharGradNameLeft = nameOffset + nameLeftPadding
-    row._wnCharGradParent = parent
-    row._wnCharGradWidth = width
-    row._wnGradientRefresh = row._wnCharGradientThunk
-    row._wnGradientRefresh()
 
     local betweenRows = GetLayout().betweenRows or 0
     return yOffset + 46 + betweenRows, row  -- Row 46px + spacing + row ref for pool tracking

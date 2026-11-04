@@ -1461,16 +1461,14 @@ function ns.ComputePvEMinScrollWidth(self)
     local maxNameRealmWidth = 0
     local FM = ns.FontManager
     local measureNameW = ns.PvE_MeasureStackedNameColumnWidth
+    -- Shared identity measure (no per-call FontString: this one leaked a region on every call).
     if FM and #characters > 0 and measureNameW then
-        local tempMeasure = FM:CreateFontString(UIParent, "body", "OVERLAY")
-        tempMeasure:Hide()
         for i = 1, #characters do
             local c = characters[i]
             local realmStr = ns.Utilities and ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
-            local w = measureNameW(tempMeasure, c.name or "Unknown", realmStr)
+            local w = measureNameW(nil, c.name or "Unknown", realmStr)
             if w > maxNameRealmWidth then maxNameRealmWidth = w end
         end
-        tempMeasure:SetParent(nil)
     end
     local nameWidth = (ns.PvE_ResolveNameColumnWidth and ns.PvE_ResolveNameColumnWidth(maxNameRealmWidth))
         or math.max(100, math.ceil(maxNameRealmWidth) + 4)
