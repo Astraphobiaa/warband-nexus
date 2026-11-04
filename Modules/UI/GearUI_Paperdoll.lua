@@ -1718,32 +1718,83 @@ function PD.MergeOfflineSecondaryForGear(savedSec)
     return out
 end
 
+--- Band rows pool their regions per column (`col._wnBandRows`) so repaints reuse them instead of
+--- stacking new textures/FontStrings on a reused column. Bracket a paint with Begin/EndGearPaperBandRows.
+function PD.BeginGearPaperBandRows(col)
+    if col then col._wnBandRowsUsed = 0 end
+end
+
+function PD.EndGearPaperBandRows(col)
+    local rows = col and col._wnBandRows
+    if not rows then return end
+    for i = (col._wnBandRowsUsed or 0) + 1, #rows do
+        local rec = rows[i]
+        if rec.ico then rec.ico:Hide() end
+        if rec.val then rec.val:Hide() end
+        if rec.label then rec.label:Hide() end
+    end
+end
+
 function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueStr, iconFileID)
+    local rows = col._wnBandRows
+    if not rows then
+        rows = {}
+        col._wnBandRows = rows
+    end
+    local idx = (col._wnBandRowsUsed or 0) + 1
+    col._wnBandRowsUsed = idx
+    local rec = rows[idx]
+    if not rec then
+        rec = {}
+        rows[idx] = rec
+    end
     local labelLeft = pad
     if iconFileID then
         local iconSz = math.min(22, rowH - 2)
-        local ico = col:CreateTexture(nil, "ARTWORK")
+        local ico = rec.ico
+        if not ico then
+            ico = col:CreateTexture(nil, "ARTWORK")
+            rec.ico = ico
+        end
         ico:SetSize(iconSz, iconSz)
+        ico:ClearAllPoints()
         ico:SetPoint("TOPLEFT", col, "TOPLEFT", pad, rowY)
         ico:SetTexture(iconFileID)
         ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        ico:Show()
         labelLeft = pad + iconSz + 6
+    elseif rec.ico then
+        rec.ico:Hide()
     end
     if valueStr and valueStr ~= "" then
-        local val = FontManager:CreateFontString(col, GFR("gearStatRating"), "OVERLAY")
+        local val = rec.val
+        if not val then
+            val = FontManager:CreateFontString(col, GFR("gearStatRating"), "OVERLAY")
+            val:SetJustifyH("RIGHT")
+            rec.val = val
+        end
+        val:ClearAllPoints()
         val:SetPoint("TOPRIGHT", col, "TOPRIGHT", -pad, rowY)
         val:SetWidth(valueColW)
-        val:SetJustifyH("RIGHT")
         ns.UI_SetTextColorRole(val, "Bright")
         val:SetText(valueStr)
+        val:Show()
+    elseif rec.val then
+        rec.val:Hide()
     end
     local labelRightInset = pad + valueColW + 8
-    local row = FontManager:CreateFontString(col, GFR("gearStatLabel"), "OVERLAY")
+    local row = rec.label
+    if not row then
+        row = FontManager:CreateFontString(col, GFR("gearStatLabel"), "OVERLAY")
+        row:SetJustifyH("LEFT")
+        rec.label = row
+    end
+    row:ClearAllPoints()
     row:SetPoint("TOPLEFT", col, "TOPLEFT", labelLeft, rowY)
     row:SetPoint("TOPRIGHT", col, "TOPRIGHT", -labelRightInset, rowY)
-    row:SetJustifyH("LEFT")
     ns.UI_SetTextColorRole(row, "Bright")
     row:SetText(label or "")
+    row:Show()
     return rowY - rowH
 end
 
@@ -1862,7 +1913,8 @@ end
 
 local GEAR_VIEWPORT_IDENTITY_H = 42
 
-function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
+--- `bar` (optional): the previous paint's bar; it is moved to `viewportHost` and refilled instead of rebuilt.
+function PD.PaintGearViewportIdentity(viewportHost, charData, accent, bar)
     if not viewportHost then return nil end
     local pad = 8
     local classFile = charData and charData.classFile
@@ -1874,7 +1926,15 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
     end
     local avgIlvl = PD.SafeGearStatNumber(charData and charData.itemLevel) or 0
 
-    local bar = PaperdollLayoutHost(viewportHost, 1, GEAR_VIEWPORT_IDENTITY_H)
+    if bar then
+        if bar:GetParent() ~= viewportHost then
+            bar:SetParent(viewportHost)
+        end
+        bar:ClearAllPoints()
+        bar:Show()
+    else
+        bar = PaperdollLayoutHost(viewportHost, 1, GEAR_VIEWPORT_IDENTITY_H)
+    end
     bar:SetPoint("TOPLEFT", viewportHost, "TOPLEFT", pad, -pad)
     bar:SetPoint("TOPRIGHT", viewportHost, "TOPRIGHT", -pad, -pad)
     bar:EnableMouse(false)
@@ -1882,7 +1942,12 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
         bar:SetFrameLevel((viewportHost:GetFrameLevel() or 0) + 24)
     end
 
-    local nameRealmFs = FontManager:CreateFontString(bar, GFR("gearCharacterName"), "OVERLAY")
+    local nameRealmFs = bar._wnNameRealmFs
+    if not nameRealmFs then
+        nameRealmFs = FontManager:CreateFontString(bar, GFR("gearCharacterName"), "OVERLAY")
+        bar._wnNameRealmFs = nameRealmFs
+    end
+    nameRealmFs:ClearAllPoints()
     nameRealmFs:SetPoint("TOP", bar, "TOP", 0, 0)
     nameRealmFs:SetPoint("LEFT", bar, "LEFT", 0, 0)
     nameRealmFs:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
@@ -1902,8 +1967,14 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
         nameRealmFs:SetText("|cff888888" .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
     end
 
+    if bar._wnIlvlFs then bar._wnIlvlFs:Hide() end
     if avgIlvl > 0 then
-        local ilvlFs = FontManager:CreateFontString(bar, GFR("gearIlvlBadge"), "OVERLAY")
+        local ilvlFs = bar._wnIlvlFs
+        if not ilvlFs then
+            ilvlFs = FontManager:CreateFontString(bar, GFR("gearIlvlBadge"), "OVERLAY")
+            bar._wnIlvlFs = ilvlFs
+        end
+        ilvlFs:ClearAllPoints()
         ilvlFs:SetPoint("TOP", nameRealmFs, "BOTTOM", 0, -2)
         ilvlFs:SetPoint("LEFT", bar, "LEFT", 0, 0)
         ilvlFs:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
@@ -1918,6 +1989,7 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
             ilvlFs:SetShadowColor(0, 0, 0, 1)
         end
         ilvlFs:SetText((PD.FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. PD.GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
+        ilvlFs:Show()
     end
     return bar
 end
@@ -1951,7 +2023,20 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     local crestCurrencies, goldCurrency = PD.BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
 
     local classicBand = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
-    local bandPanel = PD.CreateGearSubpanel(bottomHost, paperColW, bandH, accent, classicBand and { borderless = true } or nil)
+    -- Band frames live on the (reused) bottom host; rows are pooled per column (PaintGearPaperBandRow).
+    local band = bottomHost._wnGearBand
+    if not band then
+        band = {}
+        bottomHost._wnGearBand = band
+    end
+    local bandPanel = band.panel
+    if not bandPanel then
+        bandPanel = PD.CreateGearSubpanel(bottomHost, paperColW, bandH, accent, classicBand and { borderless = true } or nil)
+        band.panel = bandPanel
+    else
+        bandPanel:SetSize(paperColW, bandH)
+        bandPanel:Show()
+    end
     bandPanel:SetAllPoints(bottomHost)
 
     local bandInset = 0
@@ -1963,12 +2048,26 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     local innerStatColW = math.max(120, math.floor((innerBandW - splitGap) * 0.5 + 0.5))
     local innerCurrColW = math.max(120, innerBandW - splitGap - innerStatColW)
 
-    local statCol = PaperdollLayoutHost(bandPanel, innerStatColW, innerBandH)
+    local statCol = band.statCol
+    if not statCol then
+        statCol = PaperdollLayoutHost(bandPanel, innerStatColW, innerBandH)
+        band.statCol = statCol
+    else
+        statCol:SetSize(innerStatColW, innerBandH)
+        statCol:ClearAllPoints()
+    end
     statCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset, -bandInset)
     statCol:EnableMouse(false)
     if statCol.SetClipsChildren then statCol:SetClipsChildren(true) end
 
-    local currCol = PaperdollLayoutHost(bandPanel, innerCurrColW, innerBandH)
+    local currCol = band.currCol
+    if not currCol then
+        currCol = PaperdollLayoutHost(bandPanel, innerCurrColW, innerBandH)
+        band.currCol = currCol
+    else
+        currCol:SetSize(innerCurrColW, innerBandH)
+        currCol:ClearAllPoints()
+    end
     currCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset + innerStatColW + splitGap, -bandInset)
     currCol:SetPoint("TOPRIGHT", bandPanel, "TOPRIGHT", -bandInset, -bandInset)
     currCol:SetPoint("BOTTOM", bandPanel, "BOTTOM", bandInset, bandInset)
@@ -1976,12 +2075,17 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     if currCol.SetClipsChildren then currCol:SetClipsChildren(true) end
 
     local Factory = ns.UI and ns.UI.Factory
-    local midDiv = Factory and Factory.CreateThemeDivider and Factory:CreateThemeDivider(bandPanel, {
-        orientation = "vertical",
-        variant = "section",
-        thickness = 1,
-    })
+    local midDiv = band.midDiv
+    if not midDiv then
+        midDiv = Factory and Factory.CreateThemeDivider and Factory:CreateThemeDivider(bandPanel, {
+            orientation = "vertical",
+            variant = "section",
+            thickness = 1,
+        })
+        band.midDiv = midDiv
+    end
     if midDiv then
+        midDiv:ClearAllPoints()
         midDiv:SetPoint("TOP", bandPanel, "TOP", 0, -(bandInset + subHdr - 4))
         midDiv:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, bandInset + 6)
         midDiv:SetPoint("LEFT", statCol, "RIGHT", math.floor(splitGap * 0.5 + 0.5), 0)
@@ -2004,13 +2108,21 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     end
     local statTitleColor = { 0.52, 0.82, 0.95 }
     local currTitleColor = { 0.96, 0.78, 0.38 }
-    local statHdr = gearChrome and gearChrome.CreateSectionHeader
-        and gearChrome.CreateSectionHeader(statCol, (ns.L and ns.L["GEAR_CHARACTER_STATS"]) or "Character Stats", accent, PaperSectionHdrOpts(statTitleColor))
+    local statHdr = band.statHdr
+    if not statHdr then
+        statHdr = gearChrome and gearChrome.CreateSectionHeader
+            and gearChrome.CreateSectionHeader(statCol, (ns.L and ns.L["GEAR_CHARACTER_STATS"]) or "Character Stats", accent, PaperSectionHdrOpts(statTitleColor))
+        band.statHdr = statHdr
+    end
     if statHdr then
+        statHdr:ClearAllPoints()
         statHdr:SetPoint("TOPLEFT", statCol, "TOPLEFT", 0, 0)
         statHdr:SetPoint("TOPRIGHT", statCol, "TOPRIGHT", 0, 0)
     end
     local statY = -subHdr
+    PD.BeginGearPaperBandRows(statCol)
+    PD.BeginGearPaperBandRows(currCol)
+    if band.noStats then band.noStats:Hide() end
     if #primaryRows > 0 or #secondaryRows > 0 then
         for i = 1, #primaryRows do
             local stat = primaryRows[i]
@@ -2026,18 +2138,29 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
                 stat.label, stat.ratingStr or "0", stat.pctStr or "0.0%")
         end
     else
-        local noStats = FontManager:CreateFontString(statCol, GFR("gearEmptyStatsHint"), "OVERLAY")
+        local noStats = band.noStats
+        if not noStats then
+            noStats = FontManager:CreateFontString(statCol, GFR("gearEmptyStatsHint"), "OVERLAY")
+            band.noStats = noStats
+        end
+        noStats:ClearAllPoints()
         noStats:SetPoint("TOPLEFT", statCol, "TOPLEFT", statPad, statY)
         noStats:SetWidth(statInnerW)
         noStats:SetJustifyH("LEFT")
         ns.UI_SetTextColorRole(noStats, "Dim")
         noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
+        noStats:Show()
     end
 
     local currPad = statPad
-    local currHdr = gearChrome and gearChrome.CreateSectionHeader
-        and gearChrome.CreateSectionHeader(currCol, (ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies", accent, PaperSectionHdrOpts(currTitleColor))
+    local currHdr = band.currHdr
+    if not currHdr then
+        currHdr = gearChrome and gearChrome.CreateSectionHeader
+            and gearChrome.CreateSectionHeader(currCol, (ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies", accent, PaperSectionHdrOpts(currTitleColor))
+        band.currHdr = currHdr
+    end
     if currHdr then
+        currHdr:ClearAllPoints()
         currHdr:SetPoint("TOPLEFT", currCol, "TOPLEFT", 0, 0)
         currHdr:SetPoint("TOPRIGHT", currCol, "TOPRIGHT", 0, 0)
     end
@@ -2083,6 +2206,8 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
             goldCurrency.icon or 133784)
     end
 
+    PD.EndGearPaperBandRows(statCol)
+    PD.EndGearPaperBandRows(currCol)
     bandPanel._wnStatCol = statCol
     bandPanel._wnCurrCol = currCol
     return bandPanel
@@ -2850,11 +2975,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
 
     if centerRef and not card._wnGearHeroRibbon then
         local idHost = centerRef._clip or centerRef
-        if ns._gearModelIdentityBar and ns._gearModelIdentityBar.Hide then
-            ns._gearModelIdentityBar:Hide()
-            ns._gearModelIdentityBar:SetParent(nil)
-        end
-        ns._gearModelIdentityBar = PD.PaintGearViewportIdentity(idHost, charData, accent)
+        ns._gearModelIdentityBar = PD.PaintGearViewportIdentity(idHost, charData, accent, ns._gearModelIdentityBar)
     end
 
     if opts.paperChrome and centerRef then
@@ -2919,6 +3040,24 @@ function PD.EnforceGearTopRowNoOverlap(card, layout, mf)
     return false
 end
 
+--- Host frames EnsureGearCardColumnHosts builds; kept on the reused card between paints.
+PD.GEAR_CARD_HOST_KEYS = {
+    "bodyHost", "topHost", "leftColHost", "paperTopHost",
+    "paperBottomHost", "centerGapHost", "rightColHost", "bottomColHost",
+}
+
+--- Everything the card tree bakes in at creation (theme, Classic chrome, accent, recommendations column).
+--- A change rebuilds the card once; otherwise the same frames are re-adopted every paint.
+function PD.GetGearCardReuseSig(recEnabled)
+    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or {}
+    return format("%s|%s|%s|%s|%.3f,%.3f,%.3f",
+        tostring((ns.UI_IsLightMode and ns.UI_IsLightMode()) == true),
+        tostring((ns.UI_IsClassicMode and ns.UI_IsClassicMode()) == true),
+        tostring((ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()) == true),
+        tostring(recEnabled == true),
+        tonumber(accent[1]) or 0, tonumber(accent[2]) or 0, tonumber(accent[3]) or 0)
+end
+
 function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings, storageScanPending)
     local gearChrome = ns.GearUI_Chrome
     local rowStep = SLOT_SIZE + SLOT_GAP
@@ -2941,8 +3080,26 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
     local parentW = (parent and parent.GetWidth) and parent:GetWidth() or 0
 
-    -- New card on every PD.DrawPaperDollCard: PopulateContent tears down scrollChild, so roster changes cannot reuse the old card here.
-    local card = CreateCard(parent, cardH)
+    -- One card tree per session: PopulateContent parks the card in the recycle bin and this paint
+    -- re-adopts it (frames are never garbage-collected, so a card per paint was a permanent leak).
+    local recEnabled = WarbandNexus:IsGearStorageRecommendationsEnabled()
+    local reuseSig = PD.GetGearCardReuseSig(recEnabled)
+    local reuse = PD._gearCardReuse
+    if reuse and reuse.sig ~= reuseSig then
+        reuse = nil
+    end
+    local card
+    if reuse then
+        card = reuse.card
+        if card:GetParent() ~= parent then
+            card:SetParent(parent)
+        end
+        card:SetHeight(cardH)
+    else
+        card = CreateCard(parent, cardH)
+        reuse = { card = card, sig = reuseSig, hosts = {} }
+        PD._gearCardReuse = reuse
+    end
     if card.SetClipsChildren then
         card:SetClipsChildren(false)
     end
@@ -2956,7 +3113,6 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
 
     local PANEL_GAP = GEAR_PANEL_GAP
-    local recEnabled = WarbandNexus:IsGearStorageRecommendationsEnabled()
     local paperColW, recColW, layoutInnerW
     if ns.GearUI_ComputeTopRowWidths then
         paperColW, recColW, layoutInnerW = ns.GearUI_ComputeTopRowWidths(cardInnerW, recEnabled)
@@ -3004,7 +3160,15 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     }
     card._wnGearHeroRibbon = nil
 
+    local hostCache = reuse.hosts
+    local hostKeys = PD.GEAR_CARD_HOST_KEYS
+    for hi = 1, #hostKeys do
+        gearHosts[hostKeys[hi]] = hostCache[hostKeys[hi]]
+    end
     PD.EnsureGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
+    for hi = 1, #hostKeys do
+        hostCache[hostKeys[hi]] = gearHosts[hostKeys[hi]]
+    end
     PD.RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
     local leftCol = gearHosts.leftColHost
     local paperTop = gearHosts.paperTopHost
@@ -3015,7 +3179,15 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
     local colDiv
     local classicGear = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
-    if bodyHost and not classicGear then
+    if bodyHost and not classicGear and reuse.colDiv then
+        colDiv = reuse.colDiv
+        colDiv:Show()
+        gearHosts.colDivider = colDiv
+        if reuse.stackDiv then
+            reuse.stackDiv:Hide()
+            gearHosts.topStackDivider = reuse.stackDiv
+        end
+    elseif bodyHost and not classicGear then
         local Factory = ns.UI and ns.UI.Factory
         if Factory and Factory.CreateThemeDivider then
             colDiv = Factory:CreateThemeDivider(bodyHost, { orientation = "vertical", variant = "section", thickness = 1 })
@@ -3023,22 +3195,36 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             local stackDiv = Factory:CreateThemeDivider(bodyHost, { orientation = "horizontal", variant = "section", thickness = 1 })
             stackDiv:Hide()
             gearHosts.topStackDivider = stackDiv
+            reuse.colDiv = colDiv
+            reuse.stackDiv = stackDiv
         end
     end
 
-    local paperChrome = PaperdollLayoutHost(horizParent, 1, 1)
-    paperChrome:Hide()
-    if gearChrome and gearChrome.ApplyPaperdollViewport then
-        if classicGear and ns.UI_ApplyClassicTransparentInterior then
-            ns.UI_ApplyClassicTransparentInterior(paperChrome)
-        else
-            gearChrome.ApplyPaperdollViewport(paperChrome, accent)
+    -- AnchorGearPaperChromeBehindModel moves the chrome onto the scroll child, so teardown parks it
+    -- separately from the card; take it back here.
+    local paperChrome = reuse.paperChrome
+    if paperChrome then
+        if paperChrome:GetParent() ~= horizParent then
+            paperChrome:SetParent(horizParent)
         end
-    elseif paperChrome.SetBackdrop then
-        pcall(paperChrome.SetBackdrop, paperChrome, nil)
-    end
-    if paperChrome.SetClipsChildren then
-        paperChrome:SetClipsChildren(false)
+        paperChrome:ClearAllPoints()
+        paperChrome:Hide()
+    else
+        paperChrome = PaperdollLayoutHost(horizParent, 1, 1)
+        reuse.paperChrome = paperChrome
+        paperChrome:Hide()
+        if gearChrome and gearChrome.ApplyPaperdollViewport then
+            if classicGear and ns.UI_ApplyClassicTransparentInterior then
+                ns.UI_ApplyClassicTransparentInterior(paperChrome)
+            else
+                gearChrome.ApplyPaperdollViewport(paperChrome, accent)
+            end
+        elseif paperChrome.SetBackdrop then
+            pcall(paperChrome.SetBackdrop, paperChrome, nil)
+        end
+        if paperChrome.SetClipsChildren then
+            paperChrome:SetClipsChildren(false)
+        end
     end
     gearHosts.paperChrome = paperChrome
 
@@ -3118,7 +3304,22 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
         -- ── RIGHT COLUMN: Gear upgrade recommendations (full height, aligned with paperdoll) ──
         local storageParent = gearHosts.rightColHost or card
-        storagePanel = PD.CreateGearSubpanel(storageParent, storageW, contentBandH, accent, classicGear and { borderless = true } or nil)
+        -- Panel / header / scroll / content are built once per reused card (reuse.storage).
+        local sc = reuse.storage
+        if not sc then
+            sc = {}
+            reuse.storage = sc
+        end
+        storagePanel = sc.panel
+        if storagePanel then
+            if storagePanel:GetParent() ~= storageParent then
+                storagePanel:SetParent(storageParent)
+            end
+            storagePanel:Show()
+        else
+            storagePanel = PD.CreateGearSubpanel(storageParent, storageW, contentBandH, accent, classicGear and { borderless = true } or nil)
+            sc.panel = storagePanel
+        end
         storagePanel:ClearAllPoints()
         storagePanel:SetPoint("TOPLEFT", storageParent, "TOPLEFT", 0, 0)
         storagePanel:SetPoint("BOTTOMRIGHT", storageParent, "BOTTOMRIGHT", 0, 0)
@@ -3136,16 +3337,20 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             math.min(1, accent[3] * 1.12),
         }
         local storageHdrText = PD.GetLocalizedText("GEAR_RECOMMENDED_TITLE", "Recommended")
-        local storageHdr = gearChrome and gearChrome.CreateSectionHeader
-            and gearChrome.CreateSectionHeader(storagePanel, storageHdrText, accent, {
-                fontRole = "gearStorageCardTitle",
-                hideAccentBar = true,
-                underlineHeader = not classicGear,
-                plainHost = classicGear,
-                titleColor = recTitleColor,
-                height = storageHeaderH,
-            })
-        if storageHdr then
+        local storageHdr = sc.hdr
+        if not storageHdr then
+            storageHdr = gearChrome and gearChrome.CreateSectionHeader
+                and gearChrome.CreateSectionHeader(storagePanel, storageHdrText, accent, {
+                    fontRole = "gearStorageCardTitle",
+                    hideAccentBar = true,
+                    underlineHeader = not classicGear,
+                    plainHost = classicGear,
+                    titleColor = recTitleColor,
+                    height = storageHeaderH,
+                })
+            sc.hdr = storageHdr
+        end
+        if storageHdr and not storageHdr._wnGearFallbackHdr then
             storageHdr:ClearAllPoints()
             local storageLaneHdr = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
             storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, 0)
@@ -3158,8 +3363,12 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
                 storageHdr:SetFrameLevel(storagePanel:GetFrameLevel() + 4)
             end
             storageHdr:Show()
+        elseif storageHdr then
+            storageHdr:Show()
         elseif FontManager then
             storageHdr = PaperdollLayoutHost(storagePanel, 1, storageHeaderH)
+            storageHdr._wnGearFallbackHdr = true
+            sc.hdr = storageHdr
             storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, 0)
             storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -storagePad, 0)
             local fs = FontManager:CreateFontString(storageHdr, GFR("gearStorageCardTitle"), "OVERLAY")
@@ -3186,22 +3395,35 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
         gearHosts.storageRecTitle = storageHdr
 
         local viewportH = storagePanelH - storageHeaderH - storagePad - 10
-        scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
+        scroll = sc.scroll
+        local scrollReused = scroll ~= nil
+        if not scroll then
+            scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
+            sc.scroll = scroll
+        end
         local storageHdrScroll = (#storageRows > 0) and ns.GearUI_STORAGE_REC_TABLE_HDR or 0
         local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
         if scroll then
             if scroll.SetFrameLevel and storagePanel.GetFrameLevel then
                 scroll:SetFrameLevel(storagePanel:GetFrameLevel() + 2)
             end
-            sbCol = ns.UI.Factory and ns.UI.Factory.CreateBareScrollBarColumn
-                and ns.UI.Factory:CreateBareScrollBarColumn(storagePanel, storageBarW)
+            sbCol = sc.sbCol
+            if not scrollReused then
+                sbCol = ns.UI.Factory and ns.UI.Factory.CreateBareScrollBarColumn
+                    and ns.UI.Factory:CreateBareScrollBarColumn(storagePanel, storageBarW)
+                sc.sbCol = sbCol
+            else
+                scroll:ClearAllPoints()
+            end
             scroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
             scroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageLane, storagePad)
             scroll._wnKeepScrollLane = true
             if sbCol and scroll.ScrollBar then
                 scroll.ScrollBar._wnOwningScrollFrame = scroll
             end
-            if sbCol and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
+            if scrollReused then
+                if sbCol then sbCol:Show() end
+            elseif sbCol and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
                 ns.UI.Factory:EnsureScrollBarColumnSync(scroll, sbCol, { width = storageBarW, gap = 2 })
                 sbCol:Show()
             elseif sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
@@ -3212,17 +3434,24 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             local contentW = math.max(120, storageW - storagePad * 2 - storageLane)
             storageContentW = contentW
             local contentH = math.max(#storageRows * rowH + storageHdrScroll, viewportH)
-            local content = GearFact:CreateContainer(scroll, contentW, contentH, false)
+            local content = sc.content
+            if content then
+                -- Rows from the previous paint: the deferred row pass repaints into an empty content.
+                if ns.GearUI_ClearGearRecScrollContent then
+                    ns.GearUI_ClearGearRecScrollContent(content)
+                end
+                content:SetSize(contentW, contentH)
+                if scroll.SetVerticalScroll then scroll:SetVerticalScroll(0) end
+            else
+                content = GearFact:CreateContainer(scroll, contentW, contentH, false)
+                sc.content = content
+                scroll:SetScrollChild(content)
+            end
             recScroll = scroll
             recContent = content
-            scroll:SetScrollChild(content)
 
             if #storageRows == 0 then
-                local empty = FontManager:CreateFontString(content, GFR("gearStorageEmpty"), "OVERLAY")
-                content._gearStorageStatusFont = empty
-                empty:SetAllPoints()
-                empty:SetJustifyH("CENTER")
-                empty:SetJustifyV("MIDDLE")
+                local empty = ns.GearUI_AcquireGearRecStatusFont(content)
                 if storageScanPending then
                     empty:SetText(PD.GetLocalizedText("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
                     ns.UI_SetTextColorRole(empty, "Muted")
@@ -3346,6 +3575,11 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
         local centerFn = card._gearPaperdollCenterDefer
         card._gearPaperdollCenterDefer = nil
         local function runStorageRowsThenInspect()
+            -- The card (and its storage content) is reused by the next paint; never touch it from a stale one.
+            if not IsGearDeferGenCurrent(gearDeferGen) then
+                finishGearDeferChain()
+                return
+            end
             if scroll and recContent and #storageRows > 0 and storageContentW then
                 local nStorageRows = #storageRows
                 local function fillStorageRows()
