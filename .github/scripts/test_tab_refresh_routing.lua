@@ -4,7 +4,9 @@
 
       A5  a bag / item update on Items > Bags / Bank ran a full PopulateContent of the tab; it now
           refreshes the stats line + results list in place (TryRefreshItemsResultsForBagUpdate), and
-          only the Storage-tree sub-tabs (Warband, Guild) keep the full populate.
+          only the Storage-tree sub-tabs (Warband, Guild) keep the full populate. Guild paints only
+          the guild bank (2026-11-04): character bag / bank events skip it; the guild bank scan's
+          payload-less ITEMS_UPDATED still repaints it.
       A4  every Currency draw walked every currency x every tracked character (AggregateCurrencies)
           even with unchanged data; the aggregate is now cached on the read-model identity.
       C5  every currency row of every collapsed section was built on each draw, each copying the
@@ -143,9 +145,14 @@ do
     sub = "guild"
     local before = inPlaceCalls
     bags(E.BAGS_UPDATED)
+    items(E.ITEMS_UPDATED, { type = "batch", charKey = "Alpha-Realm" })
     stub.Advance(0.5)
     assert_eq(inPlaceCalls, before, "Guild (Storage tree): not routed in place")
-    assert_eq(populates, 2, "Guild: full PopulateContent kept")
+    assert_eq(populates, 1, "Guild: character bag / bank events do not repaint the guild bank tree")
+    items(E.ITEMS_UPDATED)
+    stub.Advance(0.5)
+    assert_eq(inPlaceCalls, before, "Guild: guild bank scan not routed in place")
+    assert_eq(populates, 2, "Guild: guild bank scan (payload-less ITEMS_UPDATED) keeps the full populate")
 
     sub = "warband"
     bags(E.BAGS_UPDATED)
