@@ -52,8 +52,9 @@ do
         "settings nav glyph is the registry Settings file, no SetAtlas")
     check(tex.vertex and tex.vertex[1] == 1 and tex.vertex[2] == 1 and tex.vertex[3] == 1,
         "settings nav glyph is colored art: neutral vertex (no theme ink)")
-    -- every main tab is on the registry now; storage keeps its own crate glyph instead of the items one
-    for _, pair in ipairs({ { "items", "bag" }, { "storage", "crate" }, { "reputation", "medal" }, { "characters", "character" } }) do
+    -- every main tab is on the registry now; storage keeps its own crate glyph instead of the items one.
+    -- The items tab is labelled Bank: banker money sacks (vault), not the bag glyph (2026-11-04).
+    for _, pair in ipairs({ { "items", "vault" }, { "storage", "crate" }, { "reputation", "medal" }, { "characters", "character" } }) do
         local t = FakeTex()
         ns.UI_ApplyMainNavTabGlyph(t, pair[1])
         check(ns.UI_GetTabIcon(pair[1]) == nil and t._wnRegistryIcon == pair[2] and not used(t, "SetAtlas"),
