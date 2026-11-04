@@ -419,9 +419,8 @@ function TK.LayoutCompactCell(strip, cell, col, w)
     label:ClearAllPoints()
     if hasIcon then
         local iconSize = col.iconSize or strip._iconSize
-        holder:SetSize(iconSize + 4, iconSize + 4)
-        holder:ClearAllPoints()
-        holder:SetPoint("TOP", cell, "TOP", 0, -strip._iconTop)
+        local holderH = iconSize + 4
+        holder:SetSize(holderH, holderH)
         holder:Show()
         iconTex:SetSize(iconSize, iconSize)
         local drawn = false
@@ -439,6 +438,14 @@ function TK.LayoutCompactCell(strip, cell, col, w)
         label:SetJustifyH("CENTER")
         label:SetWordWrap(multiline)
         if label.SetJustifyV then label:SetJustifyV("TOP") end
+        -- Center the icon + label block vertically in the strip (every compact header: Professions, PvE,
+        -- PvP); iconTop is only the minimum top inset. Measure the label as it will render.
+        label:SetText(secret and "" or text)
+        local labelH = (text ~= "" and not secret) and (label:GetStringHeight() or 0) or 0
+        local blockH = holderH + ((labelH > 0) and (strip._labelGap + labelH) or 0)
+        local top = math.max(strip._iconTop, math.floor((H - blockH) / 2 + 0.5))
+        holder:ClearAllPoints()
+        holder:SetPoint("TOP", cell, "TOP", 0, -top)
     else
         holder:Hide()
         label:SetPoint("TOPLEFT", cell, "TOPLEFT", 4, 0)
