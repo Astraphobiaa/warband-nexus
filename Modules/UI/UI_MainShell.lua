@@ -1349,6 +1349,23 @@ function ns.UIShell.CreateMainWindow(self)
     fixedHeader:SetHeight(1)
     fixedHeader:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
     f.fixedHeader = fixedHeader
+    -- Panel-tone canvas behind the title chrome, same fill the scroll body gets (UI_EnsureScrollChildViewportFill).
+    -- Without it the header area shows viewportBorder's atlas underlay, which darkens it to a near-black
+    -- box around the title card; it also covers the SCROLL_INSET_TOP band above the viewport.
+    -- Recolored / hidden with the theme in RefreshMainShellChrome (Modules/UI.lua).
+    do
+        local headerFill = fixedHeader:CreateTexture(nil, "BACKGROUND", nil, -8)
+        headerFill:SetAllPoints(fixedHeader)
+        fixedHeader._wnHeaderCanvasFill = headerFill
+        if isClassicShell then
+            headerFill:Hide()
+        else
+            local hc = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+                or (ns.UI_COLORS and ns.UI_COLORS.bg)
+                or { 0.042, 0.042, 0.055, 0.98 }
+            headerFill:SetColorTexture(hc[1], hc[2], hc[3], hc[4] or 0.98)
+        end
+    end
 
     -- Factory candidate: clip host for frozen column headers (`SetClipsChildren`).
     local columnHeaderClip = CreateFrame("Frame", nil, content)

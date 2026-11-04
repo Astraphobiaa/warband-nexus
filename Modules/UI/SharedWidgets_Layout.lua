@@ -264,7 +264,12 @@ local UI_SPACING = {
         NAV_RAIL_WIDTH_RATIO = 0.17,
         NAV_RAIL_WIDTH_MIN = 148,
         NAV_RAIL_WIDTH_MAX = 192,
-        NAV_RAIL_CONTENT_GAP = 10,
+        --- 0: content panel starts at the rail divider. A gap showed the window shell fill (user opacity,
+        --- darker than the panel) as a dark band between the rail and the content; inner spacing comes
+        --- from MAIN_SCROLL.SCROLL_INSET_LEFT.
+        NAV_RAIL_CONTENT_GAP = 0,
+        --- Classic (Blizzard chrome) keeps its gap: content is transparent there and panels draw their own frame.
+        NAV_RAIL_CONTENT_GAP_CLASSIC = 10,
         NAV_RAIL_PAD = 6,
         NAV_RAIL_TOP_INSET = 0,
         NAV_RAIL_TAB_V_GAP = 4,

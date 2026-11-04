@@ -239,6 +239,10 @@ local function RefreshMainShellChrome(mainFrame)
                 underlay:Hide()
             end
         end
+        local headerFill = mainFrame.fixedHeader and mainFrame.fixedHeader._wnHeaderCanvasFill
+        if headerFill then
+            headerFill:Hide()
+        end
         local sc = mainFrame.scrollChild
         if sc then
             if sc._wnViewportCanvasFill and sc._wnViewportCanvasFill.Hide then
@@ -260,6 +264,11 @@ local function RefreshMainShellChrome(mainFrame)
         end
         if mainFrame.viewportBorder and mainFrame.viewportBorder.SetBackdropColor then
             mainFrame.viewportBorder:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+        end
+        local headerFill = mainFrame.fixedHeader and mainFrame.fixedHeader._wnHeaderCanvasFill
+        if headerFill then
+            headerFill:SetColorTexture(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+            headerFill:Show()
         end
     end
     if mainFrame.footerTop then
@@ -330,7 +339,10 @@ local function ApplyMainShellLayout(f)
         f.header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -insetR, -insetT)
     end
 
-    local RAIL_CONTENT_GAP = shell.NAV_RAIL_CONTENT_GAP or 10
+    local RAIL_CONTENT_GAP = shell.NAV_RAIL_CONTENT_GAP or 0
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        RAIL_CONTENT_GAP = shell.NAV_RAIL_CONTENT_GAP_CLASSIC or 10
+    end
     local bodyBandAnchor = f.header or f
     local bodyBandGap = -headerNavGap
     if f._wnMainNavLayout == "rail" and f.navRail then

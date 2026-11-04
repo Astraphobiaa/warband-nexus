@@ -221,8 +221,13 @@ local function PopulateContentBody(self, forceRepaint)
             _uiChildEnumScratch[i]:SetParent(recycleBin)
         end
         local nrg = PackVariadicInto(_uiRegionEnumScratch, fixedHeader:GetRegions())
+        local headerFill = fixedHeader._wnHeaderCanvasFill
         for i = 1, nrg do
-            _uiRegionEnumScratch[i]:Hide()
+            local region = _uiRegionEnumScratch[i]
+            -- Shell-owned header canvas stays up across tabs (UI_MainShell / RefreshMainShellChrome).
+            if region ~= headerFill then
+                region:Hide()
+            end
         end
         fixedHeader:SetHeight(1)
     end
