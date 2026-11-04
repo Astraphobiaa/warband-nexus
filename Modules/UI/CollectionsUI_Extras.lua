@@ -105,10 +105,12 @@ function M.GetFilteredTitlesGrouped(searchText, showCollected, showUncollected)
     local grouped = {}
     for i = 1, #list do
         local e = list[i]
-        local key = e.sourceAchievement and "achievement" or "unknown"
-        local g = grouped[key]
-        if not g then g = {}; grouped[key] = g end
-        g[#g + 1] = e
+        if not (M.IsHiddenByFactionFilter and M.IsHiddenByFactionFilter("title", e.id)) then
+            local key = e.sourceAchievement and "achievement" or "unknown"
+            local g = grouped[key]
+            if not g then g = {}; grouped[key] = g end
+            g[#g + 1] = e
+        end
     end
     for _, g in pairs(grouped) do tsort(g, SortEntitiesByName) end
     return grouped

@@ -86,9 +86,20 @@ local ipairs = ipairs
 local pairs = pairs
 local tinsert = table.insert
 
+--- Alliance / Horde filter (Mounts, Pets, Toys, Titles): only faction-only entries can be hidden.
+function M.IsHiddenByFactionFilter(kind, id)
+    local st = M.state
+    if not st or (st.showAlliance ~= false and st.showHorde ~= false) then return false end
+    local fk = WarbandNexus.GetCollectibleFactionKey and WarbandNexus:GetCollectibleFactionKey(kind, id)
+    return (fk == "alliance" and st.showAlliance == false) or (fk == "horde" and st.showHorde == false)
+end
+
 local function ShouldSkipMountBrowse(mountID)
-    return mountID and WarbandNexus.ShouldExcludeMountFromCollectionBrowse
-        and WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)
+    if not mountID then return false end
+    if WarbandNexus.ShouldExcludeMountFromCollectionBrowse and WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID) then
+        return true
+    end
+    return M.IsHiddenByFactionFilter("mount", mountID)
 end
 
 local function ResolveMountSourceTypeForBrowse(mountID, stored)
@@ -189,6 +200,17 @@ function M.ComputeModelViewerAspectFraming(viewportW, viewportH)
     return distanceMul, translateY
 end
 
+--- Right-drag pans the model (same as Blizzard's PanningModelSceneMixin / ModelPreviewFrame, live SharedXML
+--- 2026-11-04). The active OrbitCamera is recreated on every TransitionToModelSceneID, so call after each one.
+function M.EnableJournalScenePanning(scene)
+    local cam = scene and scene.GetActiveCamera and scene:GetActiveCamera()
+    if not cam or not cam.SetRightMouseButtonXMode or not cam.SetRightMouseButtonYMode then return end
+    local panX, panY = _G.ORBIT_CAMERA_MOUSE_PAN_HORIZONTAL, _G.ORBIT_CAMERA_MOUSE_PAN_VERTICAL
+    if not panX or not panY then return end
+    cam:SetRightMouseButtonXMode(panX, true)
+    cam:SetRightMouseButtonYMode(panY, true)
+end
+
 function M.ApplyJournalModelSceneZoom(scene, zoomMultiplier, viewportFrame)
     if not scene then return end
     -- The viewport now has the Blizzard frame's aspect (UpdateModelFrameSize): keep the authored camera exactly as
@@ -236,6 +258,7 @@ function M.ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDF
     local disc = _G.CAMERA_MODIFICATION_TYPE_DISCARD
     if forceSceneChange and type(modelSceneID) == "number" and modelSceneID > 0 and trans and disc and scene.TransitionToModelSceneID then
         pcall(scene.TransitionToModelSceneID, scene, modelSceneID, trans, disc, true)
+        M.EnableJournalScenePanning(scene)
     end
 
     if scene.PrepareForFanfare then
@@ -315,6 +338,7 @@ function M.ApplyPetJournalModelSceneDisplay(scene, speciesID, creatureDisplayID)
     local disc = _G.CAMERA_MODIFICATION_TYPE_DISCARD
     if not trans or not disc then return false end
     pcall(scene.TransitionToModelSceneID, scene, cardSceneID, trans, disc, true)
+    M.EnableJournalScenePanning(scene)
     if scene.PrepareForFanfare then
         pcall(scene.PrepareForFanfare, scene, false)
     end
@@ -2488,7 +2512,7 @@ function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollecte
         local limit = math.min(startIdx + RUN_CHUNK_SIZE - 1, total)
         for i = startIdx, limit do
             local d = allPets[i]
-            if d and d.id then
+            if d and d.id and not M.IsHiddenByFactionFilter("pet", d.id) then
                 local name = d.name or tostring(d.id)
                 local isCollected = (d.isCollected == true) or (d.collected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
@@ -2579,7 +2603,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
     if useCache then
         for i = 1, #allPets do
             local d = allPets[i]
-            if not d or not d.id then
+            if not d or not d.id or M.IsHiddenByFactionFilter("pet", d.id) then
             else
                 local name = d.name or tostring(d.id)
                 local isCollected = (d.isCollected == true) or (d.collected == true)
@@ -2623,7 +2647,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
         if numPets == 0 then return grouped, 0 end
         for i = 1, numPets do
             local _, speciesID = C_PetJournal.GetPetInfoByIndex(i)
-            if speciesID then
+            if speciesID and not M.IsHiddenByFactionFilter("pet", speciesID) then
                 local isCollected = M.SafeGetPetCollected(speciesID)
                 if (showC and isCollected) or (showU and not isCollected) then
                     local meta = WarbandNexus:ResolveCollectionMetadata("pet", speciesID)
@@ -2686,7 +2710,7 @@ function M.GetFilteredToysGrouped(searchText, showCollected, showUncollected)
         local items = group.items or {}
         for i = 1, #items do
             local item = items[i]
-            if item and item.id then
+            if item and item.id and not M.IsHiddenByFactionFilter("toy", item.id) then
                 local isCollected = (item.collected == true) or (item.isCollected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
                     local name = item.name or tostring(item.id)
@@ -2732,7 +2756,7 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
 
     for i = 1, #allToys do
         local d = allToys[i]
-        if d and d.id then
+        if d and d.id and not M.IsHiddenByFactionFilter("toy", d.id) then
             local name = d.name or tostring(d.id)
             local isCollected = (d.isCollected == true) or (d.collected == true)
             if (showC and isCollected) or (showU and not isCollected) then
@@ -2780,8 +2804,6 @@ local CONTENT_HEADER_LOCALE_KEYS = {
     mounts = { title = "COLLECTIONS_CONTENT_TITLE_MOUNTS", sub = "COLLECTIONS_CONTENT_SUB_MOUNTS" },
     pets = { title = "COLLECTIONS_CONTENT_TITLE_PETS", sub = "COLLECTIONS_CONTENT_SUB_PETS" },
     toys = { title = "COLLECTIONS_CONTENT_TITLE_TOYS", sub = "COLLECTIONS_CONTENT_SUB_TOYS" },
-    illusions = { title = "CATEGORY_ILLUSIONS", sub = "COLLECTIONS_CONTENT_SUB_ILLUSIONS" },
-    titles = { title = "CATEGORY_TITLES", sub = "COLLECTIONS_CONTENT_SUB_TITLES" },
     recent = { title = "COLLECTIONS_CONTENT_TITLE_RECENT", sub = "COLLECTIONS_CONTENT_SUB_RECENT" },
 }
 
@@ -2837,52 +2859,10 @@ end
 function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, tabKey, chrome)
     if not hdrCache or not headerParent then return headerYOffset end
     local row = hdrCache.contentSubHeader
-    -- Recent: the sub-tab button already names the view; no title row (search sits under the tabs).
-    if tabKey == "recent" then
-        if row then row:Hide() end
-        return headerYOffset
-    end
-    local createdHeader = false
-    if not row then
-        createdHeader = true
-        row = Factory:CreateContainer(headerParent, 120, COLLECTIONS_FIXED_SUBHEADER_H, false)
-        row._title = FontManager:CreateFontString(row, "header", "OVERLAY")
-        row._title:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -2)
-        row._title:SetJustifyH("LEFT")
-        row._subtitle = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
-        row._subtitle:SetPoint("TOPLEFT", row._title, "BOTTOMLEFT", 0, -1)
-        row._subtitle:SetPoint("TOPRIGHT", row, "TOPRIGHT", -4, 0)
-        row._subtitle:SetJustifyH("LEFT")
-        row._subtitle:SetWordWrap(false)
-        row._subtitle:SetNonSpaceWrap(false)
-        row._subtitle:SetMaxLines(1)
-        ns.UI_SetTextColorRole(row._subtitle, "Bright")
-        hdrCache.contentSubHeader = row
-    end
-    local nextY
-    if chrome and ns.UI_PageStack_Place then
-        chrome.yOffset = headerYOffset
-        nextY = ns.UI_PageStack_Place(chrome, row, COLLECTIONS_FIXED_SUBHEADER_H)
-    else
-        row:SetParent(headerParent)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        row:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        row:SetHeight(COLLECTIONS_FIXED_SUBHEADER_H)
-        nextY = headerYOffset + COLLECTIONS_FIXED_SUBHEADER_H + COLLECTIONS_FIXED_SUBHEADER_GAP
-    end
-    local parentLevel = headerParent:GetFrameLevel() or 0
-    row:SetFrameLevel(parentLevel + 12)
-    M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
-    if createdHeader then
-        M.CollectionsSubTabTrace("ApplyContentSubHeader", {
-            tabKey = tabKey,
-            title = row._titlePlain,
-            created = true,
-            chrome = "fixed",
-        })
-    end
-    return nextY
+    -- No title / description row on any sub-tab: the sub-tab button already names the view and the search
+    -- sits right under the tabs (Recent did this first; all tabs since 2026-11-04, user request).
+    if row then row:Hide() end
+    return headerYOffset
 end
 
 --- Legacy hook from Draw*Content: title lives in fixedHeader; body uses full content height.

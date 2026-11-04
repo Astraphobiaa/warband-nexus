@@ -78,11 +78,28 @@ local function CollectionsSearchRefreshKey()
 end
 
 -- Fixed header: search bar uses full row width when Owned/Missing row is hidden (Recent).
+-- Filter row widths: Owned/Missing only, or plus Alliance/Horde (Mounts via the live API; Pets / Toys / Titles via
+-- the generated CollectibleFactionDB).
+local FACTION_FILTER_REDRAW = {
+    mounts = function(cf) M.DrawMountsContent(cf) end,
+    pets = function(cf) M.DrawPetsContent(cf) end,
+    toys = function(cf) M.DrawToysContent(cf) end,
+    titles = function(cf) M.DrawTitlesContent(cf) end,
+}
+local FILTER_ROW_W_BASE = 200
+local FILTER_ROW_W_FACTION = 390
+
 function M.LayoutCollectionsSearchBar(hdrCache)
     if not hdrCache or not hdrCache.searchBar or not hdrCache.searchRow then return end
     local bar = hdrCache.searchBar
     local sr = hdrCache.searchRow
     local fr = hdrCache.filterRow
+    if fr and hdrCache.factionFilter then
+        local sub = M.state.currentSubTab
+        local showFaction = sub == "mounts" or sub == "pets" or sub == "toys" or sub == "titles"
+        hdrCache.factionFilter:SetShown(showFaction)
+        fr:SetWidth(showFaction and FILTER_ROW_W_FACTION or FILTER_ROW_W_BASE)
+    end
     bar:ClearAllPoints()
     bar:SetPoint("TOPLEFT", sr, "TOPLEFT", 0, 0)
     if fr and fr:IsShown() then
@@ -388,6 +405,34 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 end
             end
         end)
+
+        -- Alliance / Horde (LayoutCollectionsSearchBar toggles visibility per sub-tab + filter row width).
+        local factionFilter = Factory:CreateContainer(filterRow, FILTER_ROW_W_FACTION - FILTER_BLOCK_WIDTH, SEARCH_ROW_HEIGHT, false)
+        factionFilter:SetPoint("LEFT", lblUncollected, "RIGHT", CONTENT_INSET * 2, 0)
+        factionFilter:SetHeight(SEARCH_ROW_HEIGHT)
+        hdrCache.factionFilter = factionFilter
+        local function AddFactionToggle(anchor, anchorPad, stateKey, labelText)
+            local cb = CreateThemedCheckbox(factionFilter, M.state[stateKey] ~= false)
+            cb:SetPoint("LEFT", anchor, anchor == factionFilter and "LEFT" or "RIGHT", anchorPad, 0)
+            local lbl = FontManager:CreateFontString(factionFilter, "body", "OVERLAY")
+            lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+            lbl:SetText(labelText)
+            ns.UI_SetTextColorRole(lbl, "Bright")
+            lbl:SetJustifyH("LEFT")
+            cb:SetScript("OnClick", function(self)
+                M.state[stateKey] = self:GetChecked() and true or false
+                if self:GetChecked() then cb.checkTexture:Show() else cb.checkTexture:Hide() end
+                local redraw = FACTION_FILTER_REDRAW[M.state.currentSubTab]
+                if M.state.contentFrame and redraw then
+                    redraw(M.state.contentFrame)
+                end
+            end)
+            return lbl
+        end
+        local lblAlliance = AddFactionToggle(factionFilter, 0, "showAlliance",
+            (ns.L and ns.L["FILTER_FACTION_ALLIANCE"]) or "Alliance")
+        AddFactionToggle(lblAlliance, CONTENT_INSET * 2, "showHorde",
+            (ns.L and ns.L["FILTER_FACTION_HORDE"]) or "Horde")
 
         if not M.state.showCollected and not M.state.showUncollected then
             M.state.showCollected = true

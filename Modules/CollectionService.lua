@@ -1594,6 +1594,36 @@ function WarbandNexus:GetMountBrowseSourceType(mountID)
     return nil
 end
 
+---Faction of a faction-specific mount: "horde" / "alliance", nil for neutral (or unreadable) mounts.
+---GetMountInfoByID returns isFactionSpecific (8) and faction (9, PvPFaction: 0 = Horde, 1 = Alliance);
+---MountJournalDocumentation + PvPFactionConstantsDocumentation, live 2026-11-04.
+---@return string|nil
+function WarbandNexus:GetMountFactionKey(mountID)
+    if not mountID or not C_MountJournal or not C_MountJournal.GetMountInfoByID then return nil end
+    local _, _, _, _, _, _, _, isFactionSpecific, faction = C_MountJournal.GetMountInfoByID(mountID)
+    if issecretvalue and (issecretvalue(isFactionSpecific) or issecretvalue(faction)) then return nil end
+    if isFactionSpecific ~= true then return nil end
+    if faction == 0 then return "horde" end
+    if faction == 1 then return "alliance" end
+    return nil
+end
+
+---Alliance / Horde only collectible: "alliance" / "horde", nil when both factions can use it.
+---Mounts read the live journal; pets / toys / titles come from CollectibleFactionDB (generated from client DB2:
+---the API exposes no faction for them).
+---@param kind string "mount"|"pet"|"toy"|"title"
+---@return string|nil
+function WarbandNexus:GetCollectibleFactionKey(kind, id)
+    if not id then return nil end
+    if kind == "mount" then return self:GetMountFactionKey(id) end
+    local db = ns.CollectibleFactionDB
+    local map = db and ((kind == "pet" and db.petSpecies) or (kind == "toy" and db.toyItems) or (kind == "title" and db.titleMasks))
+    local side = map and map[id]
+    if side == "A" then return "alliance" end
+    if side == "H" then return "horde" end
+    return nil
+end
+
 ---Hide journal-internal mounts (Soar, class placeholders). Keep cross-faction mounts visible.
 ---@return boolean true when the mount should be excluded from Collections / To-Do browse
 function WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)

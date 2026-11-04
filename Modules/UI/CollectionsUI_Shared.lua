@@ -514,6 +514,10 @@ function M.CollectionsSubTabBrowseFiltersUnchanged(subTabKey)
     if lastC ~= nil and showOn(lastC) ~= showOn(st.showCollected) then return false end
     local lastU = st["_" .. prefix .. "LastShowUncollected"]
     if lastU ~= nil and showOn(lastU) ~= showOn(st.showUncollected) then return false end
+    local lastA = st["_" .. prefix .. "LastShowAlliance"]
+    if lastA ~= nil and showOn(lastA) ~= showOn(st.showAlliance) then return false end
+    local lastH = st["_" .. prefix .. "LastShowHorde"]
+    if lastH ~= nil and showOn(lastH) ~= showOn(st.showHorde) then return false end
     return true
 end
 
@@ -524,6 +528,8 @@ function M.RecordCollectionsSubTabBrowseSnapshot(subTabKey)
     st["_" .. prefix .. "LastSearchText"] = st.searchText or ""
     st["_" .. prefix .. "LastShowCollected"] = st.showCollected
     st["_" .. prefix .. "LastShowUncollected"] = st.showUncollected
+    st["_" .. prefix .. "LastShowAlliance"] = st.showAlliance
+    st["_" .. prefix .. "LastShowHorde"] = st.showHorde
 end
 
 function M.CollectionsSubTabBrowseCacheDiag(subTabKey)
@@ -874,6 +880,8 @@ M.state = M.state or {
     subTabBar = nil,
     showCollected = true,
     showUncollected = true,
+    showAlliance = true,  -- Mounts tab faction filter (GetMountInfoByID isFactionSpecific / faction)
+    showHorde = true,
     collapsedHeaders = {},
     collapsedHeadersMounts = {},
     collapsedHeadersPets = {},

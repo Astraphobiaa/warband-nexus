@@ -122,6 +122,7 @@ Modules\PlansManager.lua
 Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB_Backfill.lua
 Modules\CollectibleSourceDB.lua
+Modules\CollectibleFactionDB.lua
 Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
 Modules\TryCounterService_Process.lua
