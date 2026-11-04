@@ -2003,9 +2003,27 @@ end
 
 --- Refresh upgrade arrows + track labels after currency/gold changes (no full Gear PopulateContent).
 ---@return boolean handled
+--- Stats + currencies card: debounced in-place repaint after equip / upgrade / currency / rating changes.
+--- Deferred so the services' own listeners for the same message (currency cache invalidation, gear scan)
+--- run first; a row-count change falls back to a full Gear paint.
+local GEAR_SIDE_CARD_REFRESH_DELAY = 0.15
+local gearSideCardTimer = nil
+function WarbandNexus:ScheduleGearSideCardRefresh()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "gear" then return end
+    if gearSideCardTimer then gearSideCardTimer:Cancel() end
+    gearSideCardTimer = C_Timer.NewTimer(GEAR_SIDE_CARD_REFRESH_DELAY, function()
+        gearSideCardTimer = nil
+        if not mf:IsShown() or mf.currentTab ~= "gear" then return end
+        if ns.GearUI_RefreshGearSideCard and ns.GearUI_RefreshGearSideCard(mf) then return end
+        self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "gear", skipCooldown = true })
+    end)
+end
+
 function WarbandNexus:TryRefreshGearUpgradeEconomy()
     local mf = self.UI and self.UI.mainFrame
     if not mf or mf.currentTab ~= "gear" then return false end
+    self:ScheduleGearSideCardRefresh()
     if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return false end
     local card = mf._gearPaperdollCard
     if not card or not card._gearSlotInspectList or #card._gearSlotInspectList == 0 then return false end

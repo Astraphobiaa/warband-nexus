@@ -151,6 +151,7 @@ local GEAR_DEBUG_ALWAYS_SHOW_UPGRADE = false
 local GEAR_PAPERDOLL_ENCHANT_GEM_ALERTS = true
 local CURRENCY_PANEL_W = 248
 local GEAR_STAT_PANEL_W = 292
+local GEAR_STAT_DR_LEGEND_H = 22  -- "red tick = diminishing returns threshold" line under the stats
 local GEAR_REC_STACK_MIN_H = 200
 local GEAR_REC_STACK_MAX_H = 280
 local CENTER_GAP     = P(10)
@@ -1770,12 +1771,99 @@ local STAT_IDS = {
     { id = 3, label = (ns.L and ns.L["STAT_STAMINA"]) or SPELL_STAT3_NAME or "Stamina",      icon = "Interface\\Icons\\spell_holy_wordfortitude" },
     { id = 4, label = (ns.L and ns.L["STAT_INTELLECT"]) or SPELL_STAT4_NAME or "Intellect",  icon = "Interface\\Icons\\spell_holy_magicalsentry" },
 }
+-- Secondary stat icons: FileDataIDs confirmed in the wowdev community listfile on 2026-11-04
+-- (ability_criticalstrike, spell_nature_bloodlust, ability_hunter_mastermarksman, ability_rogue_versatility).
+-- Blizzard has no stat-panel art for these; the picks are the closest existing icons.
 local SECONDARY_STATS = {
-    { label = (ns.L and ns.L["STAT_CRITICAL_STRIKE"]) or "Critical Strike", fn = function() return GetCombatRating and GetCombatRating(9) or 0 end,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
-    { label = (ns.L and ns.L["STAT_HASTE"]) or "Haste",                     fn = function() return GetCombatRating and GetCombatRating(18) or 0 end, pctFn = function() return GetHaste and GetHaste() or 0 end },
-    { label = (ns.L and ns.L["STAT_MASTERY"]) or "Mastery",                 fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
-    { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
+    { label = (ns.L and ns.L["STAT_CRITICAL_STRIKE"]) or "Critical Strike", icon = 132109, ratingIndex = 9, fn = function() return GetCombatRating and GetCombatRating(9) or 0 end,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
+    { label = (ns.L and ns.L["STAT_HASTE"]) or "Haste",                     icon = 136012, ratingIndex = 18, fn = function() return GetCombatRating and GetCombatRating(18) or 0 end, pctFn = function() return GetHaste and GetHaste() or 0 end },
+    { label = (ns.L and ns.L["STAT_MASTERY"]) or "Mastery",                 icon = 132177, ratingIndex = 26, fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
+    { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         icon = 636277, ratingIndex = 29, fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
 }
+-- Diminishing returns on a live secondary rating. GetCombatRatingBonusForCombatRatingValue(ratingIndex,
+-- value) is a global in Blizzard APIDocumentationGenerated PlayerScriptDocumentation (checked 2026-11-04):
+-- the post-DR bonus for any rating value. Effectiveness compares the full rating with the undiminished rate
+-- of the first DR_PROBE points; the next-step gain is the bonus of DR_PROBE more rating.
+local DR_PROBE = 100
+local DR_EFFECTIVE_FLOOR = 0.995
+local DR_SEARCH_MAX_RATING = 20000
+
+--- Smallest rating whose effectiveness drops below DR_EFFECTIVE_FLOOR (first diminishing-returns
+--- threshold), by bisection on the API; nil when no threshold below DR_SEARCH_MAX_RATING.
+local function FindDRThresholdRating(fn, ratingIndex, base)
+    local function effAt(r)
+        local ok, b = pcall(fn, ratingIndex, r)
+        b = ok and PD.SafeGearStatNumber(b) or nil
+        if not b then return nil end
+        return b / (r * base / DR_PROBE)
+    end
+    local hiEff = effAt(DR_SEARCH_MAX_RATING)
+    if not hiEff or hiEff >= DR_EFFECTIVE_FLOOR then return nil end
+    local lo, hi = DR_PROBE, DR_SEARCH_MAX_RATING
+    while hi - lo > 1 do
+        local mid = math.floor((lo + hi) / 2)
+        local e = effAt(mid)
+        if not e then return nil end
+        if e < DR_EFFECTIVE_FLOOR then hi = mid else lo = mid end
+    end
+    return lo
+end
+
+function PD.ComputeSecondaryStatDR(ratingIndex, rating)
+    local fn = GetCombatRatingBonusForCombatRatingValue
+    if not fn or not ratingIndex or type(rating) ~= "number" or rating <= 0 then return nil end
+    local ok1, base = pcall(fn, ratingIndex, DR_PROBE)
+    local ok2, now = pcall(fn, ratingIndex, rating)
+    local ok3, nxt = pcall(fn, ratingIndex, rating + DR_PROBE)
+    if not (ok1 and ok2 and ok3) then return nil end
+    base, now, nxt = PD.SafeGearStatNumber(base), PD.SafeGearStatNumber(now), PD.SafeGearStatNumber(nxt)
+    if not base or not now or not nxt or base <= 0 then return nil end
+    local linear = rating * base / DR_PROBE
+    local eff = (linear > 0) and math.min(1, now / linear) or 1
+    -- Mastery rating buys mastery points; the row shows the spec's effect (GetMasteryEffect returns
+    -- masteryEffect, bonusCoefficient), so scale the gains into the same unit.
+    local scale = 1
+    if ratingIndex == 26 and GetMasteryEffect then
+        local okM, _, bonusCoefficient = pcall(GetMasteryEffect)
+        bonusCoefficient = okM and PD.SafeGearStatNumber(bonusCoefficient) or nil
+        if bonusCoefficient and bonusCoefficient > 0 then scale = bonusCoefficient end
+    end
+    -- First threshold: its bonus, in the row's unit, lets the bar mark where diminishing returns start.
+    local thrBonus
+    local thrRating = FindDRThresholdRating(fn, ratingIndex, base)
+    if thrRating then
+        local okT, tb = pcall(fn, ratingIndex, thrRating)
+        thrBonus = okT and PD.SafeGearStatNumber(tb) or nil
+    end
+    return {
+        inDR = eff < DR_EFFECTIVE_FLOOR,
+        eff = eff,
+        nextGain = math.max(0, nxt - now) * scale,
+        baseGain = base * scale,
+        nowBonus = now * scale,
+        thresholdBonus = thrBonus and (thrBonus * scale) or nil,
+    }
+end
+
+--- True when a secondary row draws a DR threshold tick (live character): the stats section then ends with
+--- the red-tick legend line.
+function PD.GearStatsHaveDRMark(secondaryRows)
+    for i = 1, #(secondaryRows or {}) do
+        local dr = secondaryRows[i].dr
+        if dr and dr.markFrac and dr.markFrac > 0 and dr.markFrac < 1 then return true end
+    end
+    return false
+end
+
+--- Bar position (0..1 of 100%) of the DR threshold for a row showing `pct`: the rating's current
+--- contribution is replaced by the threshold's contribution.
+function PD.WithDRBarMark(dr, pct)
+    if dr and dr.thresholdBonus and dr.nowBonus and type(pct) == "number" then
+        dr.markFrac = (pct - dr.nowBonus + dr.thresholdBonus) / 100
+    end
+    return dr
+end
+
 function PD.MergeOfflineSecondaryForGear(savedSec)
     local out = {}
     for i = 1, #SECONDARY_STATS do
@@ -1795,7 +1883,7 @@ function PD.MergeOfflineSecondaryForGear(savedSec)
                 end
             end
         end
-        out[#out + 1] = { label = def.label, rating = rating, pct = pct }
+        out[#out + 1] = { label = def.label, rating = rating, pct = pct, icon = def.icon }
     end
     return out
 end
@@ -1814,10 +1902,44 @@ function PD.EndGearPaperBandRows(col)
         if rec.ico then rec.ico:Hide() end
         if rec.val then rec.val:Hide() end
         if rec.label then rec.label:Hide() end
+        if rec.pct then rec.pct:Hide() end
+        if rec.barTrack then rec.barTrack:Hide() end
+        if rec.barFill then rec.barFill:Hide() end
+        if rec.drTag then rec.drTag:Hide() end
+        if rec.drHit then rec.drHit:Hide() end
+        if rec.barMark then rec.barMark:Hide() end
     end
 end
 
-function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueStr, iconFileID)
+--- Hover on a secondary stat row: diminishing-returns state from rec.dr (one shared handler, no closure per paint).
+function PD.ShowGearStatDRTooltip(hit)
+    local rec = hit and hit._wnRec
+    local dr = rec and rec.dr
+    if not dr or not ns.UI_SafeSetGameTooltipOwner or not ns.UI_SafeSetGameTooltipOwner(hit, "ANCHOR_LEFT") then return end
+    local L = ns.L or {}
+    local tr, tg, tb = ns.UI_GetTooltipTitleColor()
+    local br, bg, bb = ns.UI_GetTooltipBodyColor()
+    local dr2, dg, db = ns.UI_GetTooltipDescColor()
+    GameTooltip:SetText(hit._wnLabel or "", tr, tg, tb)
+    if dr.inDR then
+        GameTooltip:AddLine(L["GEAR_STAT_DR_ACTIVE"] or "Diminishing returns active", br, bg, bb, true)
+    else
+        GameTooltip:AddLine(L["GEAR_STAT_DR_NONE"] or "No diminishing returns yet", br, bg, bb, true)
+    end
+    GameTooltip:AddLine(format(L["GEAR_STAT_DR_EFFECTIVE"] or "Rating effectiveness: %.1f%%", dr.eff * 100), br, bg, bb)
+    GameTooltip:AddLine(format(L["GEAR_STAT_DR_NEXT"] or "Next %d rating: +%.2f%%", DR_PROBE, dr.nextGain), br, bg, bb)
+    GameTooltip:AddLine(format(L["GEAR_STAT_DR_BASE"] or "First %d rating: +%.2f%%", DR_PROBE, dr.baseGain), dr2, dg, db)
+    GameTooltip:Show()
+end
+
+-- Percent sub-column of secondary stat rows (rating and percent read as two aligned columns).
+local GEAR_STAT_PCT_COL_W = 64
+local GEAR_STAT_PCT_GAP = 8
+
+---@param pctStr string|nil secondary stats: percent in its own right-aligned column, rating left of it
+---@param barFrac number|nil 0..1: thin accent bar along the row bottom (secondary stat share)
+---@param dr table|nil diminishing-returns info: "DR" tag after the label and a hover tooltip on the row
+function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueStr, iconFileID, pctStr, barFrac, dr)
     local rows = col._wnBandRows
     if not rows then
         rows = {}
@@ -1831,6 +1953,8 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
         rows[idx] = rec
     end
     local labelLeft = pad
+    -- Icon, label and values hang on the row's vertical middle (top-anchored text sat above the icon centre).
+    local midY = rowY - rowH * 0.5
     if iconFileID then
         local iconSz = math.min(22, rowH - 2)
         local ico = rec.ico
@@ -1840,13 +1964,32 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
         end
         ico:SetSize(iconSz, iconSz)
         ico:ClearAllPoints()
-        ico:SetPoint("TOPLEFT", col, "TOPLEFT", pad, rowY)
+        ico:SetPoint("LEFT", col, "TOPLEFT", pad, midY)
         ico:SetTexture(iconFileID)
         ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         ico:Show()
         labelLeft = pad + iconSz + 6
     elseif rec.ico then
         rec.ico:Hide()
+    end
+    local hasPct = pctStr and pctStr ~= ""
+    local valRightInset = pad
+    if hasPct then
+        local pct = rec.pct
+        if not pct then
+            pct = FontManager:CreateFontString(col, GFR("gearStatRating"), "OVERLAY")
+            pct:SetJustifyH("RIGHT")
+            rec.pct = pct
+        end
+        pct:ClearAllPoints()
+        pct:SetPoint("RIGHT", col, "TOPRIGHT", -pad, midY)
+        pct:SetWidth(GEAR_STAT_PCT_COL_W)
+        ns.UI_SetTextColorRole(pct, "Normal")
+        pct:SetText(pctStr)
+        pct:Show()
+        valRightInset = pad + GEAR_STAT_PCT_COL_W + GEAR_STAT_PCT_GAP
+    elseif rec.pct then
+        rec.pct:Hide()
     end
     if valueStr and valueStr ~= "" then
         local val = rec.val
@@ -1856,8 +1999,8 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
             rec.val = val
         end
         val:ClearAllPoints()
-        val:SetPoint("TOPRIGHT", col, "TOPRIGHT", -pad, rowY)
-        val:SetWidth(valueColW)
+        val:SetPoint("RIGHT", col, "TOPRIGHT", -valRightInset, midY)
+        val:SetWidth(math.max(24, valueColW - (valRightInset - pad)))
         ns.UI_SetTextColorRole(val, "Bright")
         val:SetText(valueStr)
         val:Show()
@@ -1872,21 +2015,111 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
         rec.label = row
     end
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", col, "TOPLEFT", labelLeft, rowY)
-    row:SetPoint("TOPRIGHT", col, "TOPRIGHT", -labelRightInset, rowY)
+    row:SetPoint("LEFT", col, "TOPLEFT", labelLeft, midY)
+    row:SetPoint("RIGHT", col, "TOPRIGHT", -labelRightInset, midY)
     ns.UI_SetTextColorRole(row, "Bright")
     row:SetText(label or "")
     row:Show()
+
+    -- Diminishing returns: tag next to the label when the stat is past its first DR threshold; the whole row
+    -- answers hover with effectiveness and the gain of the next DR_PROBE rating (live character only).
+    rec.dr = dr
+    local tag = rec.drTag
+    if dr and dr.inDR then
+        if not tag then
+            tag = FontManager:CreateFontString(col, GFR("gearStatLabel"), "OVERLAY")
+            rec.drTag = tag
+        end
+        local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
+        tag:SetText(goldHex .. ((ns.L and ns.L["GEAR_STAT_DR_TAG"]) or "DR") .. "|r")
+        tag:ClearAllPoints()
+        tag:SetPoint("LEFT", row, "LEFT", math.floor((row:GetStringWidth() or 0) + 6), 0)
+        tag:Show()
+    elseif tag then
+        tag:Hide()
+    end
+    local hit = rec.drHit
+    if dr then
+        if not hit then
+            -- Intentionally raw: invisible hover hit area for the DR tooltip (no visuals, no chrome).
+            hit = CreateFrame("Frame", nil, col)
+            hit:EnableMouse(true)
+            hit._wnRec = rec
+            hit:SetScript("OnEnter", PD.ShowGearStatDRTooltip)
+            hit:SetScript("OnLeave", ns.UI_SafeHideGameTooltip)
+            rec.drHit = hit
+        end
+        hit._wnLabel = label
+        hit:ClearAllPoints()
+        hit:SetPoint("TOPLEFT", col, "TOPLEFT", pad, rowY)
+        hit:SetPoint("BOTTOMRIGHT", col, "TOPRIGHT", -pad, rowY - rowH)
+        hit:Show()
+    elseif hit then
+        hit:Hide()
+    end
+
+    -- Share bar: track across the text span, fill = barFrac of it, both from the theme accent.
+    if type(barFrac) == "number" then
+        local frac = math.max(0, math.min(1, barFrac))
+        local track, fill = rec.barTrack, rec.barFill
+        if not track then
+            track = col:CreateTexture(nil, "BORDER")
+            rec.barTrack = track
+            fill = col:CreateTexture(nil, "ARTWORK")
+            rec.barFill = fill
+        end
+        local ac = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
+        local barH = 4
+        local barY = rowY - rowH + barH + 1
+        track:ClearAllPoints()
+        track:SetPoint("TOPLEFT", col, "TOPLEFT", labelLeft, barY)
+        track:SetPoint("TOPRIGHT", col, "TOPRIGHT", -pad, barY)
+        track:SetHeight(barH)
+        track:SetColorTexture(ac[1], ac[2], ac[3], 0.18)
+        track:Show()
+        local trackW = (col:GetWidth() or 0) - labelLeft - pad
+        -- Diminishing-returns threshold on the bar (red tick): the stat's percent with the rating part
+        -- swapped for the threshold bonus, i.e. the bar position where DR starts.
+        local mark = rec.barMark
+        local markFrac = dr and dr.markFrac
+        if markFrac and markFrac > 0 and markFrac < 1 and trackW > 1 then
+            if not mark then
+                mark = col:CreateTexture(nil, "OVERLAY")
+                rec.barMark = mark
+            end
+            local rr, rg, rb = ns.UI_GetSemanticRedColor()
+            mark:SetColorTexture(rr, rg, rb, 1)
+            mark:ClearAllPoints()
+            mark:SetSize(2, barH)  -- same height as the bar: the tick never sticks out of it
+            mark:SetPoint("CENTER", track, "LEFT", math.floor(trackW * markFrac + 0.5), 0)
+            mark:Show()
+        elseif mark then
+            mark:Hide()
+        end
+        if frac > 0 and trackW > 1 then
+            fill:ClearAllPoints()
+            fill:SetPoint("TOPLEFT", track, "TOPLEFT", 0, 0)
+            fill:SetSize(math.max(1, math.floor(trackW * frac + 0.5)), barH)
+            fill:SetColorTexture(ac[1], ac[2], ac[3], 0.85)
+            fill:Show()
+        else
+            fill:Hide()
+        end
+    elseif rec.barTrack then
+        rec.barTrack:Hide()
+        rec.barFill:Hide()
+        if rec.barMark then rec.barMark:Hide() end
+    end
     return rowY - rowH
 end
 
-function PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valueColW, label, valueStr, pctStr)
-    local displayVal = valueStr or ""
-    if pctStr and pctStr ~= "" then
-        local fmt = (ns.L and ns.L["GEAR_STAT_VALUE_PCT_FORMAT"]) or "%s (%s)"
-        displayVal = format(fmt, (valueStr and valueStr ~= "") and valueStr or "--", pctStr)
-    end
-    return PD.PaintGearPaperBandRow(statCol, statY, statRowH, statPad, valueColW, label, displayVal, nil)
+---@param iconFileID number|string|nil stat icon (same slot as currency icons)
+---@param barFrac number|nil secondary stats: 0..1 share bar under the row (percent / 100)
+---@param dr table|nil PD.ComputeSecondaryStatDR result (live character only): DR tag + hover tooltip
+function PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valueColW, label, valueStr, pctStr, iconFileID, barFrac, dr)
+    -- Flat rating and percent in two aligned columns (was "800 (22.4%)" in one string).
+    local displayVal = (valueStr and valueStr ~= "") and valueStr or ((pctStr and pctStr ~= "") and "--" or "")
+    return PD.PaintGearPaperBandRow(statCol, statY, statRowH, statPad, valueColW, label, displayVal, iconFileID, pctStr, barFrac, dr)
 end
 
 function PD.ComputeGearPaperStatValueColW(statInnerW, statPad)
@@ -1927,6 +2160,7 @@ function PD.BuildGearPaperStatRows(charData, isCurrentChar)
                             statId = stat.id,
                             label = stat.label,
                             value = valueStr,
+                            icon = stat.icon,
                         }
                     end
                 end
@@ -1941,7 +2175,10 @@ function PD.BuildGearPaperStatRows(charData, isCurrentChar)
             if rNum or pNum then
                 secondaryRows[#secondaryRows + 1] = {
                     label = stat.label,
-                    pctStr = pNum and format("%.1f%%", pNum) or "--",
+                    icon = stat.icon,
+                    dr = rNum and PD.WithDRBarMark(PD.ComputeSecondaryStatDR(stat.ratingIndex, rNum), pNum) or nil,
+                    pct = pNum,
+                    pctStr = pNum and format("%.2f%%", pNum) or "--",
                     ratingStr = rNum and (FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum))) or "--",
                 }
             end
@@ -1969,6 +2206,7 @@ function PD.BuildGearPaperStatRows(charData, isCurrentChar)
                             statId = stat.id,
                             label = stat.label,
                             value = valueStr,
+                            icon = stat.icon,
                         }
                     end
                 end
@@ -1983,7 +2221,9 @@ function PD.BuildGearPaperStatRows(charData, isCurrentChar)
                 if pNum or rNum then
                     secondaryRows[#secondaryRows + 1] = {
                         label = s.label,
-                        pctStr = pNum and format("%.1f%%", pNum) or "--",
+                        icon = s.icon,
+                        pct = pNum,
+                        pctStr = pNum and format("%.2f%%", pNum) or "--",
                         ratingStr = rNum and (FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum))) or "--",
                     }
                 end
@@ -2078,10 +2318,11 @@ end
 
 ---@param statsBeside boolean|nil stats sit beside the paperdoll: the band carries currencies only
 ---@param currCols number|nil currency grid columns (1 = classic single column with gold below)
-function PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH, statsBeside, currCols)
-    local hasDivider = (#primaryRows > 0 and #secondaryRows > 0)
+---@param legendH number|nil extra stats height for the DR legend line
+function PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH, statsBeside, currCols, legendH)
     local statContentRows = #primaryRows + #secondaryRows
-    local statH = subHdr + (statContentRows * statRowH) + (hasDivider and 8 or 0) + 12
+    -- One row grid for the whole card: no extra gap between stat groups or before gold.
+    local statH = subHdr + (statContentRows * statRowH) + 12 + (tonumber(legendH) or 0)
     if statContentRows == 0 then
         statH = subHdr + 56
     end
@@ -2091,7 +2332,7 @@ function PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestC
         -- Grid: crests + gold as cells, flowing across `cols` columns.
         currH = subHdr + math.ceil((crestCount + 1) / cols) * crestRowH + 12 + 10
     else
-        currH = subHdr + crestCount * crestRowH + 12 + 28 + 10
+        currH = subHdr + (crestCount + 1) * crestRowH + 12 + 10  -- crests + gold
     end
     local bandH
     if statsBeside then
@@ -2106,7 +2347,8 @@ end
 ---@param statsPanelH number|nil stats panel height (statsHost)
 ---@param currCols number|nil currency grid columns for a full-width band (1 = single column)
 ---@param statsSectionH number|nil side card: height of the stats section; currencies stack under it
-function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows, statsHost, statsPanelH, currCols, statsSectionH)
+---@param drLegend boolean|nil secondary bars carry DR ticks: end the stats section with the legend line
+function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows, statsHost, statsPanelH, currCols, statsSectionH, drLegend)
     if not bottomHost or paperColW < 1 then return nil end
     -- Side card (statsHost): stats and currencies share one card beside the paperdoll; no bottom band.
     if bandH < 1 and not statsHost then return nil end
@@ -2287,16 +2529,36 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     if #primaryRows > 0 or #secondaryRows > 0 then
         for i = 1, #primaryRows do
             local stat = primaryRows[i]
-            statY = PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valColW, stat.label, stat.value, nil)
+            statY = PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valColW, stat.label, stat.value, nil, stat.icon)
         end
-        if #primaryRows > 0 and #secondaryRows > 0 then
-            statY = statY - 6
-        end
+
         for i = 1, #secondaryRows do
             local stat = secondaryRows[i]
             statY = PD.PaintGearStatGridRow(
                 statCol, statY, statRowH, statPad, valColW,
-                stat.label, stat.ratingStr or "0", stat.pctStr or "0.0%")
+                stat.label, stat.ratingStr or "0", stat.pctStr or "0.0%",
+                stat.icon, stat.pct and (stat.pct / 100) or nil, stat.dr)
+        end
+        -- Legend for the red ticks: tinted WHITE8X8 markup (|T path:h:w:ox:oy:texW:texH:l:r:t:b:R:G:B, the full
+        -- form used by ns.UI_GetIconMarkup) shaped like the tick, then the label.
+        local legend = band.drLegendFs
+        if drLegend then
+            if not legend then
+                legend = FontManager:CreateFontString(statCol, GFR("gearEmptyStatsHint"), "OVERLAY")
+                legend:SetJustifyH("LEFT")
+                band.drLegendFs = legend
+            end
+            local rr, rg, rb = ns.UI_GetSemanticRedColor()
+            local tick = format("|TInterface\\Buttons\\WHITE8X8:12:3:0:0:8:8:0:8:0:8:%d:%d:%d|t",
+                math.floor(rr * 255 + 0.5), math.floor(rg * 255 + 0.5), math.floor(rb * 255 + 0.5))
+            legend:SetParent(statCol)
+            legend:ClearAllPoints()
+            legend:SetPoint("LEFT", statCol, "TOPLEFT", statPad, statY - GEAR_STAT_DR_LEGEND_H * 0.5)
+            ns.UI_SetTextColorRole(legend, "Muted")
+            legend:SetText(tick .. "  " .. ((ns.L and ns.L["GEAR_STAT_DR_LEGEND"]) or "Diminishing returns threshold"))
+            legend:Show()
+        elseif legend then
+            legend:Hide()
         end
     else
         local noStats = band.noStats
@@ -2311,6 +2573,7 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
         ns.UI_SetTextColorRole(noStats, "Dim")
         noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
         noStats:Show()
+        if band.drLegendFs then band.drLegendFs:Hide() end
     end
 
     local currPad = statPad
@@ -2422,7 +2685,6 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
             cellY[c] = PD.PaintGearPaperBandRow(target, cellY[c] or -subHdr, crestRowH, currPad, valColW,
                 goldLabel, goldValue, goldCurrency.icon or 133784)
         else
-            curY = curY - 6
             curY = PD.PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW,
                 goldLabel, goldValue, goldCurrency.icon or 133784)
         end
@@ -3354,8 +3616,10 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     -- Narrow window: the classic bottom band with stats and currencies side by side.
     local currencyCols = 1
     local statsPanelH, statsSectionH
+    local drLegend = PD.GearStatsHaveDRMark(secondaryRows)
     local bandH0, statH0, currH0 = PD.ComputeGearPaperBottomBandHeights(
-        primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH, false, 1)
+        primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH, false, 1,
+        drLegend and GEAR_STAT_DR_LEGEND_H or 0)
     if statsBeside then
         statsSectionH = statH0
         statsPanelH = statH0 + PD.GearSideCardDividerSpace() + currH0
@@ -3475,12 +3739,22 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     gearHosts.paperChrome = paperChrome
 
     if paperBottom then
+        local bandStatsHost = statsBeside and gearHosts.paperStatsHost or nil
         local bandPanel = PD.PaintGearPaperBottomBand(
             paperBottom, paperColW, paperBottomBandH,
             charData, isCurrentChar, currencies, charKey, accent,
             primaryRows, secondaryRows,
-            statsBeside and gearHosts.paperStatsHost or nil, statsPanelH, currencyCols, statsSectionH
+            bandStatsHost, statsPanelH, currencyCols, statsSectionH, drLegend
         )
+        -- Inputs for PD.RefreshGearSideCard (stats / crests repaint without a full Gear paint).
+        gearHosts.bandPaint = {
+            host = paperBottom, paperColW = paperColW, bandH = paperBottomBandH,
+            charData = charData, isCurrentChar = isCurrentChar, charKey = charKey, accent = accent,
+            statsHost = bandStatsHost, statsPanelH = statsPanelH, currencyCols = currencyCols,
+            statsSectionH = statsSectionH,
+            primaryN = #primaryRows, secondaryN = #secondaryRows, crestCount = crestCount,
+            drLegend = drLegend,
+        }
         gearHosts.statPanel = bandPanel
         gearHosts.currencyPanel = bandPanel
     end
@@ -3967,6 +4241,7 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             paperTopHost = gearHosts.paperTopHost,
             paperBottomHost = gearHosts.paperBottomHost,
             paperStatsHost = gearHosts.paperStatsHost,
+            bandPaint = gearHosts.bandPaint,
             statsBeside = gearHosts.statsBeside,
             statsPanelH = gearHosts.statsPanelH,
             currencyCols = gearHosts.currencyCols,
@@ -3998,6 +4273,34 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     end
     return yOffset - cardH - 12, cardH
 end
+
+--- Repaint the stats + currencies card from fresh data (equip change, upgrade, crest spend, rating change)
+--- without a full Gear paint. Returns false when the row counts changed: the card height would change, so
+--- the caller needs the full paint.
+---@return boolean ok
+function PD.RefreshGearSideCard(mf)
+    local card = mf and mf._gearPaperdollCard
+    local layout = card and card._wnGearViewportLayout
+    local bp = layout and layout.bandPaint
+    if not bp or not bp.host or mf.currentTab ~= "gear" then return false end
+    local canon = mf._gearPopulateCanonKey or bp.charKey
+    local currencies = (WarbandNexus.GetGearUpgradeCurrenciesFromDB and WarbandNexus:GetGearUpgradeCurrenciesFromDB(canon)) or {}
+    local crestCount = 0
+    for i = 1, #currencies do
+        if not currencies[i].isGold then crestCount = crestCount + 1 end
+    end
+    local primaryRows, secondaryRows = PD.BuildGearPaperStatRows(bp.charData, bp.isCurrentChar == true)
+    local drLegend = PD.GearStatsHaveDRMark(secondaryRows)
+    if crestCount ~= bp.crestCount or #primaryRows ~= bp.primaryN or #secondaryRows ~= bp.secondaryN
+        or drLegend ~= bp.drLegend then
+        return false
+    end
+    PD.PaintGearPaperBottomBand(bp.host, bp.paperColW, bp.bandH, bp.charData, bp.isCurrentChar, currencies,
+        bp.charKey, bp.accent, primaryRows, secondaryRows, bp.statsHost, bp.statsPanelH, bp.currencyCols,
+        bp.statsSectionH, drLegend)
+    return true
+end
+ns.GearUI_RefreshGearSideCard = PD.RefreshGearSideCard
 
 function PD.SyncGearStorageRecHostFromLayout(mf, layout)
     if not mf or not layout then return end

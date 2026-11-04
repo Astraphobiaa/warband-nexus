@@ -172,7 +172,10 @@ local function PopulateContentBody(self, forceRepaint)
         _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_gearSigCompute")
         sigNow = WarbandNexus:GetGearPopulateSignature()
         _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_gearSigCompute")
-        if sigNow and mainFrame._gearPopulateContentSig and sigNow == mainFrame._gearPopulateContentSig then
+        -- The signature covers equipment, crest amounts and upgrade state but not live stats: the skip still
+        -- repaints the stats / currencies card in place, and takes the full paint when its rows changed.
+        if sigNow and mainFrame._gearPopulateContentSig and sigNow == mainFrame._gearPopulateContentSig
+            and (not ns.GearUI_RefreshGearSideCard or ns.GearUI_RefreshGearSideCard(mainFrame)) then
             _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_gearSigSkip")
             self:UpdateStatus()
             scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))

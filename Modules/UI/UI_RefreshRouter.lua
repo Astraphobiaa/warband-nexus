@@ -112,6 +112,10 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                     return
                 end
             end
+            -- Stats / crests card follows equip and upgrade changes (slot-only refreshes skip it).
+            if WarbandNexus.ScheduleGearSideCardRefresh then
+                WarbandNexus:ScheduleGearSideCardRefresh()
+            end
             local function runGearStorageRecRefreshNow()
                 local equipOnly = st.gearStorageRecRefreshEquipOnly == true
                 st.gearStorageRecRefreshEquipOnly = false
@@ -241,6 +245,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         -- tab fully: its bottom crest / gold panel is only drawn by a full paint. Any other single
         -- currency only needs the in-place upgrade economy refresh.
         if f.currentTab == "gear" then
+            if WarbandNexus.ScheduleGearSideCardRefresh then
+                WarbandNexus:ScheduleGearSideCardRefresh()
+            end
             local GT = ns.GearUpgradeTracks
             local crestSet = GT and GT.UPGRADE_CURRENCY_ID_SET_EARLY
             local isCrestOrBatch = type(currencyID) ~= "number" or not crestSet or crestSet[currencyID]
@@ -845,6 +852,32 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             end
         end
         UIEvents._itemInfoHandler = handler
+    end
+
+    -- Live character stats (Gear tab stats card): rating / mastery / primary stat changes. Events per Blizzard
+    -- APIDocumentationGenerated 12.1.5 (checked 2026-11-04): COMBAT_RATING_UPDATE and MASTERY_UPDATE carry no
+    -- payload, UNIT_STATS carries unitTarget (registered for "player" only). Nothing is persisted, so this is a
+    -- display-only repaint; ScheduleGearSideCardRefresh debounces buff / combat storms.
+    if not UIEvents._statFrame then
+        -- Intentionally raw: stat-event coalesce host — no visuals (WN_FACTORY inventory).
+        local statFrame = CreateFrame("Frame")
+        UIEvents._statFrame = statFrame
+        statFrame:RegisterEvent("COMBAT_RATING_UPDATE")
+        statFrame:RegisterEvent("MASTERY_UPDATE")
+        statFrame:RegisterUnitEvent("UNIT_STATS", "player")
+        statFrame:SetScript("OnEvent", function()
+            if UIEvents._statHandler then
+                UIEvents._statHandler()
+            end
+        end)
+    end
+    UIEvents._statHandler = function()
+        -- Not HiddenOrMissing(): stats tick constantly (buffs); a hidden window must not be marked dirty
+        -- for a repaint on every open. The next Gear paint reads live stats anyway.
+        if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+        if WarbandNexus.ScheduleGearSideCardRefresh then
+            WarbandNexus:ScheduleGearSideCardRefresh()
+        end
     end
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)
