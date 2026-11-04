@@ -2356,6 +2356,8 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
         f:SetFrameStrata("DIALOG")
         f:SetFrameLevel(500)
+        -- Link buttons sit near window edges (detail headers top-right): never let the popup leave the screen.
+        f:SetClampedToScreen(true)
         -- Same shell as WindowFactory dialogs: external-shell fill + accent quartet at the
         -- standard border thickness (was a 16px tooltip-border edge file).
         local COLORS = ns.UI_COLORS or { accent = {0.5, 0.4, 0.7} }
@@ -2425,7 +2427,19 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
 
     if anchorFrame and anchorFrame.GetCenter then
         sharedCopyFrame:ClearAllPoints()
-        sharedCopyFrame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -4)
+        -- Grow away from the nearer screen edge: a centred 360px popup under a right-edge button ran off screen.
+        local ax = anchorFrame:GetCenter()
+        local screenW = UIParent:GetWidth()
+        local anchorScale = anchorFrame:GetEffectiveScale()
+        local parentScale = UIParent:GetEffectiveScale()
+        if ax and screenW and anchorScale and parentScale and parentScale > 0 then
+            ax = ax * anchorScale / parentScale
+        end
+        if ax and screenW and ax > screenW * 0.5 then
+            sharedCopyFrame:SetPoint("TOPRIGHT", anchorFrame, "BOTTOMRIGHT", 0, -4)
+        else
+            sharedCopyFrame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -4)
+        end
     else
         sharedCopyFrame:ClearAllPoints()
         sharedCopyFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)

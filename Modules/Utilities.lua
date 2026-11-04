@@ -1007,6 +1007,21 @@ local WOWHEAD_TYPE_MAP = {
 ---@param entityType string "mount"|"pet"|"toy"|"achievement"|"item"|"quest"|"spell"|"npc"|"currency"|"illusion"|"title"
 ---@param id number
 ---@return string|nil url
+-- Blizzard internal / placeholder entries ([PH] titles, [DNT] test mounts...): never shown as collectibles.
+local PLACEHOLDER_NAME_PATTERNS = { "%[ph%]", "%[dnt%]", "%[test%]", "%(test%)", "%(deprecated%)", "%(unused%)" }
+
+---@param name any
+---@return boolean
+function Utilities:IsBlizzardPlaceholderName(name)
+    if issecretvalue and issecretvalue(name) then return false end
+    if type(name) ~= "string" or name == "" then return false end
+    local lower = name:lower()
+    for i = 1, #PLACEHOLDER_NAME_PATTERNS do
+        if lower:find(PLACEHOLDER_NAME_PATTERNS[i]) then return true end
+    end
+    return false
+end
+
 function Utilities:GetWowheadURL(entityType, id)
     if not entityType or not id or id <= 0 then return nil end
     local wowheadType = WOWHEAD_TYPE_MAP[entityType]

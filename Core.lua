@@ -1900,9 +1900,10 @@ function WarbandNexus:OnPetListChanged()
         if charKey and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
             WarbandNexus.db.global.characters[charKey].lastSeen = time()
             
-            -- Invalidate collection cache
+            -- Invalidate the pet slice only: a full wipe also emptied owned.toys / owned.mounts, which nothing
+            -- refills here, so store-based counts (Statistics) dropped to 0 toys after a cage/release.
             if WarbandNexus.InvalidateCollectionCache then
-                WarbandNexus:InvalidateCollectionCache()
+                WarbandNexus:InvalidateCollectionCache("pet")
             end
             
             -- Fire event for UI refresh (instead of direct call). Payload is the collection type

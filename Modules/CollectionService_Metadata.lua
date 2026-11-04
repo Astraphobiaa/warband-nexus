@@ -356,9 +356,11 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
                 if resolved and resolved > 0 then sourceType = resolved end
             end
             meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", sourceType = sourceType, description = description or "" }
-            -- Current collected state (Midnight: isCollected may be secret)
+            -- Current collected state (Midnight: isCollected may be secret). Secret read: use the stored row,
+            -- not true -- true hid unowned mounts from Plans browse and was written back into the store.
             if issecretvalue and issecretvalue(isCollected) then
-                meta.isCollected = true
+                local storedRow = collectionData.mount and collectionData.mount[id]
+                meta.isCollected = (storedRow and storedRow.collected == true) or false
             else
                 meta.isCollected = isCollected == true
             end

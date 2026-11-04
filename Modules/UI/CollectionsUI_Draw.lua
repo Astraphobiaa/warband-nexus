@@ -1188,7 +1188,7 @@ function M.DrawToysContent(contentFrame)
                                 source = sourceTypeName or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
                             })
                         end
-                    end)
+                    end, { type = "toy", field = "itemID", id = itemID })
                 end
             end
         end

@@ -250,6 +250,7 @@ Modules\UI\CollectionsUI_Lists.lua
 Modules\UI\CollectionsUI_Model.lua
 Modules\UI\CollectionsUI_Recent.lua
 Modules\UI\CollectionsUI_Draw.lua
+Modules\UI\CollectionsUI_Extras.lua
 Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI_SourceParser.lua
 Modules\UI\PlansUI_Browse.lua

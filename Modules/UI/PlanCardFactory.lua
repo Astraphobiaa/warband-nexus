@@ -415,6 +415,16 @@ local function SourcePrefixIconFromLabel(sourceType)
     return PlanSourceIconMarkup("class") .. " "
 end
 
+-- C_WeeklyRewards only describes the logged-in character; offline alts render from their saved plan.progress.
+-- Same name/realm match as the vault write guard in PlansManager_Vault OnPvEUpdateCheckPlans.
+local function IsPlanForLoggedInCharacter(plan)
+    if not plan or not plan.characterName then return false end
+    local name = UnitName("player")
+    local realm = GetRealmName and GetRealmName()
+    if issecretvalue and (issecretvalue(name) or issecretvalue(realm)) then return false end
+    return plan.characterName == name and plan.characterRealm == realm
+end
+
 local function IsPlaceholderSourceText(sourceText)
     if type(sourceText) ~= "string" then return true end
     if issecretvalue and issecretvalue(sourceText) then return true end
@@ -2378,7 +2388,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         titleText:SetPoint("RIGHT", hdr.titleAnchor, "LEFT", -(hdr.titleGap or 12), 0)
     end
     
-    local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
+    local currentProgress = (IsPlanForLoggedInCharacter(plan) and WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm))
+        or plan.progress or {
         dungeonCount = 0,
         raidBossCount = 0,
         worldActivityCount = 0
@@ -2593,7 +2604,7 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     end
     
     local vaultProgress
-    if WarbandNexus.GetWeeklyVaultProgress and plan.characterName then
+    if WarbandNexus.GetWeeklyVaultProgress and IsPlanForLoggedInCharacter(plan) then
         local ok, vp = pcall(WarbandNexus.GetWeeklyVaultProgress, WarbandNexus, plan.characterName, plan.characterRealm)
         if ok and type(vp) == "table" then vaultProgress = vp end
     end

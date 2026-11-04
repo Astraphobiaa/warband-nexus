@@ -298,6 +298,14 @@ function M.RecentRowNavigateToEntry(ctype, id)
         M.state.currentSubTab = "toys"
         ns._sessionCollectionsSubTab = "toys"
         M.state.selectedToyID = id
+    elseif ctype == "illusion" then
+        M.state.currentSubTab = "illusions"
+        ns._sessionCollectionsSubTab = "illusions"
+        M.state.selectedIllusionID = id
+    elseif ctype == "title" then
+        M.state.currentSubTab = "titles"
+        ns._sessionCollectionsSubTab = "titles"
+        M.state.selectedTitleID = id
     else
         return
     end

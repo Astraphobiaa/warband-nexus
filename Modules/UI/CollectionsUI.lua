@@ -59,6 +59,10 @@ local function RedrawCollectionsSearchContentImmediate()
         DrawPetsContent(cf)
     elseif sub == "toys" then
         DrawToysContent(cf)
+    elseif sub == "illusions" then
+        M.DrawIllusionsContent(cf)
+    elseif sub == "titles" then
+        M.DrawTitlesContent(cf)
     elseif sub == "achievements" then
         DrawAchievementsContent(cf)
     end
@@ -107,6 +111,10 @@ function ns.Collections_RelayoutActiveSubTabChrome()
         M.DrawPetsContent(cf)
     elseif sub == "toys" then
         M.DrawToysContent(cf)
+    elseif sub == "illusions" then
+        M.DrawIllusionsContent(cf)
+    elseif sub == "titles" then
+        M.DrawTitlesContent(cf)
     elseif sub == "achievements" then
         M.DrawAchievementsContent(cf)
     end
@@ -342,6 +350,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
                     M.DrawPetsContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "toys" then
                     M.DrawToysContent(M.state.contentFrame)
+                elseif M.state.currentSubTab == "illusions" then
+                    M.DrawIllusionsContent(M.state.contentFrame)
+                elseif M.state.currentSubTab == "titles" then
+                    M.DrawTitlesContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "achievements" then
                     M.DrawAchievementsContent(M.state.contentFrame)
                 end
@@ -367,6 +379,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
                     M.DrawPetsContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "toys" then
                     M.DrawToysContent(M.state.contentFrame)
+                elseif M.state.currentSubTab == "illusions" then
+                    M.DrawIllusionsContent(M.state.contentFrame)
+                elseif M.state.currentSubTab == "titles" then
+                    M.DrawTitlesContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "achievements" then
                     M.DrawAchievementsContent(M.state.contentFrame)
                 end
@@ -452,6 +468,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.state.recentTabPanel = nil
         M.state.recentViewportCap = nil
         M.state._recentEmptyFs = nil
+        if M.ClearIllusionTitleFrameRefs then M.ClearIllusionTitleFrameRefs() end
     end
 
     if M.ScheduleCollectionsSubTabPrewarm and C_Timer and C_Timer.After then
@@ -476,6 +493,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.DrawPetsContent(contentFrame)
     elseif M.state.currentSubTab == "toys" then
         M.DrawToysContent(contentFrame)
+    elseif M.state.currentSubTab == "illusions" then
+        M.DrawIllusionsContent(contentFrame)
+    elseif M.state.currentSubTab == "titles" then
+        M.DrawTitlesContent(contentFrame)
     elseif M.state.currentSubTab == "achievements" then
         M.DrawAchievementsContent(contentFrame)
     end
@@ -524,6 +545,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.state._achGroupedCache = nil
                 M.state._lastAchievementCategoryData = nil
                 M.state._achFlatList = nil
+            elseif collectionType == "illusion" or collectionType == "title" then
+                -- Illusions / Titles re-read the store queries on every draw: no browse cache to drop.
+                return
             else
                 InvalidateAllCollectionCaches()
             end
@@ -539,6 +563,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.DrawPetsContent(M.state.contentFrame)
             elseif M.state.currentSubTab == "toys" then
                 M.DrawToysContent(M.state.contentFrame)
+            elseif M.state.currentSubTab == "illusions" then
+                M.DrawIllusionsContent(M.state.contentFrame)
+            elseif M.state.currentSubTab == "titles" then
+                M.DrawTitlesContent(M.state.contentFrame)
             elseif M.state.currentSubTab == "achievements" then
                 M.DrawAchievementsContent(M.state.contentFrame)
             end
@@ -602,9 +630,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
             end)
         end
 
-        -- Scan category -> the sub-tab that renders it. Categories absent here (title, illusion)
-        -- have no Collections sub-tab caches; "all" / nil means the whole pipeline finished.
-        local SCAN_CATEGORY_SUBTAB = { mount = "mounts", pet = "pets", toy = "toys", achievement = "achievements" }
+        -- Scan category -> the sub-tab that renders it; "all" / nil means the whole pipeline finished.
+        local SCAN_CATEGORY_SUBTAB = {
+            mount = "mounts", pet = "pets", toy = "toys", achievement = "achievements",
+            illusion = "illusions", title = "titles",
+        }
 
         local completeName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE) or "WN_COLLECTION_SCAN_COMPLETE"
         WarbandNexus.RegisterMessage(CUIListeners, completeName, function(_, payload)
@@ -627,7 +657,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
         local updatedName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED) or "WN_COLLECTION_UPDATED"
         WarbandNexus.RegisterMessage(CUIListeners, updatedName, function(_, updatedType)
-            if updatedType ~= "mount" and updatedType ~= "pet" and updatedType ~= "toy" and updatedType ~= "achievement" then return end
+            if not SCAN_CATEGORY_SUBTAB[updatedType] then return end
             InvalidateCollectionCachesForType(updatedType)
             -- Other sub-tabs re-read the invalidated cache on their next draw; a mount update must not
             -- rebuild the Achievements tree that is on screen.

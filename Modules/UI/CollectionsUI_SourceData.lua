@@ -62,8 +62,8 @@ local PET_SOURCE_CATEGORIES = {
     { key = "promotion",   label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconKey = "gift" },
     { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconKey = "cards" },
     { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconKey = "shop_bag" },
+    { key = "discovery",   label = (L and L["PARSE_DISCOVERY"]) or "Discovery",                                     iconKey = "compass" },
     { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconKey = "tag" },
-    { key = "pvp",         label = (L and L["SOURCE_TYPE_PVP"]) or "PvP",                                           iconKey = "pvp" },
     { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconKey = "question" },
 }
 
@@ -85,7 +85,8 @@ local TOY_SOURCE_CATEGORIES = {
     { key = "promotion",   sourceIndex = 8,  label = (L and L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",        iconKey = "gift" },
     { key = "tcg",         sourceIndex = 9,  label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconKey = "cards" },
     { key = "shop",        sourceIndex = 10, label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconKey = "shop_bag" },
-    { key = "tradingpost", sourceIndex = 11, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconKey = "tag" },
+    { key = "discovery",   sourceIndex = 11, label = (L and L["PARSE_DISCOVERY"]) or "Discovery",                                     iconKey = "compass" },
+    { key = "tradingpost", sourceIndex = 12, label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconKey = "tag" },
     { key = "unknown",     sourceIndex = 0,  label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconKey = "question" },
 }
 
@@ -112,7 +113,8 @@ local MOUNT_SOURCETYPE_TO_CATEGORY = {
     [11] = "discovery",
     [12] = "tradingpost",
 }
--- Pets/toys use the C_PetJournal / C_ToyBox source filter index (BattlePetSources, 1-indexed).
+-- Pets/toys use the C_PetJournal / C_ToyBox source filter index (BattlePetSources + 1; the enum has
+-- Discovery=10, TradingPost=11 and no PvP -- BattlePetConstantsDocumentation, live 2026-11-04).
 local BATTLEPET_SOURCETYPE_TO_CATEGORY = {
     [1]  = "drop",
     [2]  = "quest",
@@ -124,8 +126,8 @@ local BATTLEPET_SOURCETYPE_TO_CATEGORY = {
     [8]  = "promotion",
     [9]  = "tcg",
     [10] = "shop",
-    [11] = "tradingpost",
-    [12] = "pvp",
+    [11] = "discovery",
+    [12] = "tradingpost",
 }
 local SOURCE_INDEX_TO_TOY_CAT = BATTLEPET_SOURCETYPE_TO_CATEGORY
 

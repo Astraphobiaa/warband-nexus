@@ -169,7 +169,9 @@ function M.BuildFlatPetList(groupedData, collapsedHeaders)
 end
 
 ---categoriesOverride: optional list of { key, label } for toys (C_ToyBox source type). If nil, uses SD.SOURCE_CATEGORIES.
-function M.BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverride)
+---entityKey: row field the entity is stored under ("toy" default; "illusion" / "title" for those sub-tabs).
+function M.BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverride, entityKey)
+    local ek = entityKey or "toy"
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
@@ -207,7 +209,9 @@ function M.BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverride)
             local nItems = #items
             for ji = 1, nItems do
                 rowCounter = rowCounter + 1
-                flat[#flat + 1] = { type = "row", toy = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_STRIDE, rowPaintHeight = ROW_HEIGHT }
+                local row = { type = "row", rowIndex = rowCounter, yOffset = yOffset, height = ROW_STRIDE, rowPaintHeight = ROW_HEIGHT }
+                row[ek] = items[ji]
+                flat[#flat + 1] = row
                 yOffset = yOffset + ROW_STRIDE
             end
         end
@@ -562,6 +566,47 @@ function CollRowCb.ToyTodo(row)
     CollRowCb.ToyRefresh(row)
 end
 
+-- Illusions / Titles: same row callbacks as toys; plan rows key on illusionID / titleID.
+local function CollEntityIsCollected(e)
+    return (e.isCollected == true) or (e.collected == true)
+end
+local function MakeSimpleEntityRowCallbacks(entityKey, prefix, planType, planField, isPlannedFn)
+    local function entityRefresh(row)
+        local e = CollRowEntity(row, entityKey)
+        if e and M.state["_" .. prefix .. "FlatList"] and M.state[prefix .. "ListScrollFrame"] then
+            M.state["_" .. prefix .. "ListSelectedID"] = e.id
+            local r = M.state["_" .. prefix .. "ListRefreshVisible"]
+            if r then r() end
+        end
+    end
+    local function entitySelect(row)
+        local cb, e = row._wnCollSelectCb, CollRowEntity(row, entityKey)
+        if cb and e then cb(e) end
+    end
+    local function entityTodo(row)
+        local WN = WarbandNexus
+        local e = CollRowEntity(row, entityKey)
+        if not WN or not e then return end
+        if isPlannedFn(WN, e.id) then
+            M.RemoveFirstMatchingPlan(function(p)
+                return p.type == planType and p[planField] == e.id
+            end)
+        elseif not CollEntityIsCollected(e) and WN.AddPlan then
+            local plan = { type = planType, name = e.name, icon = e.icon, source = e.source, rewardText = e.rewardText }
+            plan[planField] = e.id
+            WN:AddPlan(plan)
+        end
+        entityRefresh(row)
+    end
+    return entitySelect, entityRefresh, entityTodo
+end
+CollRowCb.IllusionSelect, CollRowCb.IllusionRefresh, CollRowCb.IllusionTodo = MakeSimpleEntityRowCallbacks(
+    "illusion", "illusion", "illusion", "illusionID",
+    function(WN, id) return WN.IsIllusionPlanned and WN:IsIllusionPlanned(id) or false end)
+CollRowCb.TitleSelect, CollRowCb.TitleRefresh, CollRowCb.TitleTodo = MakeSimpleEntityRowCallbacks(
+    "title", "title", "title", "titleID",
+    function(WN, id) return WN.IsTitlePlanned and WN:IsTitlePlanned(id) or false end)
+
 function CollRowCb.AchSelect(row)
     local cb, ach = row._wnCollSelectCb, CollRowEntity(row, "achievement")
     if cb and ach then cb(ach) end
@@ -805,6 +850,43 @@ function M.PaintToyRow(f, item)
         CollRowCb.ToySelect, CollRowCb.ToyRefresh, planSlotState, nil, nil, state._toyListOnSelectToy)
 end
 
+local DEFAULT_ICON_ILLUSION = "Interface\\Icons\\INV_Enchant_Disenchant"
+local DEFAULT_ICON_TITLE = "Interface\\Icons\\INV_Scroll_11"
+
+local function PaintSimpleEntityRow(f, item, entityKey, prefix, defaultIcon, isPlannedFn, cbSelect, cbRefresh, cbTodo, onSelectKey, selectedKey)
+    local state = M.state
+    local e = item[entityKey]
+    local collected = CollEntityIsCollected(e)
+    local nameColor = collected and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
+    local labelText = nameColor .. (e.name or "") .. "|r"
+    local WN = WarbandNexus
+    local onTodo = WN and isPlannedFn(WN, e.id) or false
+    local planSlotState = CollRowCb.planSlotScratch
+    planSlotState.onTodo = onTodo
+    planSlotState.onTrack = false
+    planSlotState.achievementRow = false
+    planSlotState.showTrackSlot = false
+    planSlotState.todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not collected)
+    planSlotState.onTodoClick = (onTodo or not collected) and cbTodo or nil
+    M.PaintCollectionRow(f, item, e.icon or defaultIcon, labelText, collected,
+        state["_" .. prefix .. "ListSelectedID"] or state[selectedKey], e.id,
+        cbSelect, cbRefresh, planSlotState, nil, nil, state[onSelectKey])
+end
+
+--- VirtualListModule populateRowFn: Illusions.
+function M.PaintIllusionRow(f, item)
+    PaintSimpleEntityRow(f, item, "illusion", "illusion", DEFAULT_ICON_ILLUSION,
+        function(WN, id) return WN.IsIllusionPlanned and WN:IsIllusionPlanned(id) or false end,
+        CollRowCb.IllusionSelect, CollRowCb.IllusionRefresh, CollRowCb.IllusionTodo, "_illusionListOnSelect", "selectedIllusionID")
+end
+
+--- VirtualListModule populateRowFn: Titles.
+function M.PaintTitleRow(f, item)
+    PaintSimpleEntityRow(f, item, "title", "title", DEFAULT_ICON_TITLE,
+        function(WN, id) return WN.IsTitlePlanned and WN:IsTitlePlanned(id) or false end,
+        CollRowCb.TitleSelect, CollRowCb.TitleRefresh, CollRowCb.TitleTodo, "_titleListOnSelect", "selectedTitleID")
+end
+
 function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchievementID, onSelectAchievement, redraw, cf)
     local ach = item.achievement
     local achCollected = ach.isCollected == true
@@ -914,6 +996,16 @@ local SECTIONED_TOYS = SectionedListConfig("toys", "_toy", "Toys", "_toysDrawGen
     function(key) return SD.GetToyCategoryIcon(key) end,
     function(grouped, collapsed) return M.BuildFlatToyList(grouped, collapsed, SD.TOY_SOURCE_CATEGORIES) end,
     M.PaintToyRow)
+local SECTIONED_ILLUSIONS = SectionedListConfig("illusions", "_illusion", "Illusions", "_illusionsDrawGen", "PopulateIllusionList",
+    "_illusionListOnSelect",
+    function(key) return SD.GetToyCategoryIcon(key) end,
+    function(grouped, collapsed) return M.BuildFlatToyList(grouped, collapsed, SD.TOY_SOURCE_CATEGORIES, "illusion") end,
+    M.PaintIllusionRow)
+local SECTIONED_TITLES = SectionedListConfig("titles", "_title", "Titles", "_titlesDrawGen", "PopulateTitleList",
+    "_titleListOnSelect",
+    function(key) return SD.GetToyCategoryIcon(key) end,
+    function(grouped, collapsed) return M.BuildFlatToyList(grouped, collapsed, M.TITLE_LIST_CATEGORIES, "title") end,
+    M.PaintTitleRow)
 
 local _sectionedChildScratch = {}
 local _sectionedRegionScratch = {}
@@ -1204,6 +1296,14 @@ end
 
 function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
     PopulateSectionedList(SECTIONED_TOYS, scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+end
+
+function M.PopulateIllusionList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedID, onSelect, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+    PopulateSectionedList(SECTIONED_ILLUSIONS, scrollChild, listWidth, groupedData, collapsedHeaders, selectedID, onSelect, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+end
+
+function M.PopulateTitleList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedID, onSelect, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+    PopulateSectionedList(SECTIONED_TITLES, scrollChild, listWidth, groupedData, collapsedHeaders, selectedID, onSelect, contentFrameForRefresh, redrawFn, drawGen, onListReady)
 end
 
 local function ReleaseCollectionAchievementRow(f)

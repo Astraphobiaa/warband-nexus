@@ -1111,13 +1111,21 @@ function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
     end
     for si = 1, #sources do
         local src = sources[si]
+        -- Independent rows: one source text can carry several fields (e.g. Drop + Quest); an elseif chain dropped all but the first.
         if src.vendor then
             row(classMk14, "VENDOR_LABEL", "Vendor:", src.vendor)
-        elseif src.npc then
+        end
+        if src.npc then
             row(lootMk14, "DROP_LABEL", "Drop:", src.npc)
-        elseif src.quest then
+        end
+        if src.quest then
             row(questMk14, "QUEST_LABEL", "Quest:", src.quest)
-        elseif src.faction then
+        end
+        if src.achievement and src.achievement ~= "" then
+            local achLabel = ns.UI_NormalizeColonLabelSpacing(((L and L["ACHIEVEMENT"]) or "Achievement") .. ":")
+            items[#items + 1] = { text = classMk14 .. " " .. labCol .. achLabel .. "|r " .. body .. tostring(src.achievement) .. "|r" }
+        end
+        if src.faction then
             local factionLabel = ns.UI_NormalizeColonLabelSpacing((L and L["FACTION_LABEL"]) or "Faction:")
             local displayText = classMk14 .. " " .. factionLabel .. src.faction
             if src.renown then
