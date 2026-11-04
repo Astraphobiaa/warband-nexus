@@ -229,6 +229,10 @@ function PD.ComputeGearPaperdollBaseX(paperColW, modelW)
     if hostW <= blockW then
         return PAPERDOLL_COL_INSET
     end
+    -- Stats take the space on the right: keep the paperdoll on the left edge instead of centering it.
+    if PD.GearStatsBesideFits and PD.GearStatsBesideFits(hostW, mw) then
+        return PAPERDOLL_COL_INSET
+    end
     local extra = math.floor((hostW - blockW) * 0.5 + 0.5)
     return PAPERDOLL_COL_INSET + extra
 end
@@ -249,6 +253,36 @@ local CARD_PAD = GEAR_LAYOUT.CARD_PAD or 12
 local GEAR_BOTTOM_STAT_MIN_W = GEAR_LAYOUT.BOTTOM_STAT_MIN_W or 136
 local GEAR_BOTTOM_CURR_MIN_W = GEAR_LAYOUT.BOTTOM_CURR_MIN_W or 148
 local GEAR_BOTTOM_BAND_MIN_H = GEAR_LAYOUT.BOTTOM_BAND_MIN_H or 120
+
+-- Page order (2026-11): paperdoll | character stats on one row, upgrade currencies full width under them,
+-- recommendations full width at the bottom. Stats move beside the (left-aligned) paperdoll only when the
+-- row fits; otherwise they stay in the bottom band next to the currencies.
+local GEAR_CURRENCY_CELL_MIN_W = 260
+local GEAR_CURRENCY_MAX_COLS = 3
+
+---@return boolean
+function PD.GearStatsBesideFits(hostW, modelW)
+    local blockW = PD.GearPaperdollColumnWidth(modelW or MODEL_W, PAPERDOLL_COL_INSET)
+    return (tonumber(hostW) or 0) >= blockW + GEAR_PANEL_GAP + GEAR_STAT_PANEL_W
+end
+
+--- x where the stats panel starts when it sits beside the left-aligned paperdoll.
+function PD.GearStatsBesideLeftX(modelW)
+    return PD.GearPaperdollColumnWidth(modelW or MODEL_W, PAPERDOLL_COL_INSET) + GEAR_PANEL_GAP
+end
+
+--- Vertical space the side card spends on the hairline between its stats and currencies sections
+--- (PaintGearPaperBottomBand: divGap above and below the line).
+function PD.GearSideCardDividerSpace()
+    local splitGap = math.max(14, GEAR_LAYOUT.SIDE_BAND_GAP or 8)
+    return 2 * math.max(6, math.floor(splitGap * 0.5 + 0.5))
+end
+
+--- Currency columns for a full-width band (crest rows flow left to right, then down).
+function PD.GearCurrencyColumnCount(innerW)
+    local n = math.floor((tonumber(innerW) or 0) / GEAR_CURRENCY_CELL_MIN_W)
+    return math.max(1, math.min(GEAR_CURRENCY_MAX_COLS, n))
+end
 
 function PD.ComputeGearLayoutWidths(cardInnerW, recEnabled)
     if ns.GearUI_ComputeTopRowWidths then
@@ -322,6 +356,14 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     layout.paperBottomHost:SetParent(layout.leftColHost)
     layout.paperBottomHost:Show()
 
+    -- Character stats beside the paperdoll (shown by RelayoutGearCardColumnHosts when the row fits).
+    if not layout.paperStatsHost then
+        local statsHost = PaperdollLayoutHost(layout.paperTopHost, 1, 1)
+        if statsHost.SetClipsChildren then statsHost:SetClipsChildren(false) end
+        layout.paperStatsHost = statsHost
+    end
+    layout.paperStatsHost:SetParent(layout.paperTopHost)
+
     if not layout.centerGapHost then
         local center = PaperdollLayoutHost(layout.topHost, 1, 1)
         center:EnableMouse(false)
@@ -380,7 +422,8 @@ function PD.RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     layout.topRowMinW = minTopW
     local rowOverlaps = (topW > 0 and topW < minTopW - 1)
     layout.topRowOverlaps = rowOverlaps
-    local useStack = rowOverlaps and recEnabled and recColW > 0 and right and bottom
+    -- Recommendations always sit under the paperdoll / stats / currencies (page order 2026-11).
+    local useStack = recEnabled and right and bottom
 
     left:ClearAllPoints()
     if left.SetClipsChildren then
@@ -407,6 +450,21 @@ function PD.RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
             paperTop:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
             paperTop:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
         end
+        local statsHost = layout.paperStatsHost
+        if statsHost then
+            if layout.statsBeside then
+                -- Same top edge and height as the model viewport: paperdoll and stats read as one row.
+                local statsH = math.max(1, layout.statsPanelH or 1, layout.modelH or 0)
+                statsHost:ClearAllPoints()
+                statsHost:SetPoint("TOPLEFT", paperTop, "TOPLEFT",
+                    PD.GearStatsBesideLeftX(MODEL_W + (layout.modelBoost or 0)), layout.modelTopY or 0)
+                statsHost:SetPoint("RIGHT", paperTop, "RIGHT", 0, 0)
+                statsHost:SetHeight(statsH)
+                statsHost:Show()
+            else
+                statsHost:Hide()
+            end
+        end
     end
 
     local storageW = nil
@@ -417,11 +475,14 @@ function PD.RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if useStack then
         layout.topLayoutMode = "stack"
         layout.topRowStacked = true
-        local recStackH = math.max(
+        local recStackBaseH = math.max(
             GEAR_REC_STACK_MIN_H,
             math.min(GEAR_REC_STACK_MAX_H, math.floor(contentBandH * 0.40 + 0.5)))
+        -- Spare viewport height the top block gave up (DrawPaperDollCard / viewport relayout): the card
+        -- height already counts it in panelH, so it is not added to topRowStackExtraH again.
+        local recStackH = recStackBaseH + math.max(0, layout.recStackSurplus or 0)
         layout.recStackH = recStackH
-        layout.topRowStackExtraH = recStackH + gap
+        layout.topRowStackExtraH = recStackBaseH + gap
 
         top:ClearAllPoints()
         top:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
@@ -618,7 +679,8 @@ function PD.RelayoutGearPaperdollInCard(card, layout)
     local paperZoneH = layout.paperTopZoneH or layout.paperZoneH or paperBandH or paperdollNaturalH
     -- Weapon row hangs one rowStep + 8px below the slot columns (see bottomY below).
     local weaponBelowColH = rowStep + 8
-    local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset, weaponBelowColH)
+    -- Side card mode: top-aligned with the stats / currencies card (zone 0 = no centering pad).
+    local startY = PD.ComputeGearPaperdollSlotStartY(layout.statsBeside and 0 or paperZoneH, maxRows, anchorY, topInset, weaponBelowColH)
     local modelX = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
     layout.modelX = modelX
@@ -654,6 +716,7 @@ function PD.RelayoutGearPaperdollInCard(card, layout)
 
     local numRightRows = #rightSlots
     local MODEL_H = (numRightRows - 1) * rowStep + SLOT_SIZE
+    layout.modelH = MODEL_H
 
     local function anchorModelFrame(fr)
         if not fr or not fr.ClearAllPoints then return end
@@ -2013,20 +2076,41 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent, bar)
     return bar
 end
 
-function PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH)
+---@param statsBeside boolean|nil stats sit beside the paperdoll: the band carries currencies only
+---@param currCols number|nil currency grid columns (1 = classic single column with gold below)
+function PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH, statsBeside, currCols)
     local hasDivider = (#primaryRows > 0 and #secondaryRows > 0)
     local statContentRows = #primaryRows + #secondaryRows
     local statH = subHdr + (statContentRows * statRowH) + (hasDivider and 8 or 0) + 12
     if statContentRows == 0 then
         statH = subHdr + 56
     end
-    local currH = subHdr + crestCount * crestRowH + 12 + 28 + 10
-    local bandH = math.max(statH, currH, GEAR_LAYOUT.PAPER_BOTTOM_BAND_MIN_H or 132)
+    local cols = math.max(1, tonumber(currCols) or 1)
+    local currH
+    if cols > 1 then
+        -- Grid: crests + gold as cells, flowing across `cols` columns.
+        currH = subHdr + math.ceil((crestCount + 1) / cols) * crestRowH + 12 + 10
+    else
+        currH = subHdr + crestCount * crestRowH + 12 + 28 + 10
+    end
+    local bandH
+    if statsBeside then
+        bandH = currH
+    else
+        bandH = math.max(statH, currH, GEAR_LAYOUT.PAPER_BOTTOM_BAND_MIN_H or 132)
+    end
     return bandH, statH, currH
 end
 
-function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows)
-    if not bottomHost or paperColW < 1 or bandH < 1 then return nil end
+---@param statsHost Frame|nil host beside the paperdoll: stats paint there and the band holds currencies only
+---@param statsPanelH number|nil stats panel height (statsHost)
+---@param currCols number|nil currency grid columns for a full-width band (1 = single column)
+---@param statsSectionH number|nil side card: height of the stats section; currencies stack under it
+function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows, statsHost, statsPanelH, currCols, statsSectionH)
+    if not bottomHost or paperColW < 1 then return nil end
+    -- Side card (statsHost): stats and currencies share one card beside the paperdoll; no bottom band.
+    if bandH < 1 and not statsHost then return nil end
+    bandH = math.max(1, bandH)
     local gearChrome = ns.GearUI_Chrome
     local splitGap = math.max(14, GEAR_LAYOUT.SIDE_BAND_GAP or 8)
     local statColW = math.max(120, math.floor((paperColW - splitGap) * 0.5 + 0.5))
@@ -2057,6 +2141,9 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
         bandPanel:Show()
     end
     bandPanel:SetAllPoints(bottomHost)
+    if statsHost then
+        bandPanel:Hide()
+    end
 
     local bandInset = 0
     if classicBand then
@@ -2067,33 +2154,86 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     local innerStatColW = math.max(120, math.floor((innerBandW - splitGap) * 0.5 + 0.5))
     local innerCurrColW = math.max(120, innerBandW - splitGap - innerStatColW)
 
+    -- Stats beside the paperdoll: their own subpanel on statsHost; currencies take the whole band.
+    local statsPanel = band.statsPanel
+    local statParent = bandPanel
+    local statColH = innerBandH
+    if statsHost then
+        local statsW = math.max(GEAR_STAT_PANEL_W, (statsHost.GetWidth and statsHost:GetWidth()) or 0)
+        local statsH = math.max(1, statsPanelH or statsHost:GetHeight() or innerBandH)
+        if not statsPanel then
+            statsPanel = PD.CreateGearSubpanel(statsHost, statsW, statsH, accent, classicBand and { borderless = true } or nil)
+            band.statsPanel = statsPanel
+        end
+        statsPanel:SetParent(statsHost)
+        statsPanel:ClearAllPoints()
+        statsPanel:SetAllPoints(statsHost)
+        statsPanel:Show()
+        statParent = statsPanel
+        innerStatColW = math.max(120, statsW - bandInset * 2)
+        statColH = math.max(1, statsH - bandInset * 2)
+        innerCurrColW = innerBandW
+    elseif statsPanel then
+        statsPanel:Hide()
+    end
+
     local statCol = band.statCol
     if not statCol then
-        statCol = PaperdollLayoutHost(bandPanel, innerStatColW, innerBandH)
+        statCol = PaperdollLayoutHost(statParent, innerStatColW, statColH)
         band.statCol = statCol
     else
-        statCol:SetSize(innerStatColW, innerBandH)
+        statCol:SetParent(statParent)
+        statCol:SetSize(innerStatColW, statColH)
         statCol:ClearAllPoints()
     end
-    statCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset, -bandInset)
+    statCol:SetPoint("TOPLEFT", statParent, "TOPLEFT", bandInset, -bandInset)
+    local sideStatsH = statsHost and math.max(1, statsSectionH or statColH) or nil
+    if statsHost then
+        statCol:SetPoint("TOPRIGHT", statParent, "TOPRIGHT", -bandInset, -bandInset)
+        statCol:SetHeight(sideStatsH)
+    end
     statCol:EnableMouse(false)
     if statCol.SetClipsChildren then statCol:SetClipsChildren(true) end
 
+    local currParent = statsHost and statParent or bandPanel
     local currCol = band.currCol
     if not currCol then
-        currCol = PaperdollLayoutHost(bandPanel, innerCurrColW, innerBandH)
+        currCol = PaperdollLayoutHost(currParent, innerCurrColW, innerBandH)
         band.currCol = currCol
     else
+        currCol:SetParent(currParent)
         currCol:SetSize(innerCurrColW, innerBandH)
         currCol:ClearAllPoints()
     end
-    currCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset + innerStatColW + splitGap, -bandInset)
-    currCol:SetPoint("TOPRIGHT", bandPanel, "TOPRIGHT", -bandInset, -bandInset)
-    currCol:SetPoint("BOTTOM", bandPanel, "BOTTOM", bandInset, bandInset)
+    local Factory = ns.UI and ns.UI.Factory
+    local sideDiv = band.sideDiv
+    if statsHost then
+        -- Side card: currencies directly under the stats section, split by one hairline.
+        local divGap = math.max(6, math.floor(splitGap * 0.5 + 0.5))
+        innerCurrColW = innerStatColW
+        currCol:SetPoint("TOPLEFT", statParent, "TOPLEFT", bandInset, -(bandInset + sideStatsH + divGap * 2))
+        currCol:SetPoint("BOTTOMRIGHT", statParent, "BOTTOMRIGHT", -bandInset, bandInset)
+        if not sideDiv and Factory and Factory.CreateThemeDivider then
+            sideDiv = Factory:CreateThemeDivider(statParent, { orientation = "horizontal", variant = "section", thickness = 1 })
+            band.sideDiv = sideDiv
+        end
+        if sideDiv then
+            if sideDiv.SetParent then sideDiv:SetParent(statParent) end
+            sideDiv:ClearAllPoints()
+            sideDiv:SetPoint("TOPLEFT", statParent, "TOPLEFT", bandInset + statPad, -(bandInset + sideStatsH + divGap))
+            sideDiv:SetPoint("TOPRIGHT", statParent, "TOPRIGHT", -(bandInset + statPad), -(bandInset + sideStatsH + divGap))
+            if classicBand then sideDiv:Hide() else sideDiv:Show() end
+        end
+    else
+        if sideDiv then sideDiv:Hide() end
+        local currLeftX = bandInset + innerStatColW + splitGap
+        currCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", currLeftX, -bandInset)
+        currCol:SetPoint("TOPRIGHT", bandPanel, "TOPRIGHT", -bandInset, -bandInset)
+        currCol:SetPoint("BOTTOM", bandPanel, "BOTTOM", bandInset, bandInset)
+    end
     currCol:EnableMouse(false)
     if currCol.SetClipsChildren then currCol:SetClipsChildren(true) end
 
-    local Factory = ns.UI and ns.UI.Factory
     local midDiv = band.midDiv
     if not midDiv then
         midDiv = Factory and Factory.CreateThemeDivider and Factory:CreateThemeDivider(bandPanel, {
@@ -2108,8 +2248,10 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
         midDiv:SetPoint("TOP", bandPanel, "TOP", 0, -(bandInset + subHdr - 4))
         midDiv:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, bandInset + 6)
         midDiv:SetPoint("LEFT", statCol, "RIGHT", math.floor(splitGap * 0.5 + 0.5), 0)
-        if classicBand then
+        if classicBand or statsHost then
             midDiv:Hide()
+        else
+            midDiv:Show()
         end
     end
 
@@ -2183,6 +2325,57 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
         currHdr:SetPoint("TOPLEFT", currCol, "TOPLEFT", 0, 0)
         currHdr:SetPoint("TOPRIGHT", currCol, "TOPRIGHT", 0, 0)
     end
+    -- Currency grid (full-width band): crest + gold cells flow across `cols` cell hosts.
+    local cols = math.max(1, tonumber(currCols) or 1)
+    local cells = band.currCells
+    if cols > 1 then
+        if not cells then
+            cells = {}
+            band.currCells = cells
+        end
+        local cellGap = splitGap
+        local cellW = math.max(1, math.floor((innerCurrColW - (cols - 1) * cellGap) / cols))
+        for c = 1, cols do
+            local cell = cells[c]
+            if not cell then
+                cell = PaperdollLayoutHost(currCol, cellW, innerBandH)
+                cell:EnableMouse(false)
+                cells[c] = cell
+            end
+            cell:SetParent(currCol)
+            cell:ClearAllPoints()
+            cell:SetPoint("TOPLEFT", currCol, "TOPLEFT", (c - 1) * (cellW + cellGap), 0)
+            cell:SetPoint("BOTTOM", currCol, "BOTTOM", 0, 0)
+            cell:SetWidth(cellW)
+            cell:Show()
+            PD.BeginGearPaperBandRows(cell)
+        end
+        valColW = math.max(80, math.floor((cellW - currPad * 2) * 0.42 + 0.5))
+    end
+    if cells then
+        for c = cols + 1, #cells do
+            PD.BeginGearPaperBandRows(cells[c])
+            PD.EndGearPaperBandRows(cells[c])
+            cells[c]:Hide()
+        end
+        if cols == 1 then
+            for c = 1, #cells do
+                PD.BeginGearPaperBandRows(cells[c])
+                PD.EndGearPaperBandRows(cells[c])
+                cells[c]:Hide()
+            end
+        end
+    end
+    local cellY = {}
+    local cellIdx = 0
+    --- Next paint target: the band column (single column) or the next grid cell.
+    local function NextCurrencyTarget()
+        if cols == 1 then return currCol, nil end
+        local c = (cellIdx % cols) + 1
+        cellIdx = cellIdx + 1
+        return cells[c], c
+    end
+
     local curY = -subHdr
     for i = 1, #crestCurrencies do
         local cur = crestCurrencies[i]
@@ -2210,23 +2403,38 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
         if ns.UI_FormatSeasonProgressCurrencyLine then
             amountStr = ns.UI_FormatSeasonProgressCurrencyLine(cd) or amountStr
         end
-        curY = PD.PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
+        local target, c = NextCurrencyTarget()
+        if c then
+            cellY[c] = PD.PaintGearPaperBandRow(target, cellY[c] or -subHdr, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
+        else
+            curY = PD.PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
+        end
     end
     if goldCurrency then
-        curY = curY - 6
         local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
         if goldCurrency._goldCopper then
             copper = goldCurrency._goldCopper
         end
         local goldLabel = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
-        curY = PD.PaintGearPaperBandRow(
-            currCol, curY, crestRowH, currPad, valColW,
-            goldLabel, "|cffffff00" .. FormatGold(copper) .. "|r",
-            goldCurrency.icon or 133784)
+        local goldValue = "|cffffff00" .. FormatGold(copper) .. "|r"
+        local target, c = NextCurrencyTarget()
+        if c then
+            cellY[c] = PD.PaintGearPaperBandRow(target, cellY[c] or -subHdr, crestRowH, currPad, valColW,
+                goldLabel, goldValue, goldCurrency.icon or 133784)
+        else
+            curY = curY - 6
+            curY = PD.PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW,
+                goldLabel, goldValue, goldCurrency.icon or 133784)
+        end
     end
 
     PD.EndGearPaperBandRows(statCol)
     PD.EndGearPaperBandRows(currCol)
+    if cols > 1 and cells then
+        for c = 1, cols do
+            PD.EndGearPaperBandRows(cells[c])
+        end
+    end
     bandPanel._wnStatCol = statCol
     bandPanel._wnCurrCol = currCol
     return bandPanel
@@ -2348,6 +2556,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
         anchorY = 0
     end
     local paperZoneH = tonumber(paperBandH) or tonumber(paperdollNaturalH) or 0
+    if opts.topAlign then paperZoneH = 0 end
     -- Weapon row hangs one rowStep + 8px below the slot columns (see bottomY below).
     local weaponBelowColH = rowStep + 8
     local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset, weaponBelowColH)
@@ -3051,7 +3260,7 @@ end
 --- Host frames EnsureGearCardColumnHosts builds; kept on the reused card between paints.
 PD.GEAR_CARD_HOST_KEYS = {
     "bodyHost", "topHost", "leftColHost", "paperTopHost",
-    "paperBottomHost", "centerGapHost", "rightColHost", "bottomColHost",
+    "paperBottomHost", "paperStatsHost", "centerGapHost", "rightColHost", "bottomColHost",
 }
 
 --- Everything the card tree bakes in at creation (theme, Classic chrome, accent, recommendations column).
@@ -3137,13 +3346,37 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
     local panelTopY = -CARD_PAD
     local SECTION_GAP = GEAR_LAYOUT.SECTION_GAP or 16
+    -- Recommendations stack below everything (page order 2026-11), so the paper column spans the card.
+    paperColW = math.max(paperColW or 0, layoutInnerW or cardInnerW or 0)
     local modelBoost = math.max(0, math.min(MAX_PAPER_MODEL_BOOST, paperColW - GEAR_PAPER_COL_FIXED_W))
+    local statsBeside = PD.GearStatsBesideFits(paperColW, MODEL_W + modelBoost)
+    -- Side card (statsBeside): stats + currencies in one card beside the paperdoll, no bottom band.
+    -- Narrow window: the classic bottom band with stats and currencies side by side.
+    local currencyCols = 1
+    local statsPanelH, statsSectionH
+    local bandH0, statH0, currH0 = PD.ComputeGearPaperBottomBandHeights(
+        primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH, false, 1)
+    if statsBeside then
+        statsSectionH = statH0
+        statsPanelH = statH0 + PD.GearSideCardDividerSpace() + currH0
+        paperBottomBandH = 0
+    else
+        paperBottomBandH = bandH0
+    end
+    paperdollNaturalH = math.max(slotsOnlyH, statsPanelH or 0) + 10 + paperBottomBandH
 
     local contentBandMinH = math.max(paperdollNaturalH, GEAR_LAYOUT.CONTENT_BAND_MIN_H or 360)
     local mfHostEarly = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local panelH = PD.ResolveGearTabPanelHeight(mfHostEarly, yOffset, contentBandMinH, paperdollNaturalH)
     local contentBandH = panelH
-    paperBottomBandH = select(1, PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH))
+    -- Recommendations sit below: the paperdoll / stats / currencies block keeps its natural height (one
+    -- top-aligned row, currencies right under it) and the spare viewport height goes to the recommendations
+    -- panel instead of padding around a vertically centered paperdoll.
+    local recStackSurplus = 0
+    if recEnabled and panelH > paperdollNaturalH then
+        recStackSurplus = panelH - paperdollNaturalH
+        contentBandH = paperdollNaturalH
+    end
     local paperTopZoneH = math.max(slotsOnlyH, contentBandH - paperBottomBandH)
 
     local gearHosts = {
@@ -3165,6 +3398,11 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
         panelGutter = GEAR_LAYOUT.COL_GAP or PANEL_GAP,
         panelH = panelH,
         modelBoost = modelBoost,
+        statsBeside = statsBeside,
+        statsPanelH = statsPanelH,
+        statsSectionH = statsSectionH,
+        currencyCols = currencyCols,
+        recStackSurplus = recStackSurplus,
     }
     card._wnGearHeroRibbon = nil
 
@@ -3240,7 +3478,8 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
         local bandPanel = PD.PaintGearPaperBottomBand(
             paperBottom, paperColW, paperBottomBandH,
             charData, isCurrentChar, currencies, charKey, accent,
-            primaryRows, secondaryRows
+            primaryRows, secondaryRows,
+            statsBeside and gearHosts.paperStatsHost or nil, statsPanelH, currencyCols, statsSectionH
         )
         gearHosts.statPanel = bandPanel
         gearHosts.currencyPanel = bandPanel
@@ -3505,6 +3744,8 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             deferCenter = true,
             modelBoost = modelBoost,
             topContentInset = 0,
+            -- Side card: slots start at the zone top so the paperdoll and the (taller) card share a top edge.
+            topAlign = statsBeside == true,
             skipCenterIdentity = true,
             paperChrome = paperChrome,
         })
@@ -3725,6 +3966,11 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             leftColHost = gearHosts.leftColHost,
             paperTopHost = gearHosts.paperTopHost,
             paperBottomHost = gearHosts.paperBottomHost,
+            paperStatsHost = gearHosts.paperStatsHost,
+            statsBeside = gearHosts.statsBeside,
+            statsPanelH = gearHosts.statsPanelH,
+            currencyCols = gearHosts.currencyCols,
+            recStackSurplus = recStackSurplus,
             statPanel = gearHosts.statPanel,
             currencyPanel = gearHosts.currencyPanel,
             rightColHost = gearHosts.rightColHost,
@@ -3822,12 +4068,23 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
             paperColW, recColW = PD.ComputeGearLayoutWidths(cardInnerW, recEnabled)
             layoutInnerW = cardInnerW
         end
-        layout.paperColW = math.max(GEAR_PAPER_COL_FIXED_W, paperColW or 0)
+        -- Recommendations stack below (page order 2026-11): the paper column spans the card.
+        layout.paperColW = math.max(GEAR_PAPER_COL_FIXED_W, paperColW or 0, layoutInnerW or cardInnerW or 0)
         layout.recColW = recColW
         layout.sideColW = recColW
         layout.layoutInnerW = layoutInnerW or layout.cardInnerW or cardInnerW
         layout.storageW = recColW > 0 and recColW or (layout.layoutInnerW or cardInnerW)
         layout.panelGutter = GEAR_PANEL_GAP
+        -- Stats beside vs in the band, and the currency grid width, set the band height: a change
+        -- needs the full paint (the resize commit falls back to PopulateContent on false).
+        if not chromeOnly then
+            local boost = math.max(0, math.min(MAX_PAPER_MODEL_BOOST, layout.paperColW - GEAR_PAPER_COL_FIXED_W))
+            local besideNow = PD.GearStatsBesideFits(layout.paperColW, MODEL_W + boost)
+            local colsNow = 1  -- side card / classic band both use one currency column
+            if besideNow ~= (layout.statsBeside == true) or colsNow ~= (layout.currencyCols or 1) then
+                return false
+            end
+        end
     end
 
     local paperdollNaturalH = layout.paperdollNaturalH or 0
@@ -3841,9 +4098,16 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
     if not chromeOnly then
         panelH = PD.ResolveGearTabPanelHeight(mf, layout.scrollYOffset or 0, contentBandMinH, paperdollNaturalH)
         layout.panelH = panelH
-        layout.contentBandH = panelH
-        layout.topZoneH = panelH
-        layout.paperTopZoneH = math.max(1, panelH - bottomBand)
+        -- Same split as DrawPaperDollCard: natural top block, spare height to the recommendations panel.
+        local bandH, surplus = panelH, 0
+        if recEnabled and paperdollNaturalH > 0 and panelH > paperdollNaturalH then
+            surplus = panelH - paperdollNaturalH
+            bandH = paperdollNaturalH
+        end
+        layout.recStackSurplus = surplus
+        layout.contentBandH = bandH
+        layout.topZoneH = bandH
+        layout.paperTopZoneH = math.max(1, bandH - bottomBand)
         layout.paperZoneH = layout.paperTopZoneH
     end
 
