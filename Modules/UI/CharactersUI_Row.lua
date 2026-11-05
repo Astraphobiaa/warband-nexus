@@ -183,16 +183,12 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
 end
 
 
+--- Close glyph is colored art: neutral vertex, hover state is alpha only.
 local function StyleCharacterDeleteIcon(icon, highlighted)
     if not icon then return end
     icon:SetDesaturated(false)
-    if highlighted then
-        icon:SetVertexColor(1, 0.5, 0.5)
-        icon:SetAlpha(1)
-    else
-        icon:SetVertexColor(0.95, 0.35, 0.35)
-        icon:SetAlpha(0.98)
-    end
+    icon:SetVertexColor(1, 1, 1, 1)
+    icon:SetAlpha(highlighted and 1 or 0.75)
 end
 
 local SECONDARY_PROF_KEYS = { "cooking" }
@@ -807,35 +803,6 @@ function CharRowCb.DeleteOnLeave(self)
     end
 end
 
-function CharRowCb.GradientRefresh(row)
-    if not row.nameText or not row.realmText or not ns.UI_ApplyCharacterRowClassGradientAccent then
-        return
-    end
-    if not row._wnCharRowChar then return end
-    local nameLeft = row._wnCharGradNameLeft or 0
-    local parent, width = row._wnCharGradParent, row._wnCharGradWidth
-    local char = row._wnCharRowChar
-    local nameColW = (ns.UI_CharRowNameWidth and ns.UI_CharRowNameWidth() or CHAR_ROW_COLUMNS.name.width)
-    local swName = row.nameText:GetStringWidth() or 0
-    local swRealm = row.realmText:GetStringWidth() or 0
-    local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + 4)
-    local gradientEnd = nameBlockRight
-    local rowW = row._wnRowPaintWidth
-    if not rowW or rowW < 2 then
-        rowW = row:GetWidth() or 0
-    end
-    if rowW < 2 and parent and parent.GetWidth then
-        rowW = parent:GetWidth() or rowW
-    end
-    if rowW < 2 then
-        rowW = width or 800
-    end
-    if gradientEnd > rowW - 2 then
-        gradientEnd = rowW - 2
-    end
-    ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
-end
-
 local function SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     local hasMail = ns.MailSnapshot and ns.MailSnapshot.CharHasPendingMail(char)
     if not hasMail then
@@ -992,50 +959,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN 5: Name
     local nameOffset = GetColumnOffset("name")
     local nameLeftPadding = 4
-    -- Realm subline is optional (profile.showCharacterRealmName, nil = shown); without it the name
-    -- centers vertically in the row. Pooled rows re-anchor every paint.
-    local showRealm = WarbandNexus.db.profile.showCharacterRealmName ~= false
-    
-    if not row.nameText then
-        row.nameText = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
-        row.nameText:SetWidth((ns.UI_CharRowNameWidth and ns.UI_CharRowNameWidth() or CHAR_ROW_COLUMNS.name.width))
-        row.nameText:SetJustifyH("LEFT")
-        row.nameText:SetWordWrap(false)
-        row.nameText:SetNonSpaceWrap(false)
-        row.nameText:SetMaxLines(1)
-    end
-    row.nameText:ClearAllPoints()
-    if showRealm then
-        row.nameText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -8)
-    else
-        row.nameText:SetPoint("LEFT", nameOffset + nameLeftPadding, 0)
-    end
-    row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
-        classColor.r * 255, classColor.g * 255, classColor.b * 255,
-        (ns.Utilities and ns.Utilities:GetCharacterDisplayName(char)) or char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
-    PresentFS(row.nameText)
+    -- Name + realm subline + class gradient: shared roster identity (SharedWidgets_RowPool); PvE, PvP and
+    -- Professions rows paint the same block. Pooled rows re-anchor every paint.
+    ns.UI_ApplyCharacterRowIdentity(row, char, nameOffset + nameLeftPadding, CHAR_ROW_COLUMNS.name.width)
     if row.mailIcon then
         row.mailIcon:Hide()
-    end
-    if not row.realmText then
-        row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        row.realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -23)
-        row.realmText:SetWidth((ns.UI_CharRowNameWidth and ns.UI_CharRowNameWidth() or CHAR_ROW_COLUMNS.name.width))
-        row.realmText:SetJustifyH("LEFT")
-        row.realmText:SetWordWrap(false)
-        row.realmText:SetNonSpaceWrap(false)  -- Prevent long word overflow
-        row.realmText:SetMaxLines(1)  -- Single line only
-        ns.UI_SetTextColorRole(row.realmText, "Normal")
-    end
-    if showRealm then
-        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmDisplay(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        ns.UI_SetTextColorRole(row.realmText, "Normal")
-        row.realmText:SetText(displayRealm)
-        PresentFS(row.realmText)
-    else
-        -- Empty text keeps the class-gradient width (max of name/realm) on the name alone.
-        row.realmText:SetText("")
-        row.realmText:Hide()
     end
     
     -- COLUMN: Guild — after mail column; width from max guild name; text centered before Level
@@ -1267,11 +1195,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         row.keystoneText:SetText(keystoneText)
         
-        -- Dimmed monochrome icon (GRAY BAN: no desaturated grey; theme ink at 0.45 alpha)
-        local kvc = ns.UI_GetMonochromeIconVertex(0.45)
+        -- Dimmed colored item art (GRAY BAN: no desaturated grey or theme ink; alpha only)
         row.keystoneIcon:SetDesaturated(false)
-        row.keystoneIcon:SetVertexColor(kvc[1], kvc[2], kvc[3], kvc[4] or 0.45)
-        row.keystoneIcon:SetAlpha(1.0)
+        row.keystoneIcon:SetVertexColor(1, 1, 1, 1)
+        row.keystoneIcon:SetAlpha(0.45)
     end
     
     row.keystoneIcon:Show()
@@ -1333,10 +1260,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if row.trackingBtn.icon then
         if isCharTracked then
             if ns.UI_SetIcon then ns.UI_SetIcon(row.trackingBtn.icon, "status_ok") end
-            row.trackingBtn.icon:SetVertexColor(0.35, 1, 0.45)
         else
             if ns.UI_SetIcon then ns.UI_SetIcon(row.trackingBtn.icon, "status_fail") end
-            row.trackingBtn.icon:SetVertexColor(1, 0.55, 0.42)
         end
     end
     if row.trackingBtn.HasScript and row.trackingBtn:HasScript("OnClick") then
@@ -1357,7 +1282,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)
         if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(rb.up) end
         rb.up:SetPoint("CENTER", -11, 0)
-        -- registry glyph on a pooled row: theme tint, re-applied on theme toggle
+        -- registry glyph on a pooled row (colored art, neutral vertex); tracked so a mono entry would re-tint on theme toggle
         if ns.UI_GetIconFile then
             rb.up:SetNormalTexture(ns.UI_GetIconFile("chevron_up"))
             if ns.UI_SetIcon(rb.up:GetNormalTexture(), "chevron_up") and ns.UI_TrackRegistryIconTint then
@@ -1554,16 +1479,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    -- One thunk per row frame (created once); the paint inputs live on the row (2026-10-22: was a
-    -- new closure per paint).
-    if not row._wnCharGradientThunk then
-        row._wnCharGradientThunk = function() CharRowCb.GradientRefresh(row) end
+    -- Re-run the identity gradient now that the row has its final width (thunk set by UI_ApplyCharacterRowIdentity).
+    if row._wnGradientRefresh then
+        row._wnGradientRefresh()
     end
-    row._wnCharGradNameLeft = nameOffset + nameLeftPadding
-    row._wnCharGradParent = parent
-    row._wnCharGradWidth = width
-    row._wnGradientRefresh = row._wnCharGradientThunk
-    row._wnGradientRefresh()
 
     local betweenRows = GetLayout().betweenRows or 0
     return yOffset + 46 + betweenRows, row  -- Row 46px + spacing + row ref for pool tracking

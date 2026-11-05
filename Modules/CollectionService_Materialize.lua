@@ -124,7 +124,9 @@ local function PetJournalBuildMaterializeStep(budgetMs, state)
                 end)
             end
             state.numSources = (C_PetJournal.GetNumPetSources and C_PetJournal.GetNumPetSources()) or 0
-            if not InCombatLockdown() and ns._petSpeciesToSourceIndex and next(ns._petSpeciesToSourceIndex) then
+            -- Reusing the session map touches no journal filter, so it is safe in combat too (an empty map
+            -- here used to replace the good one and drop every pet into "Other").
+            if ns._petSpeciesToSourceIndex and next(ns._petSpeciesToSourceIndex) then
                 -- Reuse session source classification (BuildFullCollectionData / prior materialize); skip O(n^2) source scan.
                 state.speciesToSource = ns._petSpeciesToSourceIndex
                 state.phase = "after_sources"
@@ -245,12 +247,12 @@ local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
             state.origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
             state.origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
             state.origFilterString = GetToyBoxSearchText()
-            if InCombatLockdown() then
-                state.toyToSource = {}
-                state.phase = "prep_list_filters"
-            elseif ns._toyItemIDToSourceIndex and next(ns._toyItemIDToSourceIndex) then
+            if ns._toyItemIDToSourceIndex and next(ns._toyItemIDToSourceIndex) then
                 -- Reuse session itemID->source map; skip per-source ToyBox filter sweep.
                 state.toyToSource = ns._toyItemIDToSourceIndex
+                state.phase = "prep_list_filters"
+            elseif InCombatLockdown() then
+                state.toyToSource = {}
                 state.phase = "prep_list_filters"
             else
                 state.count = (addon and addon.GetToySourceTypeCount and addon:GetToySourceTypeCount()) or 16

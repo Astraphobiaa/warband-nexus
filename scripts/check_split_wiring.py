@@ -247,14 +247,6 @@ def main() -> int:
         check_bind(
             "Modules/UI/CharactersUI.lua",
             "ns.CharactersUI._bind",
-            "Modules/UI/CharactersUI_ColumnHeader.lua",
-            "B.",
-        )
-    )
-    errors.extend(
-        check_bind(
-            "Modules/UI/CharactersUI.lua",
-            "ns.CharactersUI._bind",
             "Modules/UI/CharactersUI_Dialogs.lua",
             "B.",
         )

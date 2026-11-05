@@ -634,9 +634,14 @@ local function GetTrackedCharacters()
         end
     end
 
+    -- Resolve each rank once; the comparator runs O(n log n) times.
+    for i = 1, #chars do
+        local c = chars[i]
+        c.rank = rankOf[orderCanon(c.key)]
+    end
     table.sort(chars, function(a, b)
-        local ra = rankOf[orderCanon(a.key)]
-        local rb = rankOf[orderCanon(b.key)]
+        local ra = a.rank
+        local rb = b.rank
         if ra and rb then return ra < rb end
         if ra and not rb then return true end
         if rb and not ra then return false end
@@ -769,7 +774,7 @@ end
 --- Also returns the next unaffordable tier info so UI can show what's needed.
 ---@return table|nil { minIlvl, maxIlvl, bestCrestName, bestCrestCost, nextTierName, nextTierCost, nextTierHave, nextTierMaxIlvl } or nil if no crests
 local function GetCraftedIlvlRange(upInfo, currencyAmounts)
-    if not upInfo or not upInfo.isCrafted then return nil end
+    if not upInfo or not upInfo.isCrafted or upInfo.craftedNoRecraft then return nil end
     local currentIlvl = upInfo.currentIlvl or 0
     local tiers = ns.CRAFTED_CREST_TIERS
     if not tiers or not currencyAmounts then return nil end
@@ -1057,8 +1062,22 @@ local function ClearGearRecStatusOverlay(recContent)
     if fs then
         recContent._gearStorageStatusFont = nil
         if fs.Hide then fs:Hide() end
-        if fs.SetParent then fs:SetParent(nil) end
     end
+end
+
+--- The one scanning / empty status line of a recommendations content frame (reused across paints).
+function ns.GearUI_AcquireGearRecStatusFont(recContent)
+    local fs = recContent._wnGearStatusFs
+    if not fs then
+        fs = FontManager:CreateFontString(recContent, GFR("gearStorageEmpty"), "OVERLAY")
+        fs:SetAllPoints()
+        fs:SetJustifyH("CENTER")
+        fs:SetJustifyV("MIDDLE")
+        recContent._wnGearStatusFs = fs
+    end
+    recContent._gearStorageStatusFont = fs
+    fs:Show()
+    return fs
 end
 
 --- Release pooled storage rows under the gear recommendations scroll child, then recycle non-pooled leftovers (empty states, legacy frames).
@@ -1075,6 +1094,9 @@ local function ClearGearRecScrollContent(recContent)
         if ch then
             if ch.isPooled and ch.rowType == "storage" and ch._wnInFramePool then
                 -- Idle pooled row: still parented here; do not move to recycle bin.
+            elseif ch == recContent._wnGearRecColHdr then
+                -- Column header is kept on its content and re-laid out by PaintGearStorageRecColumnHeader.
+                ch:Hide()
             else
                 ch:Hide()
                 if bin then ch:SetParent(bin) else ch:SetParent(nil) end
@@ -1082,6 +1104,8 @@ local function ClearGearRecScrollContent(recContent)
         end
     end
 end
+
+ns.GearUI_ClearGearRecScrollContent = ClearGearRecScrollContent
 
 --- Column layout: Slot | Gear (icon+name) | Recommend (ilvl delta) | Location (widest; long bank labels).
 local function GetGearStorageRecColumnLayout(contentW)
@@ -1174,13 +1198,21 @@ local function ApplyGearStorageRecRowAnchors(line, lay)
     end
 end
 
+--- Recommendation row width = the rec scroll viewport: it is anchored storagePad from the panel's left
+--- and storageLane (scrollbar lane) from its right, so the pad comes off once. Subtracting it twice left
+--- a storagePad-wide strip on the right of every row.
+function ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLane)
+    return math.max(120, (storageW or 0) - (storagePad or 0) - (storageLane or 0))
+end
+
 --- Live resize: reflow recommendation table columns without rebuilding rows.
 local function RelayoutGearStorageRecColumns(recContent, contentW)
     if not recContent or not contentW or contentW < 40 then return end
     recContent:SetWidth(contentW)
     local lay = GetGearStorageRecColumnLayout(contentW)
-    for i = 1, select("#", recContent:GetChildren()) do
-        local line = select(i, recContent:GetChildren())
+    local lines = { recContent:GetChildren() }
+    for i = 1, #lines do
+        local line = lines[i]
         if line and line.slotText then
             local innerH = line:GetHeight() or 32
             line:SetSize(contentW, innerH)
@@ -1243,7 +1275,25 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
     if not parent or not FontManager then return end
     local lay = GetGearStorageRecColumnLayout(contentW)
     local hdrH = GEAR_STORAGE_REC_TABLE_HDR
+    local colInset = 2
+    -- One header per content frame (the gear card reuses its content across paints).
+    local kept = parent._wnGearRecColHdr
+    if kept then
+        kept:SetSize(contentW, hdrH)
+        kept:ClearAllPoints()
+        kept:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        local cols = kept._wnCols
+        local xs = { lay.xSlot, lay.xGear, lay.xRecommend, lay.xLocation }
+        local ws = { lay.slotW, lay.gearW, lay.recommendW, lay.locationW }
+        for ci = 1, #cols do
+            AnchorGearStorageRecColText(cols[ci], kept, xs[ci] + colInset, math.max(8, ws[ci] - colInset * 2), "LEFT")
+        end
+        kept:Show()
+        return
+    end
     local hdr = GearFact:CreateContainer(parent, contentW, hdrH, false)
+    parent._wnGearRecColHdr = hdr
+    hdr._wnCols = {}
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
     local hdrChrome = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("headerChrome"))
@@ -1263,9 +1313,9 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
             rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
         end
     end
-    local colInset = 2
     local function colFs(text, leftX, width, justify)
         local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
+        hdr._wnCols[#hdr._wnCols + 1] = fs
         AnchorGearStorageRecColText(fs, hdr, leftX + colInset, math.max(8, width - colInset * 2), justify or "LEFT")
         fs:SetWordWrap(false)
         fs:SetText(text)
@@ -1420,6 +1470,8 @@ local function PaintGearStorageRowsBatched(recContent, recScroll, rows, contentW
         if onComplete then onComplete() end
         return
     end
+    -- Superseded paint: the gear card reuses its content, so a stale pass must not clear the live one.
+    if drawGen and drawGen ~= (ns._gearTabDrawGen or 0) then return end
     ClearGearRecScrollContent(recContent)
     recContent._gearRecHasHeader = true
     PaintGearStorageRecColumnHeader(recContent, contentW)
@@ -1466,11 +1518,7 @@ local function ShowGearStorageScanningInRecContent(recContent)
     ClearGearRecScrollContent(recContent)
     if not FontManager then return end
     recContent._gearRecForceNextPaint = true
-    local scanFs = FontManager:CreateFontString(recContent, GFR("gearStorageEmpty"), "OVERLAY")
-    recContent._gearStorageStatusFont = scanFs
-    scanFs:SetAllPoints()
-    scanFs:SetJustifyH("CENTER")
-    scanFs:SetJustifyV("MIDDLE")
+    local scanFs = ns.GearUI_AcquireGearRecStatusFont(recContent)
     scanFs:SetText(GearTabL("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
     ns.UI_SetTextColorRole(scanFs, "Muted")
     if mfG then
@@ -1803,7 +1851,7 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
     local rowsOverflow = (#rows * rowH + hdrExtra) > viewportH
 
-    local contentW = math.max(120, storageW - storagePad * 2 - storageLane)
+    local contentW = ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLane)
 
     local paintTok = (self.GetGearStorageFindingsDedupeToken and self:GetGearStorageFindingsDedupeToken()) or "0"
     paintTok = paintTok .. ":" .. tostring(#rows) .. ":" .. (rowsOverflow and "1" or "0") .. ":" .. tostring(math.floor(contentW + 0.5))
@@ -1866,11 +1914,7 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     recContent:SetHeight(math.max(#rows * rowH + headerExtra, viewportH))
 
     if #rows == 0 then
-        local empty = FontManager:CreateFontString(recContent, GFR("gearStorageEmpty"), "OVERLAY")
-        recContent._gearStorageStatusFont = empty
-        empty:SetAllPoints()
-        empty:SetJustifyH("CENTER")
-        empty:SetJustifyV("MIDDLE")
+        local empty = ns.GearUI_AcquireGearRecStatusFont(recContent)
         empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY", "No transferable stash upgrade beats your equipped items for these slots."))
         ns.UI_SetTextColorRole(empty, "Dim")
         WarbandNexus:GearStoragePanelDebug("Redraw painted EMPTY list (0 upgrade rows after filter)")
@@ -1963,9 +2007,27 @@ end
 
 --- Refresh upgrade arrows + track labels after currency/gold changes (no full Gear PopulateContent).
 ---@return boolean handled
+--- Stats + currencies card: debounced in-place repaint after equip / upgrade / currency / rating changes.
+--- Deferred so the services' own listeners for the same message (currency cache invalidation, gear scan)
+--- run first; a row-count change falls back to a full Gear paint.
+local GEAR_SIDE_CARD_REFRESH_DELAY = 0.15
+local gearSideCardTimer = nil
+function WarbandNexus:ScheduleGearSideCardRefresh()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "gear" then return end
+    if gearSideCardTimer then gearSideCardTimer:Cancel() end
+    gearSideCardTimer = C_Timer.NewTimer(GEAR_SIDE_CARD_REFRESH_DELAY, function()
+        gearSideCardTimer = nil
+        if not mf:IsShown() or mf.currentTab ~= "gear" then return end
+        if ns.GearUI_RefreshGearSideCard and ns.GearUI_RefreshGearSideCard(mf) then return end
+        self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "gear", skipCooldown = true })
+    end)
+end
+
 function WarbandNexus:TryRefreshGearUpgradeEconomy()
     local mf = self.UI and self.UI.mainFrame
     if not mf or mf.currentTab ~= "gear" then return false end
+    self:ScheduleGearSideCardRefresh()
     if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return false end
     local card = mf._gearPaperdollCard
     if not card or not card._gearSlotInspectList or #card._gearSlotInspectList == 0 then return false end
@@ -2081,7 +2143,12 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
             end
             local slotData
             if isViewingCurrent then
-                slotData = liveSnap or (slots and slots[slotID])
+                -- Same merge as the full paint: a live-only snapshot has no upgrade tier, and Sync then
+                -- re-guessed it from ilvl (Hero 6/6 == Myth 2/6) and flashed an upgrade arrow until the
+                -- next full paint hid it again.
+                local persistedSlot = slots and slots[slotID]
+                slotData = (liveSnap and ns.GearUI_MergeLiveEquippedSlot
+                    and ns.GearUI_MergeLiveEquippedSlot(persistedSlot, liveSnap)) or liveSnap or persistedSlot
             else
                 slotData = slots and slots[slotID]
             end
@@ -3182,12 +3249,42 @@ function WarbandNexus:DrawGearTab(parent)
         tm.hideW or 84,
     })) or (GEAR_CHAR_SELECTOR_WIDTH + (tm.hideW or 84) + (tm.gap or 8))
 
-    local headerCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
-        tabKey = "gear",
-        titleText = titleTextContent,
-        subtitleText = subtitleTextContent,
-        textRightInset = gearHeaderRightReserve,
-    }))
+    -- Title card is built once per session and re-placed on every paint (Collections/Plans pattern);
+    -- teardown parks it in the recycle bin, so building one per paint leaked a card per populate.
+    -- Chrome baked in at creation (theme, Classic, accent): a change builds the card once more.
+    local titleSig = format("%s|%s|%s", tostring((ns.UI_IsLightMode and ns.UI_IsLightMode()) == true),
+        tostring((ns.UI_IsClassicMode and ns.UI_IsClassicMode()) == true), hexAcc)
+    local titleCache = ns._gearTitleCardCache
+    if titleCache and titleCache.sig ~= titleSig then
+        titleCache = nil
+    end
+    local headerCard
+    if titleCache and titleCache.titleCard then
+        headerCard = titleCache.titleCard
+        if headerCard:GetParent() ~= headerParent then
+            headerCard:SetParent(headerParent)
+        end
+        if titleCache.subtitleFs then titleCache.subtitleFs:SetText(subtitleTextContent) end
+        if ns.UI_ReanchorStandardTabTitleLayout then
+            ns.UI_ReanchorStandardTabTitleLayout(titleCache.headerIcon, headerCard, titleCache.textContainer,
+                nil, gearHeaderRightReserve)
+        end
+    else
+        local hdrIcon, hdrText, _, hdrSubtitle
+        headerCard, hdrIcon, hdrText, _, hdrSubtitle = ns.UI_CreateStandardTabTitleCard(headerParent, {
+            tabKey = "gear",
+            titleText = titleTextContent,
+            subtitleText = subtitleTextContent,
+            textRightInset = gearHeaderRightReserve,
+        })
+        ns._gearTitleCardCache = {
+            titleCard = headerCard,
+            headerIcon = hdrIcon,
+            textContainer = hdrText,
+            subtitleFs = hdrSubtitle,
+            sig = titleSig,
+        }
+    end
     if chrome and ns.UI_AnchorTabTitleCard then
         ns.UI_AnchorTabTitleCard(headerCard, chrome)
     else

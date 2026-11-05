@@ -19,7 +19,12 @@ local PVE_NAME_WIDTH_PAD = 4
 local PVE_LEVEL_AFTER_NAME_GAP = 2
 
 --- Name + realm stack in one column: width = max line width (not "name - realm" on one line).
+--- Measured in the shared roster identity fonts (ns.UI_MeasureCharacterIdentityWidth); measureFs is only the
+--- fallback before SharedWidgets_RowPool loads.
 function ns.PvE_MeasureStackedNameColumnWidth(measureFs, nameStr, realmStr)
+    if ns.UI_MeasureCharacterIdentityWidth then
+        return ns.UI_MeasureCharacterIdentityWidth(nameStr, realmStr)
+    end
     if not measureFs then return 0 end
     if issecretvalue and issecretvalue(nameStr) then
         nameStr = "Unknown"
@@ -200,76 +205,12 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
         classIcon:Hide()
     end
 
-    local nameText = charHeader._pveCharRowName
-    if not nameText then
-        nameText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        charHeader._pveCharRowName = nameText
-    end
-    nameText:SetWidth(layout.nameColW)
-    nameText:SetJustifyH("LEFT")
-    nameText:SetWordWrap(false)
-    nameText:SetNonSpaceWrap(false)
-    nameText:SetMaxLines(1)
-    do
-        local nm = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        if issecretvalue and issecretvalue(nm) then
-            nm = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-        end
-        nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
-            classColor.r * 255, classColor.g * 255, classColor.b * 255,
-            nm))
-    end
-
-    local realmText = charHeader._pveCharRowRealm
-    if not realmText then
-        realmText = FontManager:CreateFontString(charHeader, "small", "OVERLAY")
-        charHeader._pveCharRowRealm = realmText
-    end
-    realmText:SetWidth(layout.nameColW)
-    realmText:SetJustifyH("LEFT")
-    realmText:SetWordWrap(false)
-    realmText:SetNonSpaceWrap(false)
-    realmText:SetMaxLines(1)
-    local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    if issecretvalue and issecretvalue(displayRealm) then
-        displayRealm = ""
-    end
-    local realmHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffb0b0b8"
-    realmText:SetText(realmHex .. displayRealm .. "|r")
-
-    local rowH = charHeader:GetHeight() or 46
-    local nameRealmGap = 1
-    local nh = max(nameText:GetStringHeight() or 0, 12)
-    local rh = max(realmText:GetStringHeight() or 0, 10)
-    local blockH = nh + nameRealmGap + rh
-    local topInset = max((rowH - blockH) / 2, 0)
-
-    nameText:ClearAllPoints()
-    realmText:ClearAllPoints()
-    nameText:SetPoint("TOPLEFT", charHeader, "TOPLEFT", layout.nameLeft, -topInset)
-    realmText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -nameRealmGap)
-    if nameText.SetJustifyV then nameText:SetJustifyV("TOP") end
-    if realmText.SetJustifyV then realmText:SetJustifyV("TOP") end
-    if nameText.SetShadowOffset then
-        nameText:SetShadowOffset(0, 0)
-    end
-    nameText:Show()
-    realmText:Show()
-
-    do
-        local gradientEnd = layout.identityGradientEnd
-        local rowW = charHeader:GetWidth() or 800
-        if gradientEnd > rowW - 2 then
-            gradientEnd = rowW - 2
-        end
-        if ns.UI_ApplyCharacterRowClassGradientAccent then
-            local gradientEnd = layout.identityGradientEnd
-            local rowW = charHeader:GetWidth() or 800
-            if gradientEnd > rowW - 2 then
-                gradientEnd = rowW - 2
-            end
-            ns.UI_ApplyCharacterRowClassGradientAccent(charHeader, char.classFile, gradientEnd)
-        end
+    -- Name + realm subline + class gradient: shared roster identity (same look as the Characters tab).
+    if ns.UI_ApplyCharacterRowIdentity then
+        ns.UI_ApplyCharacterRowIdentity(charHeader, char, layout.nameLeft, layout.nameColW, {
+            nameField = "_pveCharRowName",
+            realmField = "_pveCharRowRealm",
+        })
     end
 
     local levelText = charHeader._pveCharRowLevel

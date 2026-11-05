@@ -298,6 +298,14 @@ function M.RecentRowNavigateToEntry(ctype, id)
         M.state.currentSubTab = "toys"
         ns._sessionCollectionsSubTab = "toys"
         M.state.selectedToyID = id
+    elseif ctype == "illusion" then
+        M.state.currentSubTab = "illusions"
+        ns._sessionCollectionsSubTab = "illusions"
+        M.state.selectedIllusionID = id
+    elseif ctype == "title" then
+        M.state.currentSubTab = "titles"
+        ns._sessionCollectionsSubTab = "titles"
+        M.state.selectedTitleID = id
     else
         return
     end
@@ -515,9 +523,9 @@ function M.DrawRecentContent(contentFrame)
         resetBtn:SetFrameLevel((card:GetFrameLevel() or 0) + 8)
         local resetTex = resetBtn:CreateTexture(nil, "ARTWORK")
         resetTex:SetAllPoints()
-        ns.UI_SetIcon(resetTex, "reset")
+        ns.UI_SetIcon(resetTex, "reset", { alpha = 0.75 })  -- colored art: idle dims with alpha, hover = full
         resetBtn:SetScript("OnEnter", function(self)
-            resetTex:SetVertexColor(1, 0.95, 0.45, 1)
+            resetTex:SetVertexColor(1, 1, 1, 1)
             if not ns.UI_SetGameTooltipSmartOwner(self, 0, 0) then return end
             GameTooltip:ClearLines()
             GameTooltip:SetText((loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"]) or "Clear recent list", 1, 1, 1)
@@ -529,7 +537,7 @@ function M.DrawRecentContent(contentFrame)
             GameTooltip:Show()
         end)
         resetBtn:SetScript("OnLeave", function()
-            ns.UI_SetIcon(resetTex, "reset")  -- back to the theme tint
+            ns.UI_SetIcon(resetTex, "reset", { alpha = 0.75 })  -- back to idle
             ns.UI_SafeHideGameTooltip()
         end)
         resetBtn:SetScript("OnClick", function()

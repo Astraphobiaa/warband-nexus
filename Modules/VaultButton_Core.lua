@@ -113,7 +113,7 @@ M.TRACK_ICONS = {
 
 M.CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
 M.CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
-M.UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12, 0, 0, { 0.2, 1, 0.48 })  -- upgradeable: green
+M.UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12)  -- upgradeable: green art, no tint
 
 -- Easy Access tooltip / menu copy (shared across VaultButton_* chunks via M)
 M.EA_MONEY_ICON = 14

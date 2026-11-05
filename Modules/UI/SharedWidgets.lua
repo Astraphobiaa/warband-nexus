@@ -93,15 +93,15 @@ function ns.UI_GetNavRailTabHeight()
     return shell.NAV_RAIL_TAB_HEIGHT or 38
 end
 
--- PACKAGED UI ICONS (Media/*.tga — vertex-tinted stroke art)
+-- PACKAGED UI ICONS (Media/*.tga — colored art, neutral vertex)
 
 local WN_ICON_PATHS = nil
 
---- Packaged WN action icons: white when idle, yellow when active; disabled = monochrome alpha (never grey RGB).
+--- Packaged WN action icons are colored art: neutral vertex always, state is alpha only
+--- (active 1, idle dimmed, disabled faint). A color tint or desaturate would muddy the art.
 ns.WN_ICON_VERTEX_WHITE = { 1, 1, 1, 1 }
-ns.WN_ICON_VERTEX_YELLOW = { 1, 0.88, 0.08, 1 }
-ns.WN_ICON_VERTEX_RED = { 1, 0.28, 0.22, 1 }
-ns.WN_ICON_VERTEX_IDLE_LIGHT = { 0.06, 0.06, 0.08, 1 }
+ns.WN_ICON_VERTEX_IDLE = { 1, 1, 1, 0.65 }
+ns.WN_ICON_VERTEX_DISABLED = { 1, 1, 1, 0.35 }
 
 function ns.UI_GetMonochromeIconVertex(alpha)
     alpha = alpha or 1
@@ -123,53 +123,41 @@ function ns.UI_GetThemedGreyHex(darkHex, role)
     return darkHex
 end
 
---- Collection list row status: gold `common-icon-checkmark` when collected (canonical WN check).
+--- Collection list row status: registry status_ok tick when collected (colored art, neutral vertex).
 function ns.UI_ApplyCollectionRowStatusIcon(statusIcon, isCollected)
     if not statusIcon then return end
     statusIcon:Show()
     if isCollected then
-        local g = COLORS and COLORS.gold
-        ns.UI_SetIcon(statusIcon, "status_ok", { vertexColor = g or { 1, 0.82, 0, 1 } })
+        ns.UI_SetIcon(statusIcon, "status_ok")
     else
-        -- status_pending is mono: white (dark) / black (light) at alpha 0.35.
+        -- status_pending is colored art: neutral vertex, dimmed to alpha 0.35.
         ns.UI_SetIcon(statusIcon, "status_pending", { alpha = 0.35 })
     end
 end
 
 function ns.UI_WnIconVertexForState(active, disabled)
     if disabled then
-        return ns.UI_GetMonochromeIconVertex(0.35)
+        return ns.WN_ICON_VERTEX_DISABLED
     end
     if active then
-        return ns.WN_ICON_VERTEX_YELLOW
+        return ns.WN_ICON_VERTEX_WHITE
     end
-    if IsLightModeEnabled() then
-        return ns.WN_ICON_VERTEX_IDLE_LIGHT
-    end
-    return ns.WN_ICON_VERTEX_WHITE
+    return ns.WN_ICON_VERTEX_IDLE
 end
 
---- Vertex tint: todo/alert/track/pin — active=yellow, idle=white/black; delete/block=red; disabled=monochrome alpha.
+--- Vertex for a packaged action icon: always neutral RGB; todo/alert/track/pin — active=full, idle=dimmed alpha;
+--- delete/block/complete have no on/off state (full alpha); disabled = faint alpha.
 function ns.UI_WnIconVertexForKey(iconKey, active, disabled)
     if disabled then
-        return ns.UI_GetMonochromeIconVertex(0.35)
+        return ns.WN_ICON_VERTEX_DISABLED
     end
-    if iconKey == "delete" or iconKey == "block" then
-        return ns.WN_ICON_VERTEX_RED
+    if active or iconKey == "complete" or iconKey == "delete" or iconKey == "block" then
+        return ns.WN_ICON_VERTEX_WHITE
     end
-    if iconKey == "complete" then
-        return { 0.35, 0.95, 0.45, 1 }
-    end
-    if active then
-        return ns.WN_ICON_VERTEX_YELLOW
-    end
-    if IsLightModeEnabled() then
-        return ns.WN_ICON_VERTEX_IDLE_LIGHT
-    end
-    return ns.WN_ICON_VERTEX_WHITE
+    return ns.WN_ICON_VERTEX_IDLE
 end
 
---- Apply WN packaged icon with canonical active/idle/disabled coloring (never desaturate idle white).
+--- Apply WN packaged icon with canonical active/idle/disabled alpha (neutral vertex, never desaturated).
 function ns.UI_ApplyWnActionIcon(tex, iconKey, active, disabled)
     if not tex or not iconKey then return false end
     disabled = disabled == true
@@ -177,7 +165,6 @@ function ns.UI_ApplyWnActionIcon(tex, iconKey, active, disabled)
     local vc = ns.UI_WnIconVertexForKey(iconKey, active, disabled)
     return ns.UI_SetWnIconTexture(tex, iconKey, {
         vertexColor = vc,
-        desaturate = disabled,
     })
 end
 
@@ -206,7 +193,8 @@ local function GetWnIconPaths()
 end
 
 --- Apply a packaged WN icon texture. `iconKey`: todo | alert | reminder | track | pin | delete | block | complete | chevron_* | link
---- opts: vertexColor {r,g,b,a?}, desaturate bool, texCoord {l,r,t,b} (optional)
+--- opts: vertexColor {r,g,b,a?} (keep RGB neutral: every packaged icon is colored art; state = alpha), texCoord {l,r,t,b} (optional).
+--- Never desaturated: a dim state is alpha only.
 function ns.UI_SetWnIconTexture(tex, iconKey, opts)
     if not tex or not iconKey then return false end
     opts = type(opts) == "table" and opts or {}
@@ -227,11 +215,7 @@ function ns.UI_SetWnIconTexture(tex, iconKey, opts)
     else
         tex:SetTexCoord(0, 1, 0, 1)
     end
-    if opts.desaturate then
-        tex:SetDesaturated(true)
-    else
-        tex:SetDesaturated(false)
-    end
+    tex:SetDesaturated(false)
     local vc = opts.vertexColor
     if vc then
         tex:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 1)
@@ -499,10 +483,6 @@ local function RefreshColors()
                 frame._thumbTexture:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.9)
             end
 
-            if frame._iconTexture then
-                frame._iconTexture:SetVertexColor(accentColor[1], accentColor[2], accentColor[3], 1)
-            end
-
             updated = updated + 1
         elseif frame._wnMainShellBackdrop and frame.SetBackdropBorderColor and frame.SetBackdropColor then
             if frame._wnBlizzardChrome and IsClassicModeEnabled() then
@@ -527,9 +507,6 @@ local function RefreshColors()
 
             if frame._thumbTexture then
                 frame._thumbTexture:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.9)
-            end
-            if frame._iconTexture then
-                frame._iconTexture:SetVertexColor(accentColor[1], accentColor[2], accentColor[3], 1)
             end
 
             updated = updated + 1

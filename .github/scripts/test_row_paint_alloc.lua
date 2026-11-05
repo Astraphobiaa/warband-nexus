@@ -259,6 +259,38 @@ do
 end
 
 -- ------------------------------------------------------------------------------------------------
+print("Phase 2b: shared character identity block reuses its FontStrings and gradient thunk")
+do
+    local ns = {
+        UI = { Factory = {} },
+        FontManager = { CreateFontString = function(_, parent) return Frame.new(parent) end },
+        UI_ResolveSurfaceTierColor = function() return { 0.1, 0.1, 0.1, 1 } end,
+        UI_IsClassicMode = function() return true end,  -- gradient texture path not exercised here
+        UI_SetTextColorRole = function() end,
+        Utilities = { FormatRealmName = function(_, r) return r end },
+    }
+    ns.WarbandNexus = { db = { profile = {} } }
+    LoadFile("Modules/UI/SharedWidgets_RowPool.lua", ns)
+    local apply = ns.UI_ApplyCharacterRowIdentity
+    assert_eq(type(apply), "function", "UI_ApplyCharacterRowIdentity exported")
+    local row = Frame.new(nil)
+    apply(row, { name = "Alpha", realm = "Realm", classFile = "MAGE" }, 40, 100)
+    local nameFs, realmFs, thunk = row.nameText, row.realmText, row._wnGradientRefresh
+    apply(row, { name = "Beta", realm = "Realm", classFile = "MAGE" }, 40, 100)
+    assert_eq(nameFs ~= nil and row.nameText == nameFs and row.realmText == realmFs, true,
+        "repaint reuses the name / realm FontStrings")
+    assert_eq(thunk ~= nil and row._wnGradientRefresh == thunk, true, "gradient refresh thunk is created once per row")
+    local pve = Frame.new(nil)
+    apply(pve, { name = "Gamma", realm = "Realm", classFile = "MAGE" }, 40, 100,
+        { nameField = "_pveCharRowName", realmField = "_pveCharRowRealm" })
+    assert_eq(pve._pveCharRowName ~= nil and pve.nameText == nil, true, "custom field names (PvE rows) are honoured")
+    ns.WarbandNexus.db.profile.showCharacterRealmName = false
+    apply(row, { name = "Beta", realm = "Realm", classFile = "MAGE" }, 40, 100)
+    assert_eq(row.realmText:IsShown(), false, "realm subline hidden when showCharacterRealmName is false")
+    assert_eq(type(ns.UI_MeasureCharacterIdentityWidth("Beta", "Realm")), "number", "identity width measure returns a number")
+end
+
+-- ------------------------------------------------------------------------------------------------
 print("Phase 3: Caged pet display names resolve once, misses retry later")
 do
     local ns = {}
@@ -484,6 +516,18 @@ do
     ns.UI_SetIcon = function() end
     ns.UI_GetMonochromeIconVertex = function() return rgba end
     ns.UI_ApplyCharacterRowClassGradientAccent = function() end
+    -- Shared identity block (SharedWidgets_RowPool, Phase 2b): same contract -- FontStrings on the row,
+    -- one gradient thunk per row that applies the class accent.
+    ns.UI_ApplyCharacterRowIdentity = function(r, c)
+        r.nameText = r.nameText or Frame.new(r)
+        r.realmText = r.realmText or Frame.new(r)
+        r._wnIdClassFile = c.classFile
+        if not r._wnIdGradientThunk then
+            r._wnIdGradientThunk = function() ns.UI_ApplyCharacterRowClassGradientAccent(r, r._wnIdClassFile) end
+        end
+        r._wnGradientRefresh = r._wnIdGradientThunk
+        return r.nameText, r.realmText
+    end
     ns.UI_ShowCharacterRowContextMenu = function(_, key) calls[#calls + 1] = "menu:" .. tostring(key) end
     ns.UI_ShowCharacterSectionAssignMenu = function(_, key) calls[#calls + 1] = "assign:" .. tostring(key) end
     ns.CharacterService = {

@@ -31,6 +31,8 @@ end
 
 ns.SCROLL_CHROME_REGISTRY = ns.SCROLL_CHROME_REGISTRY or {}
 local SCROLL_CHROME_REGISTRY = ns.SCROLL_CHROME_REGISTRY
+-- Scroll arrow glyphs are colored art: neutral vertex, idle dims with alpha, hover = 1.
+local SCROLL_ARROW_IDLE_ALPHA = 0.75
 
 local function ResolveScrollChromeBackdrop()
     if ns.UI_GetControlChromeHoverBackdrop then
@@ -1049,9 +1051,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             upIcon:SetPoint("CENTER")
             ns.UI_SetIcon(upIcon, "arrow_left")
             upIcon:SetRotation(-math.pi / 2)
-            upIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            upIcon:SetAlpha(SCROLL_ARROW_IDLE_ALPHA)  -- colored art: neutral vertex, idle dims with alpha
             scrollBar.ScrollUpBtn.icon = upIcon
-            scrollBar.ScrollUpBtn._iconTexture = upIcon  -- Store for theme refresh
             
             -- Click handler (pixel-snapped)
             scrollBar.ScrollUpBtn:SetScript("OnClick", function()
@@ -1068,13 +1069,12 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollUpBtn:SetScript("OnEnter", function(self)
                 local currentColors = GetColors()
                 self.bg:SetColorTexture(currentColors.accent[1] * 0.3, currentColors.accent[2] * 0.3, currentColors.accent[3] * 0.3, 1)
-                self.icon:SetVertexColor(currentColors.accent[1] * 1.3, currentColors.accent[2] * 1.3, currentColors.accent[3] * 1.3, 1)
+                self.icon:SetAlpha(1)
             end)
             
             scrollBar.ScrollUpBtn:SetScript("OnLeave", function(self)
-                local currentColors = GetColors()
                 ApplyScrollChromeBackdrop(self.bg)
-                self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
+                self.icon:SetAlpha(SCROLL_ARROW_IDLE_ALPHA)
             end)
         end
         
@@ -1143,9 +1143,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             downIcon:SetPoint("CENTER")
             ns.UI_SetIcon(downIcon, "arrow_left")
             downIcon:SetRotation(math.pi / 2)
-            downIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            downIcon:SetAlpha(SCROLL_ARROW_IDLE_ALPHA)
             scrollBar.ScrollDownBtn.icon = downIcon
-            scrollBar.ScrollDownBtn._iconTexture = downIcon  -- Store for theme refresh
             
             -- Click handler (pixel-snapped)
             scrollBar.ScrollDownBtn:SetScript("OnClick", function()
@@ -1163,13 +1162,12 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.ScrollDownBtn:SetScript("OnEnter", function(self)
                 local currentColors = GetColors()
                 self.bg:SetColorTexture(currentColors.accent[1] * 0.3, currentColors.accent[2] * 0.3, currentColors.accent[3] * 0.3, 1)
-                self.icon:SetVertexColor(currentColors.accent[1] * 1.3, currentColors.accent[2] * 1.3, currentColors.accent[3] * 1.3, 1)
+                self.icon:SetAlpha(1)
             end)
             
             scrollBar.ScrollDownBtn:SetScript("OnLeave", function(self)
-                local currentColors = GetColors()
                 ApplyScrollChromeBackdrop(self.bg)
-                self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
+                self.icon:SetAlpha(SCROLL_ARROW_IDLE_ALPHA)
             end)
         end
 
@@ -1929,14 +1927,13 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.ScrollLeftBtn._borderType = "accent"
     hBar.ScrollLeftBtn._borderAlpha = 0.6
     table.insert(ns.BORDER_REGISTRY, hBar.ScrollLeftBtn)
-    -- Icon: registry arrow_left (points left); accent color
+    -- Icon: registry arrow_left (points left); colored art, idle dims with alpha
     local leftIcon = hBar.ScrollLeftBtn:CreateTexture(nil, "ARTWORK")
     leftIcon:SetSize(12, 12)
     leftIcon:SetPoint("CENTER")
     ns.UI_SetIcon(leftIcon, "arrow_left")
-    leftIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    leftIcon:SetAlpha(SCROLL_ARROW_IDLE_ALPHA)
     hBar.ScrollLeftBtn.icon = leftIcon
-    hBar.ScrollLeftBtn._iconTexture = leftIcon
 
     -- Right button
     hBar.ScrollRightBtn = CreateFrame("Button", nil, parent)
@@ -1987,19 +1984,17 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     rightIcon:SetPoint("CENTER")
     ns.UI_SetIcon(rightIcon, "arrow_left")
     rightIcon:SetRotation(math.pi)
-    rightIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    rightIcon:SetAlpha(SCROLL_ARROW_IDLE_ALPHA)
     hBar.ScrollRightBtn.icon = rightIcon
-    hBar.ScrollRightBtn._iconTexture = rightIcon
 
     local function ButtonHoverOn(self)
         local currentColors = GetColors()
         self.bg:SetColorTexture(currentColors.accent[1] * 0.3, currentColors.accent[2] * 0.3, currentColors.accent[3] * 0.3, 1)
-        self.icon:SetVertexColor(currentColors.accent[1] * 1.3, currentColors.accent[2] * 1.3, currentColors.accent[3] * 1.3, 1)
+        self.icon:SetAlpha(1)
     end
     local function ButtonHoverOff(self)
-        local currentColors = GetColors()
         ApplyScrollChromeBackdrop(self.bg)
-        self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
+        self.icon:SetAlpha(SCROLL_ARROW_IDLE_ALPHA)
     end
     hBar.ScrollLeftBtn:SetScript("OnEnter", ButtonHoverOn)
     hBar.ScrollLeftBtn:SetScript("OnLeave", ButtonHoverOff)
@@ -2361,6 +2356,8 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
         f:SetFrameStrata("DIALOG")
         f:SetFrameLevel(500)
+        -- Link buttons sit near window edges (detail headers top-right): never let the popup leave the screen.
+        f:SetClampedToScreen(true)
         -- Same shell as WindowFactory dialogs: external-shell fill + accent quartet at the
         -- standard border thickness (was a 16px tooltip-border edge file).
         local COLORS = ns.UI_COLORS or { accent = {0.5, 0.4, 0.7} }
@@ -2388,7 +2385,7 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
         -- Text is set per call: the popup is shared across link sources.
         f._title = title
 
-        -- Close: IconRegistry "close" glyph with the WindowFactory red tint (was a text "x").
+        -- Close: IconRegistry "close" glyph (red art) with the WindowFactory idle/hover alpha (was a text "x").
         local closeBtn = self:CreateButton(f, 20, 20, true) or CreateFrame("Button", nil, f)
         closeBtn:SetSize(20, 20)
         local closeInset = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL and ns.UI_LAYOUT.MAIN_SHELL.FRAME_CONTENT_INSET) or 2
@@ -2397,9 +2394,9 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
         closeIcon:SetSize(14, 14)
         closeIcon:SetPoint("CENTER")
         ns.UI_SetIcon(closeIcon, "close")
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        closeBtn:SetScript("OnEnter", function() closeIcon:SetVertexColor(1, 0.2, 0.2) end)
-        closeBtn:SetScript("OnLeave", function() closeIcon:SetVertexColor(0.9, 0.3, 0.3) end)
+        closeIcon:SetVertexColor(1, 1, 1, 0.75)
+        closeBtn:SetScript("OnEnter", function() closeIcon:SetVertexColor(1, 1, 1, 1) end)
+        closeBtn:SetScript("OnLeave", function() closeIcon:SetVertexColor(1, 1, 1, 0.75) end)
         closeBtn:SetScript("OnClick", function() f:Hide() end)
 
         local editBox = self:CreateEditBox(f) or CreateFrame("EditBox", nil, f)
@@ -2430,7 +2427,19 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
 
     if anchorFrame and anchorFrame.GetCenter then
         sharedCopyFrame:ClearAllPoints()
-        sharedCopyFrame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -4)
+        -- Grow away from the nearer screen edge: a centred 360px popup under a right-edge button ran off screen.
+        local ax = anchorFrame:GetCenter()
+        local screenW = UIParent:GetWidth()
+        local anchorScale = anchorFrame:GetEffectiveScale()
+        local parentScale = UIParent:GetEffectiveScale()
+        if ax and screenW and anchorScale and parentScale and parentScale > 0 then
+            ax = ax * anchorScale / parentScale
+        end
+        if ax and screenW and ax > screenW * 0.5 then
+            sharedCopyFrame:SetPoint("TOPRIGHT", anchorFrame, "BOTTOMRIGHT", 0, -4)
+        else
+            sharedCopyFrame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -4)
+        end
     else
         sharedCopyFrame:ClearAllPoints()
         sharedCopyFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)

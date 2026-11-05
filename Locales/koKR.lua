@@ -414,6 +414,10 @@ L["EMPTY_COLLECTIONS_PETS_TITLE"] = "애완동물 없음"
 L["EMPTY_COLLECTIONS_PETS_DESC"] = "검색이나 필터를 조정하거나 애완동물 목록 로드를 기다리세요.\n목록이 비어 있으면 /reload를 시도하세요."
 L["EMPTY_COLLECTIONS_TOYS_TITLE"] = "장난감 없음"
 L["EMPTY_COLLECTIONS_TOYS_DESC"] = "검색이나 필터를 조정하거나 장난감 상자 로드를 기다리세요.\n목록이 비어 있으면 /reload를 시도하세요."
+L["EMPTY_COLLECTIONS_ILLUSIONS_TITLE"] = "환영 없음"
+L["EMPTY_COLLECTIONS_ILLUSIONS_DESC"] = "검색이나 필터를 조정하거나 환영 목록 로드를 기다리세요.\n목록이 비어 있으면 /reload를 시도하세요."
+L["EMPTY_COLLECTIONS_TITLES_TITLE"] = "칭호 없음"
+L["EMPTY_COLLECTIONS_TITLES_DESC"] = "검색이나 필터를 조정하거나 칭호 목록 로드를 기다리세요.\n목록이 비어 있으면 /reload를 시도하세요."
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE"] = "업적 없음"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC"] = "검색이나 필터를 조정하거나 업적 목록 로드를 기다리세요.\n목록이 비어 있으면 /reload를 시도하세요."
 L["MAIL_TOOLTIP_NO_MAIL"] = "대기 중인 우편이 없습니다."
@@ -1203,20 +1207,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "총 플레이 시간·이 레벨 플�
 
 
 
-L["CHANGELOG_V380"] = [=[v3.8.0 (2026-11-01)
+L["CHANGELOG_V390"] = [=[v3.9.0 (2026-11-04)
 
-Collectible drops can now play a sound of your choice, and try counter attempts respect the difficulty a drop is limited to.
+Collections gains Illusions and Titles tabs, a faction filter and better 3D previews, and the weekly planner covers Season 2.
 
 Added:
-- A sound now plays when a mount, pet or toy you are tracking finally drops. Pick from eight new cues made for the addon, four of Blizzard's own, or any sound pack you already have installed, and set how loud it plays. Every option has a play button so you can hear it before you choose.
-- Try counter attempts now respect raid and dungeon difficulty. A drop that is limited to Mythic no longer counts an attempt when you kill that boss on Normal or Heroic.
+- New Illusions and Titles tabs in Collections, with a weapon preview for illusions and the achievement that awards each title.
+- Alliance and Horde filters for mounts, pets, toys and titles.
+- Season 2 weeklies in the To-Do weekly planner: Unity Against the Void, Vaults of Atal'Utek, Turn Back the Surge, Cursed Keepsake, the Midnight Prey, Dungeons, Raid, Ritual Sites and Offworld Showdowns weeklies, Hope in the Darkest Corners, Sparks of War: The Coiled Isle and the Aethas weekly rotation.
+- The Gear page has a new side card layout and a stats card that shows diminishing returns and updates live.
+- A new painted icon set across the addon: class crests, faction emblems, tabs, sources, Great Vault and more.
+
+Updated:
+- Mount, pet and illusion previews use Blizzard's own camera framing on a full black stage, without a rider. Right-click and drag to move the model.
+- Switching tabs is faster, with no duplicate repaints or per-paint hitches.
 
 Fixed:
-- Fixed a Lua error when destroying items with TradeSkillMaster, and anywhere else an addon or macro passes a bag and slot as text instead of numbers.
-- Fixed a second attempt being counted when you reloaded or logged back in and reopened a corpse you had already looted.
-- Fixed attempts being skipped for up to 45 seconds after obtaining a repeatable drop, so kills in that window count again.
-- Fixed battle pets showing a bare attempt count with no drop chance, while mounts showed their odds.
-- Fixed a secret value error while reading an open loot window.
+- The To-Do button in a collectible's details now adds and removes it and updates its icon right away.
+- Great Vault cards for offline characters no longer show the current character's progress.
+- Placeholder [PH] entries, wrong pet and toy source groups and wrong toy counts no longer appear in Collections. The Wowhead link popup stays on screen.
 
 CurseForge: Warband Nexus]=]
 
@@ -1998,6 +2007,8 @@ L["LOADING_COLLECTIONS"] = "수집품 불러오는 중..."
 L["SYNC_COMPLETE"] = "동기화됨"
 L["FILTER_COLLECTED"] = "수집함"
 L["FILTER_UNCOLLECTED"] = "미수집"
+L["FILTER_FACTION_ALLIANCE"] = FACTION_ALLIANCE or "Alliance"
+L["FILTER_FACTION_HORDE"] = FACTION_HORDE or "Horde"
 L["FILTER_SHOW_OWNED"] = "보유"
 L["FILTER_SHOW_MISSING"] = "미보유"
 
@@ -2156,7 +2167,13 @@ L["GEAR_TT_CRAFTED_NEXT_RECAST"] = "다음 재제작 대상: %s (아이템 레�
 L["GEAR_TT_UPGRADE_FALLBACK_LEAD"] = "업그레이드에는 새벽문장이 사용됩니다(화폐 패널의 수량). 등급별 예시:"
 L["GEAR_LAYOUT_SCROLL_HINT"] = "좁은 창: 가로로 스크롤하거나 창 너비를 늘리세요."
 L["GEAR_CHARACTER_STATS"] = "캐릭터 능력치"
-L["GEAR_STAT_VALUE_PCT_FORMAT"] = "%s (%s)"
+L["GEAR_STAT_DR_TAG"] = "DR"
+L["GEAR_STAT_DR_ACTIVE"] = "효율 감소 적용 중"
+L["GEAR_STAT_DR_NONE"] = "아직 효율 감소 없음"
+L["GEAR_STAT_DR_EFFECTIVE"] = "등급 효율: %.1f%%"
+L["GEAR_STAT_DR_NEXT"] = "다음 %d 등급: +%.2f%%"
+L["GEAR_STAT_DR_BASE"] = "처음 %d 등급: +%.2f%%"
+L["GEAR_STAT_DR_LEGEND"] = "효율 감소 시작점"
 L["GEAR_SLOT_CURRENCY_HAVE_NEED"] = "%d/%d"
 L["GEAR_TT_DISCOUNTED_UPGRADE"] = "할인된 문장 비용 (높은 워터마크)"
 L["GEAR_NO_ITEM_EQUIPPED"] = "이 슬롯에 장착된 아이템이 없습니다."

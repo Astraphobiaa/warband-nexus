@@ -28,6 +28,8 @@ local RETURNS = {
     ["C_MountJournal.GetMountInfoByID"] = { "name", "spellID", "icon", "isActive", "isUsable", "sourceType",
         "isFavorite", "isFactionSpecific", "faction", "shouldHideOnChar", "isCollected", "mountID", "isSteadyFlight" },
 }
+-- PlayerScriptDocumentation (12.1.5, checked 2026-11-04): mastery effect, then the per-point coefficient.
+RETURNS["GetMasteryEffect"] = { "masteryEffect", "bonusCoefficient" }
 RETURNS["GetAchievementInfo"] = { "id", "name", "points", "completed", "month", "day", "year", "description",
     "flags", "icon", "rewardText", "isGuild", "wasEarnedByMe", "earnedBy", "isStatistic" }
 RETURNS["GetAchievementCriteriaInfo"] = { "criteriaString", "criteriaType", "completed", "quantity", "reqQuantity",

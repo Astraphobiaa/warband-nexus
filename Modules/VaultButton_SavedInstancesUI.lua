@@ -285,13 +285,16 @@ function M.BuildInstanceCard(parent, group, cardSize)
     art:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     local instanceArt = GetSavedInstanceArt(group)
     if not instanceArt then
+        -- colored art: UI_SetIcon clears desaturation; dim with alpha only
         ns.UI_SetIcon(art, "question")
-        art:SetDesaturated(true)
-        art:SetVertexColor(0.65, 0.65, 0.65, 1)
+        art:SetDesaturated(false)
+        art:SetVertexColor(1, 1, 1, 1)
+        art:SetAlpha(0.65)
     else
         art:SetTexture(instanceArt)
         art:SetDesaturated(false)
         art:SetVertexColor(1, 1, 1, 1)
+        art:SetAlpha(1)
     end
 
     local diffFS = VBFontString(card, "small")

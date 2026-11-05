@@ -30,7 +30,7 @@ end
 local TAB_REGISTRY_ICON_KEYS = {
     settings = "settings",
     chars = "character",
-    items = "bag",
+    items = "vault",  -- the tab is labelled Bank: banker money sacks (Interface/Minimap/Tracking/Banker), not a bag
     storage = "crate",
     plans = "checklist",
     currency = "token",

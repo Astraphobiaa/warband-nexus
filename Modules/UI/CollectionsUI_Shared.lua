@@ -107,6 +107,8 @@ local COLLECTIONS_SEARCH_CATEGORY_KEYS = {
     mounts = "CATEGORY_MOUNTS",
     pets = "CATEGORY_PETS",
     toys = "CATEGORY_TOYS",
+    illusions = "CATEGORY_ILLUSIONS",
+    titles = "CATEGORY_TITLES",
 }
 
 function M.GetCollectionsSearchPlaceholder(tabKey)
@@ -454,6 +456,12 @@ function M.CollectionsListChromeFramesForSubTab(subTabKey, extraFrame)
     elseif subTabKey == "achievements" then
         add(M.state.achievementListContainer)
         add(M.state.achievementListScrollBarContainer)
+    elseif subTabKey == "illusions" then
+        add(M.state.illusionListContainer)
+        add(M.state.illusionListScrollBarContainer)
+    elseif subTabKey == "titles" then
+        add(M.state.titleListContainer)
+        add(M.state.titleListScrollBarContainer)
     end
     add(extraFrame)
     return out
@@ -506,6 +514,10 @@ function M.CollectionsSubTabBrowseFiltersUnchanged(subTabKey)
     if lastC ~= nil and showOn(lastC) ~= showOn(st.showCollected) then return false end
     local lastU = st["_" .. prefix .. "LastShowUncollected"]
     if lastU ~= nil and showOn(lastU) ~= showOn(st.showUncollected) then return false end
+    local lastA = st["_" .. prefix .. "LastShowAlliance"]
+    if lastA ~= nil and showOn(lastA) ~= showOn(st.showAlliance) then return false end
+    local lastH = st["_" .. prefix .. "LastShowHorde"]
+    if lastH ~= nil and showOn(lastH) ~= showOn(st.showHorde) then return false end
     return true
 end
 
@@ -516,6 +528,8 @@ function M.RecordCollectionsSubTabBrowseSnapshot(subTabKey)
     st["_" .. prefix .. "LastSearchText"] = st.searchText or ""
     st["_" .. prefix .. "LastShowCollected"] = st.showCollected
     st["_" .. prefix .. "LastShowUncollected"] = st.showUncollected
+    st["_" .. prefix .. "LastShowAlliance"] = st.showAlliance
+    st["_" .. prefix .. "LastShowHorde"] = st.showHorde
 end
 
 function M.CollectionsSubTabBrowseCacheDiag(subTabKey)
@@ -818,6 +832,8 @@ function M.CreateDetailEmptyOverlay(parent, typeKey)
         or (typeKey == "pet" and ((ns.L and ns.L["TYPE_PET"]) or "pet"))
         or (typeKey == "toy" and ((ns.L and ns.L["TYPE_TOY"]) or "toy"))
         or (typeKey == "achievement" and ((ns.L and ns.L["ACHIEVEMENT"]) or "achievement"))
+        or (typeKey == "illusion" and ((ns.L and ns.L["TYPE_ILLUSION"]) or "illusion"))
+        or (typeKey == "title" and ((ns.L and ns.L["TYPE_TITLE"]) or "title"))
         or typeKey
     if typeName == "TYPE_MOUNT" then typeName = "mount" end
     if typeName == "TYPE_PET" then typeName = "pet" end
@@ -842,6 +858,8 @@ M.VALID_COLLECTIONS_SUBTABS = {
     pets = true,
     toys = true,
     achievements = true,
+    illusions = true,
+    titles = true,
 }
 
 -- Must appear before ApplySessionCollectionsSubTab: Lua 5.1 local scope starts after this statement,
@@ -862,6 +880,8 @@ M.state = M.state or {
     subTabBar = nil,
     showCollected = true,
     showUncollected = true,
+    showAlliance = true,  -- Mounts tab faction filter (GetMountInfoByID isFactionSpecific / faction)
+    showHorde = true,
     collapsedHeaders = {},
     collapsedHeadersMounts = {},
     collapsedHeadersPets = {},
@@ -1100,6 +1120,8 @@ function M.ClearCollectionsDrawBusyFlags()
     M.state._drawPetsContentBusy = nil
     M.state._drawToysContentBusy = nil
     M.state._drawAchievementsContentBusy = nil
+    M.state._drawIllusionsContentBusy = nil
+    M.state._drawTitlesContentBusy = nil
     M.CollectionsEndListChromeDefer()
     if ns.UI_AchievementBrowse_ResetPopulateBusy then
         ns.UI_AchievementBrowse_ResetPopulateBusy()
@@ -1120,6 +1142,8 @@ function WarbandNexus:AbortCollectionsChunkedBuilds()
     M.state._mountsDrawGen = (M.state._mountsDrawGen or 0) + 1
     M.state._petDrawGen = (M.state._petDrawGen or 0) + 1
     M.state._toysDrawGen = (M.state._toysDrawGen or 0) + 1
+    M.state._illusionsDrawGen = (M.state._illusionsDrawGen or 0) + 1
+    M.state._titlesDrawGen = (M.state._titlesDrawGen or 0) + 1
     M.state._achPopulateGen = (M.state._achPopulateGen or 0) + 1
     M.ClearCollectionsDrawBusyFlags()
 end
@@ -1138,6 +1162,10 @@ local function DrawActiveCollectionsSubTab(contentFrame)
         M.DrawPetsContent(contentFrame)
     elseif sub == "toys" then
         M.DrawToysContent(contentFrame)
+    elseif sub == "illusions" then
+        M.DrawIllusionsContent(contentFrame)
+    elseif sub == "titles" then
+        M.DrawTitlesContent(contentFrame)
     elseif sub == "achievements" then
         M.DrawAchievementsContent(contentFrame)
     end
@@ -1242,6 +1270,8 @@ function M.HideCollectionsListEmptyCards(scrollChild)
     HideEmptyStateCard(scrollChild, "collections_pets")
     HideEmptyStateCard(scrollChild, "collections_toys")
     HideEmptyStateCard(scrollChild, "collections_achievements")
+    HideEmptyStateCard(scrollChild, "collections_illusions")
+    HideEmptyStateCard(scrollChild, "collections_titles")
     HideEmptyStateCard(scrollChild, "collections_recent")
 end
 

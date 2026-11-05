@@ -455,6 +455,11 @@ COLLECTION_CONFIGS = {
             local illusionList = {}
             for i = 1, #illusions do
                 local illusionInfo = illusions[i]
+                -- isHideVisual = the "Hide Enchant" entry, not a collectible (Blizzard wardrobe skips it too).
+                local hideVisual = illusionInfo and illusionInfo.isHideVisual
+                if hideVisual and not (issecretvalue and issecretvalue(hideVisual)) and hideVisual == true then
+                    illusionInfo = nil
+                end
                 if illusionInfo and illusionInfo.sourceID then
                     -- Use sourceID (not visualID!) - GetIllusionStrings needs sourceID
                     illusionRuntimeCache[illusionInfo.sourceID] = illusionInfo
@@ -820,6 +825,10 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         for i = 1, #items do
             local item = items[i]
             local data = config.extract(item)
+            -- Blizzard placeholder entries ([PH] titles etc.) are not collectibles: keep them out of the store.
+            if data and ns.Utilities and ns.Utilities.IsBlizzardPlaceholderName and ns.Utilities:IsBlizzardPlaceholderName(data.name) then
+                data = nil
+            end
 
             if data and data.id and shouldIncludeFn and shouldIncludeFn(data) then
                 results[data.id] = data

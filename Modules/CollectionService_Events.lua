@@ -40,6 +40,8 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         if icon and issecretvalue(icon) then icon = nil end
         if sourceType and issecretvalue(sourceType) then sourceType = nil end
     end
+    -- 0 = no live source type (common); keep the scan-resolved filter index instead of overwriting it with 0.
+    if sourceType == 0 then sourceType = nil end
     if not name then
         if retryCount < 3 then
             DebugPrint("|cffffcc00[WN CollectionService]|r OnNewMount: Data not ready for mountID=" .. mountID .. ", retry " .. (retryCount + 1) .. "/3")
@@ -387,6 +389,15 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     
     -- Throttle checks to avoid spam (illusions are rare)
     if self._lastIllusionCheck and (GetTime() - self._lastIllusionCheck) < 2 then
+        -- Re-run once the window closes: dropping the call lost an illusion learned inside it
+        -- until some unrelated transmog event fired later.
+        if not self._illusionRecheckPending then
+            self._illusionRecheckPending = true
+            C_Timer.After(2, function()
+                self._illusionRecheckPending = false
+                self:OnTransmogCollectionUpdated(event)
+            end)
+        end
         return
     end
     self._lastIllusionCheck = GetTime()
@@ -588,10 +599,18 @@ local function InvalidateCollectionCountsCache(_, arg)
         ctype = arg.type
         isObtain = true
     end
+    -- Achievement / title / illusion updates touch none of the journal counts or mount/toy/pet source maps;
+    -- a full wipe here forced the next Collections paint into a synchronous journal pass + filter sweeps.
+    local journalNeutral = (not isObtain) and (ctype == "achievement" or ctype == "title" or ctype == "illusion")
     if WarbandNexus.InvalidateCollectionCountsAPICache then
-        WarbandNexus:InvalidateCollectionCountsAPICache(isObtain and ctype or nil)
+        if journalNeutral then
+            if ctype == "achievement" then WarbandNexus:InvalidateCollectionCountsAPICache("achievement") end
+        else
+            WarbandNexus:InvalidateCollectionCountsAPICache(isObtain and ctype or nil)
+        end
     end
     WipeUncollectedResultsCacheAndMergedAchievements()
+    if journalNeutral then return end
     -- Toy source lazy cache (GetToySourceTypeIndexForItem) must rebuild after collection changes
     ns._toyItemIDToSourceIndexCache = nil
     ns._toyGroupedFromMapValid = false
@@ -625,7 +644,8 @@ if E and E.COLLECTIBLE_OBTAINED then
         end
         InvalidateCollectionCountsCache(_, data)
         WarbandNexus:AppendCollectionsRecentObtained(data)
-        if id and (t == "mount" or t == "pet" or t == "toy") and E.COLLECTION_UPDATED then
+        -- Illusions / titles too: their Collections sub-tabs redraw off COLLECTION_UPDATED (journal-neutral, cheap).
+        if id and (t == "mount" or t == "pet" or t == "toy" or t == "illusion" or t == "title") and E.COLLECTION_UPDATED then
             obtainRebroadcastType = t
             WarbandNexus:SendMessage(E.COLLECTION_UPDATED, t)
             obtainRebroadcastType = nil

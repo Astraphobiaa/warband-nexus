@@ -2,7 +2,7 @@
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 3.8.0
+## Version: 3.9.0
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections, Blizzard_AchievementUI
@@ -31,7 +31,7 @@ Locales\zhCN.lua
 Locales\zhTW.lua
 Locales\trTR.lua
 
-# Media: `Media/icon.tga` (addon list + chrome). UI stroke icons: Icon-*.tga + Icon-*.svg (todo, link, close, discord, donate, credits, tracking). Rebuild: python scripts/build_chrome_icons.py
+# Media: `Media/icon.tga` (addon list + chrome). UI stroke icons: Icon-*.tga + Icon-*.svg. Rebuild: python3 scripts/build_ui_icons.py [Name ...], then scripts/build_small_icons.py
 
 # Packaging / QA
 # Locale key parity vs enUS: python scripts/check_locales.py  (optional: --strict-en-us-ascii once enUS ASCII cleanup lands)
@@ -129,6 +129,7 @@ Modules\PlansManager.lua
 Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB_Backfill.lua
 Modules\CollectibleSourceDB.lua
+Modules\CollectibleFactionDB.lua
 Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
 Modules\TryCounterService_Process.lua
@@ -235,7 +236,6 @@ Modules\UI\MailDetailsPopup.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CharactersUI_GoldCards.lua
 Modules\UI\CharactersUI_Row.lua
-Modules\UI\CharactersUI_ColumnHeader.lua
 Modules\UI\CharactersUI_Dialogs.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
@@ -258,6 +258,7 @@ Modules\UI\CollectionsUI_Lists.lua
 Modules\UI\CollectionsUI_Model.lua
 Modules\UI\CollectionsUI_Recent.lua
 Modules\UI\CollectionsUI_Draw.lua
+Modules\UI\CollectionsUI_Extras.lua
 Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI_SourceParser.lua
 Modules\UI\PlansUI_Browse.lua

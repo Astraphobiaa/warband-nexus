@@ -33,11 +33,14 @@ local CUSTOM_PLAN_STORED_ICON = "Bonus-Objective-Star"
 -- GetIllusions() is huge; To-Do / tracker call CheckPlanProgress many times per redraw.
 -- Short TTL avoids O(plans * illusions) while staying fresh enough for collection learns.
 local illusionCollectedById = nil
+-- visualID lookup kept apart: sourceID and visualID are different ID spaces and can collide numerically.
+local illusionCollectedByVisualId = nil
 local illusionLookupCacheAt = 0
 local ILLUSION_LOOKUP_CACHE_TTL = 4
 
 local function InvalidateIllusionLookupCache()
     illusionCollectedById = nil
+    illusionCollectedByVisualId = nil
     illusionLookupCacheAt = 0
 end
 
@@ -50,6 +53,7 @@ local function GetIllusionCollectedForPlanId(illusionKey)
         InvalidateIllusionLookupCache()
         illusionLookupCacheAt = now
         illusionCollectedById = {}
+        illusionCollectedByVisualId = {}
         if C_TransmogCollection and C_TransmogCollection.GetIllusions then
             local list = C_TransmogCollection.GetIllusions()
             if list then
@@ -72,9 +76,9 @@ local function GetIllusionCollectedForPlanId(illusionKey)
                         if info.visualID then
                             local vid = info.visualID
                             if coll then
-                                illusionCollectedById[vid] = true
-                            elseif illusionCollectedById[vid] == nil then
-                                illusionCollectedById[vid] = false
+                                illusionCollectedByVisualId[vid] = true
+                            elseif illusionCollectedByVisualId[vid] == nil then
+                                illusionCollectedByVisualId[vid] = false
                             end
                         end
                     end
@@ -82,7 +86,10 @@ local function GetIllusionCollectedForPlanId(illusionKey)
             end
         end
     end
-    return illusionCollectedById[illusionKey] == true
+    -- Plans store the illusion sourceID; visualID only answers legacy rows that match no sourceID.
+    local bySource = illusionCollectedById[illusionKey]
+    if bySource ~= nil then return bySource end
+    return illusionCollectedByVisualId[illusionKey] == true
 end
 
 -- PLAN TYPES
@@ -1214,9 +1221,16 @@ function WarbandNexus:ResetCompletedPlans()
         local i = 1
         while i <= #self.db.global.plans do
             local plan = self.db.global.plans[i]
-            local progress = self:CheckPlanProgress(plan)
-            
-            if progress and progress.collected then
+            -- Same "done" rule as the list's Completed filter: rows shown as completed (plan.completed set by
+            -- an obtain event while the live API lags) were kept by a live-only check.
+            local isDone
+            if CHARACTER_BOUND_PLAN_TYPES[plan.type] then
+                local progress = self:CheckPlanProgress(plan)
+                isDone = progress and progress.collected
+            else
+                isDone = self:IsActivePlanComplete(plan)
+            end
+            if isDone then
                 table.remove(self.db.global.plans, i)
                 removedCount = removedCount + 1
             else
@@ -1606,6 +1620,10 @@ function WarbandNexus:IsItemPlanned(planType, itemID)
         self:InitializePlanCache()
     end
     
+    -- itemIDs holds every plan type's itemID (mount/recipe items too); a toy check must not match those.
+    if planType == PLAN_TYPES.TOY then
+        return self.planCache.toyIDs[itemID] == true
+    end
     return self.planCache.itemIDs[itemID] == true
 end
 
@@ -2305,12 +2323,16 @@ function WarbandNexus:ParseMultipleSources(sourceText)
             { pattern = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",   type = "Trading Post" },
         }
         
+        -- Earliest label in the text wins (list order breaks ties): Blizzard source text opens with its type label,
+        -- so "Vendor: Arena Master" is a vendor, not PvP just because "Arena" is listed first.
         singleSource.sourceType = (L and L["SOURCE_TYPE_UNKNOWN"]) or UNKNOWN or "Unknown"
+        local bestTypePos = nil
         for ei = 1, #sourceTypePatterns do
             local entry = sourceTypePatterns[ei]
-            if entry.pattern and sourceText:find(entry.pattern, 1, true) then
+            local pos = entry.pattern and sourceText:find(entry.pattern, 1, true)
+            if pos and (not bestTypePos or pos < bestTypePos) then
+                bestTypePos = pos
                 singleSource.sourceType = entry.type
-                break
             end
         end
         

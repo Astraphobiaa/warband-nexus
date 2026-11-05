@@ -842,7 +842,12 @@ local function IsPersonalBankAPIAccessible()
 end
 
 ---Count occupied personal-bank slots via live API (only valid when bank is accessible).
+---One paint asks up to three times (stats line, list, results redraw); the live count cannot change
+---inside a frame, so it is reused for the current GetTime() frame.
+local _liveBankSlotsFrame, _liveBankSlotsCount = nil, 0
 local function CountLivePersonalBankOccupiedSlots()
+    local now = GetTime()
+    if _liveBankSlotsFrame == now then return _liveBankSlotsCount end
     local count = 0
     for i = 1, #BANK_BAGS do
         local bagID = BANK_BAGS[i]
@@ -854,12 +859,14 @@ local function CountLivePersonalBankOccupiedSlots()
             end
         end
     end
+    _liveBankSlotsFrame, _liveBankSlotsCount = now, count
     return count
 end
 
 ---Scan personal bank when the Bank sub-tab is shown and WoW bank APIs are readable.
+---@param fromDisplay boolean|nil true when called by a paint that reads the bank right after (tags the message)
 ---@return boolean didScan
-function WarbandNexus:RequestPersonalBankScanIfNeeded()
+function WarbandNexus:RequestPersonalBankScanIfNeeded(fromDisplay)
     if not ns.Utilities or not ns.Utilities.IsModuleEnabled or not ns.Utilities:IsModuleEnabled("items") then
         return false
     end
@@ -908,6 +915,7 @@ function WarbandNexus:RequestPersonalBankScanIfNeeded()
         self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {
             type = "personal_bank_scan",
             charKey = CanonicalItemsMessageKey(charKey),
+            fromDisplay = fromDisplay == true,
         })
     end
     return true

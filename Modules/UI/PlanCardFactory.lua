@@ -70,7 +70,6 @@ local function BuildAchievementProgressLabelText(achievementID)
 end
 
 local REMINDER_ALERT_TEX = ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE  -- registry bell (media path)
-local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
 
 local function ApplyReminderCardButtonIcon(tex, hasReminder)
     if not tex then return end
@@ -81,12 +80,12 @@ local function ApplyReminderCardButtonIcon(tex, hasReminder)
     if ns.UI_SetWnIconTexture then
         local vc = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("alert", hasReminder, false)
             or (ns.UI_WnIconVertexForState and ns.UI_WnIconVertexForState(hasReminder, false))
-            or (hasReminder and (ns.WN_ICON_VERTEX_YELLOW or REMINDER_HORN_UI_COLOR) or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 }))
-        ns.UI_SetWnIconTexture(tex, "alert", { vertexColor = { vc[1], vc[2], vc[3], vc[4] or 1 }, desaturate = false })
+            or { 1, 1, 1, hasReminder and 1 or 0.65 }
+        ns.UI_SetWnIconTexture(tex, "alert", { vertexColor = vc })
         return
     end
-    -- Last resort: registry clock glyph (horn yellow when a reminder is set), then the registry bell file.
-    if ns.UI_SetIcon and ns.UI_SetIcon(tex, "clock", hasReminder and { vertexColor = REMINDER_HORN_UI_COLOR } or nil) then
+    -- Last resort: registry clock glyph (colored art: full alpha when a reminder is set, dimmed otherwise), then the bell file.
+    if ns.UI_SetIcon and ns.UI_SetIcon(tex, "clock", { alpha = hasReminder and 1 or 0.65 }) then
         return
     end
     tex:SetTexture(REMINDER_ALERT_TEX)
@@ -414,6 +413,16 @@ local function SourcePrefixIconFromLabel(sourceType)
         return PlanSourceIconMarkup("location") .. " "
     end
     return PlanSourceIconMarkup("class") .. " "
+end
+
+-- C_WeeklyRewards only describes the logged-in character; offline alts render from their saved plan.progress.
+-- Same name/realm match as the vault write guard in PlansManager_Vault OnPvEUpdateCheckPlans.
+local function IsPlanForLoggedInCharacter(plan)
+    if not plan or not plan.characterName then return false end
+    local name = UnitName("player")
+    local realm = GetRealmName and GetRealmName()
+    if issecretvalue and (issecretvalue(name) or issecretvalue(realm)) then return false end
+    return plan.characterName == name and plan.characterRealm == realm
 end
 
 local function IsPlaceholderSourceText(sourceText)
@@ -975,8 +984,9 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             local oldContainer = card._sourceContainer
             local bin = ns.UI_RecycleBin
             -- Clear all children first
-            for i = oldContainer:GetNumChildren(), 1, -1 do
-                local child = select(i, oldContainer:GetChildren())
+            local oldKids = { oldContainer:GetChildren() }
+            for i = #oldKids, 1, -1 do
+                local child = oldKids[i]
                 if child then
                     child:Hide()
                     child:ClearAllPoints()
@@ -1376,8 +1386,11 @@ function PlanCardFactory:ReflowSourcePlanCard(card, opts)
     if card._sourceContainer and card._sourceContainer:IsShown() then
         card._sourceContainer:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
         local sumH = 0
-        for i = 1, card._sourceContainer:GetNumChildren() do
-            local ch = select(i, card._sourceContainer:GetChildren())
+        -- Source lines are FontStrings, i.e. regions: GetChildren() never returned them, so the reflow
+        -- collapsed the block to 1px and left line widths stale.
+        local regions = { card._sourceContainer:GetRegions() }
+        for i = 1, #regions do
+            local ch = regions[i]
             if ch and ch:IsObjectType("FontString") and ch:IsShown() then
                 ch:SetWidth(tw)
                 sumH = sumH + math.max(ch:GetStringHeight(), 14) + 4
@@ -2276,8 +2289,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
             local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
             checkArrow:SetSize(24, 24)
             checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
-            ns.UI_SetIcon(checkArrow, "marker_up")
-            checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
+            ns.UI_SetIcon(checkArrow, "marker_up")  -- colored art: neutral vertex
             local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
             label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
             ns.UI_SetTextColorRole(label, "Bright")
@@ -2376,7 +2388,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         titleText:SetPoint("RIGHT", hdr.titleAnchor, "LEFT", -(hdr.titleGap or 12), 0)
     end
     
-    local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
+    local currentProgress = (IsPlanForLoggedInCharacter(plan) and WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm))
+        or plan.progress or {
         dungeonCount = 0,
         raidBossCount = 0,
         worldActivityCount = 0
@@ -2591,7 +2604,7 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     end
     
     local vaultProgress
-    if WarbandNexus.GetWeeklyVaultProgress and plan.characterName then
+    if WarbandNexus.GetWeeklyVaultProgress and IsPlanForLoggedInCharacter(plan) then
         local ok, vp = pcall(WarbandNexus.GetWeeklyVaultProgress, WarbandNexus, plan.characterName, plan.characterRealm)
         if ok and type(vp) == "table" then vaultProgress = vp end
     end

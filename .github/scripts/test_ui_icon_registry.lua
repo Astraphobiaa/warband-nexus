@@ -5,7 +5,8 @@
     - Every ns.UI_ICONS entry has a file; no entry lists Blizzard atlases.
     - Every Media path in the registry exists on disk as a TGA (case-exact: the Linux packager is case-sensitive).
     - Each shipped Icon-*.tga is a 64x64 32-bit TGA, as WoW needs power-of-two sizes.
-    - UI_SetIcon applies the file with a trilinear filter; mono keys follow the theme vertex, colored keys stay neutral.
+    - UI_SetIcon applies the file without a filter; every shipped key draws neutral (colored art),
+      the mono path still follows the theme vertex for a white-glyph entry (none ship today).
 
     Loads the shipped Modules/UI/IconRegistry.lua under wow_stub.lua.
 ]]
@@ -69,7 +70,7 @@ for i = 1, #keys do
     end
 end
 
-print("Phase 2: UI_SetIcon applies our file, theme tint for mono only")
+print("Phase 2: UI_SetIcon applies our file, neutral vertex; theme tint for mono only")
 ns.UI_GetMonochromeIconVertex = function(a) return { 0.1, 0.1, 0.1, a or 1 } end
 local function FakeTexture()
     local t = {}
@@ -86,7 +87,19 @@ assert_eq(ok and how, "file", "settings applied from file")
 assert_eq(tex.path, ns.UI_ICONS.settings.file, "settings uses its registry file")
 assert_eq(tex.filter, nil, "no TRILINEAR (crashes the client on loose TGAs)")
 assert_eq(tex.atlas, nil, "no atlas set")
-assert_eq(tex.vc and tex.vc[1], 0.1, "mono key follows the theme vertex")
+assert_eq(tex.vc and tex.vc[1] == 1 and tex.vc[2] == 1 and tex.vc[3] == 1, true, "settings (colored glyph) draws neutral")
+ns.UI_SetIcon(tex, "settings", { alpha = 0.6 })
+assert_eq(tex.vc and tex.vc[1] == 1 and tex.vc[4] == 0.6, true, "settings dims with alpha, not a tint")
+ns.UI_ICONS.__stub_mono = { file = ns.UI_ICONS.settings.file, mono = true }
+ns.UI_SetIcon(tex, "__stub_mono")
+assert_eq(tex.vc and tex.vc[1], 0.1, "mono entry follows the theme vertex")
+ns.UI_ICONS.__stub_mono = nil
+local monoKeys = {}
+for k, e in pairs(ns.UI_ICONS) do
+    if e.mono then monoKeys[#monoKeys + 1] = k end
+end
+table.sort(monoKeys)
+assert_eq(table.concat(monoKeys, ","), "", "no shipped entry is mono (every glyph is colored art)")
 ns.UI_SetIcon(tex, "favorite_on")
 assert_eq(tex.vc and tex.vc[1] == 1 and tex.vc[2] == 1 and tex.vc[3] == 1, true, "colored key keeps a neutral vertex")
 ns.UI_SetIcon(tex, "sort_up")

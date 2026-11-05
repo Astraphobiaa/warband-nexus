@@ -414,6 +414,10 @@ L["EMPTY_COLLECTIONS_PETS_TITLE"] = "暂无宠物"
 L["EMPTY_COLLECTIONS_PETS_DESC"] = "调整搜索或筛选，或等待宠物列表加载。\n若列表仍为空，请尝试 /reload。"
 L["EMPTY_COLLECTIONS_TOYS_TITLE"] = "暂无玩具"
 L["EMPTY_COLLECTIONS_TOYS_DESC"] = "调整搜索或筛选，或等待玩具箱加载。\n若列表仍为空，请尝试 /reload。"
+L["EMPTY_COLLECTIONS_ILLUSIONS_TITLE"] = "没有可显示的幻象"
+L["EMPTY_COLLECTIONS_ILLUSIONS_DESC"] = "调整搜索或筛选条件，或等待幻象列表加载完成。\n如果列表仍为空，请尝试 /reload。"
+L["EMPTY_COLLECTIONS_TITLES_TITLE"] = "没有可显示的头衔"
+L["EMPTY_COLLECTIONS_TITLES_DESC"] = "调整搜索或筛选条件，或等待头衔列表加载完成。\n如果列表仍为空，请尝试 /reload。"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE"] = "暂无成就"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC"] = "调整搜索或筛选，或等待成就列表加载。\n若列表仍为空，请尝试 /reload。"
 L["MAIL_TOOLTIP_NO_MAIL"] = "没有待收邮件。"
@@ -1201,20 +1205,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V380"] = [=[v3.8.0 (2026-11-01)
+L["CHANGELOG_V390"] = [=[v3.9.0 (2026-11-04)
 
-Collectible drops can now play a sound of your choice, and try counter attempts respect the difficulty a drop is limited to.
+Collections gains Illusions and Titles tabs, a faction filter and better 3D previews, and the weekly planner covers Season 2.
 
 Added:
-- A sound now plays when a mount, pet or toy you are tracking finally drops. Pick from eight new cues made for the addon, four of Blizzard's own, or any sound pack you already have installed, and set how loud it plays. Every option has a play button so you can hear it before you choose.
-- Try counter attempts now respect raid and dungeon difficulty. A drop that is limited to Mythic no longer counts an attempt when you kill that boss on Normal or Heroic.
+- New Illusions and Titles tabs in Collections, with a weapon preview for illusions and the achievement that awards each title.
+- Alliance and Horde filters for mounts, pets, toys and titles.
+- Season 2 weeklies in the To-Do weekly planner: Unity Against the Void, Vaults of Atal'Utek, Turn Back the Surge, Cursed Keepsake, the Midnight Prey, Dungeons, Raid, Ritual Sites and Offworld Showdowns weeklies, Hope in the Darkest Corners, Sparks of War: The Coiled Isle and the Aethas weekly rotation.
+- The Gear page has a new side card layout and a stats card that shows diminishing returns and updates live.
+- A new painted icon set across the addon: class crests, faction emblems, tabs, sources, Great Vault and more.
+
+Updated:
+- Mount, pet and illusion previews use Blizzard's own camera framing on a full black stage, without a rider. Right-click and drag to move the model.
+- Switching tabs is faster, with no duplicate repaints or per-paint hitches.
 
 Fixed:
-- Fixed a Lua error when destroying items with TradeSkillMaster, and anywhere else an addon or macro passes a bag and slot as text instead of numbers.
-- Fixed a second attempt being counted when you reloaded or logged back in and reopened a corpse you had already looted.
-- Fixed attempts being skipped for up to 45 seconds after obtaining a repeatable drop, so kills in that window count again.
-- Fixed battle pets showing a bare attempt count with no drop chance, while mounts showed their odds.
-- Fixed a secret value error while reading an open loot window.
+- The To-Do button in a collectible's details now adds and removes it and updates its icon right away.
+- Great Vault cards for offline characters no longer show the current character's progress.
+- Placeholder [PH] entries, wrong pet and toy source groups and wrong toy counts no longer appear in Collections. The Wowhead link popup stays on screen.
 
 CurseForge: Warband Nexus]=]
 
@@ -1996,6 +2005,8 @@ L["LOADING_COLLECTIONS"] = "正在加载收藏..."
 L["SYNC_COMPLETE"] = "已同步"
 L["FILTER_COLLECTED"] = "已收藏"
 L["FILTER_UNCOLLECTED"] = "未收藏"
+L["FILTER_FACTION_ALLIANCE"] = FACTION_ALLIANCE or "Alliance"
+L["FILTER_FACTION_HORDE"] = FACTION_HORDE or "Horde"
 L["FILTER_SHOW_OWNED"] = "已拥有"
 L["FILTER_SHOW_MISSING"] = "未拥有"
 
@@ -2154,7 +2165,13 @@ L["GEAR_TT_CRAFTED_NEXT_RECAST"] = "下次再造目标：%s（物品等级 %d）
 L["GEAR_TT_UPGRADE_FALLBACK_LEAD"] = "升级使用曙光纹章（数量见货币面板）。各等级示例："
 L["GEAR_LAYOUT_SCROLL_HINT"] = "窗口较窄：可横向滚动或拉宽窗口。"
 L["GEAR_CHARACTER_STATS"] = "角色属性"
-L["GEAR_STAT_VALUE_PCT_FORMAT"] = "%s (%s)"
+L["GEAR_STAT_DR_TAG"] = "DR"
+L["GEAR_STAT_DR_ACTIVE"] = "收益递减生效中"
+L["GEAR_STAT_DR_NONE"] = "尚无收益递减"
+L["GEAR_STAT_DR_EFFECTIVE"] = "等级效率：%.1f%%"
+L["GEAR_STAT_DR_NEXT"] = "接下来%d点等级：+%.2f%%"
+L["GEAR_STAT_DR_BASE"] = "前%d点等级：+%.2f%%"
+L["GEAR_STAT_DR_LEGEND"] = "收益递减阈值"
 L["GEAR_SLOT_CURRENCY_HAVE_NEED"] = "%d/%d"
 L["GEAR_TT_DISCOUNTED_UPGRADE"] = "纹章费用已折扣（高水位）"
 L["GEAR_NO_ITEM_EQUIPPED"] = "此栏位未装备物品。"

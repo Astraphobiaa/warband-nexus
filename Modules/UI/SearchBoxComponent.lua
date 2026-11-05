@@ -318,10 +318,11 @@ local COLLECTIONS_SEARCH_REFRESH_KEYS = {
 
 --- Hide FontStrings/textures tagged on scroll bodies (Professions hints, etc.) when switching tabs.
 function ns.UI_HideEphemeralScrollRegions(scrollFrame)
-    if not scrollFrame or not scrollFrame.GetNumRegions then return end
-    local n = scrollFrame:GetNumRegions()
-    for i = 1, n do
-        local r = select(i, scrollFrame:GetRegions())
+    if not scrollFrame or not scrollFrame.GetRegions then return end
+    -- Fetch the region list once: select(i, GetRegions()) per index is O(n^2) C work on every tab switch.
+    local regions = { scrollFrame:GetRegions() }
+    for i = 1, #regions do
+        local r = regions[i]
         if r and r._wnEphemeralScrollOverlay and r.Hide then
             r:Hide()
         end

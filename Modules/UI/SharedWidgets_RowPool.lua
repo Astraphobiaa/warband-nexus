@@ -122,6 +122,157 @@ end
 
 ns.UI_ApplyCharacterRowClassGradientAccent = ApplyCharacterRowClassGradientAccent
 
+-- CHARACTER ROW IDENTITY (name + realm + class gradient)
+-- One look on every roster row (Characters, PvE, PvP overview, Professions); the Characters tab is the
+-- reference: class-colored "subtitle" name, "small" realm in the Normal text role (hidden when
+-- profile.showCharacterRealmName is false), and the class tint ending at the measured name/realm block.
+local CHAR_ID_REF_ROW_H, CHAR_ID_NAME_TOP, CHAR_ID_REALM_TOP = 46, 8, 23
+local CHAR_ID_GRADIENT_PAD = 4
+
+local function CharacterIdentityShowsRealm()
+    local addon = ns.WarbandNexus
+    local p = addon and addon.db and addon.db.profile
+    return not p or p.showCharacterRealmName ~= false
+end
+
+local function CharacterIdentityRealmText(char)
+    local U = ns.Utilities
+    local realm = (U and U.FormatRealmName and U:FormatRealmName(char.realm)) or char.realm or ""
+    if issecretvalue and issecretvalue(realm) then return "" end
+    return realm
+end
+
+local function CharacterIdentityPresent(fs, text)
+    if ns.UI_ApplyFontStringPresentation then
+        ns.UI_ApplyFontStringPresentation(fs, text)
+    end
+end
+
+local function ApplyCharacterRowIdentityGradient(row)
+    local nameFs = row[row._wnIdNameField or "nameText"]
+    if not nameFs then return end
+    local realmFs = row[row._wnIdRealmField or "realmText"]
+    local textW = nameFs:GetStringWidth() or 0
+    if realmFs and realmFs:IsShown() then
+        textW = math.max(textW, realmFs:GetStringWidth() or 0)
+    end
+    local colW = row._wnIdNameColW or 100
+    local gradientEnd = (row._wnIdNameLeft or 0) + math.min(colW, textW + CHAR_ID_GRADIENT_PAD)
+    local rowW = row._wnRowPaintWidth
+    if not rowW or rowW < 2 then
+        rowW = row:GetWidth() or 0
+    end
+    if rowW >= 2 and gradientEnd > rowW - 2 then
+        gradientEnd = rowW - 2
+    end
+    ApplyCharacterRowClassGradientAccent(row, row._wnIdClassFile, gradientEnd)
+end
+
+--- Paint the shared identity block on a roster row and wire `row._wnGradientRefresh`.
+---@param row Frame row host (FontStrings are created on it)
+---@param char table character row data (name, realm, classFile)
+---@param nameLeft number x of the name column from the row's left edge
+---@param nameColW number name column width (text truncates, gradient caps here)
+---@param opts table|nil nameField / realmField: FontString keys on row (default nameText / realmText)
+---@return FontString nameFs, FontString realmFs
+function ns.UI_ApplyCharacterRowIdentity(row, char, nameLeft, nameColW, opts)
+    if not row or not char then return end
+    local nameKey = (opts and opts.nameField) or "nameText"
+    local realmKey = (opts and opts.realmField) or "realmText"
+
+    local nameFs = row[nameKey]
+    if not nameFs then
+        nameFs = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
+        nameFs:SetJustifyH("LEFT")
+        nameFs:SetWordWrap(false)
+        nameFs:SetNonSpaceWrap(false)
+        nameFs:SetMaxLines(1)
+        row[nameKey] = nameFs
+    end
+    local realmFs = row[realmKey]
+    if not realmFs then
+        realmFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+        realmFs:SetJustifyH("LEFT")
+        realmFs:SetWordWrap(false)
+        realmFs:SetNonSpaceWrap(false)
+        realmFs:SetMaxLines(1)
+        row[realmKey] = realmFs
+    end
+    nameFs:SetWidth(nameColW)
+    realmFs:SetWidth(nameColW)
+
+    -- Forever character names carry a surname ("Elementalist Vhorzen"); char.name holds only the
+    -- first word, so the display name is the one place both halves are joined. Retail has no
+    -- surname and gets char.name back unchanged.
+    local U = ns.Utilities
+    local nm = (U and U.GetCharacterDisplayName and U:GetCharacterDisplayName(char)) or char.name
+    if not nm or (issecretvalue and issecretvalue(nm)) then
+        nm = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+    end
+    local cc = (char.classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[char.classFile]) or { r = 1, g = 1, b = 1 }
+    local nameMarkup = string.format("|cff%02x%02x%02x%s|r", cc.r * 255, cc.g * 255, cc.b * 255, nm)
+    nameFs:SetText(nameMarkup)
+    CharacterIdentityPresent(nameFs, nameMarkup)
+
+    -- Same offsets as the 46px Characters row, centered on taller / shorter rows.
+    local rowH = row:GetHeight()
+    if not rowH or rowH < 2 then rowH = CHAR_ID_REF_ROW_H end
+    local shift = (rowH - CHAR_ID_REF_ROW_H) / 2
+    nameFs:ClearAllPoints()
+    realmFs:ClearAllPoints()
+    if CharacterIdentityShowsRealm() then
+        nameFs:SetPoint("TOPLEFT", row, "TOPLEFT", nameLeft, -(CHAR_ID_NAME_TOP + shift))
+        realmFs:SetPoint("TOPLEFT", row, "TOPLEFT", nameLeft, -(CHAR_ID_REALM_TOP + shift))
+        local realm = CharacterIdentityRealmText(char)
+        ns.UI_SetTextColorRole(realmFs, "Normal")
+        realmFs:SetText(realm)
+        CharacterIdentityPresent(realmFs, realm)
+        realmFs:Show()
+    else
+        -- Without the realm subline the name centers vertically; empty text keeps the gradient on the name.
+        nameFs:SetPoint("LEFT", row, "LEFT", nameLeft, 0)
+        realmFs:SetText("")
+        realmFs:Hide()
+    end
+    nameFs:Show()
+
+    -- Gradient inputs live on the row; one thunk per row frame (refreshed on resize / theme).
+    row._wnIdNameField = nameKey
+    row._wnIdRealmField = realmKey
+    row._wnIdNameLeft = nameLeft
+    row._wnIdNameColW = nameColW
+    row._wnIdClassFile = char.classFile
+    if not row._wnIdGradientThunk then
+        row._wnIdGradientThunk = function() ApplyCharacterRowIdentityGradient(row) end
+    end
+    row._wnGradientRefresh = row._wnIdGradientThunk
+    ApplyCharacterRowIdentityGradient(row)
+    return nameFs, realmFs
+end
+
+--- Rendered width of a roster identity block (name in "subtitle", realm in "small" when shown); size name
+--- columns with this so they match ns.UI_ApplyCharacterRowIdentity.
+local _charIdMeasureName, _charIdMeasureRealm
+function ns.UI_MeasureCharacterIdentityWidth(nameStr, realmStr)
+    if not _charIdMeasureName then
+        _charIdMeasureName = FontManager:CreateFontString(UIParent, "subtitle", "OVERLAY")
+        _charIdMeasureName:Hide()
+        _charIdMeasureRealm = FontManager:CreateFontString(UIParent, "small", "OVERLAY")
+        _charIdMeasureRealm:Hide()
+    end
+    if not nameStr or (issecretvalue and issecretvalue(nameStr)) then
+        nameStr = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+    end
+    _charIdMeasureName:SetText(nameStr)
+    local w = _charIdMeasureName:GetStringWidth() or 0
+    if issecretvalue and issecretvalue(realmStr) then realmStr = nil end
+    if CharacterIdentityShowsRealm() and realmStr and realmStr ~= "" then
+        _charIdMeasureRealm:SetText(realmStr)
+        w = math.max(w, _charIdMeasureRealm:GetStringWidth() or 0)
+    end
+    return w
+end
+
 -- STRETCH ROW VIEWPORT RELAYOUT (shared across tabs)
 -- Tabs register row lists on scrollChild; LayoutCoordinator live resize calls tab adapters
 -- that delegate here. Characters virtual lists use VirtualListModule instead.
@@ -917,7 +1068,6 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
         ns.UI_ApplyWnActionIcon(todoTex, "todo", onTodo, todoDisabled)
     else
         ns.UI_SetWnIconTexture(todoTex, "todo", {
-            desaturate = todoDisabled,
             vertexColor = ns.UI_WnIconVertexForKey("todo", onTodo, todoDisabled),
         })
     end
@@ -949,7 +1099,6 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
             ns.UI_ApplyWnActionIcon(trackTex, "track", onTrack, trackDisabled)
         else
             ns.UI_SetWnIconTexture(trackTex, "track", {
-                desaturate = trackDisabled,
                 vertexColor = ns.UI_WnIconVertexForKey("track", onTrack, trackDisabled),
             })
         end

@@ -292,11 +292,13 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
     btn.tabIcon = tabIcon
     local iconKey = M.PanelIconKey(panelId)
     local usedWnIcon = false
-    if panelId == "about" and ns.UI_SetWnIconTexture then
-        usedWnIcon = ns.UI_SetWnIconTexture(tabIcon, "credits", { 0.88, 0.88, 0.92, 1 })
+    if panelId == "about" and ns.UI_SetIcon and ns.UI_SetIcon(tabIcon, "credits") then
+        -- _wnRegistryIcon tells UI_ApplyNavTabIconStyle which registry entry this is
+        usedWnIcon = true
+        tabIcon._wnRegistryIcon = "credits"
     end
     if not usedWnIcon and ns.UI_SetIcon then
-        -- registry key; _wnRegistryIcon lets UI_ApplyNavTabIconStyle tint the mono glyph per theme
+        -- registry key; _wnRegistryIcon tells UI_ApplyNavTabIconStyle which entry this is
         tabIcon._wnRegistryIcon = ns.UI_SetIcon(tabIcon, iconKey) and iconKey or nil
     end
     tabIcon._wnNavPackagedIcon = usedWnIcon or nil

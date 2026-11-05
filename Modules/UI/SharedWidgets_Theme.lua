@@ -507,9 +507,10 @@ end
 ns.UI_GetNavTabInactiveBackdrop = ThemeAPI.GetNavTabInactiveBackdrop
 
 --- Muted nav icon vertex for idle flat-rail buttons (dark mode only; light uses full-color atlas).
+--- Neutral RGB: icons are colored art, so idle dims with alpha only (a tint would muddy them).
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetNavRailIconIdleVertex()
-    return 0.72, 0.74, 0.78, 1
+    return 1, 1, 1, 0.74
 end
 ns.UI_GetNavRailIconIdleVertex = ThemeAPI.GetNavRailIconIdleVertex
 
@@ -517,9 +518,9 @@ ns.UI_GetNavRailIconIdleVertex = ThemeAPI.GetNavRailIconIdleVertex
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetNavTabIconMutedVertex()
     if IsLightModeEnabled() then
-        return 0.44, 0.44, 0.48, 1
+        return 1, 1, 1, 0.45
     end
-    return 0.66, 0.68, 0.72, 0.92
+    return 1, 1, 1, 0.63
 end
 ns.UI_GetNavTabIconMutedVertex = ThemeAPI.GetNavTabIconMutedVertex
 
@@ -547,7 +548,7 @@ function ns.UI_ApplyNavTabIconStyle(tex, isActive, opts)
         tex:SetDesaturated(false)
     end
     if IsLightModeEnabled() then
-        -- addon registry glyphs are white mono art: they need the dark theme glyph color on light panels
+        -- a mono registry glyph (white art; none ship today) needs the dark theme glyph color on light panels
         local entry = tex._wnRegistryIcon and ns.UI_ICONS and ns.UI_ICONS[tex._wnRegistryIcon]
         local m = entry and entry.mono and ns.UI_GetMonochromeIconVertex and ns.UI_GetMonochromeIconVertex(1)
         if m then
@@ -568,7 +569,7 @@ function ns.UI_ApplyNavTabIconStyle(tex, isActive, opts)
     tex:SetVertexColor(r, g, b, a)
 end
 
---- Header utility glyphs (Discord, donate, reload, tracking) — full color; subtle idle tint in dark only.
+--- Header utility glyphs (Discord, donate, reload, tracking) — full color; dark idle dims slightly with alpha.
 ---@param tex Texture|nil
 ---@param isHover boolean|nil
 function ns.UI_ApplyHeaderUtilityIconStyle(tex, isHover)
@@ -582,7 +583,7 @@ function ns.UI_ApplyHeaderUtilityIconStyle(tex, isHover)
     if isHover or IsLightModeEnabled() then
         tex:SetVertexColor(1, 1, 1, 1)
     else
-        tex:SetVertexColor(0.88, 0.92, 1, 1)
+        tex:SetVertexColor(1, 1, 1, 0.85)
     end
 end
 

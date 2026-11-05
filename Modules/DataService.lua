@@ -3035,21 +3035,22 @@ function WarbandNexus:GetWarbandBankItems(groupByCategory)
         end
     end
     
-    -- Sort by quality (highest first), then name
+    -- Sort by quality (highest first), then name. Names resolve once per item, not per comparison
+    -- (the hyperlink fallback is a string match).
+    local sortName = {}
+    for i = 1, #items do
+        local it = items[i]
+        local nm = it.name
+        if not nm and it.link and type(it.link) == "string" and not (issecretvalue and issecretvalue(it.link)) then
+            nm = it.link:match("%[(.-)%]")
+        end
+        sortName[it] = nm or ""
+    end
     table.sort(items, function(a, b)
         if (a.quality or 0) ~= (b.quality or 0) then
             return (a.quality or 0) > (b.quality or 0)
         end
-        -- Extract name for sorting (handle missing names)
-        local aName = a.name
-        if not aName and a.link and type(a.link) == "string" and not (issecretvalue and issecretvalue(a.link)) then
-            aName = a.link:match("%[(.-)%]")
-        end
-        local bName = b.name
-        if not bName and b.link and type(b.link) == "string" and not (issecretvalue and issecretvalue(b.link)) then
-            bName = b.link:match("%[(.-)%]")
-        end
-        return (aName or "") < (bName or "")
+        return sortName[a] < sortName[b]
     end)
     
     if groupByCategory then

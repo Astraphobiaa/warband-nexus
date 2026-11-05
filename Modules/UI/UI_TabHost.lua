@@ -56,6 +56,12 @@ local _uiRegionEnumScratch = B._uiRegionEnumScratch
 local TAB_DRAW_PERF_TRACE = B.TAB_DRAW_PERF_TRACE
 local WarbandNexus = ns.WarbandNexus
 
+-- Tabs that need a tracked character; untracked ones show the tracking banner instead.
+local TRACKED_ONLY_TABS = {
+    items = true, pve = true, pvp = true, reputations = true,
+    currency = true, professions = true, gear = true, collections = true,
+    plans = true, stats = true,
+}
 
 local function PopulateContentBody(self, forceRepaint)
     local mainFrame = S.getMainFrame()
@@ -166,7 +172,10 @@ local function PopulateContentBody(self, forceRepaint)
         _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_gearSigCompute")
         sigNow = WarbandNexus:GetGearPopulateSignature()
         _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_gearSigCompute")
-        if sigNow and mainFrame._gearPopulateContentSig and sigNow == mainFrame._gearPopulateContentSig then
+        -- The signature covers equipment, crest amounts and upgrade state but not live stats: the skip still
+        -- repaints the stats / currencies card in place, and takes the full paint when its rows changed.
+        if sigNow and mainFrame._gearPopulateContentSig and sigNow == mainFrame._gearPopulateContentSig
+            and (not ns.GearUI_RefreshGearSideCard or ns.GearUI_RefreshGearSideCard(mainFrame)) then
             _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_gearSigSkip")
             self:UpdateStatus()
             scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))
@@ -186,6 +195,12 @@ local function PopulateContentBody(self, forceRepaint)
     end
 
     mainFrame._prevPopulatedTab = mainFrame.currentTab
+
+    -- Full paint starts here: every populate request queued so far is satisfied by it (UI_MainShell debounce).
+    local shellSt = mainFrame._shellRefreshState
+    if shellSt and shellSt.scheduleSeq then
+        shellSt.populatedThroughSeq = shellSt.scheduleSeq
+    end
 
     -- GearUI FinishGearOpenTrace emits one summary line (verbose phases gated in GearUI).
 
@@ -209,8 +224,13 @@ local function PopulateContentBody(self, forceRepaint)
             _uiChildEnumScratch[i]:SetParent(recycleBin)
         end
         local nrg = PackVariadicInto(_uiRegionEnumScratch, fixedHeader:GetRegions())
+        local headerFill = fixedHeader._wnHeaderCanvasFill
         for i = 1, nrg do
-            _uiRegionEnumScratch[i]:Hide()
+            local region = _uiRegionEnumScratch[i]
+            -- Shell-owned header canvas stays up across tabs (UI_MainShell / RefreshMainShellChrome).
+            if region ~= headerFill then
+                region:Hide()
+            end
         end
         fixedHeader:SetHeight(1)
     end
@@ -317,11 +337,7 @@ local function PopulateContentBody(self, forceRepaint)
     -- Draw based on current tab
     local height
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
-    local trackedOnlyTabs = {
-        items = true, pve = true, pvp = true, reputations = true,
-        currency = true, professions = true, gear = true, collections = true,
-        plans = true, stats = true,
-    }
+    local trackedOnlyTabs = TRACKED_ONLY_TABS
 
     -- Dev-only: wall time for scroll-heavy mains (WN-PERF checklist). Complements tab-switch clickâ†’populate log + `Pop_drawTab`.
     local drawPerfT0 = (isTracked and IsTabPerfMonitorEnabled() and TAB_DRAW_PERF_TRACE[tab]) and GetTime() or nil

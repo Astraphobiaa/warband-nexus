@@ -15,6 +15,21 @@ local Constants = M.Constants
 local Utilities = M.Utilities
 local issecretvalue = M.issecretvalue
 local SafeLower = M.SafeLower
+
+-- Sort category item lists by lowered name. Each name is lowered once per sort: big categories (thousands
+-- of mounts) lowered both names on every comparison, in the build's final, single-frame chunk.
+local _sortLowerScratch = {}
+local function CompareByLowerScratch(a, b)
+    return _sortLowerScratch[a] < _sortLowerScratch[b]
+end
+local function SortItemsByLowerName(items)
+    for i = 1, #items do
+        local it = items[i]
+        _sortLowerScratch[it] = SafeLower(it.name) or ""
+    end
+    table.sort(items, CompareByLowerScratch)
+    wipe(_sortLowerScratch)
+end
 local CreateCard = M.CreateCard
 local CreateEmptyStateCard = M.CreateEmptyStateCard
 local HideEmptyStateCard = M.HideEmptyStateCard
@@ -71,9 +86,20 @@ local ipairs = ipairs
 local pairs = pairs
 local tinsert = table.insert
 
+--- Alliance / Horde filter (Mounts, Pets, Toys, Titles): only faction-only entries can be hidden.
+function M.IsHiddenByFactionFilter(kind, id)
+    local st = M.state
+    if not st or (st.showAlliance ~= false and st.showHorde ~= false) then return false end
+    local fk = WarbandNexus.GetCollectibleFactionKey and WarbandNexus:GetCollectibleFactionKey(kind, id)
+    return (fk == "alliance" and st.showAlliance == false) or (fk == "horde" and st.showHorde == false)
+end
+
 local function ShouldSkipMountBrowse(mountID)
-    return mountID and WarbandNexus.ShouldExcludeMountFromCollectionBrowse
-        and WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)
+    if not mountID then return false end
+    if WarbandNexus.ShouldExcludeMountFromCollectionBrowse and WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID) then
+        return true
+    end
+    return M.IsHiddenByFactionFilter("mount", mountID)
 end
 
 local function ResolveMountSourceTypeForBrowse(mountID, stored)
@@ -119,6 +145,10 @@ local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.04
 local MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y = 14
 -- Mount Journal preview is ~square; Collections detail column is often wider — aspect-aware framing compensates.
 local MODEL_JOURNAL_REFERENCE_ASPECT = 1.05
+-- Aspect of the Blizzard frames the scene cameras are authored for (live FrameXML, 2026-11-04):
+-- MountJournal.MountDisplay ~407x514 (Blizzard_MountCollection.xml RightInset minus 3px), PetJournalPetCard.modelScene 130x96.
+local MOUNT_JOURNAL_SCENE_ASPECT = 407 / 514
+local PET_JOURNAL_SCENE_ASPECT = 130 / 96
 -- Large bounding radius (tall pillar mounts): do not shrink below this scale or the model becomes a dot.
 local TALL_MODEL_RADIUS_THRESHOLD = 1.08
 local TALL_MODEL_RADIUS_REFERENCE = 1.08
@@ -170,23 +200,23 @@ function M.ComputeModelViewerAspectFraming(viewportW, viewportH)
     return distanceMul, translateY
 end
 
+--- Right-drag pans the model (same as Blizzard's PanningModelSceneMixin / ModelPreviewFrame, live SharedXML
+--- 2026-11-04). The active OrbitCamera is recreated on every TransitionToModelSceneID, so call after each one.
+function M.EnableJournalScenePanning(scene)
+    local cam = scene and scene.GetActiveCamera and scene:GetActiveCamera()
+    if not cam or not cam.SetRightMouseButtonXMode or not cam.SetRightMouseButtonYMode then return end
+    local panX, panY = _G.ORBIT_CAMERA_MOUSE_PAN_HORIZONTAL, _G.ORBIT_CAMERA_MOUSE_PAN_VERTICAL
+    if not panX or not panY then return end
+    cam:SetRightMouseButtonXMode(panX, true)
+    cam:SetRightMouseButtonYMode(panY, true)
+end
+
 function M.ApplyJournalModelSceneZoom(scene, zoomMultiplier, viewportFrame)
     if not scene then return end
-    local vw, vh = nil, nil
-    if viewportFrame and viewportFrame.GetWidth then
-        vw, vh = viewportFrame:GetWidth(), viewportFrame:GetHeight()
-    end
-    local aspectMul, translateY = M.ComputeModelViewerAspectFraming(vw, vh)
-    local mul = MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT * (zoomMultiplier or 1.0) * aspectMul
-    if scene.SetCameraDistanceScale then
-        pcall(scene.SetCameraDistanceScale, scene, mul)
-    end
-    if scene.SetCamDistanceScale then
-        pcall(scene.SetCamDistanceScale, scene, mul)
-    end
-    if scene.SetViewTranslation then
-        pcall(scene.SetViewTranslation, scene, 0, translateY)
-    end
+    -- The viewport now has the Blizzard frame's aspect (UpdateModelFrameSize): keep the authored camera exactly as
+    -- Blizzard's journal shows it -- no distance scaling, no translation (user report 2026-11-04: every override
+    -- shifted models differently). Wheel zoom / drag rotate stay on the scene's own OrbitCamera.
+    if scene.SetViewTranslation then pcall(scene.SetViewTranslation, scene, 0, 0) end
 end
 
 --- Same pipeline as MountJournal_UpdateMountDisplay (ModelScene path). Returns true if scene was updated.
@@ -228,6 +258,7 @@ function M.ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDF
     local disc = _G.CAMERA_MODIFICATION_TYPE_DISCARD
     if forceSceneChange and type(modelSceneID) == "number" and modelSceneID > 0 and trans and disc and scene.TransitionToModelSceneID then
         pcall(scene.TransitionToModelSceneID, scene, modelSceneID, trans, disc, true)
+        M.EnableJournalScenePanning(scene)
     end
 
     if scene.PrepareForFanfare then
@@ -273,15 +304,9 @@ function M.ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDF
         end
     end
 
-    local showPlayer = false
-    if GetCVarBool then
-        local okCv, cv = pcall(GetCVarBool, "mountJournalShowPlayer")
-        if okCv then showPlayer = cv end
-    end
-    local disablePreview = disablePlayerMountPreview
-    if not disablePreview and not showPlayer then
-        disablePreview = true
-    end
+    -- Mount alone, never the player on it (user decision 2026-11-04; ignores the journal's mountJournalShowPlayer CVar).
+    -- AttachPlayerToMount with disablePreview clears the scene's rider actor (SharedXML ModelSceneMixin).
+    local disablePreview = true
 
     local useNativeForm = false
     if PlayerUtil and PlayerUtil.ShouldUseNativeFormInModelScene then
@@ -293,6 +318,52 @@ function M.ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDF
         pcall(scene.AttachPlayerToMount, scene, mountActor, animID, isSelfMount, disablePreview, spellVisualKitID, useNativeForm)
     end
 
+    scene:Show()
+    return true
+end
+
+--- Same pipeline as the PetJournal card (live FrameXML Blizzard_PetCollection.lua:1378, verified 2026-11-04): card model scene
+--- from C_PetJournal.GetPetModelSceneInfoBySpeciesID, "unwrapped" actor. Returns true if the scene was updated.
+function M.ApplyPetJournalModelSceneDisplay(scene, speciesID, creatureDisplayID)
+    if not scene or not speciesID or type(creatureDisplayID) ~= "number" or creatureDisplayID <= 0 then
+        return false
+    end
+    if not C_PetJournal or not C_PetJournal.GetPetModelSceneInfoBySpeciesID or not scene.TransitionToModelSceneID then
+        return false
+    end
+    local okInfo, cardSceneID = pcall(C_PetJournal.GetPetModelSceneInfoBySpeciesID, speciesID)
+    if not okInfo or (issecretvalue and issecretvalue(cardSceneID)) then return false end
+    if type(cardSceneID) ~= "number" or cardSceneID <= 0 then return false end
+    local trans = _G.CAMERA_TRANSITION_TYPE_IMMEDIATE
+    local disc = _G.CAMERA_MODIFICATION_TYPE_DISCARD
+    if not trans or not disc then return false end
+    pcall(scene.TransitionToModelSceneID, scene, cardSceneID, trans, disc, true)
+    M.EnableJournalScenePanning(scene)
+    if scene.PrepareForFanfare then
+        pcall(scene.PrepareForFanfare, scene, false)
+    end
+    local petActor = scene.GetActorByTag and scene:GetActorByTag("unwrapped")
+    if not petActor or not petActor.SetModelByCreatureDisplayID then
+        return false
+    end
+    petActor:Hide()
+    if petActor.SetOnModelLoadedCallback then
+        petActor:SetOnModelLoadedCallback(function()
+            petActor:Show()
+        end)
+    else
+        petActor:Show()
+    end
+    if not pcall(petActor.SetModelByCreatureDisplayID, petActor, creatureDisplayID, true) then
+        return false
+    end
+    local blend = Enum and Enum.ModelBlendOperation
+    if blend and petActor.SetAnimationBlendOperation then
+        pcall(petActor.SetAnimationBlendOperation, petActor, blend.None)
+    end
+    if petActor.SetAnimation then
+        pcall(petActor.SetAnimation, petActor, 0, -1)
+    end
     scene:Show()
     return true
 end
@@ -380,7 +451,20 @@ function M.SafeGetPetInfoExtra(speciesID)
 end
 
 --- Collections detail header: Plan (todo) icon — yellow when on To-Do, white when idle, grey when collected (list row parity).
-function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClick)
+--- True when db.global.plans holds a plan matching planMatch ({ type, field, id }).
+function M.IsCollectionsPlanMatched(planMatch)
+    local plans = planMatch and WarbandNexus and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.plans
+    if not plans then return false end
+    for i = 1, #plans do
+        local p = plans[i]
+        if p and p.type == planMatch.type and p[planMatch.field] == planMatch.id then return true end
+    end
+    return false
+end
+
+---@param planMatch table|nil { type, field, id } -- identifies this entry's plan row; enables remove-on-click
+---  and repaints the button right after add/remove (the detail header has no WN_PLANS_UPDATED listener).
+function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClick, planMatch)
     if not addBtn then return end
     local Factory = ns.UI and ns.UI.Factory
     if Factory and Factory.ApplyIconOnlyButtonChrome then
@@ -397,7 +481,6 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
             ns.UI_ApplyWnActionIcon(iconTex, "todo", onTodo, disabled)
         elseif ns.UI_SetWnIconTexture then
             ns.UI_SetWnIconTexture(iconTex, "todo", {
-                desaturate = disabled,
                 vertexColor = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("todo", onTodo, disabled)
                     or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 }),
             })
@@ -420,9 +503,12 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
             GameTooltip:AddLine(bodyText, 1, 1, 1, true)
         end
     end
+    local function Repaint(nowPlanned)
+        ns.UI_SafeHideGameTooltip()
+        M.RefreshCollectionsDetailPlanButton(addBtn, collected, nowPlanned, onClick, planMatch)
+    end
     if onTodo then
         addBtn:EnableMouse(true)
-        addBtn:RegisterForClicks()
         local body = (L and L["COLLECTIONS_DETAIL_TT_ON_TODO"]) or "Left-click to remove from your To-Do list."
         addBtn:SetScript("OnEnter", function(self)
             if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_LEFT") then
@@ -432,12 +518,33 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
             end
         end)
         addBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
-        addBtn:SetScript("OnClick", nil)
+        -- The tooltip promised "click to remove" but no click was registered (2026-11-04).
+        if planMatch and M.RemoveFirstMatchingPlan then
+            addBtn:RegisterForClicks("LeftButtonUp")
+            addBtn:SetScript("OnClick", function(_, button)
+                if button ~= "LeftButton" then return end
+                M.RemoveFirstMatchingPlan(function(p)
+                    return p.type == planMatch.type and p[planMatch.field] == planMatch.id
+                end)
+                Repaint(M.IsCollectionsPlanMatched(planMatch))
+            end)
+        else
+            addBtn:RegisterForClicks()
+            addBtn:SetScript("OnClick", nil)
+        end
     elseif disabled then
-        addBtn:EnableMouse(false)
+        -- Collected entries cannot be planned: say so instead of a silent button.
+        addBtn:EnableMouse(true)
         addBtn:RegisterForClicks()
-        addBtn:SetScript("OnEnter", nil)
-        addBtn:SetScript("OnLeave", nil)
+        local body = (L and L["TRYCOUNTER_PROBE_STATUS_COLLECTED"]) or "Already collected"
+        addBtn:SetScript("OnEnter", function(self)
+            if ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_LEFT") then
+                GameTooltip:ClearLines()
+                ShowThemedGameTooltip(todoTitle, body)
+                GameTooltip:Show()
+            end
+        end)
+        addBtn:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
         addBtn:SetScript("OnClick", nil)
     else
         local body = (L and L["COLLECTIONS_DETAIL_TT_ADD_TODO"]) or "Left-click to add to your To-Do list."
@@ -453,7 +560,9 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
         addBtn:RegisterForClicks("LeftButtonUp")
         if onClick then
             addBtn:SetScript("OnClick", function(_, button)
-                if button == "LeftButton" then onClick() end
+                if button ~= "LeftButton" then return end
+                onClick()
+                if planMatch then Repaint(M.IsCollectionsPlanMatched(planMatch)) end
             end)
         else
             addBtn:SetScript("OnClick", nil)
@@ -507,6 +616,10 @@ function M.CreateModelViewer(parent, width, height)
         modelViewportSlot = CreateFrame("Frame", nil, panel)
     end
     modelViewportSlot:SetFrameLevel(panel:GetFrameLevel() + 1)
+    -- Slot carries the viewport surface too, so the bands around the aspect-locked model read as one stage.
+    if ns.UI_ApplyBorderlessSurface then
+        ns.UI_ApplyBorderlessSurface(modelViewportSlot, M.ResolveCollectionsSurface("viewport"))
+    end
     panel.modelViewportSlot = modelViewportSlot
 
     -- Model stage: plain Frame with SetClipsChildren (ScriptRegion child tree); PlayerModel draws past bounds — clip here.
@@ -558,10 +671,15 @@ function M.CreateModelViewer(parent, width, height)
         scene:SetFrameLevel(model:GetFrameLevel() + 2)
         if scene.SetResetCallback then
             scene:SetResetCallback(function()
-                if panel._lastMountID and panel._mountDisplayUsesJournalScene and panel._journalMountScene then
+                if not panel._mountDisplayUsesJournalScene or not panel._journalMountScene then return end
+                if panel._lastMountID then
                     M.ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
-                    M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
+                elseif panel._lastPetID then
+                    M.ApplyPetJournalModelSceneDisplay(panel._journalMountScene, panel._lastPetID, panel._lastCreatureDisplayID)
+                else
+                    return
                 end
+                M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
             end)
         end
         if scene.ControlFrame and scene.ControlFrame.SetModelScene then
@@ -593,7 +711,11 @@ function M.CreateModelViewer(parent, width, height)
         local slot = panel.modelViewportSlot
         if not slot then return end
         slot:ClearAllPoints()
-        if panel.descText and panel.descText:IsShown() then
+        if panel._mountDisplayUsesJournalScene then
+            -- Full-bleed stage: the model fills the whole detail panel and the name / source / description
+            -- text sits on top of it (textOverlay is +10 levels), top-left (user request 2026-11-04).
+            slot:SetAllPoints(panel)
+        elseif panel.descText and panel.descText:IsShown() then
             slot:SetPoint("TOPLEFT", panel.descText, "BOTTOMLEFT", 0, -MODEL_VIEWPORT_TOP_GAP)
             slot:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
         else
@@ -604,8 +726,23 @@ function M.CreateModelViewer(parent, width, height)
         local sh = slot:GetHeight()
         if not sw or sw < 1 then sw = math.max(1, w - 2 * CONTENT_INSET) end
         if not sh or sh < 2 then sh = math.max(2, h * (1 - MODEL_FALLBACK_TOP_RATIO)) end
-        -- Mount: use the full slot height for the model (Blizzard Mount Journal; the 0.62 ceiling created big top/bottom black bands).
-        local isMountView = panel._lastMountID and (not panel._lastPetID)
+        if panel._mountDisplayUsesJournalScene then
+            -- Blizzard-scene path: the per-mount / per-species cameras are authored for the Blizzard frame they ship in,
+            -- so give the scene that frame's aspect (largest such box, centred) and leave the camera alone. A wide
+            -- viewport made every model sit at a different offset and zoom (2026-11-04).
+            local aspect = panel._lastPetID and PET_JOURNAL_SCENE_ASPECT or MOUNT_JOURNAL_SCENE_ASPECT
+            local vw, vh = sw, sw / aspect
+            if vh > sh then vh = sh; vw = sh * aspect end
+            local padX = math.max(0, (sw - vw) * 0.5)
+            local padY = math.max(0, (sh - vh) * 0.5)
+            modelViewport:ClearAllPoints()
+            modelViewport:SetPoint("TOPLEFT", slot, "TOPLEFT", padX, -padY)
+            modelViewport:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -padX, padY)
+            ApplyModelToViewportInsets()
+            return
+        end
+        -- Mount / journal-scene pet: use the full slot height (Blizzard journal framing; the 0.62 ceiling created big top/bottom black bands).
+        local isMountView = (panel._lastMountID and (not panel._lastPetID)) or panel._mountDisplayUsesJournalScene
         local maxH = sw * MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH
         local vh = isMountView and sh or math.min(sh, maxH)
         local totalVPad = math.max(0, sh - vh)
@@ -966,8 +1103,12 @@ function M.CreateModelViewer(parent, width, height)
     panel.model = model
 
     panel:SetScript("OnShow", function()
-        if panel._mountDisplayUsesJournalScene and panel._lastMountID and panel._journalMountScene then
-            M.ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
+        if panel._mountDisplayUsesJournalScene and panel._journalMountScene and (panel._lastMountID or panel._lastPetID) then
+            if panel._lastMountID then
+                M.ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
+            else
+                M.ApplyPetJournalModelSceneDisplay(panel._journalMountScene, panel._lastPetID, panel._lastCreatureDisplayID)
+            end
             M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
             return
         end
@@ -1006,6 +1147,7 @@ function M.CreateModelViewer(parent, width, height)
             ShowPlayerModelPath(true)
             model:ClearModel()
             panel._lastMountID = nil
+            panel._lastPetID = nil
             panel._lastCreatureDisplayID = nil
             panel._useSetMountForRestore = false
             panel._mountUiModelSceneID = nil
@@ -1013,6 +1155,8 @@ function M.CreateModelViewer(parent, width, height)
             scheduleModelViewerLayout()
             return
         end
+        -- The viewer is shared by the Mounts and Pets sub-tabs: never carry the previous pet into a mount paint.
+        panel._lastPetID = nil
         local extraDisplayID, _, _, uiScene = M.SafeGetMountInfoExtra(mountID)
         panel._mountUiModelSceneID = uiScene
         panel._usesJournalCamera = false
@@ -1111,6 +1255,7 @@ function M.CreateModelViewer(parent, width, height)
             ShowPlayerModelPath(true)
             model:ClearModel()
             panel._lastPetID = nil
+            panel._lastMountID = nil
             panel._lastCreatureDisplayID = nil
             panel._useSetMountForRestore = false
             panel._mountUiModelSceneID = nil
@@ -1118,20 +1263,37 @@ function M.CreateModelViewer(parent, width, height)
             scheduleModelViewerLayout()
             return
         end
+        -- The viewer is shared by the Mounts and Pets sub-tabs: drop mount state before anything can return early,
+        -- or OnShow / layout would restore the previous mount on the Pets tab.
+        panel._lastMountID = nil
+        panel._useSetMountForRestore = false
+        panel._mountUiModelSceneID = nil
+        panel._usesJournalCamera = false
+        local creatureDisplayID = creatureDisplayIDFromCache
+        if not creatureDisplayID or creatureDisplayID <= 0 then
+            creatureDisplayID = select(1, M.SafeGetPetInfoExtra(speciesID))
+        end
+
+        local journalScene = (creatureDisplayID and creatureDisplayID > 0) and TryInitJournalMountModelScene() or nil
+        if journalScene and M.ApplyPetJournalModelSceneDisplay(journalScene, speciesID, creatureDisplayID) then
+            panel._lastPetID = speciesID
+            panel._lastCreatureDisplayID = creatureDisplayID
+            panel._mountDisplayUsesJournalScene = true
+            panel.zoomMultiplier = 1.0
+            panel.normalizedRadius = false
+            M.ApplyJournalModelSceneZoom(journalScene, panel.zoomMultiplier, modelViewport)
+            model:ClearModel()
+            ShowPlayerModelPath(false)
+            scheduleModelViewerLayout()
+            return
+        end
+
         if panel._journalMountScene then
             panel._journalMountScene:Hide()
         end
         panel._mountDisplayUsesJournalScene = false
         ShowPlayerModelPath(true)
-        local creatureDisplayID = creatureDisplayIDFromCache
-        if not creatureDisplayID or creatureDisplayID <= 0 then
-            creatureDisplayID = select(1, M.SafeGetPetInfoExtra(speciesID))
-        end
         if creatureDisplayID and creatureDisplayID > 0 then
-            panel._useSetMountForRestore = false
-            panel._mountUiModelSceneID = nil
-            panel._usesJournalCamera = false
-            panel._lastMountID = nil
             model:ClearModel()
             model:SetDisplayInfo(creatureDisplayID)
             panel._lastPetID = speciesID
@@ -1198,7 +1360,7 @@ function M.CreateModelViewer(parent, width, height)
                         source = sourceTextRaw or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
                     })
                 end
-            end)
+            end, { type = "mount", field = "mountID", id = mountID })
         end
         if panel.detailIconTexture then
             panel.detailIconTexture:SetTexture(icon or DEFAULT_ICON_MOUNT)
@@ -1395,7 +1557,7 @@ function M.CreateModelViewer(parent, width, height)
                         source = sourceTextRaw or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
                     })
                 end
-            end)
+            end, { type = "pet", field = "speciesID", id = speciesID })
         end
         if panel.detailIconTexture then
             panel.detailIconTexture:SetTexture(icon or DEFAULT_ICON_PET)
@@ -1919,7 +2081,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
                     source = achievement.source,
                     rewardText = rewardText,
                 })
-            end)
+            end, achievement.id and { type = "achievement", field = "achievementID", id = achievement.id } or nil)
         end
 
         panel._achDetailTrackBtn = trackBtn
@@ -2066,6 +2228,8 @@ local SUB_TABS = {
     { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", iconKey = "book" },
     { key = "pets", label = (ns.L and ns.L["CATEGORY_PETS"]) or PETS or "Pets", iconKey = "paw" },
     { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), iconKey = "gift" },
+    { key = "illusions", label = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions", iconKey = "illusion" },
+    { key = "titles", label = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles", iconKey = "title" },
 }
 
 function M.CreateSubTabBar(parent, onTabSelect)
@@ -2217,9 +2381,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
     end
 
     for _, items in pairs(grouped) do
-        table.sort(items, function(a, b)
-            return SafeLower(a.name) < SafeLower(b.name)
-        end)
+        SortItemsByLowerName(items)
     end
 
     return grouped, totalCount
@@ -2298,7 +2460,7 @@ function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncoll
         startIdx = limit + 1
         if startIdx > total then
             for _, items in pairs(grouped) do
-                table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
+                SortItemsByLowerName(items)
             end
             onComplete(grouped)
         else
@@ -2350,7 +2512,7 @@ function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollecte
         local limit = math.min(startIdx + RUN_CHUNK_SIZE - 1, total)
         for i = startIdx, limit do
             local d = allPets[i]
-            if d and d.id then
+            if d and d.id and not M.IsHiddenByFactionFilter("pet", d.id) then
                 local name = d.name or tostring(d.id)
                 local isCollected = (d.isCollected == true) or (d.collected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
@@ -2380,7 +2542,7 @@ function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollecte
         startIdx = limit + 1
         if startIdx > total then
             for _, items in pairs(grouped) do
-                table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
+                SortItemsByLowerName(items)
             end
             onComplete(grouped)
         else
@@ -2441,7 +2603,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
     if useCache then
         for i = 1, #allPets do
             local d = allPets[i]
-            if not d or not d.id then
+            if not d or not d.id or M.IsHiddenByFactionFilter("pet", d.id) then
             else
                 local name = d.name or tostring(d.id)
                 local isCollected = (d.isCollected == true) or (d.collected == true)
@@ -2485,7 +2647,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
         if numPets == 0 then return grouped, 0 end
         for i = 1, numPets do
             local _, speciesID = C_PetJournal.GetPetInfoByIndex(i)
-            if speciesID then
+            if speciesID and not M.IsHiddenByFactionFilter("pet", speciesID) then
                 local isCollected = M.SafeGetPetCollected(speciesID)
                 if (showC and isCollected) or (showU and not isCollected) then
                     local meta = WarbandNexus:ResolveCollectionMetadata("pet", speciesID)
@@ -2529,9 +2691,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
     end
 
     for _, items in pairs(grouped) do
-        table.sort(items, function(a, b)
-            return SafeLower(a.name) < SafeLower(b.name)
-        end)
+        SortItemsByLowerName(items)
     end
 
     return grouped, totalCount
@@ -2550,7 +2710,7 @@ function M.GetFilteredToysGrouped(searchText, showCollected, showUncollected)
         local items = group.items or {}
         for i = 1, #items do
             local item = items[i]
-            if item and item.id then
+            if item and item.id and not M.IsHiddenByFactionFilter("toy", item.id) then
                 local isCollected = (item.collected == true) or (item.isCollected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
                     local name = item.name or tostring(item.id)
@@ -2596,7 +2756,7 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
 
     for i = 1, #allToys do
         local d = allToys[i]
-        if d and d.id then
+        if d and d.id and not M.IsHiddenByFactionFilter("toy", d.id) then
             local name = d.name or tostring(d.id)
             local isCollected = (d.isCollected == true) or (d.collected == true)
             if (showC and isCollected) or (showU and not isCollected) then
@@ -2622,7 +2782,7 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
     end
 
     for _, items in pairs(grouped) do
-        table.sort(items, function(a, b) return SafeLower(a.name) < SafeLower(b.name) end)
+        SortItemsByLowerName(items)
     end
     return grouped
 end
@@ -2699,52 +2859,10 @@ end
 function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, tabKey, chrome)
     if not hdrCache or not headerParent then return headerYOffset end
     local row = hdrCache.contentSubHeader
-    -- Recent: the sub-tab button already names the view; no title row (search sits under the tabs).
-    if tabKey == "recent" then
-        if row then row:Hide() end
-        return headerYOffset
-    end
-    local createdHeader = false
-    if not row then
-        createdHeader = true
-        row = Factory:CreateContainer(headerParent, 120, COLLECTIONS_FIXED_SUBHEADER_H, false)
-        row._title = FontManager:CreateFontString(row, "header", "OVERLAY")
-        row._title:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -2)
-        row._title:SetJustifyH("LEFT")
-        row._subtitle = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
-        row._subtitle:SetPoint("TOPLEFT", row._title, "BOTTOMLEFT", 0, -1)
-        row._subtitle:SetPoint("TOPRIGHT", row, "TOPRIGHT", -4, 0)
-        row._subtitle:SetJustifyH("LEFT")
-        row._subtitle:SetWordWrap(false)
-        row._subtitle:SetNonSpaceWrap(false)
-        row._subtitle:SetMaxLines(1)
-        ns.UI_SetTextColorRole(row._subtitle, "Bright")
-        hdrCache.contentSubHeader = row
-    end
-    local nextY
-    if chrome and ns.UI_PageStack_Place then
-        chrome.yOffset = headerYOffset
-        nextY = ns.UI_PageStack_Place(chrome, row, COLLECTIONS_FIXED_SUBHEADER_H)
-    else
-        row:SetParent(headerParent)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        row:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        row:SetHeight(COLLECTIONS_FIXED_SUBHEADER_H)
-        nextY = headerYOffset + COLLECTIONS_FIXED_SUBHEADER_H + COLLECTIONS_FIXED_SUBHEADER_GAP
-    end
-    local parentLevel = headerParent:GetFrameLevel() or 0
-    row:SetFrameLevel(parentLevel + 12)
-    M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
-    if createdHeader then
-        M.CollectionsSubTabTrace("ApplyContentSubHeader", {
-            tabKey = tabKey,
-            title = row._titlePlain,
-            created = true,
-            chrome = "fixed",
-        })
-    end
-    return nextY
+    -- No title / description row on any sub-tab: the sub-tab button already names the view and the search
+    -- sits right under the tabs (Recent did this first; all tabs since 2026-11-04, user request).
+    if row then row:Hide() end
+    return headerYOffset
 end
 
 --- Legacy hook from Draw*Content: title lives in fixedHeader; body uses full content height.
@@ -2778,6 +2896,7 @@ function M.HideAllCollectionsResultFrames()
     if M.state.toyListScrollBarContainer then M.state.toyListScrollBarContainer:Hide() end
     if M.state.toyDetailContainer then M.state.toyDetailContainer:Hide() end
     if M.state.toyDetailScrollBarContainer then M.state.toyDetailScrollBarContainer:Hide() end
+    if M.HideIllusionTitleResultFrames then M.HideIllusionTitleResultFrames() end
     if M.state.recentTabPanel then M.state.recentTabPanel:Hide() end
     if M.state.collectionRightColumn then M.state.collectionRightColumn:Hide() end
     if M.state.collectionProgressFrame then M.state.collectionProgressFrame:Hide() end
@@ -2797,6 +2916,7 @@ function M.ResetCollectionsListScrollPositions()
             sf:SetVerticalScroll(0)
         end
     end
+    if M.ResetIllusionTitleScrollPositions then M.ResetIllusionTitleScrollPositions() end
 end
 
 M.CONTENT_GAP = CONTENT_GAP

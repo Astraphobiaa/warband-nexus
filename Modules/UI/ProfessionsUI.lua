@@ -756,20 +756,6 @@ function PUI.ApplyProfessionColumnDividers(parent, height)
     end
 end
 
---- Uniform tint width for every row (fav + class + name + open); avoids per-name width gaps when scrolling horizontally.
-function PUI.GetProfessionIdentityGradientEnd()
-    if PUI.IsColumnVisible("profIcon") then
-        return PUI.ColOffset("profIcon")
-    end
-    if PUI.IsColumnVisible("open") then
-        return PUI.ColOffset("open") + PUI.ColWidth("open")
-    end
-    if PUI.IsColumnVisible("name") then
-        return PUI.ColOffset("name") + PUI.ColWidth("name")
-    end
-    return PUI.ColOffset("classIcon") + PUI.ColWidth("classIcon")
-end
-
 --- Anchor a cell to its column: LEFT edge or horizontal CENTER on the row midline.
 function PUI.AnchorCellInColumn(frame, colKey, row, centerY, hAlign)
     if not frame or not colKey or not row then return end
@@ -1213,16 +1199,6 @@ function PUI.CategorizeCharacters(characters)
     regular = PUI.SortCharacters(regular, "regular")
     untracked = PUI.SortCharacters(untracked, "untracked")
     return favorites, groupedById, customGroupsOrdered, regular, untracked
-end
-
--- Realm display: use centralized Utilities:FormatRealmName
-local function FormatRealmName(realm)
-    if ns.Utilities and ns.Utilities.FormatRealmName then
-        return ns.Utilities:FormatRealmName(realm)
-    end
-    if issecretvalue and issecretvalue(realm) then return "" end
-    if not realm or realm == "" then return "" end
-    return realm:gsub("(%l)(%u)", "%1 %2")
 end
 
 -- EXPANSION FILTER HELPERS (strict: only selected expansion's data)
@@ -2146,7 +2122,6 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     local isCurrent = (charKey == currentPlayerKey)
     ns.UI.Factory:ApplyOnlineCharacterHighlight(row, isCurrent)
     local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey)
-    local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
 
     -- FAVORITE ICON (own column, left of class icon)
     -- Visual star size = column width * 0.65, matching CreateFavoriteButton in Characters tab
@@ -2188,55 +2163,10 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     local nameX = PUI.ColOffset("name")
     local nameW = PUI.ColWidth("name")
 
-    if not row.nameText then
-        row.nameText = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row.nameText:SetJustifyH("LEFT")
-        row.nameText:SetWordWrap(false)
-        row.nameText:SetMaxLines(1)
+    -- Name + realm subline + class gradient: shared roster identity (same look as the Characters tab).
+    if ns.UI_ApplyCharacterRowIdentity then
+        ns.UI_ApplyCharacterRowIdentity(row, char, nameX, nameW)
     end
-    row.nameText:ClearAllPoints()
-    row.nameText:SetWidth(nameW)
-    row.nameText:SetText(format(
-        "|cff%02x%02x%02x%s|r",
-        classColor.r*255,
-        classColor.g*255,
-        classColor.b*255,
-        char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    ))
-
-    if not row.realmText then
-        row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        row.realmText:SetJustifyH("LEFT")
-        row.realmText:SetWordWrap(false)
-        row.realmText:SetMaxLines(1)
-    end
-    row.realmText:ClearAllPoints()
-    row.realmText:SetWidth(nameW)
-    ns.UI_SetTextColorRole(row.realmText, "Muted")
-    row.realmText:SetText(FormatRealmName(char.realm or ""))
-
-    -- Vertically center name + realm block with icon column (icons use y=0 on row LEFT).
-    local nameRealmGap = 1
-    local nh = max(row.nameText:GetStringHeight() or 0, 12)
-    local rh = max(row.realmText:GetStringHeight() or 0, 10)
-    local blockH = nh + nameRealmGap + rh
-    local topInset = max((ROW_HEIGHT - blockH) / 2, 0)
-    row.nameText:SetPoint("TOPLEFT", row, "TOPLEFT", nameX, -topInset)
-    row.realmText:SetPoint("TOPLEFT", row.nameText, "BOTTOMLEFT", 0, -nameRealmGap)
-    if row.nameText.SetJustifyV then row.nameText:SetJustifyV("TOP") end
-    if row.realmText.SetJustifyV then row.realmText:SetJustifyV("TOP") end
-
-    -- Class tint: fixed width through identity strip (fav/class/name/open), same for every row.
-    local function ApplyProfessionRowClassGradient()
-        if not ns.UI_ApplyCharacterRowClassGradientAccent then return end
-        local gradientEnd = PUI.GetProfessionIdentityGradientEnd()
-        local rowW = row:GetWidth() or row._wnRowPaintWidth or width
-        if rowW and rowW >= 2 and gradientEnd > rowW - 2 then
-            gradientEnd = rowW - 2
-        end
-        ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
-    end
-    row._wnGradientRefresh = ApplyProfessionRowClassGradient
 
     if row.openBtn then
         row.openBtn:Hide()
@@ -2245,7 +2175,10 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
         row.openBtn:SetScript("OnLeave", nil)
     end
 
-    ApplyProfessionRowClassGradient()
+    -- Identity gradient (thunk set by UI_ApplyCharacterRowIdentity) once the row has its final width.
+    if row._wnGradientRefresh then
+        row._wnGradientRefresh()
+    end
 
     -- PROFESSION LINES (per-line Open in the open column)
     local prof1 = PUI.GetCharacterProfessionForSlot and PUI.GetCharacterProfessionForSlot(char, 1, isCurrent) or (char.professions and char.professions[1])

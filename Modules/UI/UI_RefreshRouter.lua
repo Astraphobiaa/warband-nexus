@@ -67,8 +67,15 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
     -- overwriting other modules' handlers for the same AceEvent message.
     -- AceEvent allows only ONE handler per (event, self) pair.
-    local function onItemsOrBagsInventoryUpdated()
+    local function onItemsOrBagsInventoryUpdated(event, payload)
         if not HiddenOrMissing() and (f.currentTab == "items" or f.currentTab == "gear") then
+            -- Guild Bank reads only the guild bank cache: character bag / bank scans (ITEMS_UPDATED with a
+            -- charKey, personal-bank BAGS_UPDATED) used to rebuild its whole storage tree on every loot.
+            -- GuildBankScanner sends ITEMS_UPDATED without a payload.
+            if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "guild"
+                and (event == Constants.EVENTS.BAGS_UPDATED or (type(payload) == "table" and payload.charKey)) then
+                return
+            end
             -- Bank > Warband aggregate can sit on this tab while cache finishes; 800ms POPULATE_COOLDOWN
             -- otherwise drops the follow-up populate and the list looks empty until a tab switch.
             local itemsSub = f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()
@@ -77,6 +84,10 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             elseif f.currentTab == "gear" then
                 ScheduleGearTabInventoryNarrowRefresh()
             elseif itemsSub == "inventory" or itemsSub == "personal" then
+                -- A scan run by the paint itself (before it read the bank) is already on screen.
+                if itemsSub == "personal" and type(payload) == "table" and payload.fromDisplay then
+                    return
+                end
                 scheduleItemsResultsRefresh()
             else
                 -- Guild: Storage tree (staged chunked paint) keeps the full PopulateContent.
@@ -100,6 +111,10 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                 if pCanon and gCanon and pCanon ~= gCanon then
                     return
                 end
+            end
+            -- Stats / crests card follows equip and upgrade changes (slot-only refreshes skip it).
+            if WarbandNexus.ScheduleGearSideCardRefresh then
+                WarbandNexus:ScheduleGearSideCardRefresh()
             end
             local function runGearStorageRecRefreshNow()
                 local equipOnly = st.gearStorageRecRefreshEquipOnly == true
@@ -206,7 +221,8 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             VB.ScheduleDataRefresh()
         end
         if HiddenOrMissing() then return end
-        -- PvE tab + Characters tab (mythic key column reads character row; mirror updates from PvECacheService)
+        -- PvE tab only. Characters reads the keystone from its character row; the mirror write sends
+        -- CHARACTER_UPDATED{ dataType = "mythicKey" } itself, so a second chars repaint here was a double paint.
         if f.currentTab == "pve" then
             if ns.PvE_ClearVaultStatusScratch then
                 ns.PvE_ClearVaultStatusScratch()
@@ -215,9 +231,6 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             if ns.PvEUI and ns.PvEUI.MarkDataDirty then ns.PvEUI.MarkDataDirty() end
             -- Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
             -- Reset cooldown so this event is never silently dropped.
-            st.lastEventPopulateTime = 0
-            SchedulePopulateContent(true)
-        elseif f.currentTab == "chars" then
             st.lastEventPopulateTime = 0
             SchedulePopulateContent(true)
         end
@@ -232,6 +245,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         -- tab fully: its bottom crest / gold panel is only drawn by a full paint. Any other single
         -- currency only needs the in-place upgrade economy refresh.
         if f.currentTab == "gear" then
+            if WarbandNexus.ScheduleGearSideCardRefresh then
+                WarbandNexus:ScheduleGearSideCardRefresh()
+            end
             local GT = ns.GearUpgradeTracks
             local crestSet = GT and GT.UPGRADE_CURRENCY_ID_SET_EARLY
             local isCrestOrBatch = type(currencyID) ~= "number" or not crestSet or crestSet[currencyID]
@@ -311,10 +327,21 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     
     -- Collection scan complete: plans browse coalesces (avoid redraw loop). Collections tab is owned by
     -- CollectionsUI.lua (invalidate caches + sub-tab redraw); a shell PopulateContent here doubled it.
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
+    -- Browse categories share the scan category names: a toy scan finishing does not touch the mount browse.
+    -- Active / Weekly views and "all" (or payload-less) completions still repaint.
+    local PLANS_SCAN_BROWSE_CATEGORIES = {
+        mount = true, pet = true, toy = true, achievement = true, illusion = true, title = true,
+    }
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, payload)
         if HiddenOrMissing() then return end
         local tab = f.currentTab
         if tab == "plans" then
+            local scanCat = type(payload) == "table" and payload.category or nil
+            local viewCat = ns.PlansUI_GetCurrentCategory and ns.PlansUI_GetCurrentCategory()
+            if scanCat and viewCat and scanCat ~= viewCat
+                and PLANS_SCAN_BROWSE_CATEGORIES[scanCat] and PLANS_SCAN_BROWSE_CATEGORIES[viewCat] then
+                return
+            end
             SchedulePopulateContent()
         end
     end)
@@ -546,7 +573,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             end
             SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
-            SchedulePopulateContent(true)
+            -- Gold cards: coalesce loot / vendor bursts with the standard cooldown (trailing edge keeps
+            -- the last value) instead of a full roster rebuild per money tick.
+            SchedulePopulateContent()
         end
     end)
 
@@ -618,8 +647,6 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                 ns.PvE_ClearVaultStatusScratch()
             end
             st.lastEventPopulateTime = 0
-            SchedulePopulateContent(true)
-        elseif f.currentTab == "chars" then
             SchedulePopulateContent(true)
         end
     end
@@ -825,6 +852,32 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             end
         end
         UIEvents._itemInfoHandler = handler
+    end
+
+    -- Live character stats (Gear tab stats card): rating / mastery / primary stat changes. Events per Blizzard
+    -- APIDocumentationGenerated 12.1.5 (checked 2026-11-04): COMBAT_RATING_UPDATE and MASTERY_UPDATE carry no
+    -- payload, UNIT_STATS carries unitTarget (registered for "player" only). Nothing is persisted, so this is a
+    -- display-only repaint; ScheduleGearSideCardRefresh debounces buff / combat storms.
+    if not UIEvents._statFrame then
+        -- Intentionally raw: stat-event coalesce host — no visuals (WN_FACTORY inventory).
+        local statFrame = CreateFrame("Frame")
+        UIEvents._statFrame = statFrame
+        statFrame:RegisterEvent("COMBAT_RATING_UPDATE")
+        statFrame:RegisterEvent("MASTERY_UPDATE")
+        statFrame:RegisterUnitEvent("UNIT_STATS", "player")
+        statFrame:SetScript("OnEvent", function()
+            if UIEvents._statHandler then
+                UIEvents._statHandler()
+            end
+        end)
+    end
+    UIEvents._statHandler = function()
+        -- Not HiddenOrMissing(): stats tick constantly (buffs); a hidden window must not be marked dirty
+        -- for a repaint on every open. The next Gear paint reads live stats anyway.
+        if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+        if WarbandNexus.ScheduleGearSideCardRefresh then
+            WarbandNexus:ScheduleGearSideCardRefresh()
+        end
     end
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)

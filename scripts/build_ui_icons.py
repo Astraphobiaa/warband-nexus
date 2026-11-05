@@ -2,7 +2,8 @@
 """Build the semantic UI icon set: SVG source + 64x64 RGBA TGA per icon under Media/.
 
 Two families, both drawn on a 24-unit grid:
-- mono:    white 2-unit round strokes / fills, tinted in game (theme vertex or caller color).
+- glyphs:  2-unit round strokes / fills. The SVG is the white shape; names in GLYPH_COLOR ship as
+           colored TGAs (fill lit from the top inside a thin dark rim). Others ship white (mono).
 - colored: flat fills with a dark outline so yellow / gold stays readable on light and dark UI.
 
 Requires the `resvg` CLI (brew install resvg) for rasterizing. Run: python3 scripts/build_ui_icons.py [Name ...]
@@ -17,7 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ROOT / "Media"
@@ -26,6 +27,7 @@ SIZE = 64
 PAINTED = {"FactionPortraits", "WowBag34", "WowBox", "Handshake", "Checklist", "Currency", "CrossedSwords", "BarChart", "AnvilHammer", "BossSkull", "HorseHead", "PlateArmor", "Info", "GearGold", "MoneySacks", "Tabard", "Campfire", "WowLootChest", "RolledScroll", "DrawstringSack", "Paw", "Trophy", "Calendar", "Present", "TarotCards", "Spyglass", "RedQuestion", "Sparkle", "GoldPin", "Cart", "Tent"}
 
 OUTLINE = "#1B130B"
+OUTLINE_RGB = (0x1B, 0x13, 0x0B)
 OUTLINE_W = 3.2  # stroke drawn under the fill: 1.6 units show outside the shape
 MONO_HEAD = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" '
              'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">')
@@ -219,10 +221,9 @@ def modules() -> str:
 
 
 def keyboard() -> str:
-    return ('<rect x="2.5" y="6" width="19" height="12.5" rx="2.2"/>'
-            '<path d="M6.3 9.8h.01M9.4 9.8h.01M12.5 9.8h.01M15.6 9.8h.01M18.2 9.8h.01'
-            'M7.5 12.6h.01M10.8 12.6h.01M14 12.6h.01M17 12.6h.01" stroke-width="2.2"/>'
-            '<path d="M8 15.4H16"/>')
+    return ('<rect x="2.5" y="5.5" width="19" height="13" rx="2.4"/>'
+            '<path d="M7 9.5h.01M10.3 9.5h.01M13.7 9.5h.01M17 9.5h.01" stroke-width="2.4"/>'
+            '<path d="M8 14.5H16"/>')
 
 
 def bell_line() -> str:
@@ -239,6 +240,71 @@ def sliders() -> str:
     return ('<path d="M4 6.5H20M4 12H20M4 17.5H20" stroke-opacity="0.55"/>'
             '<circle cx="15.5" cy="6.5" r="2.3" fill="#FFFFFF"/><circle cx="8.5" cy="12" r="2.3" fill="#FFFFFF"/>'
             '<circle cx="13.5" cy="17.5" r="2.3" fill="#FFFFFF"/>')
+
+
+# row / header chrome glyphs (one stroke for the whole set)
+def close() -> str:
+    return '<path d="M6 6L18 18M18 6L6 18"/>'
+
+
+def chevron_up() -> str:
+    return '<path d="M5.5 15L12 8.5L18.5 15"/>'
+
+
+def chevron_down() -> str:
+    return '<path d="M5.5 9L12 15.5L18.5 9"/>'
+
+
+def pin() -> str:
+    return ('<path d="M12 21.5c-3.8-4.2-6.8-7.6-6.8-11.6a6.8 6.8 0 0 1 13.6 0c0 4-3 7.4-6.8 11.6Z"/>'
+            '<circle cx="12" cy="9.9" r="2.4"/>')
+
+
+def link() -> str:
+    # two chain links on the diagonal, overlapping in the middle
+    return ('<g transform="rotate(-45 12 12)"><rect x="2" y="8.6" width="11.2" height="6.8" rx="3.4"/>'
+            '<rect x="10.8" y="8.6" width="11.2" height="6.8" rx="3.4"/></g>')
+
+
+def todo() -> str:
+    return ('<path d="M3.8 6.2l1.5 1.5 2.7-2.9M3.8 12.2l1.5 1.5 2.7-2.9"/>'
+            '<circle cx="5.6" cy="18" r="1.5"/><path d="M11.5 6.5H20M11.5 12.5H20M11.5 18H20"/>')
+
+
+def reminder() -> str:
+    # alarm clock: reads apart from the plain clock and the notification bell
+    return ('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.3V13l2.6 1.7"/>'
+            '<path d="M3.8 6.2l3-2.6M20.2 6.2l-3-2.6"/>')
+
+
+def block() -> str:
+    return '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6L18.4 18.4"/>'
+
+
+def tracking() -> str:
+    return ('<circle cx="12" cy="12" r="7"/><path d="M12 2.5V6M12 18V21.5M2.5 12H6M18 12H21.5"/>'
+            '<circle cx="12" cy="12" r="1.7" fill="#FFFFFF"/>')
+
+
+def credits() -> str:
+    return ('<circle cx="9" cy="8" r="3.3"/><path d="M3 20c0-3.5 2.7-6.2 6-6.2s6 2.7 6 6.2"/>'
+            '<path d="M15.6 4.8a3.3 3.3 0 0 1 0 6.4"/><path d="M17.6 14.2c2 .8 3.4 3 3.4 5.8"/>')
+
+
+def discord() -> str:
+    # filled Clyde head (ears up, feet down) with the eyes cut out
+    body = ("M8.7 5.3C7.2 5.5 5.8 6 4.6 6.7 2.9 9.4 2.4 12.9 2.7 16.3c1.5 1.2 3.1 2 4.7 2.5L8.6 17.1"
+            "c2.2.5 4.6.5 6.8 0l1.2 1.7c1.6-.5 3.2-1.3 4.7-2.5.3-3.4-.2-6.9-1.9-9.6"
+            "-1.2-.7-2.6-1.2-4.1-1.4l-.6 1.1c-1.8-.3-3.6-.3-5.4 0Z")
+    return ('<mask id="de" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">'
+            '<rect width="24" height="24" fill="#fff"/>'
+            '<ellipse cx="9.1" cy="12.3" rx="1.6" ry="1.8" fill="#000"/>'
+            '<ellipse cx="14.9" cy="12.3" rx="1.6" ry="1.8" fill="#000"/></mask>'
+            f'<path d="{body}" fill="#FFFFFF" stroke-width="1" mask="url(#de)"/>')
+
+
+def donate() -> str:
+    return '<path d="M12 20.5S3.5 15.4 3.5 9.2A4.6 4.6 0 0 1 12 6.6a4.6 4.6 0 0 1 8.5 2.6c0 6.2-8.5 11.3-8.5 11.3Z"/>'
 
 
 def warband() -> str:
@@ -527,6 +593,18 @@ ICONS = {
     "BellLine": (bell_line, False),
     "Palette": (palette, False),
     "Sliders": (sliders, False),
+    "Close": (close, False),
+    "ChevronUp": (chevron_up, False),
+    "ChevronDown": (chevron_down, False),
+    "Pin": (pin, False),
+    "Link": (link, False),
+    "Todo": (todo, False),
+    "Reminder": (reminder, False),
+    "Block": (block, False),
+    "Tracking": (tracking, False),
+    "Credits": (credits, False),
+    "Discord": (discord, False),
+    "Donate": (donate, False),
     # category / header
     "CrossedSwords": (crossed_swords, False),
     "BarChart": (bar_chart, False),
@@ -541,16 +619,54 @@ ICONS = {
 }
 
 
+# Line glyphs shipped in color: the SVG stays the white shape source, the TGA gets this fill
+# (light from the top) inside a thin dark rim, so it reads on dark and light panels alike.
+GLYPH_COLOR = {
+    "Settings": "#8FB4D9", "Modules": "#8FB4D9", "Keyboard": "#8FB4D9", "Sliders": "#8FB4D9", "Link": "#8FB4D9",
+    "Filter": "#E8C066", "Lock": "#E8C066", "Clock": "#E8C066", "ChevronUp": "#E8C066", "ChevronDown": "#E8C066",
+    "TriangleDown": "#E8C066", "TriangleLeft": "#E8C066", "TriangleRight": "#E8C066", "StatusPending": "#E8C066",
+    "Tracking": "#E8C066", "Credits": "#E8C066",
+    "BellLine": "#F0B84A", "Reminder": "#F0B84A", "Palette": "#D9A066", "CraftingOrder": "#D9A066",
+    "Sound": "#7FD0E0", "Reset": "#7FD0E0", "Spinner": "#7FD0E0",
+    "Upgrade": "#5FD068", "Plus": "#5FD068",
+    "Minus": "#E0554A", "Close": "#E0554A", "Pin": "#E0554A", "Block": "#E0554A",
+    "Todo": "#E6D3A8", "Discord": "#7A86F0", "Donate": "#E8687A",
+}
+WORK = 256  # colored glyphs are composed at 4x, then shrunk to SIZE
+RIM_PX = 9  # ~0.85 grid units at WORK size
+
+
+def colorize(shape: Image.Image, hex_color: str) -> Image.Image:
+    rgb = tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    pad = RIM_PX * 2
+    a = Image.new("L", (WORK + pad * 2, WORK + pad * 2), 0)
+    a.paste(shape.getchannel("A"), (pad, pad))
+    rim = a.filter(ImageFilter.MaxFilter(RIM_PX * 2 + 1)).filter(ImageFilter.GaussianBlur(1.2))
+    out = Image.new("RGBA", a.size, OUTLINE_RGB + (0,))
+    out.putalpha(rim)
+    top = Image.new("RGBA", a.size, tuple(min(255, int(c * 1.15)) for c in rgb) + (255,))
+    bottom = Image.new("RGBA", a.size, tuple(int(c * 0.78) for c in rgb) + (255,))
+    fill = Image.composite(bottom, top, Image.linear_gradient("L").resize(a.size))
+    fill.putalpha(a)
+    out.alpha_composite(fill)
+    # Shrink with premultiplied alpha so the transparent edge does not pull in dark fringes.
+    return out.crop((pad, pad, pad + WORK, pad + WORK)).convert("RGBa").resize((SIZE, SIZE), Image.LANCZOS).convert("RGBA")
+
+
 def render(name: str, svg: str) -> None:
     svg_path = MEDIA / f"Icon-{name}.svg"
     svg_path.write_text(svg, encoding="utf-8")
     with tempfile.TemporaryDirectory() as tmp:
         png = Path(tmp) / "icon.png"
-        subprocess.run(["resvg", "-w", str(SIZE), "-h", str(SIZE), str(svg_path), str(png)], check=True)
+        px = WORK if name in GLYPH_COLOR else SIZE
+        subprocess.run(["resvg", "-w", str(px), "-h", str(px), str(svg_path), str(png)], check=True)
+        img = Image.open(png).convert("RGBA")
+        if name in GLYPH_COLOR:
+            img = colorize(img, GLYPH_COLOR[name])
         out = MEDIA / f"Icon-{name}.tga"
         # Write beside the target, then rename: the addon folder is live in the game, which must never read a half-written file.
         tmp = out.with_name(out.name + ".tmp")
-        Image.open(png).convert("RGBA").save(tmp, format="TGA")
+        img.save(tmp, format="TGA")
         os.replace(tmp, out)
     print(f"wrote Icon-{name}.tga + .svg")
 

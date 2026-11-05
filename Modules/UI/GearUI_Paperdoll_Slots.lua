@@ -52,7 +52,21 @@ end
 
 function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, inspectListHost)
     -- Slot is always the same size; space reserved even when the icon is hidden (empty texture)
-    local btn = GearFact:CreateButton(parent, SLOT_SIZE, SLOT_SIZE, true)
+    -- Buttons are kept per slotID on their (reused) paperdoll host; a repaint re-configures them in place.
+    local slotCache = parent._wnGearSlotBtns
+    if not slotCache then
+        slotCache = {}
+        parent._wnGearSlotBtns = slotCache
+    end
+    local btn = slotCache[slotID]
+    local reused = btn ~= nil
+    if reused then
+        btn:ClearAllPoints()
+        btn:Show()
+    else
+        btn = GearFact:CreateButton(parent, SLOT_SIZE, SLOT_SIZE, true)
+        slotCache[slotID] = btn
+    end
     btn:SetPoint("TOPLEFT", x, y)
     if btn.SetClipsChildren then btn:SetClipsChildren(false) end
     btn._slotID = slotID
@@ -79,34 +93,43 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         tinsert(inspectRoot._gearSlotInspectList, btn)
     end
 
-    -- Plain icon cell (no rim / dark fill — both Modern and Classic)
-    local borderFrame = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-    borderFrame:SetAllPoints()
-    if ns.GearUI_Chrome and ns.GearUI_Chrome.ApplyGearSlotPlainChrome then
-        ns.GearUI_Chrome.ApplyGearSlotPlainChrome(btn, borderFrame, nil)
-    else
-        borderFrame:Hide()
-    end
-    btn.borderFrame = borderFrame
-
-    local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:Hide()
-    btn._gearSlotBg = bg
-
-    -- Item / empty slot texture
     local rimInset = GearGetFrameContentInset()
-    local tex = btn:CreateTexture(nil, "ARTWORK")
-    tex:SetPoint("TOPLEFT", btn, "TOPLEFT", rimInset, -rimInset)
-    tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
-    btn.iconTex = tex
+    local tex
+    if reused then
+        tex = btn.iconTex
+        tex:SetVertexColor(1, 1, 1, 1)
+        if btn._gearSlotBg then btn._gearSlotBg:Hide() end
+        -- Previous item's enchant / gem / socket overlays; the deferred inspect repaints them.
+        GearSlotClearPaperdollOverlays(btn)
+    else
+        -- Plain icon cell (no rim / dark fill — both Modern and Classic)
+        local borderFrame = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+        borderFrame:SetAllPoints()
+        if ns.GearUI_Chrome and ns.GearUI_Chrome.ApplyGearSlotPlainChrome then
+            ns.GearUI_Chrome.ApplyGearSlotPlainChrome(btn, borderFrame, nil)
+        else
+            borderFrame:Hide()
+        end
+        btn.borderFrame = borderFrame
 
-    -- ilvl label (bottom-right overlay); FontManager applies font before Populate() SetText
-    btn.ilvlLabel = FontManager:CreateFontString(btn, GFR("gearSlotIlvl"), "OVERLAY")
-    if btn.ilvlLabel then
-        btn.ilvlLabel:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
-        btn.ilvlLabel:SetJustifyH("RIGHT")
-        if btn.ilvlLabel.SetDrawLayer then btn.ilvlLabel:SetDrawLayer("OVERLAY", 7) end
+        local bg = btn:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:Hide()
+        btn._gearSlotBg = bg
+
+        -- Item / empty slot texture
+        tex = btn:CreateTexture(nil, "ARTWORK")
+        tex:SetPoint("TOPLEFT", btn, "TOPLEFT", rimInset, -rimInset)
+        tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
+        btn.iconTex = tex
+
+        -- ilvl label (bottom-right overlay); FontManager applies font before Populate() SetText
+        btn.ilvlLabel = FontManager:CreateFontString(btn, GFR("gearSlotIlvl"), "OVERLAY")
+        if btn.ilvlLabel then
+            btn.ilvlLabel:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
+            btn.ilvlLabel:SetJustifyH("RIGHT")
+            if btn.ilvlLabel.SetDrawLayer then btn.ilvlLabel:SetDrawLayer("OVERLAY", 7) end
+        end
     end
 
     -- Populate with item or empty slot art
@@ -175,6 +198,39 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         and ns.GearUI_GetUpgradeArrowDisplay(upSlot, currencyAmounts) or nil
     if upSlot then upSlot.upgradeArrowDisplay = arrowDisplay end
     local statusUpgradeSz = STATUS_UPGRADE_ICON - 2 * STATUS_ICON_INSET
+    --- Lock chip for maxed / not-upgradeable items. Also used by the in-place refresh: a slot built with an
+    --- upgrade arrow that later maxes out had no lock texture to show.
+    local function EnsureSlotLockIcon()
+        local lockIcon = btn._gearLockIcon
+        if not lockIcon then
+            lockIcon = btn:CreateTexture(nil, "OVERLAY")
+            btn._gearLockIcon = lockIcon
+        end
+        lockIcon:SetSize(statusUpgradeSz, statusUpgradeSz)
+        if lockIcon.SetDrawLayer then lockIcon:SetDrawLayer("OVERLAY", 7) end
+        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, lockIcon)
+        ns.UI_SetIcon(lockIcon, "lock", { alpha = 0.6 })  -- colored art: locked reads dimmed (alpha), never grey
+        return lockIcon
+    end
+    --- Crafted mark on the item icon (same corner as the lock). Hidden while the upgrade / recraft chip or
+    --- the lock occupies that corner: the recraft chip already carries the hammer.
+    local function UpdateSlotCraftedBadge(isCrafted, hasItem)
+        local chipShown = btn._gearUpgradeArrow and btn._gearUpgradeArrow:IsShown()
+        local lockShown = btn._gearLockIcon and btn._gearLockIcon:IsShown()
+        if isCrafted and hasItem and not chipShown and not lockShown then
+            local badge = btn._gearCraftedBadge
+            if not badge then
+                badge = btn:CreateTexture(nil, "OVERLAY")
+                btn._gearCraftedBadge = badge
+            end
+            if badge.SetDrawLayer then badge:SetDrawLayer("OVERLAY", 7) end
+            PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, badge)
+            ns.UI_SetIcon(badge, "crafting_order")
+            badge:Show()
+        elseif btn._gearCraftedBadge then
+            btn._gearCraftedBadge:Hide()
+        end
+    end
     local wantDebugUpgrade = GEAR_DEBUG_ALWAYS_SHOW_UPGRADE == true and slotData and slotData.itemLink
         and not (issecretvalue and issecretvalue(slotData.itemLink))
     -- Always reserve an arrow texture when the slot has an item (unless lock-only), so a late upgradeInfo refresh can still show/hide in _gearApplySlotVisual.
@@ -184,37 +240,41 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         or (hasUpgradePath and arrowDisplay == "green" and hasItemNow and not isNotUpgradeable)
     local canAffordNext = (arrowDisplay == "green")
     if not lockOnly and hasItemNow then
-        local upgradeBd = btn:CreateTexture(nil, "OVERLAY")
-        btn._gearUpgradeArrowBgBorder = upgradeBd
-        upgradeBd:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-        upgradeBd:SetVertexColor(0.1, 0.78, 0.26, 0.95)
-        if upgradeBd.SetDrawLayer then upgradeBd:SetDrawLayer("OVERLAY", 5) end
-        if upgradeBd.SetFrameLevel and btn.GetFrameLevel then
-            upgradeBd:SetFrameLevel((btn:GetFrameLevel() or 0) + 2)
-        end
+        -- Reused slot: the chip textures already exist (GearSlotRefreshUpgradeArrow may also have made them).
+        local upgradeBd = btn._gearUpgradeArrowBgBorder
+        local upgradeBg = btn._gearUpgradeArrowBg
+        upgradeArrow = btn._gearUpgradeArrow
+        if not (upgradeBd and upgradeBg and upgradeArrow) then
+            upgradeBd = btn:CreateTexture(nil, "OVERLAY")
+            btn._gearUpgradeArrowBgBorder = upgradeBd
+            upgradeBd:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+            upgradeBd:SetVertexColor(0.1, 0.78, 0.26, 0.95)
+            if upgradeBd.SetDrawLayer then upgradeBd:SetDrawLayer("OVERLAY", 5) end
+            if upgradeBd.SetFrameLevel and btn.GetFrameLevel then
+                upgradeBd:SetFrameLevel((btn:GetFrameLevel() or 0) + 2)
+            end
 
-        local upgradeBg = btn:CreateTexture(nil, "OVERLAY")
-        btn._gearUpgradeArrowBg = upgradeBg
-        upgradeBg:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-        upgradeBg:SetVertexColor(0, 0, 0, 0.88)
-        if upgradeBg.SetDrawLayer then upgradeBg:SetDrawLayer("OVERLAY", 6) end
-        if upgradeBg.SetFrameLevel and btn.GetFrameLevel then
-            upgradeBg:SetFrameLevel((btn:GetFrameLevel() or 0) + 3)
-        end
+            upgradeBg = btn:CreateTexture(nil, "OVERLAY")
+            btn._gearUpgradeArrowBg = upgradeBg
+            upgradeBg:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+            upgradeBg:SetVertexColor(0, 0, 0, 0.88)
+            if upgradeBg.SetDrawLayer then upgradeBg:SetDrawLayer("OVERLAY", 6) end
+            if upgradeBg.SetFrameLevel and btn.GetFrameLevel then
+                upgradeBg:SetFrameLevel((btn:GetFrameLevel() or 0) + 3)
+            end
 
-        upgradeArrow = btn:CreateTexture(nil, "OVERLAY")
-        btn._gearUpgradeArrow = upgradeArrow
-        if upgradeArrow.SetFrameLevel and btn.GetFrameLevel then
-            upgradeArrow:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
+            upgradeArrow = btn:CreateTexture(nil, "OVERLAY")
+            btn._gearUpgradeArrow = upgradeArrow
+            if upgradeArrow.SetFrameLevel and btn.GetFrameLevel then
+                upgradeArrow:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
+            end
         end
         local useCraftedAtlas = isCraftedSlot and hasUpgradePath and canAffordNext
         btn._gearUpgradeArrowCraftedAtlas = (useCraftedAtlas == true)
         if useCraftedAtlas then
-            ns.UI_SetIcon(upgradeArrow, "crafting_order")
-            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(1, 1, 1) end  -- white on the dark chip
+            ns.UI_SetIcon(upgradeArrow, "crafting_order")  -- colored art: UI_SetIcon applies a neutral vertex
         else
             ns.UI_SetIcon(upgradeArrow, "upgrade")
-            if upgradeArrow.SetVertexColor then upgradeArrow:SetVertexColor(0.2, 1, 0.48) end
         end
         if upgradeArrow.SetDrawLayer then upgradeArrow:SetDrawLayer("OVERLAY", 7) end
         PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, upgradeBd, upgradeBg, upgradeArrow, nil)
@@ -222,18 +282,18 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
             upgradeArrow:Hide()
             upgradeBg:Hide()
             upgradeBd:Hide()
+        elseif reused then
+            upgradeArrow:Show()
+            upgradeBg:Show()
+            upgradeBd:Show()
         end
     elseif lockOnly then
-        local lockIcon = btn:CreateTexture(nil, "OVERLAY")
-        btn._gearLockIcon = lockIcon
-        lockIcon:SetSize(statusUpgradeSz, statusUpgradeSz)
-        if lockIcon.SetFrameLevel and btn.GetFrameLevel then
-            lockIcon:SetFrameLevel((btn:GetFrameLevel() or 0) + 4)
-        end
-        if lockIcon.SetDrawLayer then lockIcon:SetDrawLayer("OVERLAY", 7) end
-        PlaceGearUpgradeLockTowardModel(btn, btn.iconTex, side, nil, nil, nil, lockIcon)
-        ns.UI_SetIcon(lockIcon, "lock", { vertexColor = { 0.45, 0.45, 0.45, 0.9 } })
+        EnsureSlotLockIcon()
     end
+    if not lockOnly and btn._gearLockIcon then
+        btn._gearLockIcon:Hide()
+    end
+    UpdateSlotCraftedBadge(isCraftedSlot == true, hasItemNow and true or false)
 
     -- Tooltip: item link + simplified upgrade info (custom tooltip service)
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
@@ -436,10 +496,12 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     end)
 
     -- Highlight
-    local hi = btn:CreateTexture(nil, "HIGHLIGHT")
-    hi:SetAllPoints()
-    local hiA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.08 or 0.12
-    hi:SetColorTexture(1, 1, 1, hiA)
+    if not reused then
+        local hi = btn:CreateTexture(nil, "HIGHLIGHT")
+        hi:SetAllPoints()
+        local hiA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.08 or 0.12
+        hi:SetColorTexture(1, 1, 1, hiA)
+    end
 
     -- Slot name (Head, Trinket 1, Main Hand etc.) — above the Veteran/Champion text
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
@@ -450,9 +512,14 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     elseif slotID == 13 then slotName = (ns.L and ns.L["GEAR_SLOT_TRINKET1"]) or "Trinket 1"
     elseif slotID == 14 then slotName = (ns.L and ns.L["GEAR_SLOT_TRINKET2"]) or "Trinket 2"
     end
-    local slotNameLabel
-    if slotName ~= "" then
+    local slotNameLabel = btn._gearSlotNameLabel
+    if slotNameLabel then
+        -- Width/anchors depend on whether a track line sits under the name this paint.
+        slotNameLabel:ClearAllPoints()
+        slotNameLabel:SetWidth(0)
+    elseif slotName ~= "" then
         slotNameLabel = FontManager:CreateFontString(parent, GFR("gearSlotName"), "OVERLAY")
+        btn._gearSlotNameLabel = slotNameLabel
         local slotHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
         slotNameLabel:SetText(slotHex .. slotName .. "|r")
         slotNameLabel:SetNonSpaceWrap(false)
@@ -465,8 +532,11 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     local currentTextOffset = TEXT_OFFSET_FROM_SLOT_CENTER
 
     if trackText and side ~= "top" then
-        trackLabel = FontManager:CreateFontString(parent, GFR("gearTrackLabel"), "OVERLAY")
-        btn._gearTrackLabel = trackLabel
+        trackLabel = btn._gearTrackLabel
+        if not trackLabel then
+            trackLabel = FontManager:CreateFontString(parent, GFR("gearTrackLabel"), "OVERLAY")
+            btn._gearTrackLabel = trackLabel
+        end
         trackLabel:SetText(trackText)
         trackLabel:SetNonSpaceWrap(false)
         if trackLabel.SetWordWrap then trackLabel:SetWordWrap(false) end
@@ -564,9 +634,14 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         end
         GearSlotRefreshUpgradeArrow(self, slotData, notUpgradeable, canUpgrade)
         GearSlotHideLegacyIncreaseLabels(self)
-        if self._gearLockIcon then
-            if notUpgradeable and slotData and slotData.itemLink then self._gearLockIcon:Show() else self._gearLockIcon:Hide() end
+        if notUpgradeable and slotData and slotData.itemLink then
+            EnsureSlotLockIcon():Show()
+        elseif self._gearLockIcon then
+            self._gearLockIcon:Hide()
         end
+        local upNow = self._gearUpgradeInfo and self._gearUpgradeInfo[slotID]
+        UpdateSlotCraftedBadge(upNow and upNow.isCrafted == true,
+            slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) and true or false)
         self._gearLastCanAffordNext = canUpgrade == true
     end
 

@@ -271,8 +271,9 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     
     -- Clear previous content
     local bin = ns.UI_RecycleBin
-    for i = expandedContent:GetNumChildren(), 1, -1 do
-        local child = select(i, expandedContent:GetChildren())
+    local oldKids = { expandedContent:GetChildren() }
+    for i = #oldKids, 1, -1 do
+        local child = oldKids[i]
         if child then
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end
@@ -426,8 +427,9 @@ function PlanCardFactory:ExpandAchievementEmpty(card)
     if not expandedContent then return end
 
     local bin = ns.UI_RecycleBin
-    for i = expandedContent:GetNumChildren(), 1, -1 do
-        local child = select(i, expandedContent:GetChildren())
+    local oldKids = { expandedContent:GetChildren() }
+    for i = #oldKids, 1, -1 do
+        local child = oldKids[i]
         if child then
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end
@@ -735,8 +737,9 @@ function PlanCardFactory:ExpandCardContent(card, planType)
     
     -- Clear previous content
     local bin = ns.UI_RecycleBin
-    for i = expandedContent:GetNumChildren(), 1, -1 do
-        local child = select(i, expandedContent:GetChildren())
+    local oldKids = { expandedContent:GetChildren() }
+    for i = #oldKids, 1, -1 do
+        local child = oldKids[i]
         if child then
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end

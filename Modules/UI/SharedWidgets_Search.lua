@@ -912,18 +912,9 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             lockBtn:SetHighlightTexture(lockFile)
             local nt = lockBtn.GetNormalTexture and lockBtn:GetNormalTexture()
             if nt then
+                -- Colored art (gold lock): neutral vertex; unlocked = inactive, dimmed with alpha (no tint/grey).
                 ns.UI_SetIcon(nt, "lock")
-                if isLocked then
-                    nt:SetDesaturated(false)
-                    nt:SetVertexColor(1, 0.82, 0.2, 1)
-                    nt:SetAlpha(1)
-                else
-                    -- Unlocked = inactive: monochrome (white dark / black light) at reduced alpha, no grey desaturation.
-                    local v = ns.UI_GetMonochromeIconVertex(0.55)
-                    nt:SetDesaturated(false)
-                    nt:SetVertexColor(v[1], v[2], v[3], v[4])
-                    nt:SetAlpha(1)
-                end
+                nt:SetAlpha(isLocked and 1 or 0.55)
             end
             lockBtn:SetScript("OnEnter", function(b)
                 if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_LEFT") then
@@ -972,7 +963,7 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             end
             btn:SetSize(arrowSize, arrowSize)
             -- Registry gold arrowhead (crisp at small sizes); the down arrow is the same file flipped.
-            -- Disabled ends use the monochrome disabled tint instead of vanishing.
+            -- Colored art: disabled ends dim with alpha (neutral vertex) instead of vanishing.
             local arrowFile = ns.UI_GetIconFile("arrow_gold")
             btn:SetNormalTexture(arrowFile)
             btn:SetHighlightTexture(arrowFile, "ADD")
@@ -984,13 +975,8 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
             if ht then ht:SetTexCoord(0, 1, t1, t2) end
             if nt then
                 nt:SetDesaturated(false)
-                if enabled then
-                    nt:SetVertexColor(1, 1, 1, 1)
-                else
-                    local v = ns.UI_GetMonochromeIconVertex(0.35)
-                    nt:SetVertexColor(v[1], v[2], v[3], v[4])
-                end
-                nt:SetAlpha(1)
+                nt:SetVertexColor(1, 1, 1, 1)
+                nt:SetAlpha(enabled and 1 or 0.35)
             end
             btn:SetScript("OnEnter", function(b)
                 if ns.UI_SafeSetGameTooltipOwner(b, "ANCHOR_LEFT") then

@@ -59,7 +59,8 @@ def changelog_key_for_version(version: str) -> str | None:
 def ns_l_orphans() -> set[str]:
     orphans: set[str] = set()
     en_keys = keys_from_locale(LOCALES / "enUS.lua")
-    skip = {"libs", "build", ".git"}
+    # .claude: local agent worktrees (.claude/worktrees/*) hold other branches' copies of the addon.
+    skip = {"libs", "build", ".git", ".claude"}
     for path in ROOT.rglob("*.lua"):
         parts = {p.lower() for p in path.parts}
         if parts & skip:

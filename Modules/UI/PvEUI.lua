@@ -134,7 +134,7 @@ end
 -- Great Vault slot glyphs — match Modules/VaultButton.lua SlotSymbols (12×12).
 local VAULT_SLOT_CHECK = ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0)
 local VAULT_SLOT_CROSS = ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
-local VAULT_SLOT_UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12, 0, 0, { 0.2, 1, 0.48 })  -- upgradeable: green
+local VAULT_SLOT_UPARROW = ns.UI_GetIconMarkup("upgrade", 12, 12)  -- upgradeable: green art, no tint
 
 local UI_GetAccentHexColor = ns.UI_GetAccentHexColor
 
@@ -1477,16 +1477,14 @@ function ns.ComputePvEMinScrollWidth(self)
     local maxNameRealmWidth = 0
     local FM = ns.FontManager
     local measureNameW = ns.PvE_MeasureStackedNameColumnWidth
+    -- Shared identity measure (no per-call FontString: this one leaked a region on every call).
     if FM and #characters > 0 and measureNameW then
-        local tempMeasure = FM:CreateFontString(UIParent, "body", "OVERLAY")
-        tempMeasure:Hide()
         for i = 1, #characters do
             local c = characters[i]
             local realmStr = ns.Utilities and ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
-            local w = measureNameW(tempMeasure, c.name or "Unknown", realmStr)
+            local w = measureNameW(nil, c.name or "Unknown", realmStr)
             if w > maxNameRealmWidth then maxNameRealmWidth = w end
         end
-        tempMeasure:SetParent(nil)
     end
     local nameWidth = (ns.PvE_ResolveNameColumnWidth and ns.PvE_ResolveNameColumnWidth(maxNameRealmWidth))
         or math.max(100, math.ceil(maxNameRealmWidth) + 4)
@@ -2707,8 +2705,9 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
             local charKey = PvE_GetCanonicalKeyForChar(char)
             if charKey then
                 listed = listed + 1
-                local pveData = self:GetPvEData(charKey) or {}
-                local vaultActs = pveData.vaultActivities or {}
+                -- Vault columns only: the full GetPvEData hydration (dungeons, lockouts, sorts) per
+                -- roster row made every hover cost N full reads.
+                local vaultActs = (self.GetPvEVaultActivities and self:GetPvEVaultActivities(charKey)) or {}
                 local raidT = vaultActs.raids and #vaultActs.raids or 3
                 local dT = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
                 local wT = vaultActs.world and #vaultActs.world or 3
@@ -2718,6 +2717,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                     local vs = self:GetVaultStatusForChar(charKey)
                     claim = vs and vs.isReady == true
                 else
+                    local pveData = self:GetPvEData(charKey) or {}
                     claim = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards == true
                 end
 
@@ -2759,7 +2759,12 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
         local hdrWorld = GetLocalizedText("VAULT_WORLD", "World")
 
         local FontManager = ns.FontManager
-        local measure = FontManager and FontManager:CreateFontString(UIParent, "body", "OVERLAY")
+        -- One hidden measure string for the session (regions are never collected; this leaked one per hover).
+        local measure = ns._pveVaultSummaryMeasureFS
+        if not measure and FontManager then
+            measure = FontManager:CreateFontString(UIParent, "body", "OVERLAY")
+            ns._pveVaultSummaryMeasureFS = measure
+        end
         local maxN, maxRm, maxVR, maxVM, maxVW = 52, 52, 40, 40, 40
         if measure and #rows > 0 then
             measure:Hide()
@@ -2786,7 +2791,6 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                 measure:SetText(rd.w)
                 maxVW = math.max(maxVW, measure:GetStringWidth() or 0)
             end
-            measure:SetParent(nil)
         end
 
         -- Raid / M+ / World: identical width (match TooltipFactory VAULT_GRID_TRACK_MIN_W); center via SetJustifyH there.

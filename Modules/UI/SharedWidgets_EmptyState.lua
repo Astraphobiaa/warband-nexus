@@ -207,6 +207,18 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "No toys to show",
         descFallback = "Adjust search or filters, or wait for the toy box to finish loading.",
     },
+    collections_illusions = {
+        titleKey = "EMPTY_COLLECTIONS_ILLUSIONS_TITLE",
+        descKey = "EMPTY_COLLECTIONS_ILLUSIONS_DESC",
+        titleFallback = "No illusions to show",
+        descFallback = "Adjust search or filters, or wait for the illusion list to finish loading.",
+    },
+    collections_titles = {
+        titleKey = "EMPTY_COLLECTIONS_TITLES_TITLE",
+        descKey = "EMPTY_COLLECTIONS_TITLES_DESC",
+        titleFallback = "No titles to show",
+        descFallback = "Adjust search or filters, or wait for the title list to finish loading.",
+    },
     collections_achievements = {
         titleKey = "EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE",
         descKey = "EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC",
@@ -283,6 +295,7 @@ local EMPTY_STATE_ICON_KEYS = {
     statistics = "bar_chart",
     collections = "book", collections_recent = "book", collections_mounts = "book", collections_pets = "paw",
     collections_toys = "gift", collections_achievements = "trophy",
+    collections_illusions = "illusion", collections_titles = "title",
     gear = "cuirass", gear_filter = "cuirass",
     professions = "anvil",
 }

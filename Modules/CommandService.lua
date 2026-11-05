@@ -39,6 +39,57 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
 end
 
+-- DEBUG: hidden tracking quests (/wn questdiff start, then /wn questdiff after the activity).
+-- Weekly caps such as Prey chests or Ral'kala's bonus souls have no visible quest; the client still flags a
+-- hidden quest when they are spent. Diffing completed quest IDs around one activity reveals those IDs.
+-- C_QuestLog.GetAllCompletedQuestIDs / GetTitleForQuestID: QuestLogDocumentation, live 2026-11-04.
+-- The snapshot is session-only (lost on /reload); the last diff is kept in db.global.debugQuestDiff.
+local questDiffSnapshot = nil
+
+---@param addon table WarbandNexus
+---@param sub string|nil "start" to snapshot, anything else to diff against the snapshot
+function CommandService:RunQuestDiff(addon, sub)
+    if not C_QuestLog or not C_QuestLog.GetAllCompletedQuestIDs then
+        addon:Print("|cffff6600[WN]|r C_QuestLog.GetAllCompletedQuestIDs is not available.|r")
+        return
+    end
+    local ids = C_QuestLog.GetAllCompletedQuestIDs() or {}
+    if sub == "start" then
+        questDiffSnapshot = {}
+        for i = 1, #ids do
+            local id = ids[i]
+            if not (issecretvalue and issecretvalue(id)) then questDiffSnapshot[id] = true end
+        end
+        addon:Print(string.format("|cff00ccff[WN]|r Quest snapshot taken (%d completed). Do the activity, then type |cff00ccff/wn questdiff|r (no /reload in between).", #ids))
+        return
+    end
+    if not questDiffSnapshot then
+        addon:Print("|cff00ccff[WN]|r Usage: |cff00ccff/wn questdiff start|r before the activity, |cff00ccff/wn questdiff|r after it.")
+        return
+    end
+    local newIDs, titles = {}, {}
+    for i = 1, #ids do
+        local id = ids[i]
+        if not (issecretvalue and issecretvalue(id)) and not questDiffSnapshot[id] then
+            newIDs[#newIDs + 1] = id
+        end
+    end
+    table.sort(newIDs)
+    addon:Print(string.format("|cff00ccff[WN]|r %d quest(s) completed since the snapshot:", #newIDs))
+    for i = 1, #newIDs do
+        local id = newIDs[i]
+        local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)
+        if (issecretvalue and issecretvalue(title)) or type(title) ~= "string" or title == "" then
+            title = "(hidden)"
+        end
+        titles[i] = title
+        addon:Print(string.format("  |cffffff00%d|r  %s", id, title))
+    end
+    if addon.db and addon.db.global then
+        addon.db.global.debugQuestDiff = { at = time(), ids = newIDs, titles = titles }
+    end
+end
+
 -- DEBUG: try count queries (/wn tc sync-stats, /wn trycount mount <id>)
 
 ---@param addon table WarbandNexus
@@ -537,6 +588,11 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("|cff00ccff/wn pvp status|r — Live API vs DB snapshot + filter counts")
         addon:Print("|cff00ccff/wn pvp inject|r — Add self-test rows (2v2, 3v3, RBG, Shuffle, Blitz) for Recent Matches QA")
         addon:Print("|cff00ccff/wn pvp clear|r — Remove injected self-test rows")
+        return
+
+    elseif cmd == "questdiff" then
+        local _, sub = addon:GetArgs(input, 2)
+        CommandService:RunQuestDiff(addon, SafeSlashLower(sub))
         return
 
     elseif cmd == "charkeys" or cmd == "charkey" then

@@ -414,6 +414,10 @@ L["EMPTY_COLLECTIONS_PETS_TITLE"] = "Nenhum mascote"
 L["EMPTY_COLLECTIONS_PETS_DESC"] = "Ajuste a busca ou os filtros, ou aguarde o carregamento do diário de mascotes.\nTente /reload se a lista continuar vazia."
 L["EMPTY_COLLECTIONS_TOYS_TITLE"] = "Nenhum brinquedo"
 L["EMPTY_COLLECTIONS_TOYS_DESC"] = "Ajuste a busca ou os filtros, ou aguarde o carregamento da caixa de brinquedos.\nTente /reload se a lista continuar vazia."
+L["EMPTY_COLLECTIONS_ILLUSIONS_TITLE"] = "Nenhuma ilusão"
+L["EMPTY_COLLECTIONS_ILLUSIONS_DESC"] = "Ajuste a busca ou os filtros, ou aguarde o carregamento das ilusões.\nTente /reload se a lista continuar vazia."
+L["EMPTY_COLLECTIONS_TITLES_TITLE"] = "Nenhum título"
+L["EMPTY_COLLECTIONS_TITLES_DESC"] = "Ajuste a busca ou os filtros, ou aguarde o carregamento dos títulos.\nTente /reload se a lista continuar vazia."
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE"] = "Nenhuma conquista"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC"] = "Ajuste a busca ou os filtros, ou aguarde o carregamento do diário de conquistas.\nTente /reload se a lista continuar vazia."
 L["MAIL_TOOLTIP_NO_MAIL"] = "Nenhum correio pendente."
@@ -1219,20 +1223,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V380"] = [=[v3.8.0 (2026-11-01)
+L["CHANGELOG_V390"] = [=[v3.9.0 (2026-11-04)
 
-Collectible drops can now play a sound of your choice, and try counter attempts respect the difficulty a drop is limited to.
+Collections gains Illusions and Titles tabs, a faction filter and better 3D previews, and the weekly planner covers Season 2.
 
 Added:
-- A sound now plays when a mount, pet or toy you are tracking finally drops. Pick from eight new cues made for the addon, four of Blizzard's own, or any sound pack you already have installed, and set how loud it plays. Every option has a play button so you can hear it before you choose.
-- Try counter attempts now respect raid and dungeon difficulty. A drop that is limited to Mythic no longer counts an attempt when you kill that boss on Normal or Heroic.
+- New Illusions and Titles tabs in Collections, with a weapon preview for illusions and the achievement that awards each title.
+- Alliance and Horde filters for mounts, pets, toys and titles.
+- Season 2 weeklies in the To-Do weekly planner: Unity Against the Void, Vaults of Atal'Utek, Turn Back the Surge, Cursed Keepsake, the Midnight Prey, Dungeons, Raid, Ritual Sites and Offworld Showdowns weeklies, Hope in the Darkest Corners, Sparks of War: The Coiled Isle and the Aethas weekly rotation.
+- The Gear page has a new side card layout and a stats card that shows diminishing returns and updates live.
+- A new painted icon set across the addon: class crests, faction emblems, tabs, sources, Great Vault and more.
+
+Updated:
+- Mount, pet and illusion previews use Blizzard's own camera framing on a full black stage, without a rider. Right-click and drag to move the model.
+- Switching tabs is faster, with no duplicate repaints or per-paint hitches.
 
 Fixed:
-- Fixed a Lua error when destroying items with TradeSkillMaster, and anywhere else an addon or macro passes a bag and slot as text instead of numbers.
-- Fixed a second attempt being counted when you reloaded or logged back in and reopened a corpse you had already looted.
-- Fixed attempts being skipped for up to 45 seconds after obtaining a repeatable drop, so kills in that window count again.
-- Fixed battle pets showing a bare attempt count with no drop chance, while mounts showed their odds.
-- Fixed a secret value error while reading an open loot window.
+- The To-Do button in a collectible's details now adds and removes it and updates its icon right away.
+- Great Vault cards for offline characters no longer show the current character's progress.
+- Placeholder [PH] entries, wrong pet and toy source groups and wrong toy counts no longer appear in Collections. The Wowhead link popup stays on screen.
 
 CurseForge: Warband Nexus]=]
 
@@ -2024,6 +2033,8 @@ L["LOADING_COLLECTIONS"] = "Carregando coleções..."
 L["SYNC_COMPLETE"] = "Sincronizado"
 L["FILTER_COLLECTED"] = "Coletado"
 L["FILTER_UNCOLLECTED"] = "Não coletado"
+L["FILTER_FACTION_ALLIANCE"] = FACTION_ALLIANCE or "Alliance"
+L["FILTER_FACTION_HORDE"] = FACTION_HORDE or "Horde"
 L["FILTER_SHOW_OWNED"] = "Controlado"
 L["FILTER_SHOW_MISSING"] = "Ausente"
 
@@ -2187,7 +2198,13 @@ L["GEAR_TT_CRAFTED_NEXT_RECAST"] = "Próximo alvo de refazer: %s (nível de item
 L["GEAR_TT_UPGRADE_FALLBACK_LEAD"] = "As melhorias usam Dawncrest (quantidades no painel de moedas). Exemplos por nível:"
 L["GEAR_LAYOUT_SCROLL_HINT"] = "Janela estreita: role na horizontal ou amplie a janela."
 L["GEAR_CHARACTER_STATS"] = "Estatísticas do personagem"
-L["GEAR_STAT_VALUE_PCT_FORMAT"] = "%s (%s)"
+L["GEAR_STAT_DR_TAG"] = "DR"
+L["GEAR_STAT_DR_ACTIVE"] = "Retornos decrescentes ativos"
+L["GEAR_STAT_DR_NONE"] = "Ainda sem retornos decrescentes"
+L["GEAR_STAT_DR_EFFECTIVE"] = "Eficácia do índice: %.1f%%"
+L["GEAR_STAT_DR_NEXT"] = "Próximos %d de índice: +%.2f%%"
+L["GEAR_STAT_DR_BASE"] = "Primeiros %d de índice: +%.2f%%"
+L["GEAR_STAT_DR_LEGEND"] = "Limite de retornos decrescentes"
 L["GEAR_SLOT_CURRENCY_HAVE_NEED"] = "%d/%d"
 L["GEAR_TT_DISCOUNTED_UPGRADE"] = "Custo de brasão com desconto (marca alta)"
 L["GEAR_SECTION_CHARACTER"] = "Personagem"

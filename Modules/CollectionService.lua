@@ -143,6 +143,9 @@ end
 local _achievementCharacterPointsCache = nil
 local _collectionCountsAPICache = nil
 local COLLECTION_COUNTS_API_TTL = 60
+-- Achievement points moved: only the cheap achievement fields of the counts cache are stale.
+local _collectionCountsAchDirty = false
+local _collectionCountsAPIRefreshQueued = false
 
 local function SafeAchievementCountPair()
     if not GetNumCompletedAchievements then return 0, 0 end
@@ -194,7 +197,7 @@ local function PersistCharacterAchievementPoints(addon, points)
         points = n,
         timestamp = GetTime(),
     }
-    _collectionCountsAPICache = nil
+    _collectionCountsAchDirty = true
 end
 
 local function ResolveCharacterAchievementPoints(addon)
@@ -970,7 +973,9 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
                     return
                 end
                 items = petMatState.items
-                ns._petSpeciesToSourceIndex = petMatState.speciesToSource
+                if next(petMatState.speciesToSource) then
+                    ns._petSpeciesToSourceIndex = petMatState.speciesToSource
+                end
                 petMatState = nil
             elseif currentType == "toy" then
                 toyMatState = Mat.ToyBoxBuildMaterializeStep(BUDGET_MS, toyMatState, self)
@@ -979,9 +984,12 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
                     return
                 end
                 items = toyMatState.items
-                ns._toyItemIDToSourceIndex = toyMatState.toyToSource
-                if ns._toyItemIDToSourceIndexCache then
-                    ns._toyItemIDToSourceIndexCache.map = toyMatState.toyToSource
+                -- Combat skips the filter sweep (empty map): keep the previous classification.
+                if next(toyMatState.toyToSource) then
+                    ns._toyItemIDToSourceIndex = toyMatState.toyToSource
+                    if ns._toyItemIDToSourceIndexCache then
+                        ns._toyItemIDToSourceIndexCache.map = toyMatState.toyToSource
+                    end
                 end
                 toyMatState = nil
             else
@@ -1324,8 +1332,9 @@ local TOY_SOURCE_TYPE_NAMES = {
     [8] = (ns.L and ns.L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",
     [9] = (ns.L and ns.L["SOURCE_TYPE_TRADING_CARD"]) or BATTLE_PET_SOURCE_9 or "Trading Card Game",
     [10] = (ns.L and ns.L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop",
-    [11] = (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
-    [12] = (ns.L and ns.L["SOURCE_TYPE_PVP"]) or "PvP",
+    -- Filter index = BattlePetSources + 1 (BattlePetConstantsDocumentation: Discovery=10, TradingPost=11; no PvP).
+    [11] = (ns.L and ns.L["PARSE_DISCOVERY"]) or BATTLE_PET_SOURCE_11 or "Discovery",
+    [12] = (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or BATTLE_PET_SOURCE_12 or "Trading Post",
 }
 
 ---Build grouped toy tables from session itemID->sourceIndex map (no ToyBox filter sweep).
@@ -1585,6 +1594,36 @@ function WarbandNexus:GetMountBrowseSourceType(mountID)
     return nil
 end
 
+---Faction of a faction-specific mount: "horde" / "alliance", nil for neutral (or unreadable) mounts.
+---GetMountInfoByID returns isFactionSpecific (8) and faction (9, PvPFaction: 0 = Horde, 1 = Alliance);
+---MountJournalDocumentation + PvPFactionConstantsDocumentation, live 2026-11-04.
+---@return string|nil
+function WarbandNexus:GetMountFactionKey(mountID)
+    if not mountID or not C_MountJournal or not C_MountJournal.GetMountInfoByID then return nil end
+    local _, _, _, _, _, _, _, isFactionSpecific, faction = C_MountJournal.GetMountInfoByID(mountID)
+    if issecretvalue and (issecretvalue(isFactionSpecific) or issecretvalue(faction)) then return nil end
+    if isFactionSpecific ~= true then return nil end
+    if faction == 0 then return "horde" end
+    if faction == 1 then return "alliance" end
+    return nil
+end
+
+---Alliance / Horde only collectible: "alliance" / "horde", nil when both factions can use it.
+---Mounts read the live journal; pets / toys / titles come from CollectibleFactionDB (generated from client DB2:
+---the API exposes no faction for them).
+---@param kind string "mount"|"pet"|"toy"|"title"
+---@return string|nil
+function WarbandNexus:GetCollectibleFactionKey(kind, id)
+    if not id then return nil end
+    if kind == "mount" then return self:GetMountFactionKey(id) end
+    local db = ns.CollectibleFactionDB
+    local map = db and ((kind == "pet" and db.petSpecies) or (kind == "toy" and db.toyItems) or (kind == "title" and db.titleMasks))
+    local side = map and map[id]
+    if side == "A" then return "alliance" end
+    if side == "H" then return "horde" end
+    return nil
+end
+
 ---Hide journal-internal mounts (Soar, class placeholders). Keep cross-faction mounts visible.
 ---@return boolean true when the mount should be excluded from Collections / To-Do browse
 function WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)
@@ -1805,12 +1844,64 @@ function WarbandNexus:GetCollectionCountsFromStore()
     return data
 end
 
-function WarbandNexus:GetCollectionCountsFromAPI()
-    local now = GetTime()
-    if _collectionCountsAPICache and (now - _collectionCountsAPICache.timestamp) < COLLECTION_COUNTS_API_TTL then
-        return _collectionCountsAPICache.data
+---Open every ToyBox filter (shown states, usable-only, sources, expansions, search) and return the player's
+---settings for RestoreToyBoxFilters. Filter API names from FrameXML Blizzard_ToyBox.lua (live, verified 2026-11-04).
+local function OpenAllToyBoxFilters()
+    local saved = {
+        collected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown(),
+        uncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown(),
+        unusable = C_ToyBox.GetUnusableShown and C_ToyBox.GetUnusableShown(),
+        search = Mat.GetToyBoxSearchText(),
+        sources = {},
+        expansions = {},
+    }
+    local numSources = (C_PetJournal and C_PetJournal.GetNumPetSources and C_PetJournal.GetNumPetSources()) or 0
+    if C_ToyBox.IsSourceTypeFilterChecked then
+        for i = 1, numSources do
+            local ok, v = pcall(C_ToyBox.IsSourceTypeFilterChecked, i)
+            if ok and type(v) == "boolean" then saved.sources[i] = v end
+        end
     end
+    local numExpansions = (GetNumExpansions and GetNumExpansions()) or 0
+    if C_ToyBox.IsExpansionTypeFilterChecked then
+        for i = 1, numExpansions do
+            local ok, v = pcall(C_ToyBox.IsExpansionTypeFilterChecked, i)
+            if ok and type(v) == "boolean" then saved.expansions[i] = v end
+        end
+    end
+    pcall(function()
+        C_ToyBox.SetCollectedShown(true)
+        C_ToyBox.SetUncollectedShown(true)
+        if C_ToyBox.SetUnusableShown then C_ToyBox.SetUnusableShown(true) end
+        if C_ToyBox.SetAllSourceTypeFilters then C_ToyBox.SetAllSourceTypeFilters(true) end
+        if C_ToyBox.SetAllExpansionTypeFilters then C_ToyBox.SetAllExpansionTypeFilters(true) end
+        if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString("") end
+        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+    end)
+    return saved
+end
 
+local function RestoreToyBoxFilters(saved)
+    if not saved then return end
+    pcall(function()
+        if saved.collected ~= nil and C_ToyBox.SetCollectedShown then C_ToyBox.SetCollectedShown(saved.collected) end
+        if saved.uncollected ~= nil and C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(saved.uncollected) end
+        if saved.unusable ~= nil and C_ToyBox.SetUnusableShown then C_ToyBox.SetUnusableShown(saved.unusable) end
+    end)
+    if C_ToyBox.SetSourceTypeFilter then
+        for i, v in pairs(saved.sources) do pcall(C_ToyBox.SetSourceTypeFilter, i, v) end
+    end
+    if C_ToyBox.SetExpansionTypeFilter then
+        for i, v in pairs(saved.expansions) do pcall(C_ToyBox.SetExpansionTypeFilter, i, v) end
+    end
+    pcall(function()
+        if saved.search and C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(saved.search) end
+        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+    end)
+end
+
+---Full journal pass (mount / pet / toy / achievement). O(journal size); never call per frame.
+local function ComputeCollectionCountsFromAPI(self, now)
     local data = {
         mounts = { collected = 0, total = 0 },
         pets = { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
@@ -1895,46 +1986,60 @@ function WarbandNexus:GetCollectionCountsFromAPI()
         end
     end
 
-    if C_ToyBox then
-        -- Total: filter-independent (GetNumToys). Collected: GetToyFromIndex is filter-dependent, so set "show all" before iterating.
+    local prevToys = _collectionCountsAPICache and _collectionCountsAPICache.data and _collectionCountsAPICache.data.toys
+    if InCombatLockdown() and prevToys then
+        -- Filters cannot be opened in combat; counting through the player's ToyBox filter would cache a low number.
+        data.toys.total = prevToys.total or 0
+        data.toys.collected = prevToys.collected or 0
+    elseif C_ToyBox then
+        -- Total: filter-independent (GetNumToys). Collected: GetToyFromIndex is filter-dependent, so open all filters
+        -- before iterating and give the player's own filters back afterwards.
         local numToys = C_ToyBox.GetNumToys() or (C_ToyBox.GetNumTotalDisplayedToys() or 0)
         data.toys.total = numToys
         local collected = 0
         if PlayerHasToy and numToys and numToys > 0 then
-            local origCollected, origUncollected, origFilterString
             if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
-            if not InCombatLockdown() then
-                origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
-                origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-                origFilterString = Mat.GetToyBoxSearchText()
-                pcall(function()
-                    C_ToyBox.SetCollectedShown(true)
-                    C_ToyBox.SetUncollectedShown(true)
-                    if C_ToyBox.SetAllSourceTypeFilters then C_ToyBox.SetAllSourceTypeFilters(true) end
-                    if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString("") end
-                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-                end)
-            end
+            local savedFilters = (not InCombatLockdown()) and OpenAllToyBoxFilters() or nil
             for i = 1, numToys do
                 local itemID = C_ToyBox.GetToyFromIndex(i)
                 if itemID and (PlayerHasToy(itemID) == true or (issecretvalue and PlayerHasToy(itemID) and issecretvalue(PlayerHasToy(itemID)))) then
                     collected = collected + 1
                 end
             end
-            if not InCombatLockdown() and (origCollected ~= nil or origUncollected ~= nil or origFilterString) then
-                pcall(function()
-                    if origCollected ~= nil and C_ToyBox.SetCollectedShown then C_ToyBox.SetCollectedShown(origCollected) end
-                    if origUncollected ~= nil and C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(origUncollected) end
-                    if origFilterString and C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(origFilterString) end
-                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-                end)
-            end
+            RestoreToyBoxFilters(savedFilters)
         end
         data.toys.collected = collected
     end
 
     _collectionCountsAPICache = { timestamp = now, data = data }
+    _collectionCountsAchDirty = false
     return data
+end
+
+function WarbandNexus:GetCollectionCountsFromAPI()
+    local now = GetTime()
+    local cache = _collectionCountsAPICache
+    if not cache then
+        return ComputeCollectionCountsFromAPI(self, now)
+    end
+    if _collectionCountsAchDirty then
+        _collectionCountsAchDirty = false
+        ApplyAchievementSummaryToData(self, cache.data)
+    end
+    if (now - cache.timestamp) >= COLLECTION_COUNTS_API_TTL and not _collectionCountsAPIRefreshQueued then
+        -- Stale-while-revalidate: Collections / Stats call this inside their paint. Totals change only on
+        -- patch day and obtains already adjust the counters in place, so serve the cached numbers and run
+        -- the journal pass (thousands of API calls + ToyBox refilter) outside the paint frame.
+        _collectionCountsAPIRefreshQueued = true
+        local addon = self
+        C_Timer.After(0.5, function()
+            _collectionCountsAPIRefreshQueued = false
+            local c = _collectionCountsAPICache
+            if c and (GetTime() - c.timestamp) < COLLECTION_COUNTS_API_TTL then return end
+            ComputeCollectionCountsFromAPI(addon, GetTime())
+        end)
+    end
+    return cache.data
 end
 
 ---Invalidate the API counts cache so next GetCollectionCountsFromAPI() recomputes.
@@ -1944,6 +2049,15 @@ end
 ---recomputes (only when a journal entry is added in the same window — patch days).
 function WarbandNexus:InvalidateCollectionCountsAPICache(obtainedType)
     local c = _collectionCountsAPICache
+    if obtainedType == "achievement" then
+        -- Only the points line changes: refresh it from the summary on next read, keep the journal counts.
+        if c and c.data then
+            _collectionCountsAchDirty = true
+            return
+        end
+        _collectionCountsAPICache = nil
+        return
+    end
     if c and c.data then
         if obtainedType == "mount" and c.data.mounts then
             c.data.mounts.collected = (c.data.mounts.collected or 0) + 1
@@ -2278,7 +2392,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID, alreadyEarnedOnA
                             points = row.achievementPointsEarned,
                             timestamp = GetTime(),
                         }
-                        _collectionCountsAPICache = nil
+                        _collectionCountsAchDirty = true
                     end
                 end
             end
