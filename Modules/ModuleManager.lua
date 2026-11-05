@@ -8,6 +8,28 @@ local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 
 --[[
+    Single answer to "is this module live right now?".
+
+    Roughly fifteen call sites read `db.profile.modulesEnabled.X ~= false` directly, which means
+    the profile toggle was the only gate. A client that does not HAVE the system (WoW Forever has
+    no Great Vault, keystones or renown) needs a second gate that the user cannot switch on, so
+    both are asked here and nowhere else.
+]]
+function WarbandNexus:IsModuleEnabled(key)
+    if not key then return false end
+    if ns.Capabilities and not ns.Capabilities:Supports(key) then return false end
+    local mods = self.db and self.db.profile and self.db.profile.modulesEnabled
+    if not mods then return true end
+    return mods[key] ~= false
+end
+
+--- Capability only: for a feature inside a module (the vault slice of `plans`, knowledge inside
+--- `professions`) where the module itself stays on.
+function WarbandNexus:SupportsFeature(key)
+    return (not ns.Capabilities) or ns.Capabilities:Supports(key)
+end
+
+--[[
     Enable/disable reputation module
     Registers or unregisters associated events
     @param enabled boolean - True to enable, false to disable

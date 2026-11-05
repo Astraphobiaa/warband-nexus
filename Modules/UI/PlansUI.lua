@@ -970,13 +970,19 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         self.addCustomBtn = addCustomBtn
         
-        local addWeeklyBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
-            preset = "action",
-            text = (ns.L and ns.L["ADD_VAULT"]) or "Add Vault",
-            onClick = function()
-                self:ShowWeeklyPlanDialog()
-            end,
-        })
+        local addWeeklyBtn
+        -- The data layer already refuses to build a weekly vault plan without a Great Vault, so
+        -- leaving the button up gives a visible entry point to a dialog that can only produce an
+        -- empty plan. Do not create it where the vault does not exist.
+        if not (self.SupportsFeature and not self:SupportsFeature("vault")) then
+            addWeeklyBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+                preset = "action",
+                text = (ns.L and ns.L["ADD_VAULT"]) or "Add Vault",
+                onClick = function()
+                    self:ShowWeeklyPlanDialog()
+                end,
+            })
+        end
         if addWeeklyBtn and addCustomBtn then
             ns.UI_ChainTitleToolbarControl(titleCard, addWeeklyBtn, addCustomBtn)
         end

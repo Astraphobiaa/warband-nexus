@@ -548,6 +548,174 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
+    -- Spellbook / skill lines / professions / talents / crafting, as this client really answers
+    -- them. The chat summary is only a sanity check that the sweep ran; the dump itself goes to
+    -- SavedVariables, because a few hundred spell rows do not fit in the frame.
+    elseif cmd == "charprobe" then
+        if not addon.WriteCharacterProbe then
+            addon:Print("|cffff6600[WN]|r CharacterProbe not loaded - restart the client, not /reload.|r")
+            return
+        end
+        local probe, err = addon:WriteCharacterProbe()
+        if not probe then
+            addon:Print("|cffff6600[WN]|r " .. tostring(err or "database not ready") .. "|r")
+            return
+        end
+        local sb = probe.spellBook
+        local counts = {}
+        for name, n in pairs(sb.counts or {}) do counts[#counts + 1] = name .. "=" .. n end
+        table.sort(counts)
+        addon:Print(string.format("|cff00ccff[WN]|r charprobe: level %s %s, build %s",
+            tostring(probe.level), tostring(probe.class), tostring(probe.build)))
+        addon:Print(string.format("   spellbook: %s lines, %d items (%s)",
+            tostring(sb.numLines), #(sb.items or {}),
+            #counts > 0 and table.concat(counts, " ") or "none"))
+        addon:Print(string.format("   skill lines: %s", tostring(probe.skillLines.GetNumSkillLines)))
+        local profNames = {}
+        for label, info in pairs(probe.professions.info or {}) do
+            profNames[#profNames + 1] = string.format("%s=%s %s/%s", label, info.name,
+                tostring(info.skillLevel), tostring(info.maxSkillLevel))
+        end
+        table.sort(profNames)
+        addon:Print(string.format("   professions: %s returns, %s",
+            tostring(probe.professions.returnCount),
+            #profNames > 0 and table.concat(profNames, ", ") or "none learned"))
+        local tal = probe.talents
+        addon:Print(string.format("   talents: config %s type %s, %d tree(s)",
+            tostring(tal.configID), tal.config and tostring(tal.config.type) or "-",
+            #(tal.nodes or {})))
+        addon:Print("   now /reload to flush SavedVariables to disk.")
+        return
+
+    -- Top-level on purpose: one word, no sub-argument parsing to get wrong.
+    -- Signatures, not just names: loads Blizzard_APIDocumentation and dumps every function
+    -- with its arguments and every event with its payload.
+    elseif cmd == "apidoc" then
+        if not addon.WriteApiDocumentation then
+            addon:Print("|cffff6600[WN]|r ApiSnapshot not loaded - restart the client.|r")
+            return
+        end
+        local doc, err = addon:WriteApiDocumentation()
+        if not doc then
+            addon:Print("|cffff6600[WN]|r " .. tostring(err) .. "|r")
+            return
+        end
+        addon:Print(string.format("|cff00ccff[WN]|r API docs: %d systems, %d functions, %d events",
+            #doc.systems, #doc.functions, #doc.events))
+        addon:Print("   now /reload to flush SavedVariables to disk.")
+        return
+    
+    elseif cmd == "legacy" then
+        if not addon.ScanLegacyProgress then
+            addon:Print("|cffff6600[WN]|r LegacyService not loaded - restart the client.|r")
+            return
+        end
+        local store = addon:ScanLegacyProgress()
+        if not store then
+            addon:Print("|cffff6600[WN]|r no Legacy System on this client.|r")
+            return
+        end
+        local t = store.track
+        addon:Print(string.format("|cff00ccff[WN]|r %s: renown %d, %d tier(s)",
+            t.name, t.level or 0, #(t.tiers or {})))
+        for i = 1, #(t.tiers or {}) do
+            local tier = t.tiers[i]
+            local names = {}
+            for r = 1, #(tier.rewards or {}) do
+                local rw = tier.rewards[r]
+                local label = (rw.name ~= "" and rw.name)
+                    or (rw.itemID and ("item:" .. rw.itemID .. " (name pending)"))
+                    or "?"
+                names[#names + 1] = label
+            end
+            addon:Print(string.format("   %-4s %-8s %s", tostring(tier.level),
+                tier.locked and "|cffff6060locked|r" or "|cff40ff40open|r",
+                table.concat(names, ", ")))
+        end
+        local c = store.challenges
+        addon:Print(string.format("   challenges: %d earned / %d, %d categories",
+            c.earned or 0, c.total or 0, #(c.categories or {})))
+        if store.pvpRank then
+            addon:Print(string.format("   %s: renown %d / %d", store.pvpRank.name,
+                store.pvpRank.level or 0, store.pvpRank.levelThreshold or 0))
+        end
+        return
+    
+    elseif cmd == "api" or cmd == "apisnapshot" then
+        if not addon.WriteApiSnapshot then
+            addon:Print("|cffff6600[WN]|r ApiSnapshot not loaded - restart the client, not /reload.|r")
+            return
+        end
+        local snap, fnCount, okUsed, badUsed, okNew, badNew = addon:WriteApiSnapshot()
+        if not snap then
+            addon:Print("|cffff6600[WN]|r database not ready.|r")
+            return
+        end
+        local nsCount = 0
+        for _ in pairs(snap.namespaces) do nsCount = nsCount + 1 end
+        addon:Print(string.format("|cff00ccff[WN]|r API snapshot: %d namespaces, %d functions",
+            nsCount, fnCount))
+        addon:Print(string.format("   addon events: |cff40ff40%d valid|r / |cffff6060%d missing|r",
+            okUsed, badUsed))
+        addon:Print(string.format("   Forever candidates: |cff40ff40%d valid|r / |cffff6060%d missing|r",
+            okNew, badNew))
+        -- Which sections this build actually captured. Editing ApiSnapshot.lua needs a /reload
+        -- BEFORE /wn api, or the old code runs and silently writes a snapshot without the new
+        -- sweeps -- which is invisible until the file is read off disk.
+        local sections = {}
+        for _, key in ipairs({ "namespaces", "events", "enums", "gameRules", "globals",
+            "legacy", "playerName", "renownTracks", "paragon" }) do
+            if snap[key] ~= nil then sections[#sections + 1] = key end
+        end
+            addon:Print("   sections: " .. table.concat(sections, ", "))
+        addon:Print("   now /reload to flush SavedVariables to disk.")
+        return
+    
+    elseif cmd == "caps" or cmd == "capabilities" then
+        local C = ns.Capabilities
+        if not C then
+            addon:Print("|cffff6600[WN]|r Capabilities module not loaded.|r")
+            return
+        end
+        local _, sub = addon:GetArgs(input, 2)
+        if sub and not (issecretvalue and issecretvalue(sub)) then sub = sub:lower() end
+        if sub == "api" then
+            if not addon.WriteApiSnapshot then
+                addon:Print("|cffff6600[WN]|r ApiSnapshot module not loaded.|r")
+                return
+            end
+            local snap, fnCount, okUsed, badUsed, okNew, badNew = addon:WriteApiSnapshot()
+            if not snap then
+                addon:Print("|cffff6600[WN]|r database not ready.|r")
+                return
+            end
+            local nsCount = 0
+            for _ in pairs(snap.namespaces) do nsCount = nsCount + 1 end
+            addon:Print(string.format("|cff00ccff[WN]|r API snapshot: %d namespaces, %d functions",
+                nsCount, fnCount))
+            addon:Print(string.format("   addon events: |cff40ff40%d valid|r / |cffff6060%d missing|r",
+                okUsed, badUsed))
+            addon:Print(string.format("   Forever-only candidates: |cff40ff40%d valid|r / |cffff6060%d missing|r",
+                okNew, badNew))
+            addon:Print("   written to SavedVariables - now /reload so it is flushed to disk.")
+            return
+        end
+        local _, isForever = C:Snapshot()
+        addon:Print("|cff00ccff[WN]|r client: " .. (isForever and "WoW Forever" or "retail")
+            .. "  interface " .. tostring((select(4, GetBuildInfo()))))
+        -- The resolved capability table is deliberately NOT printed here. Forever ships the
+        -- Mainline UI, so every retail namespace exists and a presence check reports yes for
+        -- systems the client does not have. What the calls return is the only real signal.
+        local rows = C.DeepProbe and C:DeepProbe()
+        if not rows then
+            addon:Print("|cffff6600[WN]|r deep probe unavailable.|r")
+            return
+        end
+        for i = 1, #rows do
+            addon:Print(string.format("   %-22s %s", rows[i][1], rows[i][2]))
+        end
+        return
+    
     elseif cmd == "profiler" or cmd == "profile" then
         local P = ns.Profiler
         if not P or not P.HandleCommand then

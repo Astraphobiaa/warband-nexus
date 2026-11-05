@@ -546,187 +546,206 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         or (vbProfile.showRewardItemLevel and L.PVE_VAULT_COL_ILVL_W)
         or L.PVE_VAULT_COL_W
     PVE_COLUMNS = {}
-    for i = 1, #PVE_DAWNCRESTS do
-        local crestEntry = PVE_DAWNCRESTS[i]
-        local ck = "crest_" .. tostring(crestEntry.id)
-        if pveExtraCols[ck] ~= false then
-            local crestIcon = 134400
-            local crestLabel = ""
-            local disp = L.GetPvECachedCurrencyDisplay(crestEntry.id)
-            if disp then
-                if disp.iconFileID then
-                    crestIcon = disp.iconFileID
+    -- Every column below is Midnight-season content: upgrade crests, Great Vault slots, delve
+    -- tasks and this season's currencies. The key sequence only ORDERS columns, so gating there
+    -- left them all on screen -- the defs must not be built in the first place.
+    if WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("seasonalPvEColumns") then
+        for i = 1, #PVE_DAWNCRESTS do
+            local crestEntry = PVE_DAWNCRESTS[i]
+            local ck = "crest_" .. tostring(crestEntry.id)
+            if pveExtraCols[ck] ~= false then
+                local crestIcon = 134400
+                local crestLabel = ""
+                local disp = L.GetPvECachedCurrencyDisplay(crestEntry.id)
+                if disp then
+                    if disp.iconFileID then
+                        crestIcon = disp.iconFileID
+                    end
+                    if disp.name and not (L.issecretvalue and L.issecretvalue(disp.name)) and disp.name ~= "" then
+                        crestLabel = disp.name
+                    end
                 end
-                if disp.name and not (L.issecretvalue and L.issecretvalue(disp.name)) and disp.name ~= "" then
-                    crestLabel = disp.name
+                if crestLabel == "" and crestEntry.labelKey then
+                    crestLabel = L.GetLocalizedText(crestEntry.labelKey, "")
                 end
+                PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                    key = ck,
+                    label = "",
+                    width = L.PVE_DAWNCREST_COL_W,
+                    icon = crestIcon,
+                    crestCurrencyId = crestEntry.id,
+                    headerLabel = crestLabel,
+                }
             end
-            if crestLabel == "" and crestEntry.labelKey then
-                crestLabel = L.GetLocalizedText(crestEntry.labelKey, "")
+        end
+        if pveExtraCols.coffer_shards ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "coffer_shards",
+                label = "",
+                width = L.PVE_COFFER_COL_W,
+                icon = PVE_SHARDS_ICON,
+                tooltipTitle = L.GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
+                headerLabel = L.GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
+            }
+        end
+        if pveExtraCols.restored_key ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "restored_key",
+                label = "",
+                width = L.PVE_KEY_COL_W,
+                icon = PVE_RESTORED_KEY_ICON,
+                tooltipTitle = L.GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
+                headerLabel = L.GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
+            }
+        end
+        if pveExtraCols.shard_of_dundun ~= false then
+            local dundunIcon = "Interface\\Icons\\INV_Misc_Gem_Variety_02"
+            local dundunDisp = L.GetPvECachedCurrencyDisplay(L.PVE_DUNDUN_ID)
+            if dundunDisp and dundunDisp.iconFileID then
+                dundunIcon = dundunDisp.iconFileID
             end
             PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-                key = ck,
+                key = "shard_of_dundun",
                 label = "",
-                width = L.PVE_DAWNCREST_COL_W,
-                icon = crestIcon,
-                crestCurrencyId = crestEntry.id,
-                headerLabel = crestLabel,
+                width = L.PVE_DUNDUN_COL_W,
+                icon = dundunIcon,
+                tooltipTitle = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
+                headerLabel = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
+            }
+        end
+        if vaultCols.voidcore ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "voidcore",
+                label = "",
+                width = L.PVE_VOIDCORE_COL_W,
+                icon = 7658128,
+                tooltipTitle = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
+                headerLabel = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
+            }
+        end
+        if vaultCols.manaflux == true then
+            local manafluxId = (L.GetPvEManafluxID and L.GetPvEManafluxID()) or L.PVE_MANAFLUX_ID or 3465
+            local manafluxName = (L.GetPvEManafluxName and L.GetPvEManafluxName()) or "Venomblight Manaflux"
+            local manafluxIcon = "Interface\\Icons\\INV_Enchant_DustArcane"
+            local mfDisp = L.GetPvECachedCurrencyDisplay(manafluxId)
+            if mfDisp and mfDisp.iconFileID then
+                manafluxIcon = mfDisp.iconFileID
+            end
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "manaflux",
+                label = "",
+                width = L.PVE_MANAFLUX_COL_W,
+                icon = manafluxIcon,
+                tooltipTitle = manafluxName,
+                headerLabel = manafluxName,
+            }
+        end
+        if vaultCols.raids ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "slot1",
+                label = "",
+                width = vaultTrackColW,
+                icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+                tooltipTitle = GetLocalizedText("PVE_HEADER_RAIDS", "Raids"),
+                headerLabel = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"),
+            }
+        end
+        if vaultCols.mythicPlus ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "slot2",
+                label = "",
+                width = vaultTrackColW,
+                icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+                tooltipTitle = GetLocalizedText("PVE_HEADER_DUNGEONS", "Dungeons"),
+                headerLabel = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"),
+            }
+        end
+        if vaultCols.world ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "slot3",
+                label = "",
+                width = vaultTrackColW,
+                icon = "Interface\\Icons\\INV_Misc_Map_01",
+                tooltipTitle = GetLocalizedText("VAULT_WORLD", "World"),
+                headerLabel = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"),
+            }
+        end
+        -- Bountiful weekly â€” Trovehunter's Bounty item icon (live fileID when API returns it)
+        if vaultCols.bounty ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "bountiful",
+                label = "",
+                width = L.PVE_BOUNTIFUL_COL_W,
+                icon = L.GetTrovehunterBountyColumnIcon(),
+                tooltipTitle = GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"),
+                headerLabel = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"),
+            }
+        end
+        -- Vault Status â€” same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
+        -- Midnight 12.1 weeklies that award a Trovehunter's Bounty (A Nightmarish Task / Purging the Vaults).
+        if pveExtraCols.nightmare_task ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "nightmare_task",
+                label = "",
+                width = L.PVE_BOUNTIFUL_COL_W,
+                icon = PVE_NIGHTMARE_TASK_ICON,
+                tooltipTitle = GetLocalizedText("PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task"),
+                headerLabel = L.GetLocalizedText("PVE_HEADER_NIGHTMARE_SHORT", "Nightmare"),
+            }
+        end
+        if pveExtraCols.tormented_soul ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "tormented_soul",
+                label = "",
+                width = L.PVE_BOUNTIFUL_COL_W,
+                icon = PVE_TORMENTED_SOUL_ICON,
+                tooltipTitle = GetLocalizedText("PVE_COL_TORMENTED_SOUL", "Tormented Soul"),
+                headerLabel = L.GetLocalizedText("PVE_HEADER_TORMENTED_SHORT", "Soul"),
+            }
+        end
+        if pveExtraCols.purging_vaults ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "purging_vaults",
+                label = "",
+                width = L.PVE_BOUNTIFUL_COL_W,
+                icon = "Interface\\Icons\\INV_Misc_Idol_03",
+                tooltipTitle = GetLocalizedText("PVE_COL_PURGING_VAULTS", "Purging the Vaults"),
+                headerLabel = L.GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"),
+            }
+        end
+        if pveExtraCols.delve_nemesis ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "delve_nemesis",
+                label = "",
+                width = L.PVE_BOUNTIFUL_COL_W,
+                icon = PVE_DELVE_NEMESIS_ICON,
+                tooltipTitle = GetLocalizedText("PVE_COL_DELVE_NEMESIS", "Delve Nemesis"),
+                headerLabel = L.GetLocalizedText("PVE_HEADER_NEMESIS_SHORT", "Nemesis"),
+            }
+        end
+        if vaultCols.status ~= false then
+            PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+                key = "vault_status",
+                label = "",
+                width = L.PVE_STATUS_COL_W,
+                icon = PVE_STATUS_OK_ICON,
+                tooltipTitle = GetLocalizedText("PVE_COL_VAULT_STATUS", "Vault Status"),
+                headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
+                headerIconIsAtlas = false,
             }
         end
     end
-    if pveExtraCols.coffer_shards ~= false then
+    -- Raid lockouts are the PvE content a vanilla-plus client actually has. They used to be
+    -- reachable only as fallback lines inside the Great Vault tooltip, so with the vault gone
+    -- they had nowhere to show. Own column where the seasonal ones are hidden.
+    if not (WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("seasonalPvEColumns")) then
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "coffer_shards",
-            label = "",
-            width = L.PVE_COFFER_COL_W,
-            icon = PVE_SHARDS_ICON,
-            tooltipTitle = L.GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
-            headerLabel = L.GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
-        }
-    end
-    if pveExtraCols.restored_key ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "restored_key",
-            label = "",
-            width = L.PVE_KEY_COL_W,
-            icon = PVE_RESTORED_KEY_ICON,
-            tooltipTitle = L.GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
-            headerLabel = L.GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
-        }
-    end
-    if pveExtraCols.shard_of_dundun ~= false then
-        local dundunIcon = "Interface\\Icons\\INV_Misc_Gem_Variety_02"
-        local dundunDisp = L.GetPvECachedCurrencyDisplay(L.PVE_DUNDUN_ID)
-        if dundunDisp and dundunDisp.iconFileID then
-            dundunIcon = dundunDisp.iconFileID
-        end
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "shard_of_dundun",
-            label = "",
-            width = L.PVE_DUNDUN_COL_W,
-            icon = dundunIcon,
-            tooltipTitle = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
-            headerLabel = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
-        }
-    end
-    if vaultCols.voidcore ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "voidcore",
-            label = "",
-            width = L.PVE_VOIDCORE_COL_W,
-            icon = 7658128,
-            tooltipTitle = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
-            headerLabel = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
-        }
-    end
-    if vaultCols.manaflux == true then
-        local manafluxId = (L.GetPvEManafluxID and L.GetPvEManafluxID()) or L.PVE_MANAFLUX_ID or 3465
-        local manafluxName = (L.GetPvEManafluxName and L.GetPvEManafluxName()) or "Venomblight Manaflux"
-        local manafluxIcon = "Interface\\Icons\\INV_Enchant_DustArcane"
-        local mfDisp = L.GetPvECachedCurrencyDisplay(manafluxId)
-        if mfDisp and mfDisp.iconFileID then
-            manafluxIcon = mfDisp.iconFileID
-        end
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "manaflux",
-            label = "",
-            width = L.PVE_MANAFLUX_COL_W,
-            icon = manafluxIcon,
-            tooltipTitle = manafluxName,
-            headerLabel = manafluxName,
-        }
-    end
-    if vaultCols.raids ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "slot1",
-            label = "",
-            width = vaultTrackColW,
-            icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
-            tooltipTitle = GetLocalizedText("PVE_HEADER_RAIDS", "Raids"),
-            headerLabel = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"),
-        }
-    end
-    if vaultCols.mythicPlus ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "slot2",
-            label = "",
-            width = vaultTrackColW,
-            icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-            tooltipTitle = GetLocalizedText("PVE_HEADER_DUNGEONS", "Dungeons"),
-            headerLabel = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"),
-        }
-    end
-    if vaultCols.world ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "slot3",
-            label = "",
-            width = vaultTrackColW,
-            icon = "Interface\\Icons\\INV_Misc_Map_01",
-            tooltipTitle = GetLocalizedText("VAULT_WORLD", "World"),
-            headerLabel = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"),
-        }
-    end
-    -- Bountiful weekly â€” Trovehunter's Bounty item icon (live fileID when API returns it)
-    if vaultCols.bounty ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "bountiful",
-            label = "",
-            width = L.PVE_BOUNTIFUL_COL_W,
-            icon = L.GetTrovehunterBountyColumnIcon(),
-            tooltipTitle = GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"),
-            headerLabel = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"),
-        }
-    end
-    -- Vault Status â€” same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
-    -- Midnight 12.1 weeklies that award a Trovehunter's Bounty (A Nightmarish Task / Purging the Vaults).
-    if pveExtraCols.nightmare_task ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "nightmare_task",
-            label = "",
-            width = L.PVE_BOUNTIFUL_COL_W,
-            icon = PVE_NIGHTMARE_TASK_ICON,
-            tooltipTitle = GetLocalizedText("PVE_COL_NIGHTMARE_TASK", "A Nightmarish Task"),
-            headerLabel = L.GetLocalizedText("PVE_HEADER_NIGHTMARE_SHORT", "Nightmare"),
-        }
-    end
-    if pveExtraCols.tormented_soul ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "tormented_soul",
-            label = "",
-            width = L.PVE_BOUNTIFUL_COL_W,
-            icon = PVE_TORMENTED_SOUL_ICON,
-            tooltipTitle = GetLocalizedText("PVE_COL_TORMENTED_SOUL", "Tormented Soul"),
-            headerLabel = L.GetLocalizedText("PVE_HEADER_TORMENTED_SHORT", "Soul"),
-        }
-    end
-    if pveExtraCols.purging_vaults ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "purging_vaults",
-            label = "",
-            width = L.PVE_BOUNTIFUL_COL_W,
-            icon = "Interface\\Icons\\INV_Misc_Idol_03",
-            tooltipTitle = GetLocalizedText("PVE_COL_PURGING_VAULTS", "Purging the Vaults"),
-            headerLabel = L.GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"),
-        }
-    end
-    if pveExtraCols.delve_nemesis ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "delve_nemesis",
-            label = "",
-            width = L.PVE_BOUNTIFUL_COL_W,
-            icon = PVE_DELVE_NEMESIS_ICON,
-            tooltipTitle = GetLocalizedText("PVE_COL_DELVE_NEMESIS", "Delve Nemesis"),
-            headerLabel = L.GetLocalizedText("PVE_HEADER_NEMESIS_SHORT", "Nemesis"),
-        }
-    end
-    if vaultCols.status ~= false then
-        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
-            key = "vault_status",
+            key = "lockouts",
             label = "",
             width = L.PVE_STATUS_COL_W,
             icon = PVE_STATUS_OK_ICON,
-            tooltipTitle = GetLocalizedText("PVE_COL_VAULT_STATUS", "Vault Status"),
-            headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
+            tooltipTitle = GetLocalizedText("PVE_COL_LOCKOUTS", "Raid Lockouts"),
+            headerLabel = L.GetLocalizedText("PVE_HEADER_LOCKOUTS_SHORT", "Locks"),
             headerIconIsAtlas = false,
         }
     end
@@ -879,7 +898,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     end
     
     -- Get all characters (filter tracked only for PvE display).
-    -- Also honor profile.hideLowLevelThreshold: 0 (off), 80, or 90.
+    -- Also honor profile.hideLowLevelThreshold: 0 (off) or one of the two cap-derived steps.
     local allCharacters = self:GetAllCharacters()
     local characters = {}
     local minLevel = L.GetLowLevelHideThreshold(profile)
@@ -1880,6 +1899,25 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 tooltipIcon = shardData and shardData.icon,
                 currencyID = PVE_SHARDS_ID,
                 seasonProgressData = shardData,
+            }
+            -- Locked raids this reset, with boss progress summed across them.
+            local lockRows = pveData and pveData.raidLockouts
+            local lockCount, bossDone, bossTotal = 0, 0, 0
+            if type(lockRows) == "table" then
+                for li = 1, #lockRows do
+                    local row = lockRows[li]
+                    if row then
+                        lockCount = lockCount + 1
+                        bossDone = bossDone + (tonumber(row.encounterProgress) or 0)
+                        bossTotal = bossTotal + (tonumber(row.numEncounters) or 0)
+                    end
+                end
+            end
+            colValuesByKey.lockouts = {
+                text = (lockCount > 0)
+                    and string.format("%d/%d", bossDone, bossTotal) or EM_DASH,
+                color = (lockCount == 0) and DIM_COLOR or nil,
+                tooltipTitle = GetLocalizedText("PVE_COL_LOCKOUTS", "Raid Lockouts"),
             }
             local keyMax = keyData and keyData.maxQuantity or 0
             local keyTE = keyData and keyData.totalEarned

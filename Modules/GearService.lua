@@ -1136,12 +1136,17 @@ local function CountGearDataPayloadSlots(entry)
     return count
 end
 
+--- Rows written by old builds were keyed by the paperdoll ARRAY index, back when the table held
+--- exactly 16 slots. The bound has to stay 16 even as the table grows (WoW Forever adds the
+--- ranged slot, id 18): using #GEAR_SLOTS would let a 17th entry reclassify legacy offhand rows.
+local LEGACY_PAPERDOLL_INDEX_MAX = 16
+
 --- Older SavedVariables stored slots/watermarks by paperdoll row index (1..16), not Blizzard slot id.
 --- Keys 6-16 collide (array[6]=wrist vs slot id 6=waist) so naive slot-id reads show the wrong character's layout.
 local function GearSlotsUseSequentialPaperdollIndex(slots)
     if type(slots) ~= "table" then return false end
     for sid, slot in pairs(slots) do
-        if type(sid) == "number" and sid > #GEAR_SLOTS and GearDataSlotHasPayload(slot) then
+        if type(sid) == "number" and sid > LEGACY_PAPERDOLL_INDEX_MAX and GearDataSlotHasPayload(slot) then
             return false
         end
     end
@@ -2336,13 +2341,15 @@ function WarbandNexus:RegisterGearCacheEvents()
 end
 
 --- EventManager hook for PLAYER_EQUIPMENT_CHANGED.
---- Debounces rapid swaps and scans only gear slots (1-17).
+--- Debounces rapid swaps and scans only gear slots (1-18; 18 is the ranged slot, Forever only).
 ---@param slotID number
 function WarbandNexus:OnGearEquipmentChanged(slotID)
     -- Module gate: Gear off = no gear cache work (OnItemLevelChanged stays ungated in EventManager).
     if not (ns.Utilities and ns.Utilities:IsModuleEnabled("gear")) then return end
     if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
-    if slotID and (slotID < 1 or slotID > 17) then return end
+    -- 18 is the vanilla ranged slot, which WoW Forever shows again; the old bound of 17 threw
+    -- its equipment events away before the scan could see them.
+    if slotID and (slotID < 1 or slotID > 18) then return end
     -- Gear tab: refresh paperdoll icons from live inventory immediately; API links can lag one frame
     -- behind this event, so GearUI also retries on next ticks. Persisted scan stays debounced below.
     if WarbandNexus.TryRefreshGearEquipSlotsImmediate then

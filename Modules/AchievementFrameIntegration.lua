@@ -210,7 +210,7 @@ local function EnsureWNButton(parent, achievementID)
 
         local tex = btn:CreateTexture(nil, "OVERLAY")
         tex:SetAllPoints()
-        tex:SetTexture(ICON_PATH)
+        tex:SetTexture((ns.UI_AddonLogoFile and ns.UI_AddonLogoFile(24, tex)) or ICON_PATH)
         if tex.SetDesaturated then tex:SetDesaturated(false) end
         tex:SetAlpha(1)
         btn.WNTex = tex

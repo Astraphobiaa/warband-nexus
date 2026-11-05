@@ -947,6 +947,17 @@ local function ActivateReminder(plan, triggerLabel, opts)
         local prof = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
         if prof and prof.enabled and prof.showPlanReminderToast ~= false then
             if calendarToastBatch then
+                -- One toast per plan per pass: a plan with several calendar triggers (e.g. daily
+                -- login + weekly reset) otherwise stacks two identical-looking toasts on reset day.
+                -- Every trigger still activates and advances its own anchor above.
+                local planKey = plan.id ~= nil and tostring(plan.id) or nil
+                if planKey and calendarToastBatch.seen and calendarToastBatch.seen[planKey] then
+                    return true
+                end
+                if planKey then
+                    calendarToastBatch.seen = calendarToastBatch.seen or {}
+                    calendarToastBatch.seen[planKey] = true
+                end
                 calendarToastBatch[#calendarToastBatch + 1] = { plan = plan, triggerLabel = triggerLabel }
             else
                 SendPlanReminderToast(plan, triggerLabel, false)

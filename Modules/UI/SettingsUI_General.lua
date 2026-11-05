@@ -32,6 +32,8 @@ function M.AppendGeneralPanel(ctx)
     local UI_SPACING = H.UI_SPACING
     local GetSettingsSectionContentWidth = H.GetSettingsSectionContentWidth
     local GetHeaderToolbarGap = H.GetHeaderToolbarGap
+    local GetSettingsLabelColumnWidth = H.GetSettingsLabelColumnWidth
+    local GetSettingsControlColumnWidth = H.GetSettingsControlColumnWidth
     local AppendSettingsPanelIntro = H.AppendSettingsPanelIntro
     local AppendSettingsSubSectionHeader = H.AppendSettingsSubSectionHeader
     local StackSettingsSubPanel = H.StackSettingsSubPanel
@@ -178,7 +180,7 @@ function M.AppendGeneralPanel(ctx)
         end
 
         -- Keybinding row (fixed label column + controls)
-        local labelColW = math.min(170, math.floor(iw * 0.34))
+        local labelColW = GetSettingsLabelColumnWidth(iw)
         local keybindTitle = (ns.L and ns.L["KEYBINDING"]) or "Keybinding"
         local keybindLabel = FontManager:CreateFontString(inner, "body", "OVERLAY")
         keybindLabel:SetPoint("TOPLEFT", 0, cy)
@@ -188,7 +190,9 @@ function M.AppendGeneralPanel(ctx)
         keybindLabel:SetText(keybindTitle .. ":")
         ns.UI_SetTextColorRole(keybindLabel, "Bright")
 
-        local keybindBtn = ns.UI.Factory:CreateButton(inner, 168, SETTINGS_BTN_H, false)
+        -- Same control column as the dropdown rows above, so both edges line up.
+        local keybindBtnW = math.max(136, GetSettingsControlColumnWidth(iw))
+        local keybindBtn = ns.UI.Factory:CreateButton(inner, keybindBtnW, SETTINGS_BTN_H, false)
         settingsKeybindButton = keybindBtn
         -- Top-anchor the button at the row baseline (cy) so it doesn't ride ~19px above the row
         -- (it was LEFT->label RIGHT, centering the tall button on the short label). Then vertically

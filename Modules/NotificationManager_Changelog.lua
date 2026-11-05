@@ -335,7 +335,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     local logo = popup:CreateTexture(nil, "ARTWORK")
     logo:SetSize(64, 64)
     logo:SetPoint("TOP", 0, -20)
-    logo:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
+    local logoFile = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga"
+    if ns.UI_PickIconFile then
+        local px = ns.UI_PhysicalPixels and ns.UI_PhysicalPixels(64, logo) or nil
+        logoFile = (ns.UI_PickIconFile(logoFile, px))
+    end
+    logo:SetTexture(logoFile)
     
     -- Title (nil-guard FontManager for first load)
     if FontManager and FontManager.CreateFontString then

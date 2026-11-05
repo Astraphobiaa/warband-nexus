@@ -358,6 +358,9 @@ end
 -- PUBLIC API
 
 function WarbandNexus:TriggerReagentDeposit(isManual)
+    -- No account bank and no character reagent bank on this client (WoW Forever), so both
+    -- deposit destinations are dead. Stop at the entry point rather than failing deeper in.
+    if self.SupportsFeature and not self:SupportsFeature("warbandBank") then return end
     C_Timer.After(0.2, function()
         if not WarbandNexus.bankIsOpen then return end
         PerformDeposit(isManual)
@@ -432,5 +435,8 @@ function WarbandNexus:WN_REAGENT_DEPOSIT_CHANGED()
 end
 
 function WarbandNexus:InitializeReagentDepositService()
+    -- No account bank and no character reagent bank on this client (WoW Forever), so both
+    -- deposit destinations are dead. Stop at the entry point rather than failing deeper in.
+    if self.SupportsFeature and not self:SupportsFeature("warbandBank") then return end
     self:RegisterMessage(E.REAGENT_DEPOSIT_CHANGED)
 end

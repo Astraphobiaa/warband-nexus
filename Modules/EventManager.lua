@@ -239,6 +239,13 @@ function WarbandNexus:OnUIScaleChanged()
     if ns.ResetPixelScale then
         ns.ResetPixelScale()
     end
+    -- ResetPixelScale only clears the pixel-grid cache. The font resolution factor is cached
+    -- separately in FontManager and had no invalidation path at all, so it kept the value it
+    -- computed on the first login frame for the whole session -- text stayed sized for the old
+    -- resolution after a UI-scale or display change.
+    if ns.FontManager and ns.FontManager.ResetFontResolutionCache then
+        ns.FontManager:ResetFontResolutionCache()
+    end
 
     -- Defer the actual font refresh to the next frame.
     -- UIParent:GetEffectiveScale() is only guaranteed to reflect the new scale on the
@@ -251,6 +258,12 @@ function WarbandNexus:OnUIScaleChanged()
         -- Reset again: the deferred call may arrive after another stale cache was built.
         if ns.ResetPixelScale then
             ns.ResetPixelScale()
+        end
+        if ns.UI_ResetIconMarkupCache then
+            ns.UI_ResetIconMarkupCache()
+        end
+        if ns.FontManager and ns.FontManager.ResetFontResolutionCache then
+            ns.FontManager:ResetFontResolutionCache()
         end
         if ns.FontManager and ns.FontManager.RefreshAllFonts then
             ns.FontManager:RefreshAllFonts()
@@ -296,6 +309,22 @@ function WarbandNexus:InitializeEventManager()
     self._wnEventManagerInitialized = true
 
     -- UI Scale/Resolution Events (immediate refresh for consistent rendering)
+    -- WoW Forever's Legacy System rides the renown API, so its progress moves on the same
+    -- event as any other major faction. Registration is skipped where the system does not
+    -- exist, and the wrapper in Core.lua would swallow the name anyway on a client without it.
+    if not self.SupportsFeature or self:SupportsFeature("legacy") then
+        self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", function()
+            Debounce("LEGACY_SCAN", 1.0, function()
+                if self.ScanLegacyProgress then self:ScanLegacyProgress() end
+            end)
+        end)
+        self:RegisterEvent("ACHIEVEMENT_EARNED", function()
+            Debounce("LEGACY_SCAN", 1.0, function()
+                if self.ScanLegacyProgress then self:ScanLegacyProgress() end
+            end)
+        end)
+    end
+
     self:RegisterEvent("UI_SCALE_CHANGED", "OnUIScaleChanged")
     self:RegisterEvent("DISPLAY_SIZE_CHANGED", "OnUIScaleChanged")
     

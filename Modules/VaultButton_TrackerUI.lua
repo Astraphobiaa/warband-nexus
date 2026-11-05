@@ -113,7 +113,7 @@ function M.BuildOptionsFrame()
     local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
     titleIcon:SetSize(24, 24)
     titleIcon:SetPoint("LEFT", 15, 0)
-    titleIcon:SetTexture(ICON_TEXTURE)
+    titleIcon:SetTexture((ns.UI_AddonLogoFile and ns.UI_AddonLogoFile(24, titleIcon)) or ICON_TEXTURE)
     if not titleIcon:GetTexture() then titleIcon:SetTexture(ICON_FALLBACK) end
 
     local FontManager = ns.FontManager

@@ -195,6 +195,8 @@ local function PvE_BuildCompactHeaderLabel(col)
         return GetLocalizedText("PVE_HEADER_VAULTS_SHORT", "Vaults"), "ffffff"
     elseif key == "delve_nemesis" then
         return GetLocalizedText("PVE_HEADER_NEMESIS_SHORT", "Nemesis"), "ffffff"
+    elseif key == "lockouts" then
+        return GetLocalizedText("PVE_HEADER_LOCKOUTS_SHORT", "Locks"), "ffffff"
     elseif key == "vault_status" then
         return GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), "ffffff"
     elseif key:match("^crest_") then
@@ -222,9 +224,11 @@ local function GetLowLevelHideThreshold(profile)
     return 0
 end
 
+--- Off -> lower step -> cap -> off, both steps derived from the client's level cap.
 local function GetLowLevelHideCycleNext(current)
-    if current == 0 then return 80 end
-    if current == 80 then return 90 end
+    local lower, upper = ns.UI_GetLowLevelHideSteps()
+    if current == 0 then return lower end
+    if current == lower then return upper end
     return 0
 end
 
@@ -232,8 +236,10 @@ local function GetLowLevelHideLabel(threshold)
     if ns.UI_GetLowLevelHideLabel then
         return ns.UI_GetLowLevelHideLabel(threshold)
     end
-    if threshold == 90 then return GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") end
-    if threshold == 80 then return GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") end
+    -- Label follows the step, whatever the client's cap makes it.
+    if threshold and threshold > 0 then
+        return string.format(GetLocalizedText("HIDE_FILTER_LEVEL_N", "Level %d"), threshold)
+    end
     return GetLocalizedText("HIDE_FILTER_STATE_OFF", "Off")
 end
 
@@ -1305,6 +1311,7 @@ local function GetPvEDefaultColumnKeyOrder(profile)
     order[#order + 1] = "purging_vaults"
     order[#order + 1] = "delve_nemesis"
     order[#order + 1] = "vault_status"
+    order[#order + 1] = "lockouts"
     return order
 end
 
@@ -1339,6 +1346,11 @@ ns.PvEUI.EnsurePvEColumnOrder = EnsurePvEColumnOrder
 
 local function IsPvEInlineColumnKeyVisible(key, profile, vc, ex)
     if not key or type(key) ~= "string" then return false end
+    -- One gate for the whole inline column set: vault slots, crests, delve tasks and season
+    -- currencies are all Midnight content and none of it exists on WoW Forever.
+    if WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("seasonalPvEColumns") then
+        return false
+    end
     if key:find("^crest_") then
         return ex[key] ~= false
     end
@@ -1356,6 +1368,10 @@ local function IsPvEInlineColumnKeyVisible(key, profile, vc, ex)
     if key == "purging_vaults" then return ex.purging_vaults ~= false end
     if key == "delve_nemesis" then return ex.delve_nemesis ~= false end
     if key == "vault_status" then return vc.status ~= false end
+    -- Only present where the seasonal set is hidden, so it never doubles up on retail.
+    if key == "lockouts" then
+        return not (WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("seasonalPvEColumns"))
+    end
     return false
 end
 
@@ -1505,6 +1521,7 @@ function ns.ComputePvEMinScrollWidth(self)
         purging_vaults = PVE_BOUNTIFUL_COL_W,
         delve_nemesis = PVE_BOUNTIFUL_COL_W,
         vault_status = PVE_STATUS_COL_W,
+        lockouts = PVE_STATUS_COL_W,
     }
     local inlineTotal = 0
     for i = 1, #columnSeq do
@@ -1648,6 +1665,19 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             PvEUI_WipeExpandedDetailSurface(charDetailContent)
             charDetailContent._wnPopulateKey = charExpandKey
             charDetailContent._wnPopulateBodyW = bodyW
+
+            -- The expanded panel is three retail cards end to end: Mythic+ overall score, keystone and
+            -- affixes, and the Great Vault grid. None of those systems exist on a vanilla-plus client,
+            -- so the whole surface collapses rather than drawing three cards of nothing.
+            if WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("seasonalPvEColumns") then
+                charDetailContent._wnSectionFullH = 0.1
+                charDetailContent:SetHeight(0.1)
+                charDetailContent:Hide()
+                if charDetailContent._pveOnLayoutChanged then
+                    charDetailContent._pveOnLayoutChanged(0.1)
+                end
+                return
+            end
 
             local cardContainer = ns.UI.Factory:CreateContainer(charDetailContent)
             charDetailContent._pveCardContainer = cardContainer

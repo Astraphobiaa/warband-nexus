@@ -33,6 +33,9 @@ local CATEGORY_KEYS = {
 ---Shows the Reagent Deposit configuration popup
 ---@param anchorFrame Frame|nil Optional frame to anchor near
 function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
+    -- No account bank and no character reagent bank on this client (WoW Forever), so both
+    -- deposit destinations are dead. Stop at the entry point rather than failing deeper in.
+    if self.SupportsFeature and not self:SupportsFeature("warbandBank") then return end
     local isPerChar = self.db.char.reagentDeposit and self.db.char.reagentDeposit.perCharacter or false
 
     local profileDefaults = {

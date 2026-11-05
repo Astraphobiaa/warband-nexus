@@ -32,21 +32,79 @@ local tostring = tostring
 local WN_MEDIA = "Interface\\AddOns\\WarbandNexus\\Media\\"
 local function Icon(name) return WN_MEDIA .. "Icon-" .. name .. ".tga" end
 
--- Loose TGAs get no mipmaps (TRILINEAR on them crashes the client), so a 64 px file drawn at 16-24 px
--- aliases. Media/Small/ holds 32 px copies (scripts/build_small_icons.py); use them for small draws.
-local SMALL_ICON_MAX = 24
-local smallFileCache = {}
-local function SmallIconFile(file)
-    local v = smallFileCache[file]
-    if v == nil then
-        v = false
-        if type(file) == "string" and file:sub(1, #WN_MEDIA + 5) == WN_MEDIA .. "Icon-" then
-            v = WN_MEDIA .. "Small\\" .. file:sub(#WN_MEDIA + 1)
-        end
-        smallFileCache[file] = v
-    end
-    return v or file
+-- Loose TGAs get no mipmaps (TRILINEAR on them crashes the client), so a 64-256 px source drawn at
+-- 12-24 px aliases. scripts/build_small_icons.py pre-shrinks every shipped icon into
+-- Media/Small16|Small|Small64|Small128; pick the smallest copy that still covers the draw.
+-- Upscaling from a copy that is too small reads blurry, downscaling more than 2x shimmers.
+local TIER_PX = { 16, 32, 64, 128 }
+local TIER_DIR = { [16] = "Small16\\", [32] = "Small\\", [64] = "Small64\\", [128] = "Small128\\" }
+
+--- GetHeight()/markup height are UI units, not pixels: at 1440p a 24-unit icon already draws at ~29
+--- physical px and at 4K at ~43, so the tier has to be chosen from the real pixel count.
+--- Height 0 (font line height) resolves to the smallest tier.
+local function PhysicalPixels(height, region)
+    if not height or height <= 0 then return nil end
+    local ps = ns.GetPixelScale and ns.GetPixelScale(region)
+    if not ps or ps <= 0 then return height end
+    return height / ps
 end
+ns.UI_PhysicalPixels = PhysicalPixels
+
+--- Shipped source size per family. A tier only exists on disk when it is smaller than its source,
+--- so picking one blindly would point at a missing file and draw nothing.
+local function SourcePixels(file)
+    if file:find("ClassCrest-", 1, true) then return 128 end
+    if file == WN_MEDIA .. "icon.tga" or file == WN_MEDIA .. "patreon.tga" then
+        return file:sub(-8) == "icon.tga" and 256 or 128
+    end
+    return 64  -- Media\Icon-*.tga, discord.tga
+end
+
+local tierCache = {}
+--- Returns the file to draw and its pixel size. Non-addon textures pass through untouched.
+local function PickIconFile(file, px)
+    if type(file) ~= "string" or file:sub(1, #WN_MEDIA) ~= WN_MEDIA then return file, nil end
+    if file:find("Small", #WN_MEDIA + 1, true) then return file, nil end  -- already a tier copy
+    local src = SourcePixels(file)
+    -- nil = caller has no size yet (texture not laid out): keep the source rather than guess small
+    -- and upscale. 0 = font line height, which really is the smallest tier.
+    if px == nil then return file, src end
+    if px <= 0 then px = 0 end
+    local want
+    for i = 1, #TIER_PX do
+        local tier = TIER_PX[i]
+        if tier < src and px <= tier then
+            want = tier
+            break
+        end
+    end
+    if not want then return file, src end
+    local key = want .. file
+    local out = tierCache[key]
+    if not out then
+        out = WN_MEDIA .. TIER_DIR[want] .. file:sub(#WN_MEDIA + 1)
+        tierCache[key] = out
+    end
+    return out, want
+end
+ns.UI_PickIconFile = PickIconFile
+
+--- The addon logo ships at 256 px but the chrome draws it from 16 units (vault header) to 80
+--- (empty-state card). Straight off the source it aliases at every button size, so every
+--- caller resolves it through a tier. `size` is the draw size in UI units.
+local LOGO_FILE = WN_MEDIA .. "icon.tga"
+function ns.UI_AddonLogoFile(size, region)
+    return (PickIconFile(LOGO_FILE, PhysicalPixels(size, region)))
+end
+
+--- Back-compat shims for callers that only ask "is this a small draw?".
+local function UseSmallIcon(height, region)
+    if height == 0 then return true end
+    local px = PhysicalPixels(height, region)
+    return px ~= nil and px <= 32
+end
+ns.UI_UseSmallIcon = UseSmallIcon
+local function SmallIconFile(file) return (PickIconFile(file, 32)) end
 ns.UI_SmallIconFile = SmallIconFile
 
 local SORT_UP_TC = { 0, 1, 1, 0 }
@@ -154,6 +212,11 @@ ns.UI_ICONS = {
 local ICONS = ns.UI_ICONS
 local atlasExists = {}
 local markupCache = {}
+--- Markup strings bake in the 32 px vs 64 px source choice, which depends on the pixel scale.
+--- EventManager clears them when UI scale / resolution changes.
+function ns.UI_ResetIconMarkupCache()
+    for k in pairs(markupCache) do markupCache[k] = nil end
+end
 
 local function AtlasExists(name)
     local v = atlasExists[name]
@@ -229,7 +292,7 @@ function ns.UI_SetIcon(tex, key, opts)
     if not applied and entry.file then
         local file = entry.file
         local h = tex.GetHeight and tex:GetHeight()
-        if h and h > 0 and h <= SMALL_ICON_MAX then file = SmallIconFile(file) end
+        file = (PickIconFile(file, PhysicalPixels(h, tex)))
         tex:SetTexture(file)
         local tc = entry.texCoord or SORT_DOWN_TC
         tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
@@ -267,12 +330,12 @@ function ns.UI_GetIconMarkup(key, width, height, offsetX, offsetY, tint)
         markup = CreateAtlasMarkup(atlas, width, height, offsetX, offsetY)
     elseif entry and entry.file then
         if ns.UI_IsAddonMediaTexture(entry.file) and not entry.texCoord then
-            -- our icons are 64x64 (32x32 in Media/Small for line-height draws): full texel range, plus the tint
-            local file, px = entry.file, 64
-            if height <= SMALL_ICON_MAX then
-                local small = SmallIconFile(file)
-                if small ~= file then file, px = small, 32 end
-            end
+            -- full texel range off whichever pre-shrunk copy covers this draw, plus the tint
+            -- height 0 = draw at font line height; size it like a default line so the tier still
+            -- follows the UI scale instead of defaulting to the smallest copy.
+            local drawH = (height and height > 0) and height or 12
+            local file, px = PickIconFile(entry.file, PhysicalPixels(drawH))
+            px = px or 64
             markup = "|T" .. file .. ":" .. height .. ":" .. width .. ":" .. offsetX .. ":" .. offsetY
                 .. ":" .. px .. ":" .. px .. ":0:" .. px .. ":0:" .. px .. ":" .. r .. ":" .. g .. ":" .. b .. "|t"
         else

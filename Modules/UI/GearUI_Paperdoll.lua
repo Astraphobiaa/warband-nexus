@@ -582,6 +582,18 @@ function PD.AnchorGearPaperChromeBehindModel(chrome, modelHost, cardRef)
     end
 end
 
+--- Bottom row of the paperdoll. Retail has two weapon slots; WoW Forever also shows the vanilla
+--- ranged slot (18) -- bows, guns, wands, thrown weapons and paladin/shaman/druid relics.
+--- Resolved per paint, not at load: IsRangedSlotShown() only answers once in the world.
+local WEAPON_SLOTS_PAIR = { 16, 17 }
+local WEAPON_SLOTS_WITH_RANGED = { 16, 17, 18 }
+local function WeaponRowSlots()
+    if ns.GearSlots_IsRangedSlotAvailable and ns.GearSlots_IsRangedSlotAvailable() then
+        return WEAPON_SLOTS_WITH_RANGED
+    end
+    return WEAPON_SLOTS_PAIR
+end
+
 function PD.RelayoutGearPaperdollInCard(card, layout)
     if not card or not layout then return end
     local slotList = card._gearSlotInspectList
@@ -631,14 +643,14 @@ function PD.RelayoutGearPaperdollInCard(card, layout)
     for i = 1, #rightSlots do
         posBySlot[rightSlots[i]] = { rightX, startY - (i - 1) * rowStep }
     end
-    local weaponSlots = { 16, 17 }
+    local weaponSlots = WeaponRowSlots()
     local WEAPON_GAP = P(36)
-    local weaponRowW = SLOT_SIZE + WEAPON_GAP + SLOT_SIZE
+    local weaponRowW = #weaponSlots * SLOT_SIZE + math.max(0, #weaponSlots - 1) * WEAPON_GAP
     local weaponStartX = baseX + LEFT_PANEL_W + (modelW + CENTER_GAP - weaponRowW) / 2
     local bottomY = startY - maxRows * rowStep - 8
     for i = 1, #weaponSlots do
         local sid = weaponSlots[i]
-        local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
+        local wx = weaponStartX + (i - 1) * (SLOT_SIZE + WEAPON_GAP)
         posBySlot[sid] = { wx, bottomY }
     end
 
@@ -752,6 +764,7 @@ local EMPTY_SLOT_TEXTURE = {
     [15] = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-Back",
     [16] = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-MainHand",
     [17] = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-SecondaryHand",
+    [18] = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-Ranged",
 }
 
 local SLOT_FALLBACK_TEXTURE = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-Bag"
@@ -759,7 +772,7 @@ local SLOT_FALLBACK_TEXTURE = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-
 -- In-place paperdoll refresh: PLAYER_EQUIPMENT_CHANGED debounce may only list one slot of a swap pair.
 local GEAR_REFRESH_PAIR_SLOTS = { [11] = 12, [12] = 11, [13] = 14, [14] = 13, [16] = 17, [17] = 16 }
 -- Paperdoll slot list for cache-warm repaints (GET_ITEM_INFO / metadata); stable table — no fresh {} in hot path.
-local GEAR_PAPERDOLL_REFRESH_SLOT_IDS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 }
+local GEAR_PAPERDOLL_REFRESH_SLOT_IDS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
 function PD.ItemLinkHasEnchantment(itemLink)
     if not itemLink or type(itemLink) ~= "string" then return false end
     if issecretvalue and issecretvalue(itemLink) then return false end
@@ -985,7 +998,7 @@ function PD.ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
             local suf = emptySuffixQueue[eq]
             eq = eq + 1
             local tex = (suf and EMPTY_SOCKET_TEX_BY_SUFFIX[suf]) or EMPTY_SOCKET_TEX_DEFAULT
-            entries[#entries + 1] = { gemLink = nil, emptyTexture = tex }
+            entries[#entries + 1] = { gemLink = nil, emptyTexture = tex, emptySuffix = suf }
             sigParts[#sigParts + 1] = "e" .. tostring(i) .. ":" .. tostring(suf or "p")
         end
     end
@@ -1305,6 +1318,45 @@ local function GearSlotClearPaperdollOverlays(btn)
     GearSlotHideLegacyIncreaseLabels(btn)
 end
 
+--- Gem squares are plain textures, which never receive mouse events -- without a host frame on
+--- top the socket row is unhoverable. One transparent host per socket, pooled on the cluster.
+local function EnsureGearSocketHitHost(cluster, index, size, x, y)
+    cluster._gemHit = cluster._gemHit or {}
+    local hit = cluster._gemHit[index]
+    if not hit then
+        hit = GearFact:CreateContainer(cluster, size, size, false)
+        hit:SetFrameLevel((cluster.GetFrameLevel and cluster:GetFrameLevel() or 0) + 1)
+        hit:EnableMouse(true)
+        hit:SetScript("OnEnter", function(self)
+            local e = self._socketEntry
+            if not e then return end
+            if not ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then return end
+            GameTooltip:ClearLines()
+            local link = e.gemLink
+            if link and not (issecretvalue and issecretvalue(link)) then
+                local ok = pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+                if not ok then
+                    GameTooltip:AddLine(link)
+                end
+            else
+                -- EMPTY_SOCKET_<COLOUR> are Blizzard GlobalStrings and match the stat keys the
+                -- socket scan already reads, so the empty square names itself in the client locale.
+                local suf = e.emptySuffix or "PRISMATIC"
+                local label = _G["EMPTY_SOCKET_" .. suf] or _G.EMPTY_SOCKET or "Empty Socket"
+                local tc = ns.UI_GetTooltipTitleColor and { ns.UI_GetTooltipTitleColor() }
+                GameTooltip:AddLine(label, tc and tc[1] or 1, tc and tc[2] or 1, tc and tc[3] or 1)
+            end
+            GameTooltip:Show()
+        end)
+        hit:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
+        cluster._gemHit[index] = hit
+    end
+    hit:SetSize(size, size)
+    hit:ClearAllPoints()
+    hit:SetPoint("TOPLEFT", cluster, "TOPLEFT", x, y or 0)
+    return hit
+end
+
 function PD.UpdateGearSocketCluster(btn, entries, opts)
     opts = opts or {}
     if not btn then return end
@@ -1312,23 +1364,22 @@ function PD.UpdateGearSocketCluster(btn, entries, opts)
         PD.HideGearSocketCluster(btn)
         return
     end
+    local n = #entries
     local gemPx = tonumber(opts.gemPx)
     local gemGap = tonumber(opts.gemGap)
+    -- The status column is one icon wide. Splitting that width between sockets dropped a
+    -- two-socket item to ~8 px per gem, so multi-socket clusters stack DOWN the column at the
+    -- size a single gem gets; the column width never changes and nothing shifts sideways.
+    local stacked = (opts.anchorCell ~= nil) and n > 1
     if gemGap == nil then
-        gemGap = opts.anchorCell and 0 or GEAR_SOCKET_GEM_GAP
+        gemGap = (opts.anchorCell and not stacked) and 0 or GEAR_SOCKET_GEM_GAP
     end
-    if not gemPx and opts.anchorCell then
-        local capW = STATUS_OUTER_COL_W
-        local n = #entries
-        if n > 0 then
-            gemPx = math.floor((capW - math.max(0, n - 1) * gemGap) / n)
-            if gemPx < 8 then gemPx = 8 end
-            if gemPx > capW - 2 then gemPx = math.max(8, capW - 2) end
+    if not gemPx then
+        if opts.anchorCell then
+            gemPx = math.max(8, STATUS_OUTER_COL_W - 2)
         else
             gemPx = GEAR_SOCKET_GEM_PX
         end
-    elseif not gemPx then
-        gemPx = GEAR_SOCKET_GEM_PX
     end
     if gemPx < 6 then gemPx = 6 end
     if not btn._gearSocketCluster then
@@ -1339,9 +1390,8 @@ function PD.UpdateGearSocketCluster(btn, entries, opts)
     end
     local f = btn._gearSocketCluster
     local gems = f._gemTex
-    local n = #entries
-    local w = n * gemPx + math.max(0, n - 1) * gemGap
-    f:SetSize(w, gemPx)
+    local span = n * gemPx + math.max(0, n - 1) * gemGap
+    if stacked then f:SetSize(gemPx, span) else f:SetSize(span, gemPx) end
     for i = 1, MAX_GEAR_ITEM_SOCKETS do
         local t = gems[i]
         if i <= n then
@@ -1372,11 +1422,18 @@ function PD.UpdateGearSocketCluster(btn, entries, opts)
                 t:SetTexCoord(0, 1, 0, 1)
             end
             t:ClearAllPoints()
-            local x0 = (i - 1) * (gemPx + gemGap)
-            t:SetPoint("TOPLEFT", f, "TOPLEFT", x0, 0)
+            local step = (i - 1) * (gemPx + gemGap)
+            local x0, y0 = step, 0
+            if stacked then x0, y0 = 0, -step end
+            t:SetPoint("TOPLEFT", f, "TOPLEFT", x0, y0)
             t:Show()
+            local hit = EnsureGearSocketHitHost(f, i, gemPx, x0, y0)
+            hit._socketEntry = e
+            hit:Show()
         elseif t then
             t:Hide()
+            local hit = f._gemHit and f._gemHit[i]
+            if hit then hit:Hide() end
         end
     end
     f:Show()
@@ -2041,53 +2098,59 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
         noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
     end
 
-    local currPad = statPad
-    local currHdr = gearChrome and gearChrome.CreateSectionHeader
-        and gearChrome.CreateSectionHeader(currCol, (ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies", accent, PaperSectionHdrOpts(currTitleColor))
-    if currHdr then
-        currHdr:SetPoint("TOPLEFT", currCol, "TOPLEFT", 0, 0)
-        currHdr:SetPoint("TOPRIGHT", currCol, "TOPRIGHT", 0, 0)
-    end
-    local curY = -subHdr
-    for i = 1, #crestCurrencies do
-        local cur = crestCurrencies[i]
-        local iconFileID = cur.icon or 134400
-        local displayCrestName = cur.displayName
-        if not displayCrestName or displayCrestName == "" then
-            local rawCrestName = cur.name or ""
-            if not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName and rawCrestName ~= "" then
-                local firstWord = rawCrestName:match("^(%S+)")
-                displayCrestName = PD.FormatTrackMarkup(firstWord, firstWord, nil)
-            else
-                displayCrestName = rawCrestName
+    -- Upgrade currencies (crests) only exist where the item-upgrade system does. WoW Forever
+    -- keeps C_ItemUpgrade but GetItemUpgradeItemInfo answers nil, and gear there is replaced
+    -- rather than upgraded -- so the column stays empty instead of showing an empty header.
+    if not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("itemUpgrade")) then
+        local currPad = statPad
+        local currHdr = gearChrome and gearChrome.CreateSectionHeader
+            and gearChrome.CreateSectionHeader(currCol, (ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies", accent, PaperSectionHdrOpts(currTitleColor))
+        if currHdr then
+            currHdr:SetPoint("TOPLEFT", currCol, "TOPLEFT", 0, 0)
+            currHdr:SetPoint("TOPRIGHT", currCol, "TOPRIGHT", 0, 0)
+        end
+        local curY = -subHdr
+        for i = 1, #crestCurrencies do
+            local cur = crestCurrencies[i]
+            local iconFileID = cur.icon or 134400
+            local displayCrestName = cur.displayName
+            if not displayCrestName or displayCrestName == "" then
+                local rawCrestName = cur.name or ""
+                if not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName and rawCrestName ~= "" then
+                    local firstWord = rawCrestName:match("^(%S+)")
+                    displayCrestName = PD.FormatTrackMarkup(firstWord, firstWord, nil)
+                else
+                    displayCrestName = rawCrestName
+                end
             end
+            local qty = tonumber(cur.amount) or 0
+            local maxQ = tonumber(cur.maxQuantity) or 0
+            local cd = {
+                currencyID = cur.currencyID,
+                quantity = qty,
+                maxQuantity = maxQ,
+                name = cur.name,
+                icon = cur.icon,
+            }
+            local amountStr = tostring(qty)
+            if ns.UI_FormatSeasonProgressCurrencyLine then
+                amountStr = ns.UI_FormatSeasonProgressCurrencyLine(cd) or amountStr
+            end
+            curY = PD.PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
         end
-        local qty = tonumber(cur.amount) or 0
-        local maxQ = tonumber(cur.maxQuantity) or 0
-        local cd = {
-            currencyID = cur.currencyID,
-            quantity = qty,
-            maxQuantity = maxQ,
-            name = cur.name,
-            icon = cur.icon,
-        }
-        local amountStr = tostring(qty)
-        if ns.UI_FormatSeasonProgressCurrencyLine then
-            amountStr = ns.UI_FormatSeasonProgressCurrencyLine(cd) or amountStr
+        if goldCurrency then
+            curY = curY - 6
+            local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
+            if goldCurrency._goldCopper then
+                copper = goldCurrency._goldCopper
+            end
+            local goldLabel = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
+            curY = PD.PaintGearPaperBandRow(
+                currCol, curY, crestRowH, currPad, valColW,
+                goldLabel, "|cffffff00" .. FormatGold(copper) .. "|r",
+                goldCurrency.icon or 133784)
         end
-        curY = PD.PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
-    end
-    if goldCurrency then
-        curY = curY - 6
-        local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
-        if goldCurrency._goldCopper then
-            copper = goldCurrency._goldCopper
-        end
-        local goldLabel = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
-        curY = PD.PaintGearPaperBandRow(
-            currCol, curY, crestRowH, currPad, valColW,
-            goldLabel, "|cffffff00" .. FormatGold(copper) .. "|r",
-            goldCurrency.icon or 133784)
+
     end
 
     bandPanel._wnStatCol = statCol
@@ -2243,16 +2306,16 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     end
 
     -- Alt panel: weapons centered under model; text offset matches armor columns (TEXT_OFFSET_FROM_SLOT_CENTER).
-    local weaponSlots = { 16, 17 }
+    local weaponSlots = WeaponRowSlots()
     local WEAPON_GAP = P(36)
     local WEAPON_TEXT_W = TRACK_TEXT_W
-    local weaponRowW = SLOT_SIZE + WEAPON_GAP + SLOT_SIZE
+    local weaponRowW = #weaponSlots * SLOT_SIZE + math.max(0, #weaponSlots - 1) * WEAPON_GAP
     local weaponStartX = baseX + LEFT_PANEL_W + (modelW + CENTER_GAP - weaponRowW) / 2
     local bottomY = startY - maxRows * rowStep - 8
     for i = 1, #weaponSlots do
         local slotID = weaponSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
+        local wx = weaponStartX + (i - 1) * (SLOT_SIZE + WEAPON_GAP)
         local weaponSide = (i == 1) and "bottom_left" or "bottom_right"
         local slotData = GetSlotData(slotID)
         ns.GearUI_Paperdoll.CreateSlotButton(paperParent, slotID, slotData, wx, bottomY, SlotAffordsUpgrade(slotID), PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)

@@ -2333,9 +2333,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local hIcon = iconHolder:CreateTexture(nil, "OVERLAY", nil, 1)
     hIcon:SetAllPoints(iconHolder)
     if ns.UI_ApplyMainWindowTitleIcon then
-        ns.UI_ApplyMainWindowTitleIcon(hIcon)
+        ns.UI_ApplyMainWindowTitleIcon(hIcon, TRACKER_HEADER_ICON)
     else
-        hIcon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
+        hIcon:SetTexture((ns.UI_AddonLogoFile and ns.UI_AddonLogoFile(TRACKER_HEADER_ICON, hIcon)) or ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
         if not hIcon:GetTexture() then
             hIcon:SetTexture("Interface\\Icons\\INV_Inscription_Scroll")
         end

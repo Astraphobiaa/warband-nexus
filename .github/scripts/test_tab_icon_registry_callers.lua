@@ -126,10 +126,15 @@ do
         end
         return table.concat(parts, "\n")
     end
+-- The markup picks the smallest pre-shrunk copy that covers the draw, so the expected file
+-- depends on the UI scale: resolve it through the same picker instead of naming one tier.
+local function TierFile(key, h)
+    return ns.UI_PickIconFile(ns.UI_GetIconFile(key), ns.UI_PhysicalPixels(h))
+end
     local dark = joined()
     for _, key in ipairs({ "bag", "vault", "warband", "guild" }) do
         local file = ns.UI_GetIconFile(key)
-        local small = ns.UI_SmallIconFile(file)  -- 16 px markup draws the 32 px copy
+        local small = (TierFile(key, 16))
         check(type(file) == "string" and ns.UI_IsAddonMediaTexture(file) and dark:find("|T" .. small .. ":16:16", 1, true) ~= nil,
             "marker '" .. key .. "' is the registry Media file at 16x16")
     end
@@ -140,11 +145,13 @@ do
     local light = joined()
     -- all four storage markers are colored: they keep their own colors on the light theme too
     for _, key in ipairs({ "bag", "vault", "warband", "guild" }) do
-        check(light:find("|T" .. ns.UI_SmallIconFile(ns.UI_GetIconFile(key)) .. ":16:16:0:0:32:32:0:32:0:32:255:255:255|t", 1, true) ~= nil,
+        local lf, lpx = TierFile(key, 16)
+        local coords = ":16:16:0:0:" .. lpx .. ":" .. lpx .. ":0:" .. lpx .. ":0:" .. lpx .. ":255:255:255|t"
+        check(light:find("|T" .. lf .. coords, 1, true) ~= nil,
             "light theme: colored '" .. key .. "' marker keeps its own colors")
     end
     -- a mono key's markup follows the theme tint (no stale cache across a theme switch)
-    local ck = ns.UI_SmallIconFile(ns.UI_GetIconFile("clock"))  -- 16 px markup draws the 32 px copy
+    local ck = (TierFile("clock", 16))
     local lightClock = ns.UI_GetIconMarkup("clock", 16, 16)
     themeVertex = { 1, 1, 1 }
     local darkClock = ns.UI_GetIconMarkup("clock", 16, 16)

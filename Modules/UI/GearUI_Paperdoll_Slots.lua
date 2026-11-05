@@ -9,6 +9,11 @@ local _, ns = ...
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 ns.GearUI_Paperdoll = ns.GearUI_Paperdoll or {}
 
+--- Bottom-row label metrics: the gap under the icon and the minimum label box, so a short name
+--- like "Ranged" still centres on its slot instead of hugging one edge.
+local BOTTOM_LABEL_GAP = 3
+local SLOT_SIZE_FOR_LABEL = 64
+
 local function D(name)
     local deps = ns.GearUI_Paperdoll._slotDeps
     assert(deps, "GearUI_Paperdoll_Slots: bind _slotDeps before load")
@@ -512,9 +517,12 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
             slotNameLabel:SetWidth(TRACK_TEXT_W)
             slotNameLabel:SetJustifyH("LEFT")
         else
-            slotNameLabel:SetPoint("CENTER", btn, "CENTER", (side == "bottom_right") and currentTextOffset or -currentTextOffset, 0)
-            slotNameLabel:SetWidth(textWidth or TRACK_TEXT_W)
-            slotNameLabel:SetJustifyH((side == "bottom_right") and "LEFT" or "RIGHT")
+            -- Bottom row: the label sits UNDER its slot, centred. Beside-the-slot placement only
+            -- reads with two slots facing away from each other; WoW Forever adds a third (ranged)
+            -- and an empty one then leaves its label floating next to nothing.
+            slotNameLabel:SetPoint("TOP", btn, "BOTTOM", 0, -BOTTOM_LABEL_GAP)
+            slotNameLabel:SetWidth(math.max(SLOT_SIZE_FOR_LABEL, textWidth or 0))
+            slotNameLabel:SetJustifyH("CENTER")
         end
     end
 

@@ -160,7 +160,9 @@ function WarbandNexus:InitializeMinimapButton()
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
         text = (ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus",
-        icon = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga",
+        -- LDB hands the display a bare path with no size, so pick the tier here: minimap
+        -- and broker buttons draw this at ~18-20 units, where the 256 px source aliases.
+        icon = "Interface\\AddOns\\WarbandNexus\\Media\\Small\\icon.tga",
         
         OnClick = function(clickedframe, button)
             if InCombatLockdown() then return end

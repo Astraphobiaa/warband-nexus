@@ -24,7 +24,27 @@ local GEAR_SLOTS = {
     { id = 14, key = "trinket2",  label = "Trinket",   col = "bottom" },
     { id = 16, key = "mainhand",  label = INVTYPE_WEAPONMAINHAND, col = "bottom" },
     { id = 17, key = "offhand",   label = INVTYPE_WEAPONOFFHAND,  col = "bottom" },
+    -- Vanilla ranged slot: bows, guns, wands, thrown, and paladin/shaman/druid relics. Retail
+    -- dropped it in Legion, WoW Forever brings it back -- C_PaperDollInfo.IsRangedSlotShown()
+    -- answers true there and GetInventorySlotInfo("RangedSlot") returns 18. `rangedOnly` keeps
+    -- it out of the paperdoll on clients that do not show it.
+    { id = 18, key = "ranged",    label = INVTYPE_RANGED or "Ranged", col = "bottom", rangedOnly = true },
 }
+
+--- The ranged slot only exists where the client shows it; everything that walks the paperdoll
+--- uses this instead of the raw table so the slot appears on Forever and nowhere else.
+local rangedShown
+local function IsRangedSlotAvailable()
+    if rangedShown == nil then
+        local ok, shown = pcall(function()
+            return C_PaperDollInfo and C_PaperDollInfo.IsRangedSlotShown
+                and C_PaperDollInfo.IsRangedSlotShown()
+        end)
+        rangedShown = (ok and shown) and true or false
+    end
+    return rangedShown
+end
+ns.GearSlots_IsRangedSlotAvailable = IsRangedSlotAvailable
 
 -- Reverse map: slotID -> slot def (O(1) lookup)
 local SLOT_BY_ID = {}
@@ -63,9 +83,28 @@ local EQUIP_LOC_TO_SLOTS = {
     INVTYPE_WEAPONOFFHAND  = { 17 },
     INVTYPE_SHIELD         = { 17 },
     INVTYPE_HOLDABLE       = { 17 },
-    INVTYPE_RANGED         = { 16 },
-    INVTYPE_RANGEDRIGHT    = { 16 },
+    -- Ranged weapons route to slot 18 where the client shows that slot (WoW Forever brings the
+    -- vanilla ranged slot back). Mapping them to 16 there would have the storage finder offer a
+    -- hunter's bow as a main-hand upgrade and compare its ilvl against the equipped melee weapon.
+    -- On retail the slot is gone, so legacy ranged items stay mapped to the main hand.
 }
+
+--- Ranged equip locations resolve on FIRST LOOKUP, not at load: IsRangedSlotShown() is not
+--- reliable before the player is in the world. Mapping a bow to slot 16 on a client that has
+--- slot 18 would make the storage finder offer it as a main-hand upgrade and compare its ilvl
+--- against the equipped melee weapon, so this has to be right rather than early.
+local RANGED_EQUIP_LOCS = {
+    INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true,
+    INVTYPE_THROWN = true, INVTYPE_RELIC = true,
+}
+setmetatable(EQUIP_LOC_TO_SLOTS, {
+    __index = function(tbl, key)
+        if not RANGED_EQUIP_LOCS[key] then return nil end
+        local slots = IsRangedSlotAvailable() and { 18 } or { 16 }
+        rawset(tbl, key, slots)
+        return slots
+    end,
+})
 
 local ARMOR_SLOT_IDS = {
     [1] = true, [3] = true, [5] = true, [6] = true, [7] = true, [8] = true, [9] = true, [10] = true, [15] = true,

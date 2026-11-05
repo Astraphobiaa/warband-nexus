@@ -26,7 +26,12 @@ local CHAR_GOLD_STACK_HYSTERESIS = 24
 
 local function ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, cardSpacing, layoutState)
     local innerGoldW = math.max(1, hostW - leftMargin - rightMargin)
-    local totalSpacing = cardSpacing * 2
+    -- No account bank on this client (WoW Forever): the middle card would read 0 forever and
+    -- its number also feeds the Total card, so it is dropped and the row splits two ways.
+    local showWarbandCard = not (WarbandNexus and WarbandNexus.SupportsFeature
+        and not WarbandNexus:SupportsFeature("warbandBank"))
+    local cardCount = showWarbandCard and 3 or 2
+    local totalSpacing = cardSpacing * (cardCount - 1)
     local stackGoldCards
     if layoutState and layoutState.stackGoldCards ~= nil then
         if layoutState.stackGoldCards then
@@ -43,8 +48,8 @@ local function ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, 
         goldCardW2 = innerGoldW
         goldCardW3 = innerGoldW
     else
-        goldCardW1 = math.floor((innerGoldW - totalSpacing) / 3)
-        goldCardW2 = goldCardW1
+        goldCardW1 = math.floor((innerGoldW - totalSpacing) / cardCount)
+        goldCardW2 = showWarbandCard and goldCardW1 or 0
         goldCardW3 = innerGoldW - totalSpacing - goldCardW1 - goldCardW2
     end
     local stackGoldTokenInCard3
@@ -62,6 +67,7 @@ local function ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, 
     return {
         innerGoldW = innerGoldW,
         stackGoldCards = stackGoldCards,
+        showWarbandCard = showWarbandCard,
         stackGoldTokenInCard3 = stackGoldTokenInCard3,
         goldCardW1 = goldCardW1,
         goldCardW2 = goldCardW2,

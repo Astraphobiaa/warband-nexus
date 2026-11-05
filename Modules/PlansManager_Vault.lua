@@ -27,6 +27,8 @@ local VAULT_PLAN_CHECK_DEFER_SEC = 0.85
     @return table|nil - Progress data with slot-level completion info; nil when the API has no data yet
 ]]
 function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
+    -- Weekly vault plans need a Great Vault; this client has none (Forever).
+    if self.SupportsFeature and not self:SupportsFeature("vault") then return end
     -- Use current character if not specified
     characterName = characterName or UnitName("player")
     characterRealm = characterRealm or (GetRealmName and GetRealmName())
@@ -144,6 +146,8 @@ end
     @return table - Created plan or nil if failed
 ]]
 function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm, trackedSlots)
+    -- Weekly vault plans need a Great Vault; this client has none (Forever).
+    if self.SupportsFeature and not self:SupportsFeature("vault") then return end
     if not characterName or not characterRealm then
         self:Print("|cffff0000" .. ((ns.L and ns.L["ERROR_LABEL"]) or "Error:") .. "|r " .. ((ns.L and ns.L["ERROR_NAME_REALM_REQUIRED"]) or "Character name and realm required"))
         return nil

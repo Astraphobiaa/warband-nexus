@@ -355,6 +355,15 @@ end
 
 local ROSTER_BRACKET_ORDER = { "2v2", "3v3", "rbg", "shuffle", "blitz" }
 local ROSTER_BRACKET_HEADERS = { "2v2", "3v3", "RBG", "SS", "BL" }
+
+--- Rated brackets only exist where rated PvP does; on WoW Forever the roster shows none of
+--- them, so the header row and every per-bracket cell collapse together.
+local function RosterBracketOrder()
+    if WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("ratedPvP") then
+        return {}
+    end
+    return ROSTER_BRACKET_ORDER
+end
 local ROSTER_HONOR_CURRENCY_ID = 1792
 local ROSTER_CONQUEST_CURRENCY_ID = 1602
 
@@ -808,6 +817,7 @@ M.PROGRESS_CARD_MIN_W = PROGRESS_CARD_MIN_W
 M.RATED_CARD_STAT_H = RATED_CARD_STAT_H
 M.RATED_CARD_MIN_W = RATED_CARD_MIN_W
 M.ROSTER_BRACKET_ORDER = ROSTER_BRACKET_ORDER
+M.RosterBracketOrder = RosterBracketOrder
 M.ROSTER_BRACKET_HEADERS = ROSTER_BRACKET_HEADERS
 M.ROSTER_HONOR_CURRENCY_ID = ROSTER_HONOR_CURRENCY_ID
 M.ROSTER_CONQUEST_CURRENCY_ID = ROSTER_CONQUEST_CURRENCY_ID

@@ -105,8 +105,18 @@ local big = FakeTexture()
 function big:GetHeight() return 44 end
 ns.UI_SetIcon(big, "settings")
 assert_eq(big.path, ns.UI_ICONS.settings.file, "44 px draw keeps the 64 px file")
-assert_eq(ns.UI_GetIconMarkup("lock", 0, 0):find("\\Small\\Icon%-Lock%.tga:0:0:0:0:32:32:0:32:0:32") ~= nil, true,
-    "line-height markup uses the small file with 32 px coords")
+-- Tier choice depends on the UI scale, so assert the contract rather than one hardcoded size:
+-- the markup must name the file the picker returns AND quote that file's own texel size.
+local lineFile, linePx = ns.UI_PickIconFile(ns.UI_ICONS.lock.file, ns.UI_PhysicalPixels(12))
+local lineCoords = ":0:0:0:0:" .. linePx .. ":" .. linePx .. ":0:" .. linePx .. ":0:" .. linePx
+assert_eq(ns.UI_GetIconMarkup("lock", 0, 0):find(lineFile .. lineCoords, 1, true) ~= nil, true,
+    "line-height markup draws the picked tier with matching texel coords")
+local lineRel = lineFile:gsub("^Interface\\AddOns\\WarbandNexus\\", ""):gsub("\\", "/")
+local lineFh = io.open(ROOT .. "/" .. lineRel, "rb")
+local lineHdr = lineFh and lineFh:read(18)
+if lineFh then lineFh:close() end
+assert_eq(lineHdr ~= nil and lineHdr:byte(13) == linePx % 256 and lineHdr:byte(14) == math.floor(linePx / 256),
+    true, "the tier the markup names is on disk at the size it claims")
 for k, entry in pairs(ns.UI_ICONS) do
     local sf = type(entry.file) == "string" and ns.UI_SmallIconFile(entry.file)
     if sf and sf ~= entry.file then

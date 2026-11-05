@@ -282,7 +282,8 @@ end
       2160p → 1.41   (4K: ~40 % larger base sizes, nicely readable)
     This is purely a DPI comfort factor, not a coordinate-space conversion.
 
-    Cached per session; invalidated on DISPLAY_SIZE_CHANGED via ResetPixelScale.
+    Cached; EventManager:OnUIScaleChanged clears it via ResetFontResolutionCache on
+    UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED (ResetPixelScale does NOT touch this cache).
 ]]
 local cachedFontResNorm = nil
 local function GetFontResolutionNormalization()

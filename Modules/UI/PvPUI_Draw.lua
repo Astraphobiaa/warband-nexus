@@ -149,7 +149,13 @@ function M.DrawTab(parent)
         local progressCardH = M.CARD_PAD + M.HEADER_BLOCK_H + 20 + M.BAR_H + M.CARD_PAD
         local availW = width - SIDE * 2
         local triGap = M.CARD_GAP
-        local triW = math.max(M.PROGRESS_CARD_MIN_W, math.floor((availW - triGap * 2) / 3))
+        -- Conquest arrived with rated PvP. Without it the row is Level + Honor, so it splits two
+        -- ways instead of three rather than leaving a card that always reads zero.
+        local showConquest = not (WarbandNexus.SupportsFeature
+            and not WarbandNexus:SupportsFeature("conquest"))
+        local triCount = showConquest and 3 or 2
+        local triW = math.max(M.PROGRESS_CARD_MIN_W,
+            math.floor((availW - triGap * (triCount - 1)) / triCount))
         local barY = M.CARD_PAD + M.HEADER_BLOCK_H
         local lvlFmt = (M.L and M.L["PVP_HONOR_LEVEL"]) or "Honor Level %d"
 
@@ -174,6 +180,7 @@ function M.DrawTab(parent)
             (HONOR) or "Honor", (honorCur and honorCur.quantity) or 0,
             (honorCur and honorCur.maxQuantity) or 0, goldColor)
 
+        if showConquest then
         local conquestCard = M.EnsureCard(bundle, "conquestCard", parent, progressCardH)
         conquestCard:ClearAllPoints()
         conquestCard:SetPoint("TOPLEFT", SIDE + (triW + triGap) * 2, -yOffset)
@@ -195,6 +202,11 @@ function M.DrawTab(parent)
             M.EnsureBarRow(bundle, "conqBarRow", conquestCard, barY,
                 conqLabel, (conqCur and conqCur.quantity) or 0, 0, accentColor, { uncapped = true })
         end
+    else
+        -- Cards are pooled on the bundle and survive tab switches, so hide the existing one
+        -- rather than leaving a stale third card on screen.
+        if bundle.conquestCard then bundle.conquestCard:Hide() end
+    end
 
         yOffset = yOffset + progressCardH + M.SECTION_GAP
     end
@@ -205,7 +217,12 @@ function M.DrawTab(parent)
             bundle.ratedCard:Hide()
         end
 
-        local ratedBrackets = (M.ns.PvPService and M.ns.PvPService.RATED_BRACKETS) or {}
+        -- 2v2 / 3v3 / RBG / Solo Shuffle / Blitz are all rated-PvP brackets. A vanilla honor
+        -- ladder has none of them, so the whole card row is dropped rather than drawn empty.
+        local ratedBrackets = {}
+        if not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("ratedPvP")) then
+            ratedBrackets = (M.ns.PvPService and M.ns.PvPService.RATED_BRACKETS) or {}
+        end
         local bracketCount = #ratedBrackets
         if bracketCount > 0 then
             if bundle.ratedSectionFrame then bundle.ratedSectionFrame:Hide() end

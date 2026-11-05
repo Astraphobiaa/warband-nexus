@@ -24,6 +24,7 @@ function M.AppendAdvancedPanel(ctx)
     local SETTINGS_COMPACT_BTN_H = H.SETTINGS_COMPACT_BTN_H
     local SETTINGS_CARD_OUTER_BOTTOM_PAD = H.SETTINGS_CARD_OUTER_BOTTOM_PAD
     local CONTENT_PADDING_TOP = H.CONTENT_PADDING_TOP
+    local UI_SPACING = H.UI_SPACING
     local GetSettingsSectionContentWidth = H.GetSettingsSectionContentWidth
     local AppendSettingsPanelIntro = H.AppendSettingsPanelIntro
     local CreateSection = H.CreateSection
@@ -176,10 +177,10 @@ function M.AppendAdvancedPanel(ctx)
     
     -- Tracked checkbox (inside detail card)
     local trackedCheckbox = CreateThemedCheckbox(detailCard)
-    trackedCheckbox:SetPoint("TOPLEFT", 8, -48)
+    trackedCheckbox:SetPoint("TOPLEFT", 10, -48)
     
     local trackedLabel = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
-    trackedLabel:SetPoint("LEFT", trackedCheckbox, "RIGHT", 6, 0)
+    trackedLabel:SetPoint("LEFT", trackedCheckbox, "RIGHT", UI_SPACING.AFTER_ELEMENT or 8, 0)
     trackedLabel:SetText((ns.L and ns.L["TRACKED"]) or "Tracked")
     ns.UI_SetTextColorRole(trackedLabel, "Bright")
     
@@ -349,7 +350,7 @@ function M.AppendAdvancedPanel(ctx)
     
     -- Custom entries list (no separate "Current:" label — shown inline)
     local customListText = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
-    customListText:SetPoint("TOPLEFT", 4, trackYOffset)
+    customListText:SetPoint("TOPLEFT", 0, trackYOffset)
     customListText:SetPoint("RIGHT", trackSection.content, "RIGHT", 0, 0)
     customListText:SetJustifyH("LEFT")
     customListText:SetWordWrap(true)

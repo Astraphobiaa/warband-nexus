@@ -549,9 +549,11 @@ local function GetLowLevelHideThreshold(profile)
     return 0
 end
 
+--- Off -> lower step -> cap -> off, both steps derived from the client's level cap.
 local function GetLowLevelHideCycleNext(current)
-    if current == 0 then return 80 end
-    if current == 80 then return 90 end
+    local lower, upper = ns.UI_GetLowLevelHideSteps()
+    if current == 0 then return lower end
+    if current == lower then return upper end
     return 0
 end
 
@@ -559,8 +561,10 @@ local function GetLowLevelHideLabel(threshold)
     if ns.UI_GetLowLevelHideLabel then
         return ns.UI_GetLowLevelHideLabel(threshold)
     end
-    if threshold == 90 then return GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") end
-    if threshold == 80 then return GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") end
+    -- Label follows the step, whatever the client's cap makes it.
+    if threshold and threshold > 0 then
+        return string.format(GetLocalizedText("HIDE_FILTER_LEVEL_N", "Level %d"), threshold)
+    end
     return GetLocalizedText("HIDE_FILTER_STATE_OFF", "Off")
 end
 
@@ -592,7 +596,7 @@ end
 -- HELPERS
 
 --- Get tracked characters honoring user prefs:
----   * `db.profile.hideLowLevelThreshold` filters out chars below level 80/90.
+---   * `db.profile.hideLowLevelThreshold` filters out chars below a level step derived from the cap.
 ---   * `db.profile.characterOrder` (favorites + regular arrays) drives manual order;
 ---     unranked chars fall back to lastSeen DESC. Mirrors PvE/Characters tab order.
 local function GetTrackedCharacters()

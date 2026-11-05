@@ -67,11 +67,16 @@ print("Phase 2: plan source markup uses registry glyphs")
 do
     local ns = BaseNs()
     load("Modules/UI/PlanCardFactory.lua", ns)
+    -- The markup picks the smallest pre-shrunk copy that covers the draw, so the expected file
+    -- depends on the UI scale: resolve it through the same picker instead of naming one tier.
+    local function TierFile(key, h)
+        return ns.UI_PickIconFile(ns.UI_GetIconFile(key), ns.UI_PhysicalPixels(h))
+    end
     local mk = ns.UI_PlanSourceIconMarkup
     local want = { loot = "chest", quest = "scroll", location = "pin", profession = "anvil", class = "stall" }
     for kind, key in pairs(want) do
         local m = mk(kind, 16)
-        local file = ns.UI_SmallIconFile(ns.UI_GetIconFile(key))  -- 16 px markup draws the 32 px copy
+        local file = (TierFile(key, 16))
         check(m:find("|A:", 1, true) == nil and file and m:find("|T" .. file .. ":", 1, true) ~= nil
             and m:find(":255:255:255|t", 1, true) ~= nil, "kind " .. kind .. " -> registry " .. key .. " file, colored (neutral tint)")
     end

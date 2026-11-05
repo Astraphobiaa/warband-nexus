@@ -191,7 +191,12 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     local iconSize = 80
     local icon = iconContainer:CreateTexture(nil, "OVERLAY", nil, 7)
     icon:SetAllPoints(iconContainer)
-    icon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
+    local logoFile = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga"
+    if ns.UI_PickIconFile then
+        local px = ns.UI_PhysicalPixels and ns.UI_PhysicalPixels(80, icon) or nil
+        logoFile = (ns.UI_PickIconFile(logoFile, px))
+    end
+    icon:SetTexture(logoFile)
     icon:SetTexCoord(0, 1, 0, 1)
     
     -- Icon border frame (thin 1px accent ring) - behind the icon

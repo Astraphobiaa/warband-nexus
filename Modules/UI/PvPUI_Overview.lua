@@ -157,7 +157,9 @@ end
 local function MeasureStatColumns(measureFs, hdrFs, rosterRows)
     local honorSamples, conquestSamples, bracketSamples = {}, {}, {}
     local weeklySamples = { "0 / 0", "999 / 999" }
-    local bracketOrder = M.ROSTER_BRACKET_ORDER or {}
+    -- Empty on a client without rated PvP, which collapses the bracket columns and their headers.
+    local bracketOrder = (M.RosterBracketOrder and M.RosterBracketOrder())
+        or M.ROSTER_BRACKET_ORDER or {}
     local bracketHeaders = M.ROSTER_BRACKET_HEADERS or {}
 
     for i = 1, #rosterRows do
@@ -199,12 +201,17 @@ local function MeasureStatColumns(measureFs, hdrFs, rosterRows)
         width = MeasureIconColumn(hdrFs, measureFs, honorLabel, OVERVIEW_CURRENCY_MIN, honorSamples),
         align = "CENTER", label = honorLabel, tooltip = honorLabel,
     }
-    local conquestIcon = ResolveColumnIconDef("conquest")
-    columns[#columns + 1] = {
-        key = "conquest", iconSlot = true, iconDef = conquestIcon, iconSize = conquestIcon and conquestIcon.headerIconSize,
-        width = MeasureIconColumn(hdrFs, measureFs, conquestLabel, OVERVIEW_CURRENCY_MIN, conquestSamples),
-        align = "CENTER", label = conquestLabel, tooltip = conquestLabel,
-    }
+    -- No Conquest on a vanilla honor ladder, so the column would read 0 for every character.
+    local showConquest = not (WarbandNexus.SupportsFeature
+        and not WarbandNexus:SupportsFeature("conquest"))
+    if showConquest then
+        local conquestIcon = ResolveColumnIconDef("conquest")
+        columns[#columns + 1] = {
+            key = "conquest", iconSlot = true, iconDef = conquestIcon, iconSize = conquestIcon and conquestIcon.headerIconSize,
+            width = MeasureIconColumn(hdrFs, measureFs, conquestLabel, OVERVIEW_CURRENCY_MIN, conquestSamples),
+            align = "CENTER", label = conquestLabel, tooltip = conquestLabel,
+        }
+    end
     local statIcons = M.ROSTER_STAT_HEADER_ICONS or {}
     local bracketLabels = M.BRACKET_LABELS or {}
     for bi = 1, #bracketOrder do
@@ -219,15 +226,19 @@ local function MeasureStatColumns(measureFs, hdrFs, rosterRows)
             tooltip = bracketLabels[bkey] or bkey,
         }
     end
-    local weeklyLabel = (L and L["PVP_WEEKLY"]) or "Weekly W/P"
-    local weeklyIcon = ResolveColumnIconDef("weekly")
-    columns[#columns + 1] = {
-        key = "weekly", iconSlot = true, iconDef = weeklyIcon, iconSize = weeklyIcon and weeklyIcon.headerIconSize,
-        width = math.max(
-            MeasureIconColumn(hdrFs, measureFs, "W/P", OVERVIEW_WEEKLY_MIN, weeklySamples),
-            math.ceil(MeasureFsWidth(hdrFs, weeklyLabel) + OVERVIEW_COL_PAD * 2)),
-        align = "CENTER", label = "W/P", tooltip = weeklyLabel,
-    }
+    -- Weekly W/P sums wins and games played across the RATED brackets. Without rated PvP the
+    -- column is a permanent 0 / 0, so it comes out with them and Honor stays as the row data.
+    if not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("ratedPvP")) then
+        local weeklyLabel = (L and L["PVP_WEEKLY"]) or "Weekly W/P"
+        local weeklyIcon = ResolveColumnIconDef("weekly")
+        columns[#columns + 1] = {
+            key = "weekly", iconSlot = true, iconDef = weeklyIcon, iconSize = weeklyIcon and weeklyIcon.headerIconSize,
+            width = math.max(
+                MeasureIconColumn(hdrFs, measureFs, "W/P", OVERVIEW_WEEKLY_MIN, weeklySamples),
+                math.ceil(MeasureFsWidth(hdrFs, weeklyLabel) + OVERVIEW_COL_PAD * 2)),
+            align = "CENTER", label = "W/P", tooltip = weeklyLabel,
+        }
+    end
     return columns
 end
 
@@ -827,7 +838,9 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
     end
     local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
     local noData = muted .. "-|r"
-    local bracketOrder = M.ROSTER_BRACKET_ORDER or {}
+    -- Empty on a client without rated PvP, which collapses the bracket columns and their headers.
+    local bracketOrder = (M.RosterBracketOrder and M.RosterBracketOrder())
+        or M.ROSTER_BRACKET_ORDER or {}
     local ApplyChrome = ns.PvEUI_ApplyCharacterListRowChrome
     local rowGap = (ns.UI_LAYOUT and ns.UI_LAYOUT.betweenRows) or 0
     local scrollFrameRef = parent:GetParent()

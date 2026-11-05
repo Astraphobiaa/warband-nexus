@@ -250,11 +250,62 @@ function Utilities:GetCanonicalCharacterKey(charKey)
 end
 
 --- Display-only: pretty-print API/normalized realm (e.g. "TwistingNether" -> "Twisting Nether").
---- Persisted `charData.realm` and keys stay as returned by GetNormalizedRealmName / UnitName — do not rewrite storage.
---- Inserts a space before each uppercase letter that follows a lowercase letter.
+--- Persisted `charData.realm` and keys stay as returned by GetNormalizedRealmName / UnitName -- do not rewrite storage.
+
+--- Name as it should be PRINTED. On WoW Forever a character has a surname that UnitName hands
+--- back as its second return value, so `charData.name` alone is half the name.
+--- Storage keys are GUID-first and plans/legacy keys still use `name`, so nothing else changes.
+function Utilities:GetCharacterDisplayName(char)
+    if type(char) ~= "table" then return nil end
+    local name = char.name
+    if type(name) ~= "string" or name == "" then return nil end
+    local surname = char.surname
+    if type(surname) == "string" and surname ~= "" then
+        return name .. " " .. surname
+    end
+    return name
+end
+
+--[[
+    Realm type label.
+
+    No API reports whether a realm is PvP or PvE -- there is no GetServerType and no realm field
+    on any C_ namespace, checked against the live 1.60.1 client. Forever does not need one: its
+    realm names are internal ids that carry the type, e.g. "CAMWOWEU4Realm5PvE".
+]]
+function Utilities:GetRealmTypeLabel(realm)
+    -- The documented answer first: C_GameRules.IsGameRuleActive is defined for the ruleset
+    -- values (PvPRuleset / RPRuleset / HardcoreRuleset), so ask the client before parsing a name.
+    local ruleset = ns.Capabilities and ns.Capabilities.GetRulesetLabel
+        and ns.Capabilities:GetRulesetLabel()
+    if ruleset then return ruleset end
+    if type(realm) ~= "string" or realm == "" then return nil end
+    if issecretvalue and issecretvalue(realm) then return nil end
+    local upper = realm:upper()
+    -- PvP first: a combined name like "PvPRP" is still a PvP realm.
+    if upper:find("PVP", 1, true) then return "PvP" end
+    if upper:find("PVE", 1, true) then return "PvE" end
+    return nil
+end
+
+--- Display name for a realm. Every realm shown anywhere in the UI routes through here, so the
+--- Forever behaviour lives here rather than in one tab: that internal id means nothing to a
+--- player, and the type it encodes is the only part worth printing.
 function Utilities:FormatRealmName(realm)
     if not realm or realm == "" then return "" end
-    return realm:gsub("(%l)(%u)", "%1 %2")
+    local forever = ns.Capabilities and ns.Capabilities.IsForeverClient
+        and ns.Capabilities.IsForeverClient()
+    if forever then
+        local label = self:GetRealmTypeLabel(realm)
+        if label then return label end
+    end
+    return (realm:gsub("(%l)(%u)", "%1 %2"))
+end
+
+--- Explicit name for "realm as the character list should print it"; the decision itself lives
+--- in FormatRealmName so every other surface gets it too.
+function Utilities:FormatRealmDisplay(realm)
+    return self:FormatRealmName(realm)
 end
 
 --- Display label for the current logged-in character (collectible toasts / Recent obtains).

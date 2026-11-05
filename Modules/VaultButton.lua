@@ -335,7 +335,7 @@ function M.BuildMenu()
     local headerIcon = header:CreateTexture(nil, "ARTWORK")
     headerIcon:SetSize(16, 16)
     headerIcon:SetPoint("LEFT", lay.innerPad, 0)
-    headerIcon:SetTexture(ICON_TEXTURE)
+    headerIcon:SetTexture((ns.UI_AddonLogoFile and ns.UI_AddonLogoFile(16, headerIcon)) or ICON_TEXTURE)
     if not headerIcon:GetTexture() then
         ns.UI_SetIcon(headerIcon, "chest")
     else
@@ -565,7 +565,7 @@ function M.BuildButton()
     icon:SetAllPoints(btn)
     if icon.SetSnapToPixelGrid then icon:SetSnapToPixelGrid(false) end
     if icon.SetTexelSnappingBias then icon:SetTexelSnappingBias(0) end
-    icon:SetTexture(ICON_TEXTURE)
+    icon:SetTexture((ns.UI_AddonLogoFile and ns.UI_AddonLogoFile(BUTTON_SIZE, icon)) or ICON_TEXTURE)
     if not icon:GetTexture() then
         ns.UI_SetIcon(icon, "chest")
     else

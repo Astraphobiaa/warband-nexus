@@ -1417,6 +1417,8 @@ end
 
 ---Scan warband bank
 function WarbandNexus:ScanWarbandBank()
+    -- No account bank on this client (Forever): the tabs list comes back empty every time.
+    if self.SupportsFeature and not self:SupportsFeature("warbandBank") then return end
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return {}

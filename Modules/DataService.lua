@@ -972,7 +972,15 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         return ret
     end
     
-    local name = UnitName("player")
+    local name, nameSecond = UnitName("player")
+    -- WoW Forever characters have a surname and UnitName returns it as the second value;
+    -- retail puts the realm there, so only read it as a surname where surnames exist.
+    local surname
+    if ns.Capabilities and ns.Capabilities.IsForeverClient and ns.Capabilities.IsForeverClient()
+        and type(nameSecond) == "string" and nameSecond ~= ""
+        and not (issecretvalue and issecretvalue(nameSecond)) then
+        surname = nameSecond
+    end
     local realm = GetNormalizedRealmName()  -- Get realm name
     if issecretvalue and issecretvalue(name) then return _saveProfEnd(false) end
     if issecretvalue and issecretvalue(realm) then return _saveProfEnd(false) end
@@ -1208,6 +1216,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     -- Login-light: patch existing row in place — avoids full table alloc + PopulateContent storm.
     if lightOnly and existingEntry then
         existingEntry.name = name
+        existingEntry.surname = surname
         existingEntry.realm = realm
         existingEntry.class = className
         existingEntry.classFile = classFile
@@ -1278,6 +1287,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
 
     local newRow = {
         name = name,
+        surname = surname,
         realm = realm,
         class = className,
         classFile = classFile,
@@ -2645,6 +2655,8 @@ end
 
 --- Query current character's Mythic Keystone via C_MythicPlus API.
 function WarbandNexus:ScanMythicKeystone()
+    -- No keystones on this client (Forever): GetOwnedKeystoneLevel is always nil.
+    if self.SupportsFeature and not self:SupportsFeature("mythicPlus") then return end
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return nil

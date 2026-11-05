@@ -143,6 +143,11 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
     end
 
     local mythicKeyW = (flexCols and flexCols.mythicKey) or CHAR_ROW_COLUMNS.mythicKey.width
+    -- Width 0 = no Mythic+ on this client (see CharRowMythicKeyEnabled): hide, do not just shrink.
+    if mythicKeyW == 0 then
+        if row.keystoneIcon then row.keystoneIcon:Hide() end
+        if row.keystoneText then row.keystoneText:Hide() end
+    end
     local mythicKeyOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
     if row.keystoneIcon then
         row.keystoneIcon:ClearAllPoints()
@@ -810,7 +815,7 @@ function CharRowCb.GradientRefresh(row)
     local nameLeft = row._wnCharGradNameLeft or 0
     local parent, width = row._wnCharGradParent, row._wnCharGradWidth
     local char = row._wnCharRowChar
-    local nameColW = CHAR_ROW_COLUMNS.name.width
+    local nameColW = (ns.UI_CharRowNameWidth and ns.UI_CharRowNameWidth() or CHAR_ROW_COLUMNS.name.width)
     local swName = row.nameText:GetStringWidth() or 0
     local swRealm = row.realmText:GetStringWidth() or 0
     local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + 4)
@@ -993,7 +998,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     if not row.nameText then
         row.nameText = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
-        row.nameText:SetWidth(CHAR_ROW_COLUMNS.name.width)
+        row.nameText:SetWidth((ns.UI_CharRowNameWidth and ns.UI_CharRowNameWidth() or CHAR_ROW_COLUMNS.name.width))
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         row.nameText:SetNonSpaceWrap(false)
@@ -1007,7 +1012,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
         classColor.r * 255, classColor.g * 255, classColor.b * 255,
-        char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
+        (ns.Utilities and ns.Utilities:GetCharacterDisplayName(char)) or char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
     PresentFS(row.nameText)
     if row.mailIcon then
         row.mailIcon:Hide()
@@ -1015,7 +1020,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if not row.realmText then
         row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
         row.realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -23)
-        row.realmText:SetWidth(CHAR_ROW_COLUMNS.name.width)
+        row.realmText:SetWidth((ns.UI_CharRowNameWidth and ns.UI_CharRowNameWidth() or CHAR_ROW_COLUMNS.name.width))
         row.realmText:SetJustifyH("LEFT")
         row.realmText:SetWordWrap(false)
         row.realmText:SetNonSpaceWrap(false)  -- Prevent long word overflow
@@ -1023,7 +1028,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         ns.UI_SetTextColorRole(row.realmText, "Normal")
     end
     if showRealm then
-        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmDisplay(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         ns.UI_SetTextColorRole(row.realmText, "Normal")
         row.realmText:SetText(displayRealm)
         PresentFS(row.realmText)
@@ -1211,6 +1216,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local mythicKeyW = (flexCols and flexCols.mythicKey) or CHAR_ROW_COLUMNS.mythicKey.width
     local mythicKeyOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
 
+    if mythicKeyW == 0 then
+        if row.keystoneIcon then row.keystoneIcon:Hide() end
+        if row.keystoneText then row.keystoneText:Hide() end
+    else
+
     -- Create keystone icon (shared for has-key and no-key)
     if not row.keystoneIcon then
         row.keystoneIcon = row:CreateTexture(nil, "ARTWORK")
@@ -1267,7 +1277,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.keystoneIcon:Show()
     row.keystoneText:Show()
 
+    end
     -- COLUMN: Mail (snapshot from last login on this character)
+
     local mailOffset = GetColumnOffset("mail")
     SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     

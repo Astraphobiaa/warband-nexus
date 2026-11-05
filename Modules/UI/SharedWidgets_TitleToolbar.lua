@@ -153,21 +153,38 @@ function ns.UI_CreateTitleToolbarTextButton(parent, opts)
     return btn, fs
 end
 
--- Low-level hide filter (shared PvE / Gear profile keys)
+--[[
+    Low-level hide filter (shared PvE / Gear profile keys).
+
+    The two steps used to be the literals 80 and 90. On WoW Forever the level cap is 60, so the
+    first click set a threshold no character could reach and the roster emptied completely.
+    Both steps now come from GetMaxPlayerLevel(): the cap itself, and ten levels below it.
+]]
+local function HideFilterSteps()
+    local maxLevel = (GetMaxPlayerLevel and GetMaxPlayerLevel()) or 0
+    if type(maxLevel) ~= "number" or maxLevel < 20 then maxLevel = 80 end
+    local lower = maxLevel - 10
+    if lower < 10 then lower = math.floor(maxLevel / 2) end
+    return lower, maxLevel
+end
+ns.UI_GetLowLevelHideSteps = HideFilterSteps
+
 function ns.UI_GetLowLevelHideThreshold(profile)
     if not profile then return 0 end
+    local lower, upper = HideFilterSteps()
     local threshold = tonumber(profile.hideLowLevelThreshold) or 0
-    if threshold >= 90 then return 90 end
-    if threshold >= 80 then return 80 end
+    if threshold >= upper then return upper end
+    if threshold >= lower then return lower end
     if profile.hideLowLevelCharacters == true then
-        return 80
+        return lower
     end
     return 0
 end
 
 function ns.UI_GetLowLevelHideLabel(threshold)
-    if threshold == 90 then return GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") end
-    if threshold == 80 then return GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") end
+    if threshold and threshold > 0 then
+        return string.format(GetLocalizedText("HIDE_FILTER_LEVEL_N", "Level %d"), threshold)
+    end
     return GetLocalizedText("HIDE_FILTER_STATE_OFF", "Off")
 end
 
@@ -175,12 +192,13 @@ function ns.UI_ApplyLowLevelHideThreshold(addon, threshold)
     local addonRef = addon or WarbandNexus
     local profile = addonRef and addonRef.db and addonRef.db.profile
     if not profile then return end
+    local lower, upper = HideFilterSteps()
     local nextThreshold = tonumber(threshold) or 0
-    if nextThreshold ~= 80 and nextThreshold ~= 90 then
+    if nextThreshold ~= lower and nextThreshold ~= upper then
         nextThreshold = 0
     end
     profile.hideLowLevelThreshold = nextThreshold
-    profile.hideLowLevelCharacters = (nextThreshold >= 80)
+    profile.hideLowLevelCharacters = (nextThreshold >= lower)
     local events = ns.Constants and ns.Constants.EVENTS
     if addonRef and addonRef.SendMessage and events and events.CHARACTER_TRACKING_CHANGED then
         addonRef:SendMessage(events.CHARACTER_TRACKING_CHANGED, {
@@ -246,9 +264,11 @@ function ns.UI_CreateTitleToolbarHideLevelButton(parent, opts)
         end
         local profile = addon and addon.db and addon.db.profile
         local cur = ns.UI_GetLowLevelHideThreshold(profile)
+        local hideLower, hideUpper = ns.UI_GetLowLevelHideSteps()
         local options = {
-            { value = 80, label = GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") },
-            { value = 90, label = GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") },
+            -- Steps follow the client's level cap, so the menu never offers a level nobody can reach.
+            { value = hideLower, label = ns.UI_GetLowLevelHideLabel(hideLower) },
+            { value = hideUpper, label = ns.UI_GetLowLevelHideLabel(hideUpper) },
         }
         local children = { menu:GetChildren() }
         local bin = ns.UI_RecycleBin

@@ -137,6 +137,8 @@ local Constants = {
         UI_DEBUG_HEADER_SYNC = "WN_UI_DEBUG_HEADER_SYNC",
         MONEY_UPDATED = "WN_MONEY_UPDATED",
         PVE_UPDATED = "WN_PVE_UPDATED",
+        -- WoW Forever's Legacy System: account-wide progression on renown track 2802.
+        LEGACY_UPDATED = "WN_LEGACY_UPDATED",
         --- PvP progress / match history written (PvPService); listener in PvPUI.lua.
         PVP_UPDATED = "WN_PVP_UPDATED",
         CURRENCY_UPDATED = "WN_CURRENCY_UPDATED",

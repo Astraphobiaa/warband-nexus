@@ -337,6 +337,7 @@ local MIGRATION_STEPS = {
     "MigrateSlimCacheBackupsV2",
     "MigratePruneOrphanSvKeysV1",
     "MigratePruneOrphanSvKeysV2",
+    "MigrateDropApiDiagnostics",
     "MigrateDropLegacyCollectionDataV1",
     "MigratePruneRedundantCollectionCacheV1",
     "MigrateSlimCollectionStoreV1",
@@ -2164,6 +2165,28 @@ function MigrationService:MigratePruneOrphanSvKeysV2(db)
         DebugPrint("|cff9370DB[Migration]|r pruneOrphanSvKeysV2: removed debugPixelProbe")
     end
     db.global.pruneOrphanSvKeysV2 = true
+end
+
+--- Drop the `/wn api` and `/wn apidoc` diagnostic dumps on every load.
+---
+--- They are deliberately written to SavedVariables so they can be read off disk, and together
+--- they ran to ~1.3 MB. Clearing them at load keeps exactly one reload's worth: the command
+--- writes, the next /reload flushes the file, and the load after that drops it again -- so a
+--- dump never outlives the session that asked for it, and never ships inside a player's DB.
+--- No version flag: this has to run every time, not once.
+---@param db table AceDB root
+function MigrationService:MigrateDropApiDiagnostics(db)
+    if not db or not db.global then return end
+    local dropped = 0
+    for _, key in ipairs({ "apiSnapshot", "apiDocumentation", "charProbe" }) do
+        if db.global[key] ~= nil then
+            db.global[key] = nil
+            dropped = dropped + 1
+        end
+    end
+    if dropped > 0 then
+        DebugPrint("|cff9370DB[Migration]|r dropped " .. dropped .. " API diagnostic dump(s)")
+    end
 end
 
 --- Drop profile.notifications keys no code reads (grep 2026-10-22): dismissedNotifications and lastVaultCheck

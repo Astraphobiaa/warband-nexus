@@ -111,11 +111,20 @@ local MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
 local MAIN_TAB_STRIP_EDGE_INSET = 10
 
 --- Main-window chrome: packaged **`Media/icon.tga`** (`ns.WARBAND_ADDON_MEDIA_ICON`). Extension-less paths broke minimap/Easy Access on some builds.
-function ns.UI_ApplyMainWindowTitleIcon(tex)
+--- `size` is the draw size in UI units. Pass it: the texture is usually anchored with
+--- SetAllPoints and still measures 0 here, and icon.tga is 256 px -- drawn straight at 20-34 px
+--- it aliases, so the pre-shrunk tier must be chosen from the size the caller knows.
+function ns.UI_ApplyMainWindowTitleIcon(tex, size)
     if not tex then return end
     tex:SetBlendMode("BLEND")
     tex:SetVertexColor(1, 1, 1, 1)
-    tex:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
+    local file = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga"
+    local h = size or (tex.GetHeight and tex:GetHeight())
+    if ns.UI_PickIconFile then
+        local px = ns.UI_PhysicalPixels and ns.UI_PhysicalPixels(h, tex) or nil
+        file = (ns.UI_PickIconFile(file, px))
+    end
+    tex:SetTexture(file)
     if tex.SetDesaturated then
         tex:SetDesaturated(false)
     end
@@ -1448,6 +1457,11 @@ ns.UI_SetItemsSubTab = function(val)
     if val == "storage" then
         val = "warband"
     end
+    -- A profile that last sat on Warband must not land on a sub-tab this client does not have.
+    if val == "warband" and WarbandNexus and WarbandNexus.SupportsFeature
+        and not WarbandNexus:SupportsFeature("warbandBank") then
+        val = "personal"
+    end
     local previousSub = currentItemsSubTab
     -- Bank > Warband aggregate uses `storageExpandAllActive` + GetStorageTreeExpandState (not expandedGroups).
     if val ~= "warband" and val ~= "guild" and WarbandNexus then
@@ -1523,10 +1537,20 @@ end
 ---First login (no explicit tab): Characters once. Reload/session: lastTab; hide/show: session tab.
 ---@param requestedTabKey string|nil explicit tab (Easy Access left-click, minimap shortcuts)
 ---@return string
+--- A tab can be missing on this client (Legacy is Forever-only, Professions is hidden there),
+--- and the saved lastTab does not know that. Opening onto one would show content with no nav
+--- button to leave it, so an unavailable key falls back to Characters.
+local TAB_OPEN_CAPABILITY = { professions = "professionsTab", pve = "pveTab" }
+local function MainTabAvailable(tabKey)
+    local capKey = TAB_OPEN_CAPABILITY[tabKey]
+    if not capKey then return true end
+    return (not WarbandNexus.SupportsFeature) or WarbandNexus:SupportsFeature(capKey)
+end
+
 local function ResolveMainWindowOpenTab(requestedTabKey)
     local explicit = NormalizeRequestedMainTab(requestedTabKey)
     if explicit then
-        return explicit
+        return MainTabAvailable(explicit) and explicit or "chars"
     end
     if ns._wnOpenCharsTabOnFirstLogin then
         ns._wnOpenCharsTabOnFirstLogin = nil
@@ -1539,7 +1563,9 @@ local function ResolveMainWindowOpenTab(requestedTabKey)
     local lt = p and p.lastTab
     if lt == "settings" or lt == "about" then lt = nil end
     if lt == "storage" then lt = "items" end
-    return lt or "chars"
+    local resolved = lt or "chars"
+    if not MainTabAvailable(resolved) then resolved = "chars" end
+    return resolved
 end
 
 ---Apply resolved tab to mainFrame (legacy "storage" -> Items > Warband).

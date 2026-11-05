@@ -295,6 +295,16 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         { key = "guild", label = (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank", iconKey = "guild" },
     }
 
+    -- No account (warband) bank on this client: WoW Forever keeps the C_Bank namespace and the
+    -- Enum.BagIndex.AccountBankTab_* ids, so only the capability check can tell the sub-tab
+    -- would open onto nothing.
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature and not addon:SupportsFeature("warbandBank") then
+        for k = #tabDefs, 1, -1 do
+            if tabDefs[k].key == "warband" then table.remove(tabDefs, k) end
+        end
+    end
+
     local Factory = ns.UI and ns.UI.Factory
 
     local bar = Factory and Factory:CreateContainer(headerParent, 400, ITEMS_BANK_SUBTAB_BTN_HEIGHT, false)
@@ -1463,16 +1473,22 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_ChainTitleToolbarControl(titleCard, moneyLogsBtn, goldMgrBtn)
     end
 
-    local depositMgrBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
-        preset = "action",
-        autoWidth = true,
-        text = (ns.L and ns.L["REAGENT_DEPOSIT_BTN"]) or "Reagents",
-        onClick = function()
-            if self.ShowReagentDepositPopup then
-                self:ShowReagentDepositPopup()
-            end
-        end,
-    })
+    local depositMgrBtn
+    -- Both deposit destinations are account-bank era: Enum.BankType.Account and the character
+    -- reagent bank. Neither exists on WoW Forever, so the button would open a popup that can
+    -- only fail -- it is not created there at all.
+    if not (self.SupportsFeature and not self:SupportsFeature("warbandBank")) then
+        depositMgrBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+            preset = "action",
+            autoWidth = true,
+            text = (ns.L and ns.L["REAGENT_DEPOSIT_BTN"]) or "Reagents",
+            onClick = function()
+                if self.ShowReagentDepositPopup then
+                    self:ShowReagentDepositPopup()
+                end
+            end,
+        })
+    end
     if depositMgrBtn then
         local rightAnchor = moneyLogsBtn or goldMgrBtn
         if rightAnchor then

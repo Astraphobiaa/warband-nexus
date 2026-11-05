@@ -169,6 +169,11 @@ function PvPService:SnapshotRatedInfo(skipEmit, authoritative)
 
     local changed = false
     local bracketWritten = false
+    -- No rated brackets on this client (WoW Forever runs the vanilla honor ladder), so there
+    -- is nothing for GetPersonalRatedInfo to report and nothing to persist.
+    if WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("ratedPvP") then
+        return
+    end
     for i = 1, #RATED_BRACKETS do
         local b = RATED_BRACKETS[i]
         if GetPersonalRatedInfo then

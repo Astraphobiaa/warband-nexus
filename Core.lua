@@ -22,6 +22,25 @@ ns.WarbandNexus = WarbandNexus
 -- Dev / slash: `_G.WarbandNexus` fallbacks (CharacterService, ChatIntegration, etc.). Gear storage session trace: `/run WarbandNexus:SetGearStorageTrace(true)` -> `/wn profiler trace` buffer (not default chat).
 _G.WarbandNexus = WarbandNexus
 
+-- Frame:RegisterEvent raises on an event the client does not know (since 8.0.1), and the error
+-- aborts whatever registration batch it was in. WoW Forever (game type camelot/forever, build
+-- 1.60.1) ships the Mainline UI without the retail-only systems, so events such as
+-- WEEKLY_REWARDS_UPDATE, CHALLENGE_MODE_*, TRAIT_*, DELVES_* and MAJOR_FACTION_RENOWN_LEVEL_CHANGED
+-- simply do not exist there. One wrapper covers all ~118 call sites: skip what the client does
+-- not have instead of taking the whole login chain down with it.
+local _AceRegisterEvent = WarbandNexus.RegisterEvent
+ns.UNSUPPORTED_EVENTS = {}
+function WarbandNexus:RegisterEvent(event, ...)
+    local ok = pcall(_AceRegisterEvent, self, event, ...)
+    if not ok then
+        ns.UNSUPPORTED_EVENTS[event] = true
+        if ns.DebugPrint then
+            ns.DebugPrint("|cffffff00[WN]|r event not available on this client: " .. tostring(event))
+        end
+    end
+    return ok
+end
+
 -- Localization. ns.L is built from the ns.LOCALES registry (every locale loads there,
 -- independent of the game client) so any language can be selected. enUS is the base;
 -- OnInitialize merges the chosen language over it after the DB loads. A missing key
@@ -34,12 +53,16 @@ ns.L = L
 local WARBAND_TAB_COUNT = 5
 
 -- Warband Bank Bag IDs (13-17, NOT 12!)
+-- Guarded: every other Enum read in the addon checks the table first. Forever has no warband
+-- bank, so Enum.BagIndex.AccountBankTab_* (or Enum.BagIndex itself) can be missing, and an
+-- unguarded index here would stop Core.lua loading at all.
+local BAG_INDEX = (type(Enum) == "table" and Enum.BagIndex) or {}
 local WARBAND_BAGS = {
-    Enum.BagIndex.AccountBankTab_1 or 13,
-    Enum.BagIndex.AccountBankTab_2 or 14,
-    Enum.BagIndex.AccountBankTab_3 or 15,
-    Enum.BagIndex.AccountBankTab_4 or 16,
-    Enum.BagIndex.AccountBankTab_5 or 17,
+    BAG_INDEX.AccountBankTab_1 or 13,
+    BAG_INDEX.AccountBankTab_2 or 14,
+    BAG_INDEX.AccountBankTab_3 or 15,
+    BAG_INDEX.AccountBankTab_4 or 16,
+    BAG_INDEX.AccountBankTab_5 or 17,
 }
 
 -- Personal Bank Bag IDs

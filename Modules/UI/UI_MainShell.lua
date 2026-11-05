@@ -312,7 +312,7 @@ function ns.UIShell.CreateMainWindow(self)
     iconHolder:SetFrameLevel((header:GetFrameLevel() or 0) + 8)
     local icon = iconHolder:CreateTexture(nil, "OVERLAY", nil, 1)
     icon:SetAllPoints(iconHolder)
-    ns.UI_ApplyMainWindowTitleIcon(icon)
+    ns.UI_ApplyMainWindowTitleIcon(icon, 34)
     f.addonTitleIcon = icon
 
     -- Title (WHITE); RIGHT edge clamps against `trackingChip` after chip width is finalized.
@@ -1096,22 +1096,31 @@ function ns.UIShell.CreateMainWindow(self)
     local prevBtn = nil
     for i = 1, #MAIN_TAB_ORDER do
         local key = MAIN_TAB_ORDER[i]
-        local btn = CreateTabButton(navHostForTabs, TAB_LABELS[key], key)
-        if prevBtn then
-            if railLayout then
-                btn:SetPoint("TOP", prevBtn, "BOTTOM", 0, -RAIL_TAB_V_GAP)
+        -- Legacy is WoW Forever only. On retail the button is not built at all, so the nav keeps
+        -- its shape instead of carrying a tab that opens an empty page.
+        -- A tab whose whole data model is missing on this client is not built at all.
+        local TAB_CAPABILITY = { professions = "professionsTab", pve = "pveTab" }
+        local capKey = TAB_CAPABILITY[key]
+        local skipTab = capKey and WarbandNexus.SupportsFeature
+            and not WarbandNexus:SupportsFeature(capKey)
+        if not skipTab then
+            local btn = CreateTabButton(navHostForTabs, TAB_LABELS[key], key)
+            if prevBtn then
+                if railLayout then
+                    btn:SetPoint("TOP", prevBtn, "BOTTOM", 0, -RAIL_TAB_V_GAP)
+                else
+                    btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
+                end
             else
-                btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
+                if railLayout then
+                    btn:SetPoint("TOP", navHostForTabs, "TOP", 0, -RAIL_TOP_INSET)
+                else
+                    btn:SetPoint("LEFT", navHostForTabs, "LEFT", 10, 0)
+                end
             end
-        else
-            if railLayout then
-                btn:SetPoint("TOP", navHostForTabs, "TOP", 0, -RAIL_TOP_INSET)
-            else
-                btn:SetPoint("LEFT", navHostForTabs, "LEFT", 10, 0)
-            end
+            f.tabButtons[key] = btn
+            prevBtn = btn
         end
-        f.tabButtons[key] = btn
-        prevBtn = btn
     end
 
     local settingsLabel = (ns.L and ns.L["BTN_SETTINGS"]) or "Settings"

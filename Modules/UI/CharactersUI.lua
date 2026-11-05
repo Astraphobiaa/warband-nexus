@@ -585,6 +585,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local goldCardW1 = gm.goldCardW1
     local goldCardW2 = gm.goldCardW2
     local goldCardW3 = gm.goldCardW3
+    local showWarbandCard = gm.showWarbandCard ~= false
     local card12H = gm.card12H
     local card3H = gm.card3H
 
@@ -727,10 +728,15 @@ function WarbandNexus:DrawCharacterList(parent)
     tgValue:SetNonSpaceWrap(false)
 
     -- Right block: WoW Token (icon + label + price with token count)
+    -- No token commerce on this client (WoW Forever): C_WowTokenPublic is present but
+    -- GetCommerceSystemStatus answers false and there is no market price, so the tile could
+    -- only ever read N/A.
+    local showToken = not (WarbandNexus.SupportsFeature
+        and not WarbandNexus:SupportsFeature("wowToken"))
     local tkIcon = totalGoldCard:CreateTexture(nil, "ARTWORK")
     tkIcon:SetSize(28, 28)
     tkIcon:SetTexture("Interface\\Icons\\WoW_Token01")
-    tkIcon:Show()
+    tkIcon:SetShown(showToken)
 
     local tkTextContainer = (ns.UI.Factory and ns.UI.Factory:CreateContainer(totalGoldCard, 220, 64, false))
         or CreateFrame("Frame", nil, totalGoldCard)
@@ -741,6 +747,8 @@ function WarbandNexus:DrawCharacterList(parent)
     tkLabel:SetJustifyH("LEFT")
     tkLabel:SetPoint("BOTTOM", tkTextContainer, "CENTER", 0, 0)
     tkLabel:SetPoint("LEFT", tkTextContainer, "LEFT", 0, 0)
+
+    if not showToken then tkTextContainer:Hide() end
 
     local tkValue = FontManager:CreateFontString(tkTextContainer, "body", "OVERLAY")
     tkValue:SetJustifyH("LEFT")
@@ -782,19 +790,24 @@ function WarbandNexus:DrawCharacterList(parent)
     charGoldCard:SetSize(goldCardW1, card12H)
     charGoldCard:ClearAllPoints()
     charGoldCard:SetPoint("TOPLEFT", parent, "TOPLEFT", leftMargin, -yOffset)
-    wbGoldCard:SetSize(goldCardW2, card12H)
-    wbGoldCard:ClearAllPoints()
-    if stackGoldCards then
-        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+    if showWarbandCard then
+        wbGoldCard:SetSize(goldCardW2, card12H)
+        wbGoldCard:ClearAllPoints()
+        if stackGoldCards then
+            wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+        else
+            wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "TOPRIGHT", cardSpacing, 0)
+        end
     else
-        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "TOPRIGHT", cardSpacing, 0)
+        wbGoldCard:Hide()
     end
     totalGoldCard:SetSize(goldCardW3, card3H)
     totalGoldCard:ClearAllPoints()
+    local totalAnchor = showWarbandCard and wbGoldCard or charGoldCard
     if stackGoldCards then
-        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+        totalGoldCard:SetPoint("TOPLEFT", totalAnchor, "BOTTOMLEFT", 0, -cardSpacing)
     else
-        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "TOPRIGHT", cardSpacing, 0)
+        totalGoldCard:SetPoint("TOPLEFT", totalAnchor, "TOPRIGHT", cardSpacing, 0)
     end
 
     ns.CharactersUI.ApplyTotalGoldCardInterior(bundle, stackGoldTokenInCard3)

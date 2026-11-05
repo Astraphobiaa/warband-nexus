@@ -79,6 +79,16 @@ local SETTINGS_CHECKBOX_COL_GAP = UI_SPACING.CARD_GAP or UI_SPACING.AFTER_ELEMEN
 local SETTINGS_DROPDOWN_LABEL_COL_MIN = 176
 local SETTINGS_DROPDOWN_LABEL_COL_MAX = 310
 local SETTINGS_DROPDOWN_CONTROL_MIN_W = 136
+--- One label column for every "label left, control right" row. The keybind row in General used
+--- its own 0.34 / max 170 formula, so its control started and ended at a different x than the
+--- dropdown rows stacked right above it.
+local SETTINGS_LABEL_COL_RATIO = 0.40
+--- Stacked rows ("label on top, control below"): CreateInputWidget used 22/68 and
+--- CreateSliderWidget 25/65, so mixed sections never shared a rhythm. One gap, one trailing
+--- space, and the row advance follows from the control's own height.
+local SETTINGS_STACKED_LABEL_GAP = 24
+local SETTINGS_STACKED_ROW_TRAIL = 14
+local SETTINGS_SLIDER_H = 20
 -- Content frame height follows layout math.abs(stackY) exactly (card chrome uses CONTENT_PADDING_*).
 local SETTINGS_CARD_CONTENT_BOTTOM_PAD = 0
 -- Height for secondary controls (notification actions, try-counter helper, track lookup)
@@ -111,6 +121,34 @@ local function GetHeaderToolbarGap()
     local L = ns.UI_LAYOUT or UI_SPACING
     return (L and L.HEADER_TOOLBAR_CONTROL_GAP) or UI_SPACING.AFTER_ELEMENT or 8
 end
+
+--- Checkbox row metrics. CreateCheckboxGrid computed these inline, so panels that hand-roll a
+--- toggle row (Notifications) guessed their own pitch and drifted 4 px off the grid.
+--- ns.UI_TOGGLE_SIZE is 16; the max() floor is what actually sets the cell height.
+local function GetSettingsLabelColumnWidth(panelWidth)
+    local pw = panelWidth or 400
+    return math.min(SETTINGS_DROPDOWN_LABEL_COL_MAX,
+        math.max(SETTINGS_DROPDOWN_LABEL_COL_MIN, math.floor(pw * SETTINGS_LABEL_COL_RATIO)))
+end
+--- Control width that pairs with GetSettingsLabelColumnWidth, so right edges line up too.
+local function GetSettingsControlColumnWidth(panelWidth)
+    local pw = panelWidth or 400
+    return pw - GetSettingsLabelColumnWidth(pw) - GetHeaderToolbarGap()
+end
+local function GetSettingsStackedRowAdvance(controlHeight)
+    return SETTINGS_STACKED_LABEL_GAP + (controlHeight or 0) + SETTINGS_STACKED_ROW_TRAIL
+end
+
+local function GetCheckboxCellMinHeight()
+    return math.max(20, ns.UI_TOGGLE_SIZE or 16)
+end
+local function GetCheckboxRowGap()
+    return math.max(4, math.floor((UI_SPACING.AFTER_ELEMENT or 8) * 0.75))
+end
+local function GetCheckboxRowPitch()
+    return GetCheckboxCellMinHeight() + GetCheckboxRowGap()
+end
+
 
 local function GetStackedSubPanelTrailingGap()
     return GetHeaderToolbarGap() + SETTINGS_STACKED_SUBPANEL_GAP_EXTRA
@@ -397,8 +435,8 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
     local colWidth = (usableWidth - (COL_SPACING * (numCols - 1))) / numCols
     local defaultChildIndent = SETTINGS_CHECKBOX_CHILD_INDENT
 
-    local CELL_MIN_H = math.max(20, (ns.UI_TOGGLE_SIZE or 22))
-    local ROW_GAP = math.max(4, math.floor(((UI_SPACING.AFTER_ELEMENT or 8)) * 0.75))
+    local CELL_MIN_H = GetCheckboxCellMinHeight()
+    local ROW_GAP = GetCheckboxRowGap()
 
     local widgets = {}       -- key → {checkbox, label}
     local optionByKey = {}   -- key → option
@@ -930,8 +968,7 @@ end
 local function CreateDropdownWidget(parent, option, yOffset)
     local pw = parent:GetWidth() or 400
     local gap = GetHeaderToolbarGap()
-    local labelColW = math.min(SETTINGS_DROPDOWN_LABEL_COL_MAX,
-        math.max(SETTINGS_DROPDOWN_LABEL_COL_MIN, math.floor(pw * 0.40)))
+    local labelColW = GetSettingsLabelColumnWidth(pw)
     local controlW = pw - labelColW - gap
     -- stackBelowLabel: label full width on first row, dropdown below (avoids wide settings rows).
     local useStacked = option.stackBelowLabel == true or controlW < SETTINGS_DROPDOWN_CONTROL_MIN_W
@@ -1371,11 +1408,11 @@ local function CreateInputWidget(parent, option, yOffset)
 
     -- EditBox (Factory for standard compliance)
     local editBox = ns.UI.Factory:CreateEditBox(parent)
-    if not editBox then return yOffset - 68, nil end
-    editBox:SetHeight(30)
+    if not editBox then return yOffset - GetSettingsStackedRowAdvance(SETTINGS_BTN_H), nil end
+    editBox:SetHeight(SETTINGS_BTN_H)
     local boxWidth = option.width or 200
     editBox:SetWidth(boxWidth)
-    editBox:SetPoint("TOPLEFT", 0, yOffset - 22)
+    editBox:SetPoint("TOPLEFT", 0, yOffset - SETTINGS_STACKED_LABEL_GAP)
     editBox:SetTextInsets(10, 10, 0, 0)
     editBox:SetMaxLetters(option.maxLetters or 128)
 
@@ -1410,7 +1447,7 @@ local function CreateInputWidget(parent, option, yOffset)
     editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     editBox:SetScript("OnEditFocusLost", CommitValue)
 
-    return yOffset - 68, editBox
+    return yOffset - GetSettingsStackedRowAdvance(SETTINGS_BTN_H), editBox
 end
 
 ---Create slider widget
@@ -1440,7 +1477,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
         max = option.max or 1,
         step = option.step or 0.1,
         value = option.get and option.get() or nil,
-        height = 20,
+        height = SETTINGS_SLIDER_H,
     }
 
     if option.applyOnRelease then
@@ -1464,8 +1501,8 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
 
     local slider = ns.UI.Factory:CreateThemedSlider(parent, sliderOpts)
     slider.UpdateLabel = UpdateLabel
-    slider:SetPoint("TOPLEFT", 0, yOffset - 25)
-    slider:SetPoint("TOPRIGHT", 0, yOffset - 25)
+    slider:SetPoint("TOPLEFT", 0, yOffset - SETTINGS_STACKED_LABEL_GAP)
+    slider:SetPoint("TOPRIGHT", 0, yOffset - SETTINGS_STACKED_LABEL_GAP)
 
     -- Track slider for theme refresh (if tracking table provided)
     if sliderTrackingTable then
@@ -1481,7 +1518,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
         slider:SetScript("OnLeave", function() ns.UI_SafeHideGameTooltip() end)
     end
     
-    return yOffset - 65, slider
+    return yOffset - GetSettingsStackedRowAdvance(SETTINGS_SLIDER_H), slider
 end
 
 -- Track subtitle elements for theme refresh
@@ -1659,6 +1696,9 @@ do
         GetSettingsSectionCardWidth = GetSettingsSectionCardWidth,
         GetSettingsSectionContentWidth = GetSettingsSectionContentWidth,
         GetHeaderToolbarGap = GetHeaderToolbarGap,
+        GetCheckboxRowPitch = GetCheckboxRowPitch,
+        GetSettingsLabelColumnWidth = GetSettingsLabelColumnWidth,
+        GetSettingsControlColumnWidth = GetSettingsControlColumnWidth,
         AppendSettingsPanelIntro = AppendSettingsPanelIntro,
         AppendSettingsSubSectionHeader = AppendSettingsSubSectionHeader,
         StackSettingsSubPanel = StackSettingsSubPanel,

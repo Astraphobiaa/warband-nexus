@@ -129,6 +129,31 @@ local function GetCharRowTotalWidth()
     return width + 10
 end
 
+--- Name column width. 100 px fits a single classic name; WoW Forever characters also carry a
+--- surname ("Elementalist Vhorzen"), which clips at that width. The Keystone column collapses
+--- on the same client and frees 135 px, so widening here costs the row nothing.
+local CHAR_ROW_NAME_WIDTH_FOREVER = 165
+local function CharRowNameWidth()
+    local c = CHAR_ROW_COLUMNS.name
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature and not addon:SupportsFeature("mythicPlus") then
+        return CHAR_ROW_NAME_WIDTH_FOREVER
+    end
+    return c.width
+end
+ns.UI_CharRowNameWidth = CharRowNameWidth
+
+--- The Keystone column only means anything where Mythic+ exists. On WoW Forever it does not, so
+--- the column collapses to zero width and the chained offsets close the gap by themselves.
+local function CharRowMythicKeyEnabled()
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature then
+        return addon:SupportsFeature("mythicPlus")
+    end
+    return true
+end
+ns.UI_CharRowMythicKeyEnabled = CharRowMythicKeyEnabled
+
 local function GetCharRowTotalWidthForGuild(guildColW)
     local base = GetCharRowTotalWidth()
     local gCol = CHAR_ROW_COLUMNS.guild or {}
@@ -161,7 +186,7 @@ local function GetCharRowMiddleBlockWidth()
         + (c.itemLevel and c.itemLevel.total or 90)
         + (c.gold and c.gold.total or 205)
         + (c.professions and c.professions.total or 150)
-        + (c.mythicKey and c.mythicKey.total or 135)
+        + (CharRowMythicKeyEnabled() and (c.mythicKey and c.mythicKey.total or 135) or 0)
 end
 
 local function ComputeCharRowGuildColumnWidth(listRowW, measuredGuildW)
@@ -190,7 +215,7 @@ local function ComputeCharRowFlexColumns(rowW, measuredGuildW)
         itemLevel = c.itemLevel.width,
         gold = c.gold.width,
         professions = c.professions.width,
-        mythicKey = c.mythicKey.width,
+        mythicKey = CharRowMythicKeyEnabled() and c.mythicKey.width or 0,
     }
     if not rowW or rowW < 1 then return out end
     local deficit = GetCharRowTotalWidthForGuild(out.guild) - rowW
@@ -343,6 +368,11 @@ local function ResolveCharRowHeaderColumns(rowW, measuredGuildW, outCols, outWid
         else
             def.width = flexW[key] or col.width
             def.gapAfter = col.spacing or 0
+            if def.width == 0 then
+                -- Collapsed column: no header text, no trailing gap, so the next column moves up.
+                def.label, def.tooltip, def.min = nil, nil, 0
+                def.gapAfter = 0
+            end
             leftEnd = leftEnd + def.width + def.gapAfter
             bridgeDef = def
         end

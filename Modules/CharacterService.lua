@@ -173,8 +173,20 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         chars[persistKey] = {}
     end
     local entry = chars[persistKey]
+    -- WoW Forever gives characters a surname, and UnitName returns it as the SECOND value
+    -- (where retail puts the realm). Captured every pass, not only on first sight: rows
+    -- created before this existed still carry only the first word.
+    local uName, uSecond = UnitName("player")
+    -- Retail puts the REALM in that second slot (nil for the player's own realm), so this is
+    -- read as a surname only where surnames exist.
+    local foreverNames = ns.Capabilities and ns.Capabilities.IsForeverClient
+        and ns.Capabilities.IsForeverClient()
+    if foreverNames and type(uSecond) == "string" and uSecond ~= ""
+        and not (issecretvalue and issecretvalue(uSecond)) then
+        entry.surname = uSecond
+    end
     if not entry.name or not entry.realm then
-        local un = UnitName("player")
+        local un = uName
         if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
             entry.name = un
         end

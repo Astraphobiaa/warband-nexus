@@ -120,7 +120,11 @@ end
 ---@param reason string|nil diagnostic tag (debug only)
 ---@param forceClearSeen boolean|nil when true, clears keystoneLastSeen and schedules API warmup retries
 ---@return boolean didChange
+-- Every entry point below is Mythic+ only. On a client without the system (WoW Forever) the
+-- C_MythicPlus / C_ChallengeMode namespaces still answer, with nil and empty tables, so each of
+-- these would run its full path and log a "no write / API not ready" line on every refresh.
 function WarbandNexus:RequestKeystoneRefresh(reason, forceClearSeen)
+    if self.SupportsFeature and not self:SupportsFeature("mythicPlus") then return end
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return false
     end
@@ -184,6 +188,7 @@ end
 ---Update current week's Mythic+ affixes (lean: only IDs stored in SV).
 ---Metadata (name, description, icon) resolved on-demand from C_ChallengeMode.GetAffixInfo().
 function WarbandNexus:UpdateMythicPlusAffixes()
+    if self.SupportsFeature and not self:SupportsFeature("mythicPlus") then return end
     if not C_MythicPlus or not C_ChallengeMode or not self.db.global.pveCache then return end
     
     -- C_MythicPlus.GetCurrentAffixes() returns affixID list OR struct array
@@ -206,6 +211,7 @@ end
 ---Update character's keystone data
 ---@return boolean didChange
 function WarbandNexus:UpdateCharacterKeystone(charKey)
+    if self.SupportsFeature and not self:SupportsFeature("mythicPlus") then return end
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return false
@@ -323,6 +329,7 @@ end
 
 ---Update character's best M+ runs
 function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
+    if self.SupportsFeature and not self:SupportsFeature("mythicPlus") then return end
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -402,6 +409,7 @@ end
 
 ---Update character's dungeon scores (overall + per-dungeon breakdown)
 function WarbandNexus:UpdateDungeonScores(charKey)
+    if self.SupportsFeature and not self:SupportsFeature("mythicPlus") then return end
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -528,6 +536,7 @@ end
 
 ---Collect M+ run history for current character (this week only)
 function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
+    if self.SupportsFeature and not self:SupportsFeature("mythicPlus") then return end
     if not charKey or not self.db.global.pveCache then return end
     if not C_MythicPlus or not C_MythicPlus.GetRunHistory then return end
     charKey = CanonicalizePvEKey(charKey)

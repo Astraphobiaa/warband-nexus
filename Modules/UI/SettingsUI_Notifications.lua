@@ -23,6 +23,8 @@ function M.AppendNotificationsPanel(ctx)
     local UI_SPACING = H.UI_SPACING
     local GetSettingsSectionContentWidth = H.GetSettingsSectionContentWidth
     local GetHeaderToolbarGap = H.GetHeaderToolbarGap
+    local GetCheckboxRowPitch = H.GetCheckboxRowPitch
+    local SETTINGS_CHECKBOX_GRID_INDENT = H.SETTINGS_CHECKBOX_GRID_INDENT
     local AppendSettingsPanelIntro = H.AppendSettingsPanelIntro
     local AppendSettingsSubSectionHeader = H.AppendSettingsSubSectionHeader
     local StackSettingsSubPanel = H.StackSettingsSubPanel
@@ -940,7 +942,7 @@ function M.AppendNotificationsPanel(ctx)
     local closePositionGhosts
 
     unifiedLayoutCheck = CreateThemedCheckbox(notifSection.content)
-    unifiedLayoutCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
+    unifiedLayoutCheck:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, notifGridYOffset)
     local unifiedLayoutLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     unifiedLayoutLabel:SetJustifyH("LEFT")
     unifiedLayoutLabel:SetText((ns.L and ns.L["NOTIF_UNIFIED_TOAST_LAYOUT"]) or "One position for all popup types")
@@ -955,10 +957,10 @@ function M.AppendNotificationsPanel(ctx)
         closePositionGhosts()
         if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
     end)
-    notifGridYOffset = notifGridYOffset - math.max(22, ns.UI_TOGGLE_SIZE or 22) - GetHeaderToolbarGap()
+    notifGridYOffset = notifGridYOffset - GetCheckboxRowPitch()
 
     useAlertFrameCheck = CreateThemedCheckbox(notifSection.content)
-    useAlertFrameCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
+    useAlertFrameCheck:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, notifGridYOffset)
     local useAlertFrameLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     useAlertFrameLabel:SetJustifyH("LEFT")
     useAlertFrameLabel:SetText((ns.L and ns.L["USE_ALERTFRAME_POSITION"]) or "Match Blizzard AlertFrame position")
@@ -972,7 +974,7 @@ function M.AppendNotificationsPanel(ctx)
         if self.checkTexture then self.checkTexture:SetShown(v) end
         if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
     end)
-    notifGridYOffset = notifGridYOffset - math.max(22, ns.UI_TOGGLE_SIZE or 22) - GetHeaderToolbarGap()
+    notifGridYOffset = notifGridYOffset - GetCheckboxRowPitch()
 
     local btnGap = GetHeaderToolbarGap()
     local btnWidth = math.floor((notifInnerW - 2 * btnGap) / 3)

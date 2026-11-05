@@ -1940,6 +1940,12 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage(E.QUEST_COMPLETED, "OnQuestCompleted")
     -- WN_REPUTATION_GAINED is handled in ChatMessageService.lua (chat notifications)
     self:RegisterMessage(E.VAULT_REWARD_AVAILABLE, "OnVaultRewardAvailable")
+    -- Re-arm the vault toast once the chest is empty again (claimed, or new reward period).
+    WarbandNexus.RegisterMessage(NotificationEvents, E.PVE_UPDATED, function()
+        if ns.NotificationManagerHooks and ns.NotificationManagerHooks.ResetVaultReadyToastGate then
+            ns.NotificationManagerHooks.ResetVaultReadyToastGate()
+        end
+    end)
     -- Plan reminders: optional compact toast via WN_SHOW_REMINDER_TOAST (not Blizzard AddAlert hooks)
     
     -- Font change listener (low-impact: active notifications auto-dismiss quickly, new ones will use updated font)
@@ -2799,10 +2805,18 @@ function WarbandNexus:ShowExpiringMailReminder()
     })
 end
 
+--- One "unclaimed rewards" toast per claimable vault state. Two independent paths reach this
+--- handler at login (CheckNotificationsOnLogin -> ShowVaultReminder, and PvECacheService_Vault's
+--- EmitVaultReadyToastIfNewlyClaimable), so without this gate the player sees the toast twice.
+--- Re-armed below on WN_PVE_UPDATED once the vault no longer has pending rewards (claimed/reset).
+local vaultReadyToastActive = false
+
 ---Vault reward available handler
 function WarbandNexus:OnVaultRewardAvailable(event, data)
     if data and data.claimable == false then return end
     if not self:CanShowToast("vault") then return end
+    if vaultReadyToastActive then return end
+    vaultReadyToastActive = true
 
     self:Notify("vault", (ns.L and ns.L["WEEKLY_VAULT_READY"]) or "Weekly Vault Ready!", CATEGORY_ICONS.vault, {
         action = (ns.L and ns.L["UNCLAIMED_REWARDS"]) or "You have unclaimed rewards",
@@ -2811,6 +2825,19 @@ function WarbandNexus:OnVaultRewardAvailable(event, data)
         -- faint small-grey default (it read as barely visible).
         emphasizeAction = true,
     })
+end
+
+ns.NotificationManagerHooks = ns.NotificationManagerHooks or {}
+--- Clear the once-per-state vault toast gate when nothing is waiting in the chest.
+function ns.NotificationManagerHooks.ResetVaultReadyToastGate()
+    if not vaultReadyToastActive then return end
+    local pending = ns.WeeklyVaultHasPendingRewards and ns.WeeklyVaultHasPendingRewards()
+    if pending == nil and WarbandNexus.HasUnclaimedVaultRewards then
+        pending = WarbandNexus:HasUnclaimedVaultRewards()
+    end
+    if pending ~= true then
+        vaultReadyToastActive = false
+    end
 end
 
 --[[============================================================================

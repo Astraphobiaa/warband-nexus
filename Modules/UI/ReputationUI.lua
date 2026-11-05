@@ -2419,7 +2419,12 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
 
-    if totalAccountWide > 0 or not repSearchActive then
+    -- The empty section is a deliberate placeholder on clients that HAVE account-wide
+    -- reputations. Where they do not exist it is just a warband-branded header over nothing.
+    local showAccountWide = (totalAccountWide > 0)
+        or (not repSearchActive and not (WarbandNexus.SupportsFeature
+            and not WarbandNexus:SupportsFeature("accountWideReputations")))
+    if showAccountWide then
         RenderSection(
             "filtered-section-accountwide",
             format((ns.L and ns.L["REP_SECTION_ACCOUNT_WIDE"]) or "Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),

@@ -51,6 +51,9 @@ end
 
 ---Process Great Vault activities after server responds
 function WarbandNexus:ProcessGreatVaultActivities(charKey)
+    -- No Great Vault on this client (WoW Forever): the namespace still exists and returns an
+    -- empty list forever, which otherwise logs the "waiting for server" line on every scan.
+    if self.SupportsFeature and not self:SupportsFeature("vault") then return end
     if not C_WeeklyRewards or not charKey or not self.db.global.pveCache then return end
     charKey = CanonicalizePvEKey(charKey)
     

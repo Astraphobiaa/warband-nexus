@@ -1326,6 +1326,8 @@ end
 ---Update Delves companion data (account-wide) and per-character delve progress.
 ---Uses C_DelvesUI APIs (Midnight 12.0+) for companion info and season tracking.
 function WarbandNexus:UpdateDelvesData(charKey)
+    -- Delves do not exist on this client (Forever): C_DelvesUI answers with season 0.
+    if self.SupportsFeature and not self:SupportsFeature("delves") then return end
     if not self.db.global.pveCache or not self.db.global.pveCache.delves then return end
     if charKey and charKey ~= "" then
         charKey = CanonicalizePvEKey(charKey)
