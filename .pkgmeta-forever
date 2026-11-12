@@ -3,8 +3,8 @@
 # RETAIL package (tag vX.Y.Z). Root payload: WarbandNexus.toc, Core.lua, Config.lua, embeds.xml,
 #   Bindings.xml, LICENSE + Modules/, Locales/, libs/, Fonts/, Media/.
 # The WoW Forever package (tag forever-vX.Y.Z) uses .pkgmeta-forever, GENERATED from this file by
-# scripts/build_flavor_tocs.py: the BEGIN/END retail-only block is dropped there, and it ignores
-# WarbandNexus.toc + the retail-only Lua files instead.
+# scripts/build_flavor_tocs.py: the BEGIN/END retail-only block is dropped there, it ignores
+# the retail-only Lua files, and release.yml swaps in the Forever TOC as WarbandNexus.toc.
 package-as: WarbandNexus
 
 manual-changelog:
@@ -23,8 +23,7 @@ ignore:
   - docs
   - CLAUDE.md
   - .wowluarc.json
-  # WoW Forever package: no retail TOC, retail changelog or retail-only Lua files.
-  - WarbandNexus.toc
+  # WoW Forever package: no retail changelog or retail-only Lua files.
   - CHANGELOG.md
   - Modules/PvECacheService_MythicPlus.lua
   - Modules/PvECacheService_Vault.lua

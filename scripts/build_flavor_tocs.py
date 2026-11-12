@@ -9,8 +9,9 @@ tags, changelogs and zips (retail: tag vX.Y.Z; Forever: tag forever-vX.Y.Z).
   WarbandNexus_Camelot.toc   the same file under Forever's other game-type suffix -- GENERATED
   .pkgmeta                   retail package -- edited by hand
   .pkgmeta-forever           Forever package -- GENERATED: .pkgmeta without its BEGIN/END
-                             retail-only block, CHANGELOG_FOREVER.md as the changelog, and
-                             WarbandNexus.toc + the RETAIL_ONLY Lua files ignored
+                             retail-only block, CHANGELOG_FOREVER.md as the changelog, the
+                             RETAIL_ONLY Lua files ignored (release.yml swaps WarbandNexus.toc
+                             for the Forever TOC in CI before packaging)
 
 The Forever TOC's ## Version is FOREVER_ADDON_VERSION from Modules/Constants.lua.
 
@@ -109,8 +110,9 @@ def build_forever_pkgmeta(retail_text: str) -> str:
         raise SystemExit(".pkgmeta: missing END retail-only marker or manual-changelog filename")
     while out and not out[-1].strip():
         out.pop()
-    out.append("  # WoW Forever package: no retail TOC, retail changelog or retail-only Lua files.")
-    out.append("  - WarbandNexus.toc")
+    # WarbandNexus.toc stays: release.yml overwrites it with the Forever TOC before packaging
+    # (the packager validates the game version against the package-as TOC).
+    out.append("  # WoW Forever package: no retail changelog or retail-only Lua files.")
     out.append("  - CHANGELOG.md")
     for rel in RETAIL_ONLY:
         out.append("  - " + rel.replace("\\", "/"))
