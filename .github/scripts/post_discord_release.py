@@ -15,8 +15,17 @@ if str(SCRIPT_DIR) not in sys.path:
 from discord_common import post_message, post_or_skip, send_embed, truncate
 
 ROOT = Path(__file__).resolve().parents[2]
-CHANGELOG = ROOT / "CHANGELOG.md"
-TOC = ROOT / "WarbandNexus.toc"
+
+# Which release line this run announces: WN_RELEASE_FLAVOR (release.yml / discord-announce.yml),
+# else the tag (forever-vX.Y.Z = WoW Forever). Retail and Forever have separate versions,
+# changelogs and TOCs.
+_ref = os.environ.get("GITHUB_REF_NAME", "")
+FLAVOR = (os.environ.get("WN_RELEASE_FLAVOR", "").strip().lower()
+          or ("forever" if _ref.startswith("forever-v") else "retail"))
+IS_FOREVER = FLAVOR == "forever"
+CHANGELOG = ROOT / ("CHANGELOG_FOREVER.md" if IS_FOREVER else "CHANGELOG.md")
+TOC = ROOT / ("WarbandNexus_Forever.toc" if IS_FOREVER else "WarbandNexus.toc")
+PRODUCT_NAME = "Warband Nexus Forever" if IS_FOREVER else "Warband Nexus"
 
 CF_PROJECT_URL = "https://www.curseforge.com/wow/addons/warband-nexus"
 WAGO_PROJECT_URL = "https://addons.wago.io/addons/warband-nexus"
@@ -67,7 +76,7 @@ def build_announcement(version: str, body: str) -> dict:
     Plain message text when it fits Discord's 2000-character limit; otherwise the changelog
     moves into an embed and the text keeps the links + mention (an embed cannot ping).
     """
-    title = f"**Warband Nexus v{version.lstrip('v')}**"
+    title = f"**{PRODUCT_NAME} v{version.lstrip('v')}**"
     text = f"{title}\n\n{body}\n\n{ANNOUNCE_FOOTER}"
     # Only @everyone may ping: changelog text never mentions roles or users by accident.
     mentions = {"parse": ["everyone"]}
@@ -77,7 +86,7 @@ def build_announcement(version: str, body: str) -> dict:
         "content": f"{title}\n\n{ANNOUNCE_FOOTER}",
         "allowed_mentions": mentions,
         "embeds": [{
-            "title": truncate(f"Warband Nexus v{version.lstrip('v')}", 256),
+            "title": truncate(f"{PRODUCT_NAME} v{version.lstrip('v')}", 256),
             "description": truncate(body, 4096),
             "color": 0x58A6FF,
         }],
@@ -125,6 +134,8 @@ def post_announcement(version: str, body: str) -> None:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # emoji on a cp125x console
     if "--announce-only" in sys.argv[1:]:
         # Manual run (Discord announcement workflow): the announcement alone, errors fail the run.
         _, only_body = extract_latest_changelog_section()
@@ -156,7 +167,7 @@ def main() -> int:
 
     version = read_toc_version()
     header, body = extract_latest_changelog_section()
-    title = f"Warband Nexus {version} released"
+    title = f"{PRODUCT_NAME} {version} released"
     fields = [
         {
             "name": "Download",

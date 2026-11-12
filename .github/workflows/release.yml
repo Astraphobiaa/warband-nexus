@@ -1,9 +1,14 @@
 name: Release
 
+# Two release lines, one CurseForge / Wago project:
+#   vX.Y.Z          retail      .pkgmeta          WarbandNexus.toc        CHANGELOG.md
+#   forever-vX.Y.Z  WoW Forever .pkgmeta-forever  WarbandNexus_Forever.toc CHANGELOG_FOREVER.md
+# Each tag builds and uploads only its own zip, tagged only with its own game version.
 on:
   push:
     tags:
       - "v*"
+      - "forever-v*"
   workflow_dispatch:
 
 permissions:
@@ -38,8 +43,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Flavor from the tag; game version from that flavor's TOC Interface (120105 -> 12.1.5,
+      # 16001 -> 1.60.1), so the upload is tagged for that game only.
+      - name: Select release flavor
+        id: flavor
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == forever-v* ]]; then
+            flavor=forever; toc=WarbandNexus_Forever.toc; pkgargs="-m .pkgmeta-forever"
+          else
+            flavor=retail; toc=WarbandNexus.toc; pkgargs=""
+          fi
+          iface=$(grep -m1 '^## Interface:' "$toc" | sed 's/^## Interface:[[:space:]]*//; s/[[:space:]].*//; s/,.*//')
+          iface="${iface//[^0-9]/}"
+          gamever="$((iface / 10000)).$(((iface / 100) % 100)).$((iface % 100))"
+          echo "flavor=$flavor" >> "$GITHUB_OUTPUT"
+          echo "args=$pkgargs -g $gamever" >> "$GITHUB_OUTPUT"
+          echo "Release flavor: $flavor ($toc, game version $gamever)"
+
       - name: Package and upload (CurseForge + Wago + GitHub Release)
         uses: BigWigsMods/packager@v2
+        with:
+          args: ${{ steps.flavor.outputs.args }}
 
       - name: Notify Discord (release bot)
         if: success()
@@ -51,4 +75,13 @@ jobs:
           DISCORD_ANNOUNCEMENTS_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
           DISCORD_ANNOUNCEMENTS_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCEMENTS_CHANNEL_ID }}
           DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
-        run: python .github/scripts/post_discord_release.py
+          WN_RELEASE_FLAVOR: ${{ steps.flavor.outputs.flavor }}
+        # [no-announce] in the tag message or the tagged commit's message ships silently (no Discord).
+        run: |
+          # actions/checkout can leave an annotated tag as a lightweight one; refetch it.
+          git fetch --force --quiet origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME" || true
+          if { git tag -l --format='%(contents)' "$GITHUB_REF_NAME"; git log -1 --format=%B; } | grep -qF '[no-announce]'; then
+            echo "Tag $GITHUB_REF_NAME is marked [no-announce] - skipping Discord."
+            exit 0
+          fi
+          python .github/scripts/post_discord_release.py

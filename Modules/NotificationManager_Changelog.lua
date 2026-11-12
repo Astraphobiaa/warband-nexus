@@ -33,7 +33,8 @@ local function VersionToChangelogKey(version)
     -- Numeric x.y.z only (supports suffixes like -beta1 on ADDON_VERSION; maps to CHANGELOG_V2515)
     local a, b, c = version:match("^(%d+)%.(%d+)%.(%d+)")
     if not a then return nil end
-    return "CHANGELOG_V" .. a .. b .. c
+    -- Retail: CHANGELOG_V<x><y><z>; WoW Forever (own release line): CHANGELOG_FOREVER_V<x><y><z>.
+    return ((Constants and Constants.CHANGELOG_KEY_PREFIX) or "CHANGELOG_V") .. a .. b .. c
 end
 
 local function BuildChangelog()

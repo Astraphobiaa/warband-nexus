@@ -18,6 +18,13 @@ local Constants = {
     -- Shown next to version in the What's New / changelog popup title
     ADDON_RELEASE_DATE = "2026-11-12",
 
+    -- WoW Forever release line: its own version, tag (forever-vX.Y.Z), CHANGELOG_FOREVER.md and
+    -- CHANGELOG_FOREVER_V<x><y><z> locale key. Written into WarbandNexus_Forever.toc by
+    -- scripts/build_flavor_tocs.py. On a Forever client ADDON_VERSION / ADDON_RELEASE_DATE
+    -- below are switched to these at load, so every reader shows the running build's version.
+    FOREVER_ADDON_VERSION = "1.0.0",
+    FOREVER_ADDON_RELEASE_DATE = "2026-11-12",
+
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
     --   2. The matching CACHE.<name> integer is bumped manually here (breaking schema change).
@@ -405,6 +412,32 @@ local Constants = {
     -- (SoundKit.db2 SoundType 50), so this lane was effectively silent.
     NOTIFICATION_SOUND_CELEBRATION = 31578,
 }
+
+--[[
+    Running build: retail and WoW Forever ship as separate releases with separate versions.
+    Constants loads before Capabilities, so the client check is inlined (same rule as
+    Capabilities.IsForeverClient: WOW_PROJECT_CAMELOT, else the 1.6x interface band).
+    CHANGELOG_KEY_PREFIX: What's New reads <prefix><x><y><z> (CHANGELOG_V3100 / CHANGELOG_FOREVER_V100).
+]]
+do
+    local forever = false
+    if WOW_PROJECT_ID and WOW_PROJECT_CAMELOT and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT then
+        forever = true
+    else
+        local ok, iv = pcall(function() return (select(4, GetBuildInfo())) end)
+        if ok and type(iv) == "string" then iv = tonumber(iv) end
+        forever = ok and type(iv) == "number" and iv >= 16000 and iv < 20000 or false
+    end
+    Constants.IS_FOREVER_BUILD = forever
+    Constants.RETAIL_ADDON_VERSION = Constants.ADDON_VERSION
+    if forever then
+        Constants.ADDON_VERSION = Constants.FOREVER_ADDON_VERSION
+        Constants.ADDON_RELEASE_DATE = Constants.FOREVER_ADDON_RELEASE_DATE
+        Constants.CHANGELOG_KEY_PREFIX = "CHANGELOG_FOREVER_V"
+    else
+        Constants.CHANGELOG_KEY_PREFIX = "CHANGELOG_V"
+    end
+end
 
 -- Export to namespace
 ns.Constants = Constants

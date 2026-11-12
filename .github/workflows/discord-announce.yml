@@ -1,12 +1,17 @@
 name: Discord announcement
 
 # Manual (re)post of the release announcement to the "announcements" channel: the CHANGELOG.md
-# section of the chosen ref, the CurseForge / Wago links and the "available in a couple minutes"
+# section (CHANGELOG.md or CHANGELOG_FOREVER.md, per the flavor input) of the chosen ref, the CurseForge / Wago links and the "available in a couple minutes"
 # heads-up. Releases post it on their own (release.yml); use this for a missed post or a test.
 # Pick the ref in "Use workflow from" (a tag such as v3.10.0 posts that version's changelog).
 on:
   workflow_dispatch:
     inputs:
+      flavor:
+        description: "Which release line to announce"
+        type: choice
+        options: [retail, forever]
+        default: retail
       mention_everyone:
         description: "Ping @everyone (turn off for a test post)"
         type: boolean
@@ -28,5 +33,6 @@ jobs:
           DISCORD_ANNOUNCEMENTS_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_ANNOUNCEMENTS_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCEMENTS_CHANNEL_ID }}
+          WN_RELEASE_FLAVOR: ${{ inputs.flavor }}
           DISCORD_ANNOUNCE_NO_EVERYONE: ${{ inputs.mention_everyone && '0' || '1' }}
         run: python .github/scripts/post_discord_release.py --announce-only

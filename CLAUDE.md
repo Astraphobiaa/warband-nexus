@@ -332,6 +332,22 @@ L["CLOSE"] = CLOSE or "Close"
 
 ## Packaging & Release
 
+### Two release lines (retail and WoW Forever)
+
+Same repo, same CurseForge/Wago project, **separate versions, tags, changelogs and zips**. Ask which line ships if the user does not say.
+
+| | Retail | WoW Forever |
+|---|---|---|
+| Tag | `vX.Y.Z` | `forever-vX.Y.Z` |
+| Version | `Constants.ADDON_VERSION` / `ADDON_RELEASE_DATE` + `WarbandNexus.toc` `## Version` | `Constants.FOREVER_ADDON_VERSION` / `FOREVER_ADDON_RELEASE_DATE` (written into the generated Forever TOCs) |
+| Notes | `CHANGELOG.md` | `CHANGELOG_FOREVER.md` |
+| Locale key | `CHANGELOG_VXYZ` | `CHANGELOG_FOREVER_VXYZ` |
+| Package | `.pkgmeta` | `.pkgmeta-forever` (generated) |
+
+- `WarbandNexus_Forever.toc`, `WarbandNexus_Camelot.toc`, `.pkgmeta-forever` are **generated**: `python scripts/build_flavor_tocs.py` after any TOC / `.pkgmeta` / Forever version change (CI + preflight check them). A new retail-only file goes into `RETAIL_ONLY` there.
+- The steps below are per line: a Forever release touches only the Forever column (each locale keeps one key per line).
+- `release.yml` picks the line from the tag, uploads only that zip tagged only for that game, and posts the matching changelog to Discord announcements. `[no-announce]` in the annotated tag message (or the tagged commit message) skips every Discord post.
+
 ### Release checklist (agent MUST follow this order)
 
 **0) Pre-release gate (run first, fix all errors before tag):**
