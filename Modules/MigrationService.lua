@@ -1398,7 +1398,7 @@ function MigrationService:MigrateCharacterKeyNormalize(db)
     if db.global.characters then
         for charKey, charData in pairs(db.global.characters) do
             if type(charData) == "table" and charData.name and charData.realm then
-                local newKey = Utilities:GetCharacterKey(charData.name, charData.realm)
+                local newKey = Utilities:GetCharacterKey(charData.name, charData.realm, charData.surname)
                 if newKey and newKey ~= charKey then
                     renames[charKey] = newKey
                 end
@@ -1610,7 +1610,7 @@ function BuildSubsidiaryAliasRenames(db)
             end
             noteRename(charKey, target)
             if charData.name and charData.realm and Utilities and Utilities.GetCharacterKey then
-                local nk = Utilities:GetCharacterKey(charData.name, charData.realm)
+                local nk = Utilities:GetCharacterKey(charData.name, charData.realm, charData.surname)
                 noteRename(nk, target)
             end
         end
@@ -1854,7 +1854,7 @@ function MigrationService:PruneLegacySubsidiaryDuplicates(db)
             if canonKey and Utilities.GetCanonicalCharacterKey then
                 canonKey = Utilities:GetCanonicalCharacterKey(canonKey) or canonKey
             end
-            local legacyKey = Utilities.GetCharacterKey and Utilities:GetCharacterKey(charData.name, charData.realm)
+            local legacyKey = Utilities.GetCharacterKey and Utilities:GetCharacterKey(charData.name, charData.realm, charData.surname)
             if legacyKey and canonKey and legacyKey ~= canonKey then
                 purged = purged + PurgeLegacySubsidiaryKeyWhenCanonicalHasData(db, legacyKey, canonKey)
             end
@@ -1905,7 +1905,7 @@ local function FindRosterTargetForOrphanKey(db, orphanKey)
                 return Utilities and Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(row) or key
             end
             if row.name and row.realm and Utilities and Utilities.GetCharacterKey then
-                local nk = Utilities:GetCharacterKey(row.name, row.realm)
+                local nk = Utilities:GetCharacterKey(row.name, row.realm, row.surname)
                 if nk == orphanKey or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(nk, orphanKey)) then
                     return Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(row) or key
                 end
@@ -1970,7 +1970,7 @@ function BuildSubsidiaryOrphanRenames(db)
                 noteRename(guid, target)
             end
             if charData.name and charData.realm and Utilities and Utilities.GetCharacterKey then
-                local legacyKey = Utilities:GetCharacterKey(charData.name, charData.realm)
+                local legacyKey = Utilities:GetCharacterKey(charData.name, charData.realm, charData.surname)
                 if legacyKey and legacyKey ~= target then
                     if SubsidiaryBucketHasData(db, legacyKey) and not SubsidiaryBucketHasData(db, target) then
                         noteRename(legacyKey, target)

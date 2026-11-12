@@ -49,7 +49,10 @@ jobs:
         id: flavor
         run: |
           if [[ "${GITHUB_REF_NAME}" == forever-v* ]]; then
-            flavor=forever; toc=WarbandNexus_Forever.toc; pkgargs="-m .pkgmeta-forever"
+            flavor=forever; toc=WarbandNexus_Forever.toc
+            # The tag already says forever: the packager would append its own "-forever" again
+            # ("forever-v1.0.0-forever"), so name the zip and the upload label from the tag alone.
+            pkgargs="-m .pkgmeta-forever -n {package-name}-{project-version}:{project-version}"
             # The packager validates the game version against WarbandNexus.toc (the package-as
             # name): in this CI checkout only, that file becomes the Forever TOC, so every TOC in
             # the Forever zip is a Forever one.

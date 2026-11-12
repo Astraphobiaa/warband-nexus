@@ -22,7 +22,7 @@ local Constants = {
     -- CHANGELOG_FOREVER_V<x><y><z> locale key. Written into WarbandNexus_Forever.toc by
     -- scripts/build_flavor_tocs.py. On a Forever client ADDON_VERSION / ADDON_RELEASE_DATE
     -- below are switched to these at load, so every reader shows the running build's version.
-    FOREVER_ADDON_VERSION = "1.0.0",
+    FOREVER_ADDON_VERSION = "1.0.1",
     FOREVER_ADDON_RELEASE_DATE = "2026-11-12",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:

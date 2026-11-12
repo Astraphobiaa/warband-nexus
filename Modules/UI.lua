@@ -1467,17 +1467,15 @@ ns.UI_SetItemsSubTab = function(val)
     if val == "storage" then
         val = "warband"
     end
-    -- A profile that last sat on Warband must not land on a sub-tab this client does not have.
-    if val == "warband" and WarbandNexus and WarbandNexus.SupportsFeature
-        and not WarbandNexus:SupportsFeature("warbandBank") then
-        val = "personal"
-    end
+    -- WoW Forever keeps the "warband" sub-tab as the All Characters storage tree, so it is not
+    -- remapped away when there is no account bank (that remap made the tab unselectable).
     local previousSub = currentItemsSubTab
     -- Bank > Warband aggregate uses `storageExpandAllActive` + GetStorageTreeExpandState (not expandedGroups).
     if val ~= "warband" and val ~= "guild" and WarbandNexus then
         WarbandNexus.storageExpandAllActive = false
     end
-    -- Entering Warband or Guild Bank from another Bank sub-tab: reset expand-all + session tree.
+    -- Entering Warband or Guild Bank from another Bank sub-tab: reset expand-all (the tree's own
+    -- open sections are persisted and survive; ResetStorageTreeExpandState only re-binds them).
     if WarbandNexus and previousSub ~= val and (val == "warband" or val == "guild") then
         WarbandNexus.storageExpandAllActive = false
         if WarbandNexus.ResetStorageTreeExpandState then
@@ -1493,8 +1491,8 @@ ns.UI_GetExpandedGroups = function() return expandedGroups end
 function ns.UI_ResetSessionSectionExpandState()
     -- Section expand/collapse states persist per profile: whatever the user
     -- left open stays open across sessions. Only the transient "expand all"
-    -- sweep flags reset here; the Bank aggregate tree stays session-only
-    -- (derived search view, keys change between sessions).
+    -- sweep flags reset here; the Bank aggregate tree keeps its persisted
+    -- open sections too (GetStorageTreeExpandState re-binds to the profile).
     local addon = WarbandNexus
     if not addon then return end
     addon.itemsExpandAllActive = false

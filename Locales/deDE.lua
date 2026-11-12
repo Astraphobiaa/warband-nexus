@@ -99,6 +99,7 @@ L["NO"] = NO or "Nein"
 L["ITEMS_HEADER"] = "Bank-Gegenstände"
 L["ITEMS_SUBTAB_BAGS"] = "Taschen"
 L["ITEMS_SUBTAB_WARBAND"] = "Kriegsmeute"
+L["ITEMS_SUBTAB_ALL_CHARACTERS"] = "Alle Charaktere"
 L["ITEMS_WARBAND_UPDATING"] = "Kriegsmeutenliste wird erstellt..."
 L["ITEMS_WARBAND_BANK"] = "Kriegsmeute-Bank"
 
@@ -1227,17 +1228,19 @@ Fixed:
 - Settings rows no longer drift out of line, and the empty Collections Recent page no longer scrolls.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_FOREVER_V100"] = [=[v1.0.0 (2026-11-12)
+L["CHANGELOG_FOREVER_V101"] = [=[v1.0.1 (2026-11-12)
 
-Warband Nexus for WoW Forever now has its own release line and its own download, separate from Retail.
+Every character now keeps its own data on WoW Forever, and the Bank tab shows all of your characters again.
 
 Added:
-- A dedicated WoW Forever download with its own version number. It carries only the Forever build, nothing from Retail.
-- Legacy tab: account-wide Legacy points, reward tiers with their rewards, and challenges in collapsible groups.
-- Skills and Talents windows: trainer skills laid out by talent tree, rank strips under each skill and talent, and full rank tooltips.
-- A "skills ready to train" alert when a character levels up.
-- Two-word names, honor rank, and Hardcore and Self-Found tags on the Characters tab.
-- Try Counter tracks the drops that exist in WoW Forever: the Zul'Gurub raptor and tiger, Deathcharger's Reins, the Qiraji crystals and classic pets.
+- An All Characters tab under Bank lists every character's bags and bank, including characters that are offline.
+
+Fixed:
+- Characters that share a first name (for example two Elementalists on one realm) no longer overwrite each other's gold, bags, currencies and stats.
+- Gear shows the full stat sheet for every character, and stats update when your gear, buffs or level change.
+- Switching between the Bank sub-tabs works correctly, and the last character header in All Characters is no longer cut off.
+- Sections you open in All Characters stay open after closing the window or reloading.
+- Empty screens no longer show raw text keys instead of a description.
 
 CurseForge: Warband Nexus]=]
 
@@ -2701,6 +2704,8 @@ L["MODULE_PVP_DESC_FOREVER"] = "Verfolgt Ehrenrang, Ehrenfortschritt und Matchve
 L["MODULE_PROFESSIONS_DESC_FOREVER"] = "Verfolgt Berufsfertigkeiten und Rezepte aller Charaktere. Zeigt im Rezeptbegleiter die Reagenzienanzahl, solange ein Berufsfenster geöffnet ist."
 L["ITEMS_SUBTITLE_FOREVER"] = "Durchsuche deine persönlichen Gegenstände (Bank + Inventar)"
 L["EMPTY_ITEMS_DESC_FOREVER"] = "Öffne deine Bank, um Gegenstände zu erfassen.\nGegenstände werden beim ersten Besuch automatisch gespeichert."
+L["EMPTY_WARBAND_BANK_TITLE_FOREVER"] = "Noch keine Gegenstände"
+L["EMPTY_WARBAND_BANK_DESC_FOREVER"] = "Melde dich mit deinen Charakteren an und öffne ihre Banken, um Gegenstände zu erfassen.\nGegenstände werden beim ersten Besuch automatisch gespeichert."
 L["EMPTY_PLANS_ACTIVE_DESC_FOREVER"] = "Durchsuche oben Reittiere, Haustiere oder Erfolge, um Ziele zu deiner Liste hinzuzufügen."
 L["SKILLS_VISIT_TRAINER"] = "Besuche einmal deinen Klassenlehrer, um erlernbare Fähigkeiten aufzulisten"
 L["SKILLS_LEVELUP_TITLE_FMT"] = "%d Fähigkeiten zum Erlernen bereit"

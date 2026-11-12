@@ -2508,7 +2508,7 @@ local function RosterNameRealmKey(charData, charKey)
         or (issecretvalue and (issecretvalue(name) or issecretvalue(realm))) then
         return nil
     end
-    return U:GetCharacterKey(name, realm)
+    return U:GetCharacterKey(name, realm, charData.surname)
 end
 
 --- Build normalized Name-Realm key from FetchCurrencyDataFromAccountCharacters entry (11.0.2+ fullCharacterName preferred).

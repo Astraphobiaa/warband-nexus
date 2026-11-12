@@ -75,6 +75,23 @@ local tableToItemArrayForStorage = Roster and Roster.tableToItemArrayForStorage
 local RESTED_XP_GAIN_PER_8H = 0.05
 local SECONDS_PER_8H = 8 * 60 * 60
 local CollectRestedData
+local CollectPlayerStats  -- forward: UpdateCharacterCache("stats") is defined above it
+
+--- Value signature of a stats snapshot (primary / secondary / Forever sheet), for change detection.
+local function StatsSignature(st)
+    if type(st) ~= "table" then return "" end
+    local parts = { tostring(st.mainStatCode) }
+    for id = 1, 4 do parts[#parts + 1] = tostring(st.primary and st.primary[id]) end
+    for i = 1, #(st.secondary or {}) do
+        local s = st.secondary[i]
+        parts[#parts + 1] = tostring(s.rating) .. "/" .. string.format("%.2f", tonumber(s.pct) or 0)
+    end
+    for i = 1, #(st.extended or {}) do
+        local e = st.extended[i]
+        parts[#parts + 1] = tostring(e.key) .. "=" .. string.format("%.2f", tonumber(e.value) or 0)
+    end
+    return table.concat(parts, ";")
+end
 
 local function GetRestedCapMultiplier(raceFile)
     return (raceFile == "Pandaren") and 3.0 or 1.5
@@ -446,6 +463,13 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
             charData.isResting = loc.isResting
             charData.locationSavedAt = loc.savedAt
         end
+    elseif dataType == "stats" then
+        -- Character sheet (Gear tab stats card, offline included). Buff ticks fire the stat events
+        -- far more often than the sheet moves, so an unchanged sheet writes nothing and sends nothing.
+        local newStats = CollectPlayerStats()
+        if not newStats then return end
+        if StatsSignature(newStats) == StatsSignature(charData.stats) then return end
+        charData.stats = newStats
     elseif dataType == "rested" then
 
         local newRested = CollectRestedData()
@@ -511,6 +535,40 @@ function WarbandNexus:RegisterCharacterCacheEvents()
         self:UpdateCharacterCache("level", newLevel)
     end)
     
+    --[[
+        Character sheet -> db (Gear tab stats, offline characters included). Gear, buffs, level and
+        talents move the sheet; these events coalesce into one write a second after the last one.
+        UNIT_STATS / UNIT_RESISTANCES carry the unit (player only); COMBAT_RATING_UPDATE and
+        MASTERY_UPDATE carry nothing (warcraft.wiki.gg). Registered on this frame, not WarbandNexus,
+        so AceEvent handlers owned by other modules for these events stay untouched.
+    ]]
+    if not self._statsEventFrame then
+        local statsPending = false
+        local function queueStats()
+            if statsPending then return end
+            statsPending = true
+            C_Timer.After(1.0, function()
+                statsPending = false
+                if InCombatLockdown and InCombatLockdown() then
+                    -- Combat buffs: sheet settles after combat; PLAYER_REGEN_ENABLED re-queues.
+                    return
+                end
+                self:UpdateCharacterCache("stats")
+            end)
+        end
+        -- Intentionally raw: event host only, no visuals.
+        local fr = CreateFrame("Frame")
+        self._statsEventFrame = fr
+        pcall(fr.RegisterUnitEvent, fr, "UNIT_STATS", "player")
+        pcall(fr.RegisterUnitEvent, fr, "UNIT_RESISTANCES", "player")
+        pcall(fr.RegisterEvent, fr, "COMBAT_RATING_UPDATE")
+        pcall(fr.RegisterEvent, fr, "MASTERY_UPDATE")
+        pcall(fr.RegisterEvent, fr, "PLAYER_EQUIPMENT_CHANGED")
+        pcall(fr.RegisterEvent, fr, "PLAYER_REGEN_ENABLED")
+        pcall(fr.RegisterEvent, fr, "PLAYER_ENTERING_WORLD")
+        fr:SetScript("OnEvent", queueStats)
+    end
+
     -- Specialization changes
     self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", function(event)
         self:UpdateCharacterCache("spec")
@@ -690,7 +748,7 @@ function WarbandNexus:CollectProfessionData()
 end
 
 --- Collect current player stats for persistence (Gear tab offline display).
-local function CollectPlayerStats()
+CollectPlayerStats = function()
     local function safeFloor(val)
         if issecretvalue and issecretvalue(val) then return nil end
         if val == nil then return nil end
@@ -854,7 +912,7 @@ function WarbandNexus:SaveMinimalCharacterData()
         return false
     end
     
-    local legacyKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    local legacyKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(nil, realm)
     local key = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
         or legacyKey
     if not key then return false end
@@ -1107,7 +1165,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         return _saveProfEnd(false)
     end
     
-    local legacyKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
+    local legacyKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(nil, realm)
     local key = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
         or legacyKey
     if not key then return _saveProfEnd(false) end
@@ -1917,7 +1975,7 @@ function WarbandNexus:UpdateCharacterGold()
     if (issecretvalue and issecretvalue(name)) or (issecretvalue and issecretvalue(realm)) then return false end
     if not name or name == "" or not realm or realm == "" then return false end
 
-    local legacyKey = U.GetCharacterKey and U:GetCharacterKey(name, realm)
+    local legacyKey = U.GetCharacterKey and U:GetCharacterKey(nil, realm)  -- live: Forever adds the surname
     local storageKey = U.GetCharacterStorageKey and U:GetCharacterStorageKey(self)
     local writeKey = storageKey or legacyKey
     if not writeKey then return false end

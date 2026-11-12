@@ -1384,7 +1384,7 @@ local function TryRecoverPlausibleGearEntry(charKey, entry, db)
     if not row or not U or not U.GetCharacterKey then
         return entry
     end
-    local legacyKey = U:GetCharacterKey(row.name, row.realm)
+    local legacyKey = U:GetCharacterKey(row.name, row.realm, row.surname)
     if not legacyKey or legacyKey == charKey or not db[legacyKey] then
         return entry
     end
@@ -2471,7 +2471,7 @@ function WarbandNexus:GetEquippedGear(charKey)
             end
         end
         if type(row) == "table" and row.name then
-            local legacyKey = U:GetCharacterKey(row.name, row.realm)
+            local legacyKey = U:GetCharacterKey(row.name, row.realm, row.surname)
             if legacyKey and legacyKey ~= charKey and db[legacyKey] then
                 local promoted = PromoteLegacyGearDataBucket(db, charKey, legacyKey)
                 if promoted then

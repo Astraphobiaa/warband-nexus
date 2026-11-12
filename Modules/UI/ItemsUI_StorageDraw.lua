@@ -349,7 +349,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     --- tracks section height immediately (instant layout; no tween).
     local storageStackAnchor = nil
 
-    -- Session-only expand state (see WarbandNexus:GetStorageTreeExpandState / ResetStorageTreeExpandState in Core.lua).
+    -- Persisted per profile (see WarbandNexus:GetStorageTreeExpandState in Core.lua).
     local expanded = self:GetStorageTreeExpandState()
 
     local function CreateStorageRowsContainer(contentParent, anchorFrame, leftOffset, rightOffset, poolKey)
@@ -859,7 +859,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local allowBackfill = StorageScanAllowLazyBackfill(embedItemsWarband, expanded, expandAllActive)
 
         local wbSlots, _, wbLast = 0, 0, 0
-        if self.GetWarbandBankOccupiedSlotTally then
+        -- No account bank (WoW Forever): a stale warband cache must not count as data here (the
+        -- section is not drawn, so it left a blank tree with no empty-state card).
+        if self.GetWarbandBankOccupiedSlotTally and not (self.SupportsFeature and not self:SupportsFeature("warbandBank")) then
             wbSlots, _, wbLast = self:GetWarbandBankOccupiedSlotTally(allowBackfill)
         end
         if wbSlots > 0 or (not allowBackfill and wbLast > 0) then
@@ -979,7 +981,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         personalBody:SetPoint("TOPRIGHT", personalHeader, "BOTTOMRIGHT", 0, 0)
 
         local personalInnerTail = nil
-        local personalInnerAccum = 0
+        -- Starts at the first character's top gap (ChainSectionFrameBelow fallback SECTION_SPACING),
+        -- like charBodyAdvance: without it the body was SECTION_SPACING short and the clipped
+        -- wrap cut the last character header in half.
+        local personalInnerAccum = SECTION_SPACING
 
         local function populatePersonalMajorBody()
             -- Building guard: the char pump finishes over several frames; a second call in that
@@ -989,7 +994,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 return
             end
             personalBody._wnStorageMajorBodyBuilding = true
-            personalInnerTail, personalInnerAccum = nil, 0
+            personalInnerTail, personalInnerAccum = nil, SECTION_SPACING
         local hasAnyPersonalItems = false
 
         -- Direct DB access (DB-First pattern) (tracked only)
@@ -1527,7 +1532,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end
 
     -- Only render Warband Bank section if it has matching items (or user left a subtree expanded).
-    if not embedItemsGuild and StorageWarbandSectionVisible(warbandTotalMatches, embedItemsWarband, expandAllActive, expanded) then
+    -- No account bank on this client (WoW Forever): the tree is characters only.
+    local hasWarbandBank = not (self.SupportsFeature and not self:SupportsFeature("warbandBank"))
+    if hasWarbandBank and not embedItemsGuild and StorageWarbandSectionVisible(warbandTotalMatches, embedItemsWarband, expandAllActive, expanded) then
         if warbandTotalMatches <= 0 then
             warbandTotalMatches = 1
         end
@@ -2199,7 +2206,9 @@ end -- DrawStorageResults
 local function ApplyItemsSubTabGoldDisplay(goldDisplay, currentItemsSubTab)
     if not goldDisplay then return end
     local FormatMoney = ns.UI_FormatMoney
-    if currentItemsSubTab == "personal" then
+    -- No account bank (WoW Forever): the All Characters tree has no single gold figure to show.
+    if currentItemsSubTab == "personal"
+        or (currentItemsSubTab == "warband" and not not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("warbandBank"))) then
         goldDisplay:Hide()
         return
     end
@@ -2297,6 +2306,10 @@ function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
         finishPerf()
     end
 
+    -- A different sub-tab opens at its top, not at the previous body's scroll offset.
+    if fromSub ~= sub and mf.scroll and mf.scroll.SetVerticalScroll then
+        mf.scroll:SetVerticalScroll(0)
+    end
     runBodyRedraw()
     return true
 end

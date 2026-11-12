@@ -88,7 +88,7 @@ local function BuildGuidByNameRealmIndex(charsTbl)
                     end
                 end
                 if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
-                    local normalizedKey = U:GetCharacterKey(name, realm)
+                    local normalizedKey = U:GetCharacterKey(name, realm, data.surname)
                     if normalizedKey then
                         guidByNameRealm[normalizedKey] = g
                     end
@@ -101,7 +101,7 @@ local function BuildGuidByNameRealmIndex(charsTbl)
         if type(data) == "table" then
             local name, realm = EnsureCharNameRealm(data, key)
             if name and realm and U and U.GetCharacterKey then
-                local normalizedKey = U:GetCharacterKey(name, realm)
+                local normalizedKey = U:GetCharacterKey(name, realm, data.surname)
                 if normalizedKey and not guidByNameRealm[normalizedKey] then
                     for k2, d2 in pairs(charsTbl) do
                         if type(d2) == "table" then
@@ -142,7 +142,7 @@ local function ComputeCharacterMergeKey(data, key, guidByNameRealm)
     end
     local name, realm = EnsureCharNameRealm(data, key)
     if not name or not realm then return nil end
-    local normalizedKey = (U and U.GetCharacterKey and U:GetCharacterKey(name, realm)) or key
+    local normalizedKey = (U and U.GetCharacterKey and U:GetCharacterKey(name, realm, data.surname)) or key
     if normalizedKey and guidByNameRealm and guidByNameRealm[normalizedKey] then
         return MERGE_GUID_PREFIX .. guidByNameRealm[normalizedKey]
     end

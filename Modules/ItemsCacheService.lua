@@ -2479,7 +2479,7 @@ function ResolveItemStorageRow(charKey)
         local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
         local U = ns.Utilities
         if charData and U and U.GetCharacterKey then
-            local legacyKey = U:GetCharacterKey(charData.name, charData.realm)
+            local legacyKey = U:GetCharacterKey(charData.name, charData.realm, charData.surname)
             if legacyKey and legacyKey ~= charKey then
                 local sLegacy = globalIS[legacyKey]
                 if storageHasPayload(sLegacy) then
@@ -2665,7 +2665,7 @@ function WarbandNexus:GetItemsData(charKey)
             local charData = self.db.global.characters and self.db.global.characters[charKey]
             local U = ns.Utilities
             if charData and U and U.GetCharacterKey then
-                local legacyKey = U:GetCharacterKey(charData.name, charData.realm)
+                local legacyKey = U:GetCharacterKey(charData.name, charData.realm, charData.surname)
                 if legacyKey and legacyKey ~= charKey then
                     local sLegacy = globalIS[legacyKey]
                     if storageHasPayload(sLegacy) then

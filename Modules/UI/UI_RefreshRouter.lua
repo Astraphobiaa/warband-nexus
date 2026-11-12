@@ -528,6 +528,13 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             return
         end
         if tab ~= "chars" and tab ~= "stats" and tab ~= "gear" then return end
+        -- Character sheet saved (DataService "stats"): only the Gear stats card shows it.
+        if payload and payload.dataType == "stats" then
+            if tab == "gear" and WarbandNexus.ScheduleGearSideCardRefresh then
+                WarbandNexus:ScheduleGearSideCardRefresh()
+            end
+            return
+        end
         -- Characters tab: avoid skipCooldown here — ilvl/zone/gold batching fires this often and full
         -- PopulateContent every ~100ms feels like a constant refresh (virtual rows make it more noticeable).
         if tab == "chars" then

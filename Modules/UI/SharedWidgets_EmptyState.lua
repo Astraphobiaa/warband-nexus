@@ -424,6 +424,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
 
     local function ResolveEmptyTitle()
         if opts.titleText then return opts.titleText end
+        if config.titleKey and ns.L_GameType then return ns.L_GameType(config.titleKey, config.titleFallback) end
         return (ns.L and config.titleKey and ns.L[config.titleKey]) or config.titleFallback
     end
 

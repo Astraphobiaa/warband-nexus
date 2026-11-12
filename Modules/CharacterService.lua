@@ -142,7 +142,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         if isTracked and row.name and row.realm then
             local U = ns.Utilities
             local MS = ns.MigrationService
-            local legacyKey = U and U.GetCharacterKey and U:GetCharacterKey(row.name, row.realm)
+            local legacyKey = U and U.GetCharacterKey and U:GetCharacterKey(row.name, row.realm, row.surname)
             if legacyKey and MS and MS.FoldLegacySubsidiaryBuckets then
                 MS:FoldLegacySubsidiaryBuckets(addon.db, legacyKey, otherKey)
             end
@@ -244,7 +244,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     if isTracked and entry.name and entry.realm then
         local U = ns.Utilities
         local MS = ns.MigrationService
-        local legacyKey = U and U.GetCharacterKey and U:GetCharacterKey(entry.name, entry.realm)
+        local legacyKey = U and U.GetCharacterKey and U:GetCharacterKey(entry.name, entry.realm, entry.surname)
         if legacyKey and MS and MS.FoldLegacySubsidiaryBuckets then
             MS:FoldLegacySubsidiaryBuckets(addon.db, legacyKey, persistKey)
         end
@@ -571,12 +571,29 @@ function CharacterService:ResolveCharactersTableKey(addon)
     if not rawKey or rawKey == "" then
         return nil
     end
-    if chars[rawKey] then
+    --[[
+        A Name-Realm match is only the player's row when that row's GUID is the player's GUID (or
+        the row has none yet). WoW Forever first names are not unique on a realm ("Elementalist
+        Vhorzen" / "Elementalist Ashford" are both Elementalist-<realm>): without this check a new
+        character resolved to the other one's row and overwrote its name, gold, bags and currencies,
+        so only the last-played character remained.
+    ]]
+    local liveGuid = U and U.SafeGuid and U:SafeGuid("player")
+    if issecretvalue and issecretvalue(liveGuid) then liveGuid = nil end
+    local function OwnedByLivePlayer(row)
+        if type(row) ~= "table" then return false end
+        local g = row.guid
+        if not liveGuid or type(g) ~= "string" or g == "" or (issecretvalue and issecretvalue(g)) then
+            return true
+        end
+        return g == liveGuid
+    end
+    if chars[rawKey] and OwnedByLivePlayer(chars[rawKey]) then
         return rawKey
     end
     if U and U.GetCanonicalCharacterKey then
         local canon = U:GetCanonicalCharacterKey(rawKey)
-        if canon and canon ~= "" and canon ~= rawKey and chars[canon] then
+        if canon and canon ~= "" and canon ~= rawKey and chars[canon] and OwnedByLivePlayer(chars[canon]) then
             return canon
         end
     end
@@ -690,7 +707,7 @@ function CharacterService:RemoveCharacterProfileAliases(addon, charKey)
             end
             -- A same-name copy owns the Name-Realm key too: never strip the other row's entries.
             if not shared then
-                local nk = U:GetCharacterKey(row.name, row.realm)
+                local nk = U:GetCharacterKey(row.name, row.realm, row.surname)
                 if nk then aliases[nk] = true end
             end
         end
@@ -907,7 +924,7 @@ function CharacterService:ResolveOtherCharacterRowKey(addon, charKey)
             for k, row in pairs(chars) do
                 if type(row) == "table" and type(row.name) == "string" and type(row.realm) == "string"
                     and not (issecretvalue and (issecretvalue(row.name) or issecretvalue(row.realm)))
-                    and U:GetCharacterKey(row.name, row.realm) == want then
+                    and U:GetCharacterKey(row.name, row.realm, row.surname) == want then
                     if hit then hit = false break end
                     hit = k
                 end
@@ -1027,18 +1044,29 @@ function CharacterService:FindProbableStaleCharacterCopies(addon)
     if not currentKey and U and U.GetCharacterStorageKey then
         currentKey = U:GetCharacterStorageKey(addon)
     end
-    local playerName = UnitName("player")
+    local playerName, second = UnitName("player")
     if not playerName or (issecretvalue and issecretvalue(playerName)) or playerName == "" then
         return {}
     end
     local nameLower = playerName:lower()
+    -- WoW Forever: the second value is the surname and first names repeat ("Elementalist Vhorzen"
+    -- vs "Elementalist Ashford"), so a row with another surname is another character, never a copy
+    -- to offer for deletion.
+    local surnameLower
+    if addon.SupportsFeature and addon:SupportsFeature("realmTypeTag")
+        and type(second) == "string" and not (issecretvalue and issecretvalue(second)) and second ~= "" then
+        surnameLower = second:lower()
+    end
     local copies = {}
     local chars = addon.db.global.characters
     for key, row in pairs(chars) do
         if key ~= currentKey and type(row) == "table" then
             local n = row.name
             if type(n) == "string" and not (issecretvalue and issecretvalue(n)) and n ~= "" then
-                if n:lower() == nameLower then
+                local rs = row.surname
+                local otherSurname = surnameLower and type(rs) == "string"
+                    and not (issecretvalue and issecretvalue(rs)) and rs ~= "" and rs:lower() ~= surnameLower
+                if n:lower() == nameLower and not otherSurname then
                     copies[#copies + 1] = {
                         key = key,
                         name = n,

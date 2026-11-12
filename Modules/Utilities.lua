@@ -44,9 +44,23 @@ end
 ---@param name string|nil Player name (defaults to current player)
 ---@param realm string|nil Realm name (defaults to current realm)
 ---@return string|nil Character key in "Name-Realm" format (e.g. "Superluminal-TwistingNether")
-function Utilities:GetCharacterKey(name, realm)
-    name = name or UnitName("player")
+--[[
+    WoW Forever: first names repeat on a realm ("Elementalist Vhorzen", "Elementalist Ashford"), so a
+    character's Name-Realm identity is first name + SURNAME there (UnitName's 2nd value on Forever;
+    rows store it as `surname`). Live calls (no name) add it; row callers pass `row.surname`. Retail
+    has no surname, so its keys are unchanged.
+]]
+function Utilities:GetCharacterKey(name, realm, surname)
+    local isForever = ns.Constants and ns.Constants.IS_FOREVER_BUILD
+    if name == nil then
+        local liveName, second = UnitName("player")
+        name = liveName
+        if isForever then surname = second end
+    end
     if not name or (issecretvalue and issecretvalue(name)) then return nil end
+    if isForever and type(surname) == "string" and not (issecretvalue and issecretvalue(surname)) and surname ~= "" then
+        name = name .. surname
+    end
     if not realm then
         local norm = GetNormalizedRealmName and GetNormalizedRealmName()
         if type(norm) == "string" and not (issecretvalue and issecretvalue(norm)) and norm ~= "" then
@@ -123,7 +137,7 @@ function Utilities:ResolveCharacterRowKey(charData)
     if type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "" then
         return g
     end
-    return self:GetCharacterKey(charData.name, charData.realm)
+    return self:GetCharacterKey(charData.name, charData.realm, charData.surname)
 end
 
 -- Roster resolution index: guid / Name-Realm -> canonical storage key.
@@ -153,7 +167,9 @@ local function GetRosterIndex(self, chars)
     if canonByGuid and canonSource == chars and (now - canonBuiltAt) < CANON_INDEX_TTL then
         return canonByGuid, canonByNameRealm
     end
-    local byGuid, byNameRealm = {}, {}
+    -- byNameRealm[nr] = false when rows with DIFFERENT guids share a Name-Realm (WoW Forever first
+    -- names repeat on a realm): ambiguous, so a Name-Realm lookup must not pick one of them.
+    local byGuid, byNameRealm, guidOfNameRealm = {}, {}, {}
     for _, row in pairs(chars) do
         if type(row) == "table" then
             local rowKey = self:ResolveCharacterRowKey(row)
@@ -164,8 +180,16 @@ local function GetRosterIndex(self, chars)
                 end
                 local rn, rr = row.name, row.realm
                 if rn and rr and not (issecretvalue and issecretvalue(rn)) and not (issecretvalue and issecretvalue(rr)) then
-                    local nr = self:GetCharacterKey(rn, rr)
-                    if nr and byNameRealm[nr] == nil then byNameRealm[nr] = rowKey end
+                    local nr = self:GetCharacterKey(rn, rr, row.surname)
+                    local rg = (type(g) == "string" and not (issecretvalue and issecretvalue(g)) and g ~= "") and g or rowKey
+                    if nr then
+                        if byNameRealm[nr] == nil then
+                            byNameRealm[nr] = rowKey
+                            guidOfNameRealm[nr] = rg
+                        elseif byNameRealm[nr] and guidOfNameRealm[nr] ~= rg then
+                            byNameRealm[nr] = false
+                        end
+                    end
                 end
             end
         end
@@ -187,6 +211,7 @@ local function ResolveNonIndexedCharacterKey(self, charKey, chars)
         return charKey
     end
     -- Live session: after guid migration, `Name-Realm` may not exist as a table index — map to storage key.
+    -- Not when that Name-Realm is shared by another character (ambiguous): it may be the alt's.
     local liveStore = self:GetCharacterStorageKey()
     if liveStore and chars and chars[liveStore] then
         local n, r = self:SplitCharacterKey(tostring(charKey))
@@ -194,7 +219,10 @@ local function ResolveNonIndexedCharacterKey(self, charKey, chars)
             local incomingLegacy = self:GetCharacterKey(n, r)
             local sessionLegacy = self:GetCharacterKey()
             if incomingLegacy and sessionLegacy and incomingLegacy == sessionLegacy then
-                return liveStore
+                local _, byNR = GetRosterIndex(self, chars)
+                if not (byNR and byNR[incomingLegacy] == false) then
+                    return liveStore
+                end
             end
         end
     end
@@ -206,7 +234,7 @@ local function ResolveNonIndexedCharacterKey(self, charKey, chars)
         if want then
             local _, byNameRealm = GetRosterIndex(self, chars)
             local hit = byNameRealm and byNameRealm[want]
-            if hit then return hit end
+            if hit then return hit end  -- false = ambiguous (shared by two characters): no guess
             return want
         end
         return self:GetCharacterKey(name, realm)
@@ -282,12 +310,14 @@ end
 function ns.L_GameType(key, fallback, foreverFallback)
     local L = ns.L
     local caps = ns.Capabilities
+    -- rawget: ns.L answers a MISSING key with the key name itself (Core.lua metatable), which
+    -- printed "EMPTY_PERSONAL_BANK_DESC_FOREVER" for a key that has no Forever variant.
     if caps and caps.IsForeverClient and caps.IsForeverClient() then
-        local v = L and L[key .. "_FOREVER"]
+        local v = L and rawget(L, key .. "_FOREVER")
         if v then return v end
         if foreverFallback then return foreverFallback end
     end
-    return (L and L[key]) or fallback
+    return (L and rawget(L, key)) or fallback
 end
 
 function ns.CharDisplayName(char, fallback)
@@ -591,9 +621,11 @@ end
 --- Simple wrapper for C_Bank.FetchDepositedMoney (read-only)
 function Utilities:GetWarbandBankMoney()
     -- TWW (11.0+) API for getting warband bank gold
-    if C_Bank and C_Bank.FetchDepositedMoney then
-        local accountMoney = C_Bank.FetchDepositedMoney(Enum.BankType.Account)
-        return accountMoney or 0
+    if C_Bank and C_Bank.FetchDepositedMoney and Enum and Enum.BankType and Enum.BankType.Account then
+        local ok, accountMoney = pcall(C_Bank.FetchDepositedMoney, Enum.BankType.Account)
+        if ok and type(accountMoney) == "number" and not (issecretvalue and issecretvalue(accountMoney)) then
+            return accountMoney
+        end
     end
     return 0
 end

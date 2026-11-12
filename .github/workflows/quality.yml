@@ -55,6 +55,7 @@ jobs:
         run: |
           if command -v lua5.1 >/dev/null 2>&1; then
             lua5.1 .github/scripts/test_forever_toc_load.lua
+            lua5.1 .github/scripts/test_forever_same_first_name.lua
           else
             lua5.4 .github/scripts/test_forever_toc_load.lua
           fi

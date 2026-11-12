@@ -298,13 +298,17 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         { key = "guild", label = (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank", iconKey = "guild" },
     }
 
-    -- No account (warband) bank on this client: WoW Forever keeps the C_Bank namespace and the
-    -- Enum.BagIndex.AccountBankTab_* ids, so only the capability check can tell the sub-tab
-    -- would open onto nothing.
+    -- No account (warband) bank on this client (WoW Forever). The sub-tab stays: it is also the
+    -- every-character storage tree (Personal Items -> each character's bags + bank), the only place
+    -- alts' and offline characters' items show. It is labelled for that, and the tree drops its
+    -- Warband Bank section (ItemsUI_StorageDraw).
     local addon = ns.WarbandNexus
     if addon and addon.SupportsFeature and not addon:SupportsFeature("warbandBank") then
-        for k = #tabDefs, 1, -1 do
-            if tabDefs[k].key == "warband" then table.remove(tabDefs, k) end
+        for k = 1, #tabDefs do
+            if tabDefs[k].key == "warband" then
+                tabDefs[k].label = (ns.L and ns.L["ITEMS_SUBTAB_ALL_CHARACTERS"]) or "All Characters"
+                tabDefs[k].iconKey = "character"
+            end
         end
     end
 
@@ -403,7 +407,9 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
             elseif ns.SearchStateManager and ns.SearchStateManager.ClearSearch then
                 ns.SearchStateManager:ClearSearch("items")
             end
-            if not (WarbandNexus.RefreshItemsSubTabBodyOnly and WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, tabInfo.key)) then
+            -- The stored sub-tab (after any remap), so highlight, gold, stats and body agree.
+            local toSub = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or tabInfo.key
+            if not (WarbandNexus.RefreshItemsSubTabBodyOnly and WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)) then
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
             end
         end)
@@ -501,6 +507,14 @@ local function FormatItemsBankStatsLine(colorHex, itemCount, usedSlots, totalSlo
     local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
     local neverText = (ns.L and ns.L["NEVER"]) or "Never"
     local lastStr = (lastScan or 0) > 0 and date("%H:%M", lastScan) or neverText
+    -- No known capacity (WoW Forever All Characters: no account bank, and other characters' bag
+    -- sizes are not stored): "used / used" read as permanently full, so the slot segment goes.
+    if totalSlots == nil then
+        return format("|cff%s%s|r%s|cff%s%s|r",
+            colorHex, format(itemsLabel, FormatNumber(itemCount or 0)),
+            ITEMS_STATS_SEGMENT_SEP,
+            colorHex, format(lastLabel, lastStr))
+    end
     return format(
         "|cff%s%s|r%s|cff%s%s|r%s|cff%s%s|r",
         colorHex,
@@ -553,13 +567,15 @@ end
 local function ResolveItemsSubTabStatsMetrics(addon, currentItemsSubTab)
     if currentItemsSubTab == "warband" and ItemsWarbandUsesStorageTree() then
         local wbSlots, wbStacks, wbLast = 0, 0, 0
-        if addon.GetWarbandBankOccupiedSlotTally then
+        -- No account bank (WoW Forever): All Characters counts the characters' items only.
+        local hasWarbandBank = not (addon.SupportsFeature and not addon:SupportsFeature("warbandBank"))
+        if hasWarbandBank and addon.GetWarbandBankOccupiedSlotTally then
             wbSlots, wbStacks, wbLast = addon:GetWarbandBankOccupiedSlotTally(false)
         end
         local pItems, pUsed, pLast = SumTrackedPersonalStorageFromCache(addon, false)
         local wbTotalSlots = 0
         local WARBAND_BAGS = ns.WARBAND_BAGS or { 13, 14, 15, 16, 17 }
-        for wi = 1, #WARBAND_BAGS do
+        for wi = 1, hasWarbandBank and #WARBAND_BAGS or 0 do
             wbTotalSlots = wbTotalSlots + (C_Container.GetContainerNumSlots(WARBAND_BAGS[wi]) or 0)
         end
         if wbTotalSlots == 0 and wbSlots > 0 then
@@ -570,6 +586,7 @@ local function ResolveItemsSubTabStatsMetrics(addon, currentItemsSubTab)
         if totalSlots < usedSlots then
             totalSlots = usedSlots
         end
+        if not hasWarbandBank then totalSlots = nil end
         return (wbStacks or wbSlots) + pItems,
             usedSlots,
             totalSlots,
@@ -1550,13 +1567,14 @@ function WarbandNexus:DrawItemList(parent)
     goldDisplay:SetPoint("RIGHT", itemsBankSubTabBar, "RIGHT", -10, 0)
     local FormatMoney = ns.UI_FormatMoney
 
-    if currentItemsSubTab == "personal" then
+    local hasWarbandBank = not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("warbandBank"))
+    if currentItemsSubTab == "personal" or (currentItemsSubTab == "warband" and not hasWarbandBank) then
         goldDisplay:Hide()
     else
         goldDisplay:Show()
     end
 
-    if currentItemsSubTab == "warband" then
+    if currentItemsSubTab == "warband" and hasWarbandBank then
         -- Warband Bank gold (account-wide)
         local warbandGold = ns.Utilities:GetWarbandBankMoney() or 0
         if FormatMoney then

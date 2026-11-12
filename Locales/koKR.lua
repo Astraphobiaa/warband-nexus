@@ -99,6 +99,7 @@ L["NO"] = NO or "아니오"
 L["ITEMS_HEADER"] = "은행 아이템"
 L["ITEMS_SUBTAB_BAGS"] = "가방"
 L["ITEMS_SUBTAB_WARBAND"] = "전투부대"
+L["ITEMS_SUBTAB_ALL_CHARACTERS"] = "모든 캐릭터"
 L["ITEMS_WARBAND_UPDATING"] = "전투부대 목록을 구성하는 중..."
 L["ITEMS_WARBAND_BANK"] = "전투부대 은행"
 
@@ -1227,17 +1228,19 @@ Fixed:
 - Settings rows no longer drift out of line, and the empty Collections Recent page no longer scrolls.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_FOREVER_V100"] = [=[v1.0.0 (2026-11-12)
+L["CHANGELOG_FOREVER_V101"] = [=[v1.0.1 (2026-11-12)
 
-Warband Nexus for WoW Forever now has its own release line and its own download, separate from Retail.
+Every character now keeps its own data on WoW Forever, and the Bank tab shows all of your characters again.
 
 Added:
-- A dedicated WoW Forever download with its own version number. It carries only the Forever build, nothing from Retail.
-- Legacy tab: account-wide Legacy points, reward tiers with their rewards, and challenges in collapsible groups.
-- Skills and Talents windows: trainer skills laid out by talent tree, rank strips under each skill and talent, and full rank tooltips.
-- A "skills ready to train" alert when a character levels up.
-- Two-word names, honor rank, and Hardcore and Self-Found tags on the Characters tab.
-- Try Counter tracks the drops that exist in WoW Forever: the Zul'Gurub raptor and tiger, Deathcharger's Reins, the Qiraji crystals and classic pets.
+- An All Characters tab under Bank lists every character's bags and bank, including characters that are offline.
+
+Fixed:
+- Characters that share a first name (for example two Elementalists on one realm) no longer overwrite each other's gold, bags, currencies and stats.
+- Gear shows the full stat sheet for every character, and stats update when your gear, buffs or level change.
+- Switching between the Bank sub-tabs works correctly, and the last character header in All Characters is no longer cut off.
+- Sections you open in All Characters stay open after closing the window or reloading.
+- Empty screens no longer show raw text keys instead of a description.
 
 CurseForge: Warband Nexus]=]
 
@@ -2701,6 +2704,8 @@ L["MODULE_PVP_DESC_FOREVER"] = "명예 계급, 명예 진행도, 경기 기록�
 L["MODULE_PROFESSIONS_DESC_FOREVER"] = "캐릭터별 전문 기술 숙련도와 제조법을 추적합니다. 전문 기술 창이 열려 있으면 제조법 도우미에 재료 수량을 표시합니다."
 L["ITEMS_SUBTITLE_FOREVER"] = "개인 아이템 보기 (은행 + 소지품)"
 L["EMPTY_ITEMS_DESC_FOREVER"] = "은행을 열어 아이템을 검색하세요.\n아이템은 첫 방문 시 자동으로 저장됩니다."
+L["EMPTY_WARBAND_BANK_TITLE_FOREVER"] = "아직 아이템이 없습니다"
+L["EMPTY_WARBAND_BANK_DESC_FOREVER"] = "캐릭터로 접속해 은행을 열어 아이템을 검색하세요.\n아이템은 첫 방문 시 자동으로 저장됩니다."
 L["EMPTY_PLANS_ACTIVE_DESC_FOREVER"] = "위에서 탈것, 애완동물 또는 업적을 찾아 목록에 목표를 추가하세요."
 L["SKILLS_VISIT_TRAINER"] = "직업 전문가를 한 번 방문하면 배울 수 있는 기술이 표시됩니다"
 L["SKILLS_LEVELUP_TITLE_FMT"] = "배울 수 있는 기술 %d개"

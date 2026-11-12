@@ -296,8 +296,8 @@ local defaults = {
         -- Inventory Bag filtering (true = ignored)
         ignoredInventoryBags = {},  -- {[bagID] = true/false}
         
-        -- Legacy: Bank > Warband aggregate tree expand state now lives in memory only
-        -- (WarbandNexus._wnStorageTreeExpanded); defaults here are unused but kept for AceDB shape.
+        -- Bank > Warband / All Characters tree expand state (GetStorageTreeExpandState): persisted
+        -- per profile so sections the player left open stay open.
         storageExpanded = {
             warband = false,
             personal = false,
@@ -634,21 +634,26 @@ function WarbandNexus:OnTokenMarketPriceUpdated()
     end
 end
 
---- Bank > Warband aggregate tree (DrawStorageResults): expand/collapse is session-only — not SavedVariables.
---- Reset on /reload (OnInitialize), profile change, and PLAYER_LOGOUT so the next open starts fully collapsed.
+--- Bank > Warband / All Characters tree (DrawStorageResults): what the player left open stays open,
+--- per profile, like the Currency / Reputation sections (keys are character GUIDs and item
+--- categories, stable across sessions). "Reset" only drops the cached reference so the next read
+--- re-binds to the active profile (profile switch); it never closes the player's sections.
 function WarbandNexus:ResetStorageTreeExpandState()
-    self._wnStorageTreeExpanded = {
-        personal = false,
-        warband = false,
-        categories = {},
-    }
+    self._wnStorageTreeExpanded = nil
 end
 
 function WarbandNexus:GetStorageTreeExpandState()
-    if not self._wnStorageTreeExpanded then
-        self:ResetStorageTreeExpandState()
-    end
     local e = self._wnStorageTreeExpanded
+    if not e then
+        local p = self.db and self.db.profile
+        if p then
+            p.storageExpanded = p.storageExpanded or { personal = false, warband = false, categories = {} }
+            e = p.storageExpanded
+        else
+            e = { personal = false, warband = false, categories = {} }
+        end
+        self._wnStorageTreeExpanded = e
+    end
     if not e.categories then
         e.categories = {}
     end
@@ -662,7 +667,22 @@ end
 function WarbandNexus:OnInitialize()
     -- Initialize database with defaults
     self.db = LibStub("AceDB-3.0"):New("WarbandNexusDB", defaults, true)
-    
+
+    --[[
+        WoW Forever: AceDB keys `db.char` as "<first name> - <GetRealmName()>". First names repeat
+        on a realm there ("Elementalist Vhorzen" / "Elementalist Ashford" share one bucket) and
+        GetRealmName() has answered "PvE" in some sessions and the full realm in others (one
+        character, two buckets). Point the char section at the player GUID instead -- the same
+        identity every db.global row uses -- before anything reads db.char (AceDB builds the
+        section lazily from db.keys.char). Retail keeps AceDB's own key.
+    ]]
+    if ns.Constants and ns.Constants.IS_FOREVER_BUILD and self.db.keys and rawget(self.db, "char") == nil then
+        local guid = UnitGUID and UnitGUID("player")
+        if type(guid) == "string" and not (issecretvalue and issecretvalue(guid)) and guid ~= "" then
+            self.db.keys.char = guid
+        end
+    end
+
     -- Export db to namespace for FontManager and other modules
     ns.db = self.db
 
