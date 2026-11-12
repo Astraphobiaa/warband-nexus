@@ -1795,7 +1795,7 @@ function WarbandNexus:CheckNotificationsOnLogin()
     end
     
     -- 2. Check for vault rewards (only current reward period + claimable; uses AreRewardsForCurrentRewardPeriod/CanClaimRewards when available)
-    if notifs.showVaultReminder then
+    if notifs.showVaultReminder and not (self.SupportsFeature and not self:SupportsFeature("vault")) then
         C_Timer.After(0.5, function()
             if not C_WeeklyRewards then
                 DebugVerbosePrint("|cff888888[Vault]|r C_WeeklyRewards = nil")

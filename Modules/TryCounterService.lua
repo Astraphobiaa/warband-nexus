@@ -770,8 +770,11 @@ function Fns.CopyKeyValueMap(src)
     return out
 end
 
+local runtimeSourcesLoaded = false
+
 function Fns.LoadRuntimeSourceTables()
     local db = ns.CollectibleSourceDB
+    runtimeSourcesLoaded = db ~= nil
     if not db then
         npcDropDB, objectDropDB, fishingDropDB, containerDropDB = {}, {}, {}, {}
         zoneDropDB, encounterDB, encounterNameToNpcs, lockoutQuestsDB = {}, {}, {}, {}
@@ -825,8 +828,9 @@ local reverseIndicesBuilt = false -- above EnsureTryCounterRuntimeDbLoaded so it
 
 function Fns.EnsureTryCounterRuntimeDbLoaded()
     if not ns.CollectibleSourceDB then return false end
-    local probeObjectID = 469857 -- Overflowing Dumpster — stable self-test fixture
-    if not objectDropDB[probeObjectID] then
+    -- Loaded once per rebuild. (Was: probe the Undermine dumpster row 469857 -- absent from the
+    -- Forever-scoped list, which re-ran the whole load on every call there.)
+    if not runtimeSourcesLoaded then
         reverseIndicesBuilt = false
         Fns.LoadRuntimeSourceTables()
         Fns.MergeTrackDB()
@@ -835,7 +839,7 @@ function Fns.EnsureTryCounterRuntimeDbLoaded()
         Fns.BuildReverseIndices()
     end
     Fns.SyncTryCounterRTTableRefs()
-    return objectDropDB[probeObjectID] ~= nil
+    return runtimeSourcesLoaded
 end
 
 --- Handlers + Loot/Stats satellites read RT.*; LoadRuntimeSourceTables reassigns file-local DB tables — keep RT in sync.

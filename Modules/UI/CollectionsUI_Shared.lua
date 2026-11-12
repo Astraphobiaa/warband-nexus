@@ -9,6 +9,9 @@ ns.CollectionsUI = ns.CollectionsUI or {}
 local M = ns.CollectionsUI
 
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager
 local Constants = ns.Constants
 
@@ -251,7 +254,8 @@ function M.ResolveAchievementEarnerLabel(achievementID, storedObtainedBy)
     end
 
     if wasEarnedByMe == true and UnitName then
-        local playerName = UnitName("player")
+        local U = ns.Utilities
+        local playerName = (U and U.GetLivePlayerDisplayName and U:GetLivePlayerDisplayName()) or UnitName("player")
         if type(playerName) == "string" and not (issecretvalue and issecretvalue(playerName))
             and playerName ~= "" then
             return StripRealmFromCharacterLabel(playerName)
@@ -346,7 +350,7 @@ function FormatAchievementEarnedRowMetaSplitUncached(achievementID)
     if not whoLabel then return nil, nil end
     local loc = ns.L
     local warbandLabel = (loc and loc["COLLECTIONS_ACHIEVEMENT_BY_WARBAND"]) or "Warband"
-    -- Bright role ink resolved per call (was a fixed |cffffffff: white on light rows) (2026-10-22).
+    -- Bright role ink resolved per call (was a fixed " .. HEX.bright .. ": white on light rows) (2026-10-22).
     local metaHex = M.CollectionsListWhiteHex()
     local byPrefix = metaHex .. "By " .. "|r"
     local earnerRich
@@ -555,7 +559,7 @@ function M.CollectionsSubTabTrace(stage, detail)
     local on = (ns.IsUserDebugTraceActive and ns.IsUserDebugTraceActive())
         or (ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled())
     if not on then return end
-    local parts = { "|cff9370DB[WN Collections SubTab]|r", tostring(stage or "?") }
+    local parts = { HEX.accent .. "[WN Collections SubTab]|r", tostring(stage or "?") }
     local st = M.state
     if st then
         if st._collectionsSubTabGen then
@@ -662,17 +666,17 @@ function M.CollectionsProgressBarColors()
 end
 
 function M.CollectionsBrightHex()
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or HEX.bright
 end
 
 --- Collections list: mandatory white markup (GRAY BAN — no Dim/Muted hex on row meta or counts).
 --- Bright role at call time: white in dark, charcoal ink in light (2026-10-22).
 function M.CollectionsListWhiteHex()
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffffffff"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 function M.CollectionsGoldHex()
-    return (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
+    return (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
 end
 
 function M.CollectionsCollectedHex()
@@ -775,7 +779,9 @@ end
 -- Details scrollbar: synced to detail scroll viewport (not parent chrome insets).
 local DETAIL_SCROLLBAR_VERTICAL_INSET = 4
 
-function M.EnsureDetailScrollBarContainer(existingContainer, parent, scrollFrame, columnWidth, gap)
+--- @param insets table|nil the detail panel's own insets; with them the lane becomes dynamic
+--- (Factory:WireDynamicScrollLane) and the panel uses its full width when the content fits.
+function M.EnsureDetailScrollBarContainer(existingContainer, parent, scrollFrame, columnWidth, gap, insets)
     gap = gap or DETAIL_SCROLLBAR_VERTICAL_INSET
     local container = existingContainer
     if not container then
@@ -786,6 +792,20 @@ function M.EnsureDetailScrollBarContainer(existingContainer, parent, scrollFrame
         end
     end
     if not container then return nil end
+    if insets and scrollFrame and Factory.WireDynamicScrollLane then
+        Factory:WireDynamicScrollLane(scrollFrame, parent, container, {
+            left = insets.left or 0,
+            top = insets.top or 0,
+            right = insets.right or 0,
+            bottom = insets.bottom or 0,
+            gap = gap,
+            barWidth = columnWidth,
+            syncChildWidth = true,
+        })
+        container:SetFrameLevel((scrollFrame:GetFrameLevel() or parent:GetFrameLevel() or 0) + 4)
+        container:SetClipsChildren(false)
+        return container
+    end
     if scrollFrame and Factory.EnsureScrollBarColumnSync then
         Factory:EnsureScrollBarColumnSync(scrollFrame, container, { width = columnWidth, gap = gap })
     elseif scrollFrame and Factory.SyncScrollBarColumnToViewport then
@@ -1295,6 +1315,12 @@ function M.TryShowCollectionsListEmpty(scrollChild, subTabKey)
     if not (issecretvalue and issecretvalue(q)) and q ~= "" then
         if M.TryShowCollectionsListSearchEmpty(scrollChild) then
             SyncCollectionsListEmptyScrollHeight(scrollChild)
+            local card = scrollChild["emptyStateCard_" .. (ns.UI_SEARCH_EMPTY_TAB_KEY or "search")]
+            if card and card:IsShown() then
+                card:ClearAllPoints()
+                card:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, 0)
+                card:SetPoint("BOTTOMRIGHT", scrollChild, "BOTTOMRIGHT", 0, 0)
+            end
             return true
         end
         return false
@@ -1303,6 +1329,14 @@ function M.TryShowCollectionsListEmpty(scrollChild, subTabKey)
     if ns.UI_ShowTabEmptyStateCard then
         ns.UI_ShowTabEmptyStateCard(scrollChild, tabKey, 0, { fillParent = true })
         SyncCollectionsListEmptyScrollHeight(scrollChild)
+        -- The shared card sizes from the viewport minus a bottom pad, which left a bare strip under
+        -- it (no bottom border). In a list host it fills the scroll child exactly.
+        local card = scrollChild["emptyStateCard_" .. tabKey]
+        if card and card:IsShown() then
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, 0)
+            card:SetPoint("BOTTOMRIGHT", scrollChild, "BOTTOMRIGHT", 0, 0)
+        end
         return true
     end
     return false

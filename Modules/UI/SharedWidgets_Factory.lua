@@ -7,6 +7,9 @@ local _, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager
 local issecretvalue = issecretvalue
 
@@ -388,7 +391,7 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
                 end
             end
         end
-        self.text:SetText((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r " .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. tostring(count) .. "|r" .. pctSuffix)
+        self.text:SetText((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or HEX.info) .. triesLabel .. ":|r " .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or HEX.bright) .. tostring(count) .. "|r" .. pctSuffix)
         self:Show()
     end
 
@@ -607,6 +610,9 @@ end
 -- SharedWidgets.lua, where their local definitions live — assigning them here
 -- resolved to nil globals and broke five tabs.)
 
+--- Vertical scroll range below this is layout rounding, not content (see UpdateScrollBarVisibility).
+local SCROLL_RANGE_EPSILON = 1
+
 local function GetDropdownScrollFitSlack()
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
     return layout.DROPDOWN_SCROLL_FIT_SLACK or 8
@@ -714,7 +720,20 @@ function ns.UI.Factory:AttachScrollBarVisibility(scrollFrame)
         if self.GetVerticalScrollRange then
             scrollRange = self:GetVerticalScrollRange() or 0
         end
-        if scrollRange > 0 then
+        --[[
+            A scroll range inside a pixel is rounding, not content.
+
+            Every main-window tab sizes its scroll child as
+            `math.max(bodyHeight + pad, mainFrame.scroll:GetHeight())` -- the child is floored at the
+            viewport so the page background reaches the bottom on a short tab. That floor lands a
+            fraction over the viewport often enough that GetVerticalScrollRange() came back positive
+            with nothing to scroll, and `> 0` then overrode the height test that had just decided the
+            content fits. Result: the lane stayed open on every short page, no matter what the
+            content was, which is why this looked like a per-page problem instead of one rule.
+
+            One pixel of range hides nothing, so it does not earn a scrollbar.
+        ]]
+        if scrollRange > SCROLL_RANGE_EPSILON then
             needsScroll = true
         end
 
@@ -726,6 +745,16 @@ function ns.UI.Factory:AttachScrollBarVisibility(scrollFrame)
         end
 
         self._wnDropdownNeedsScroll = isDropdown and needsScroll or nil
+
+        -- Lane notification. A surface whose chrome sits BESIDE the viewport (a header strip, a
+        -- footer bar, a tab row) cannot be anchored to the scroll frame without a SetPoint cycle,
+        -- so it has to be told when the lane flips. Fired on change only, before the anchors below
+        -- move, and in both column modes -- the external-column path never reaches that block.
+        local laneNow = (needsScroll or self._wnKeepScrollLane) and true or false
+        if self._wnScrollLaneChanged and self._wnScrollLaneState ~= laneNow then
+            self._wnScrollLaneState = laneNow
+            self:_wnScrollLaneChanged(laneNow)
+        end
 
         local extCol = self._wnExternalBarColumn
         local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self) or extCol ~= nil
@@ -782,11 +811,8 @@ function ns.UI.Factory:AttachScrollBarVisibility(scrollFrame)
         end
 
         if barInExternalContainer then
-            local showBar = needsScroll
-            if not showBar and self._wnKeepScrollLane and frameHeight >= 2 then
-                showBar = scrollRange > 0 or contentHeight > frameHeight
-            end
-            ShowScrollBarChrome(bar, showBar)
+            -- A reserved lane is a stable gutter: it holds its width, the bar shows only on overflow.
+            ShowScrollBarChrome(bar, needsScroll)
             ns.UI.Factory:SyncScrollBarThumb(self)
             return
         end
@@ -825,7 +851,7 @@ end
 ---@return ScrollFrame scrollFrame The created scroll frame
 function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     if not parent then
-        DebugPrint("|cffff4444[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
+        DebugPrint(HEX.red .. "[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
         return nil
     end
 
@@ -1190,7 +1216,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     -- Debug log (only first call; verbose-only so normal debug mode stays readable)
     if not self._scrollLogged then
         if ns.DebugVerbosePrint then
-            ns.DebugVerbosePrint("|cff9370DB[WN Factory]|r CreateScrollFrame initialized with modern scroll bar")
+            ns.DebugVerbosePrint(HEX.accent .. "[WN Factory]|r CreateScrollFrame initialized with modern scroll bar")
         end
         self._scrollLogged = true
     end
@@ -1284,6 +1310,143 @@ function ns.UI.Factory:ComputeDropdownMenuHeights(rowCount, rowHeight, opts)
     local scrollViewportH = insetTop + visibleRows * rowHeight + insetBottom
     local menuOuterH = scrollViewportH + 2 * menuEdge
     return menuOuterH, scrollContentH
+end
+
+--[[
+    Same contract as WireScrollBarColumnLayout, but with the caller's own insets.
+
+    That one derives every edge from a single `menuEdge`, which fits a dropdown and nothing else:
+    a dialog usually has a header above its viewport and often a footer below it, so its top and
+    bottom insets differ from its sides. Callers that tried to use it had to fall back to pinning
+    the scroll frame themselves, which meant reserving the scrollbar lane permanently -- every
+    such window shows an empty strip down its right edge when its content happens to fit.
+
+    Pass the insets the window already uses and the lane becomes dynamic: UpdateScrollBarVisibility
+    picks the "shown" anchor when the content overflows and the "hidden" one when it does not.
+]]
+---@param scrollFrame ScrollFrame
+---@param host Frame the frame the insets are measured from (usually the dialog content frame)
+---@param barColumn Frame
+---@param insets table { left, top, right, bottom, gap }
+function ns.UI.Factory:WireScrollLaneWithInsets(scrollFrame, host, barColumn, insets)
+    if not scrollFrame or not host or not barColumn then return end
+    insets = insets or {}
+    local left = insets.left or 0
+    local top = insets.top or 0
+    local right = insets.right or 0
+    local bottom = insets.bottom or 0
+    local gap = insets.gap
+    if gap == nil then
+        local layout = ns.UI_LAYOUT or {}
+        local ms = layout.MAIN_SCROLL or {}
+        gap = ms.SCROLL_GAP or layout.SCROLL_GAP or 2
+    end
+
+    scrollFrame._wnScrollBarColumn = barColumn
+    scrollFrame._wnScrollHost = host
+    scrollFrame._wnScrollAnchorTL = { frame = host, a1 = "TOPLEFT", a2 = "TOPLEFT", x = left, y = -top }
+    scrollFrame._wnScrollAnchorBRShown =
+        { frame = barColumn, a1 = "BOTTOMRIGHT", a2 = "BOTTOMLEFT", x = -gap, y = bottom }
+    scrollFrame._wnScrollAnchorBRHidden =
+        { frame = host, a1 = "BOTTOMRIGHT", a2 = "BOTTOMRIGHT", x = -right, y = bottom }
+    -- Stable gutter: the lane is always reserved so the viewport width never depends on content
+    -- height (a flip was a relayout, and a relayout changes height -- a feedback loop).
+    scrollFrame._wnKeepScrollLane = true
+
+    -- The shown anchor points the scroll frame at the column, so the column must hang off the
+    -- HOST or the two SetPoints form a cycle.
+    barColumn:ClearAllPoints()
+    barColumn:SetPoint("TOPRIGHT", host, "TOPRIGHT", -right, -top)
+    barColumn:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -right, bottom)
+end
+
+--[[
+    The one entry point for a dynamic scrollbar lane. Every scrolling surface in the addon should
+    come through here rather than pinning its own viewport beside a permanently reserved strip.
+
+    What it does beyond WireScrollLaneWithInsets:
+      * installs the column sync, so the bar tracks the viewport on resize;
+      * turns the wheel on for the scroll child, which otherwise swallows it;
+      * takes `onLaneChanged`, the callback for chrome that sits BESIDE the viewport.
+
+    That last one is the part callers kept getting wrong. A header strip, a footer bar or a tab row
+    spans the same width as the viewport but is a sibling of it, and anchoring a sibling to the
+    scroll frame while the scroll frame is anchored to the column closes a SetPoint loop. So the
+    lane reports instead: `onLaneChanged(reserved)` fires on change only, and the caller moves its
+    own edges to `reserved and laneWidth or 0`.
+
+    opts: { left, top, right, bottom, gap, barWidth, onLaneChanged, keepLane }
+    The lane is always reserved (stable gutter); `keepLane` is accepted for old callers and ignored.
+    `onLaneChanged` therefore fires once, with `true`.
+]]
+---@param scrollFrame ScrollFrame
+---@param host Frame
+---@param barColumn Frame
+---@param opts table|nil
+function ns.UI.Factory:WireDynamicScrollLane(scrollFrame, host, barColumn, opts)
+    if not scrollFrame or not host or not barColumn then return end
+    opts = opts or {}
+
+    local gap = opts.gap
+    if gap == nil then
+        local layout = ns.UI_LAYOUT or {}
+        local ms = layout.MAIN_SCROLL or {}
+        gap = ms.SCROLL_GAP or layout.SCROLL_GAP or 2
+    end
+    local barWidth = opts.barWidth
+        or (barColumn.GetWidth and barColumn:GetWidth())
+        or (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth())
+        or 26
+
+    self:WireScrollLaneWithInsets(scrollFrame, host, barColumn, {
+        left = opts.left or 0,
+        top = opts.top or 0,
+        right = opts.right or 0,
+        bottom = opts.bottom or 0,
+        gap = gap,
+    })
+
+    if self.EnsureScrollBarColumnSync then
+        self:EnsureScrollBarColumnSync(scrollFrame, barColumn, { width = barWidth, gap = gap })
+    end
+    if ns.UI_EnableStandardScrollWheel then
+        ns.UI_EnableStandardScrollWheel(scrollFrame)
+    end
+    local child = scrollFrame.GetScrollChild and scrollFrame:GetScrollChild()
+    if child and child.EnableMouseWheel then
+        child:EnableMouseWheel(true)
+    end
+
+    scrollFrame._wnKeepScrollLane = true
+    scrollFrame._wnScrollLaneChanged = opts.onLaneChanged
+    scrollFrame._wnScrollLaneState = nil
+    scrollFrame._wnDynamicLaneWidth = barWidth + gap
+
+    -- Opt-in: a child that fills the viewport has to grow when the lane is handed back, or the
+    -- window gets wider and its content does not. Surfaces that scroll horizontally keep a child
+    -- wider than the viewport on purpose, so this is never the default.
+    if opts.syncChildWidth and not scrollFrame._wnLaneChildWidthHooked then
+        scrollFrame._wnLaneChildWidthHooked = true
+        scrollFrame:HookScript("OnSizeChanged", function(self, w)
+            local c = self.GetScrollChild and self:GetScrollChild()
+            if c and w and w > 1 then c:SetWidth(w) end
+        end)
+        local c0 = scrollFrame.GetScrollChild and scrollFrame:GetScrollChild()
+        local w0 = scrollFrame:GetWidth()
+        if c0 and w0 and w0 > 1 then c0:SetWidth(w0) end
+    end
+
+    return scrollFrame
+end
+
+--- Width the lane takes when it is reserved: what `onLaneChanged(true)` should inset chrome by.
+---@param scrollFrame ScrollFrame
+---@return number
+function ns.UI.Factory:GetDynamicScrollLaneWidth(scrollFrame)
+    if scrollFrame and scrollFrame._wnDynamicLaneWidth then
+        return scrollFrame._wnDynamicLaneWidth
+    end
+    return (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
 end
 
 --- Anchor metadata for UpdateScrollBarVisibility (hide scrollbar column when content fits).
@@ -1457,11 +1620,29 @@ function ns.UI.Factory:SyncScrollBarColumnToViewport(scrollFrame, barColumn, opt
     end
     local inset = opts.inset or 0
 
+    -- opts.top: start the column below the viewport top so it lines up with the first body block
+    -- (main window: PAGE_STACK.BODY_TOP) instead of the bare viewport edge.
+    local topInset = tonumber(opts.top) or 0
     barColumn:ClearAllPoints()
     barColumn:SetWidth(colW)
-    barColumn:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", gap, 0)
+    barColumn:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", gap, -topInset)
     barColumn:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", gap, 0)
-    barColumn:Show()
+    --[[
+        Positioning does not decide visibility.
+
+        This used to end in an unconditional `barColumn:Show()`, which made it a SECOND authority
+        over the lane: UpdateScrollBarVisibility would hide the column on a page with nothing to
+        scroll, and then any resize, theme refresh or tab sync that re-ran this function put it
+        straight back on screen. That is a scrollbar beside empty content, and it reappeared no
+        matter what the page did about its own height.
+
+        The lane has one owner, UpdateScrollBarVisibility. The only exception is a scroll frame
+        that never got that function attached -- there is nothing else to show the column for it,
+        so it keeps the old behaviour rather than losing its scrollbar.
+    ]]
+    if not scrollFrame.UpdateScrollBarVisibility then
+        barColumn:Show()
+    end
 
     scrollFrame._wnExternalBarColumn = barColumn
     scrollFrame._wnBarColumnSyncOpts = opts
@@ -1551,6 +1732,11 @@ function ns.UI.Factory:EnsureScrollBarColumnSync(scrollFrame, barColumn, opts)
     scrollFrame._wnExternalBarColumn = barColumn
     self:SyncScrollBarColumnToViewport(scrollFrame, barColumn, opts)
     self:InstallExternalScrollBarRangeGuard(scrollFrame)
+    -- Sync no longer shows the column, so ask the one owner for a decision now rather than leaving
+    -- the lane in whatever state the previous surface left it in until the next deferred pass.
+    if scrollFrame.UpdateScrollBarVisibility then
+        scrollFrame:UpdateScrollBarVisibility()
+    end
     if scrollFrame._wnBarColumnSyncInstalled then
         return
     end
@@ -2419,7 +2605,7 @@ function ns.UI.Factory:ShowCopyURL(url, labelText, anchorFrame)
 
     sharedCopyFrame._title:SetText(
         ns.UI_GetSemanticGoldHex() .. (labelText or "") .. "|r  "
-        .. (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888")
+        .. (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or HEX.dim)
         .. ((ns.L and ns.L["CTRL_C_LABEL"]) or "Ctrl+C") .. "|r"
     )
     sharedCopyFrame._url = url

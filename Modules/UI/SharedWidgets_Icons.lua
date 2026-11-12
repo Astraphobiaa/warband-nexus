@@ -10,6 +10,9 @@ local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(.
 -- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
 local GetItemClassInfo = C_Item.GetItemClassInfo
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager
 local Constants = ns.Constants
 local issecretvalue = issecretvalue
@@ -242,7 +245,7 @@ local function ApplyIconTexture(tex, texture, isAtlas)
             if IsDebugModeEnabled and IsDebugModeEnabled() then
                 local texName = texture
                 if not (issecretvalue and issecretvalue(texName)) and texName ~= nil then
-                    DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texName) .. "' failed, using fallback")
+                    DebugPrint(HEX.red .. "[WN CreateIcon]|r Atlas '" .. tostring(texName) .. "' failed, using fallback")
                 end
             end
             ns.UI_SetIcon(tex, "question")

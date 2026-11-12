@@ -23,6 +23,34 @@ local PVP_RANK_FACTION_ID = 2800
 
 local pcall, type, tonumber = pcall, type, tonumber
 
+--[[
+    What a reward IS, for the label under its name ("Mount", "Pet", "Toy"...). The stored
+    renownRewardType reads nil on Forever (all four Legacy tiers), so it is derived instead: from the
+    reward's own id fields first, then -- rewards there are all items -- from the collection that
+    item teaches. Each probe is pcall'd and only answers when it returns an id; "item" otherwise.
+]]
+local function ClassifyReward(rw)
+    if type(rw) ~= "table" then return nil end
+    if rw.mountID then return "mount" end
+    if rw.titleMaskID then return "title" end
+    if rw.transmogID or rw.transmogSetID or rw.transmogIllusionSourceID then return "appearance" end
+    local itemID = tonumber(rw.itemID)
+    if not itemID then return rw.spellID and "spell" or nil end
+    if type(C_MountJournal) == "table" and C_MountJournal.GetMountFromItem then
+        local ok, mountID = pcall(C_MountJournal.GetMountFromItem, itemID)
+        if ok and type(mountID) == "number" and mountID > 0 then return "mount" end
+    end
+    if type(C_PetJournal) == "table" and C_PetJournal.GetPetInfoByItemID then
+        local ok, petName = pcall(C_PetJournal.GetPetInfoByItemID, itemID)
+        if ok and type(petName) == "string" and petName ~= "" then return "pet" end
+    end
+    if type(C_ToyBox) == "table" and C_ToyBox.GetToyInfo then
+        local ok, toyItemID = pcall(C_ToyBox.GetToyInfo, itemID)
+        if ok and type(toyItemID) == "number" and toyItemID > 0 then return "toy" end
+    end
+    return "item"
+end
+
 --- Both tracks live behind the same renown API; the ids are the only thing that separates them.
 local function ReadRenownTrack(factionID)
     if type(C_MajorFactions) ~= "table" then return nil end
@@ -56,6 +84,7 @@ local function ReadRenownTrack(factionID)
                         -- Enum.RenownRewardDisplayType: Mount / Transmog / Title / Item / Toy...
                         rewardType = rw and rw.renownRewardType or nil,
                         icon = rw and rw.icon or nil,
+                        kind = ClassifyReward(rw),
                     }
                 end
             end
@@ -86,15 +115,30 @@ local function ReadChallenges()
         if okNum and type(num) == "number" then
             for ai = 1, num do
                 if seen >= MAX_ENTRIES then return out end
-                local ok, id, name, points, completed = pcall(GetAchievementInfo, catID, ai)
+                -- id, name, points, completed, month, day, year, description, flags, icon, rewardText
+                -- (same unpack as CollectionService_JournalScan / PlansManager).
+                local ok, id, name, points, completed, month, day, year, description, _, icon, rewardText =
+                    pcall(GetAchievementInfo, catID, ai)
                 if ok and id then
+                    -- Never compare a secret string; drop it instead.
+                    if issecretvalue then
+                        if issecretvalue(description) then description = nil end
+                        if issecretvalue(rewardText) then rewardText = nil end
+                        if issecretvalue(icon) then icon = nil end
+                    end
                     local entry = {
                         id = id,
                         category = catID,
                         name = tostring(name),
                         points = tonumber(points) or 0,
                         completed = completed and true or false,
+                        icon = icon,
+                        description = (type(description) == "string" and description ~= "") and description or nil,
+                        rewardText = (type(rewardText) == "string" and rewardText ~= "") and rewardText or nil,
                     }
+                    if entry.completed and tonumber(year) then
+                        entry.earnedDate = { month = tonumber(month), day = tonumber(day), year = tonumber(year) }
+                    end
                     local okC, nCrit = pcall(GetAchievementNumCriteria, id)
                     if okC and type(nCrit) == "number" and nCrit > 0 then
                         entry.criteria = {}
@@ -152,6 +196,31 @@ local function ResolveMissingRewardNames(addon, track)
     end
 end
 
+--- Compact fingerprint of everything the Legacy tab shows as progress: track level, each
+--- challenge's completion and criteria counts, and resolved reward names.
+local function LegacyProgressSignature(store)
+    local parts = {}
+    local track = store and store.track
+    parts[#parts + 1] = tostring(track and track.level or 0)
+    for ti = 1, #((track and track.tiers) or {}) do
+        local tier = track.tiers[ti]
+        for ri = 1, #(tier.rewards or {}) do
+            local rw = tier.rewards[ri]
+            parts[#parts + 1] = tostring(rw.name or "") .. ":" .. tostring(rw.kind or "")
+        end
+    end
+    local entries = store and store.challenges and store.challenges.entries or {}
+    for i = 1, #entries do
+        local e = entries[i]
+        parts[#parts + 1] = tostring(e.id) .. (e.completed and "c" or "o") .. #(e.criteria or {})
+        for k = 1, #(e.criteria or {}) do
+            local c = e.criteria[k]
+            parts[#parts + 1] = (c.done and "1" or "0") .. tostring(c.have or 0)
+        end
+    end
+    return table.concat(parts, "|")
+end
+
 --- Collect and persist. Returns the stored table, or nil when this client has no Legacy System.
 function WarbandNexus:ScanLegacyProgress()
     if self.SupportsFeature and not self:SupportsFeature("legacy") then return nil end
@@ -166,11 +235,15 @@ function WarbandNexus:ScanLegacyProgress()
         pvpRank = ReadRenownTrack(PVP_RANK_FACTION_ID),
         challenges = ReadChallenges(),
     }
+    -- Emit only when progress actually moved: every WN_LEGACY_UPDATED rebuilds the Legacy tab, and a
+    -- login / achievement scan that finds nothing new must not repaint the page under the player.
+    local prev = self.db.global.legacy
+    local changed = not prev or LegacyProgressSignature(prev) ~= LegacyProgressSignature(store)
     self.db.global.legacy = store
     ResolveMissingRewardNames(self, legacyTrack)
 
     local events = ns.Constants and ns.Constants.EVENTS
-    if events and events.LEGACY_UPDATED and self.SendMessage then
+    if changed and events and events.LEGACY_UPDATED and self.SendMessage then
         self:SendMessage(events.LEGACY_UPDATED)
     end
     return store
@@ -193,4 +266,41 @@ function WarbandNexus:GetNextLegacyReward()
         end
     end
     return nil
+end
+
+--[[
+    Keep db.global.legacy current without a slash command. Own listener table (AceEvent allows one
+    handler per event per self, and ACHIEVEMENT_EARNED / MAJOR_FACTION_RENOWN_LEVEL_CHANGED are
+    also handled elsewhere). Events per the Forever client's APIDocumentation:
+      ACHIEVEMENT_EARNED(achievementID, alreadyEarned?)  -- a Legacy challenge completed
+      MAJOR_FACTION_RENOWN_LEVEL_CHANGED(majorFactionID, newRenownLevel, oldRenownLevel)
+    CRITERIA_UPDATE is left out on purpose: it fires constantly, and partial criteria refresh on the
+    next earn / login anyway. Scans are coalesced so a burst of earns walks the tree once.
+]]
+local LegacyEvents = {}
+local LEGACY_SCAN_DELAY = 2
+local legacyScanPending = false
+
+local function ScheduleLegacyScan()
+    if legacyScanPending or not (C_Timer and C_Timer.After) then return end
+    legacyScanPending = true
+    C_Timer.After(LEGACY_SCAN_DELAY, function()
+        legacyScanPending = false
+        if WarbandNexus.ScanLegacyProgress then WarbandNexus:ScanLegacyProgress() end
+    end)
+end
+
+if WarbandNexus and WarbandNexus.RegisterEvent then
+    WarbandNexus.RegisterEvent(LegacyEvents, "PLAYER_LOGIN", function()
+        WarbandNexus.UnregisterEvent(LegacyEvents, "PLAYER_LOGIN")
+        if not (WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("legacy")) then return end
+        WarbandNexus.RegisterEvent(LegacyEvents, "ACHIEVEMENT_EARNED", ScheduleLegacyScan)
+        WarbandNexus.RegisterEvent(LegacyEvents, "MAJOR_FACTION_RENOWN_LEVEL_CHANGED", function(_, factionID)
+            if factionID == LEGACY_FACTION_ID then ScheduleLegacyScan() end
+        end)
+        -- After login the achievement data is warm enough to walk; one deferred pass.
+        if C_Timer and C_Timer.After then
+            C_Timer.After(6, ScheduleLegacyScan)
+        end
+    end)
 end

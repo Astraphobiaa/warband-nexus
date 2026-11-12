@@ -117,7 +117,7 @@ local function GetMoneyGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
     end
-    return "|cffffd700"
+    return ns.UI_HEX.gold
 end
 
 local function FormatMoney(copper, iconSize, showZero)
@@ -202,7 +202,11 @@ end
 
 local CC_CAP_OPEN = "|cff6ee7a0"
 local CC_CAPPED   = "|cffff6b6b"
-local CC_WHITE    = "|cffeeeeee"  -- dark bootstrap; SeasonBrightHex uses UI_GetTextRoleHex at runtime
+-- This file loads BEFORE SharedWidgets_Theme (TOC), so `ns.UI_HEX` does not exist yet at
+-- chunk level -- reading it here raises and the whole file fails to load, taking
+-- `ns.UI_FormatNumber` with it. These stay literals; the Season*Hex helpers below resolve
+-- the live theme at call time, which is where a role lookup belongs in this file.
+local CC_WHITE    = "|cfff0f4ff"
 local CC_AMOUNT   = "|cfff0f4ff"
 local CC_CAP_VAL  = "|cffb4bcc8"
 local CC_MUTED    = "|cff7a8494"

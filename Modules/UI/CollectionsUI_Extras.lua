@@ -11,6 +11,9 @@ local _, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.CollectionsUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M and M.state, "CollectionsUI_Shared.lua must load before this file")
 
 local WarbandNexus = M.WarbandNexus
@@ -240,7 +243,11 @@ local function BuildDetailPanel(rightCol, width, height, typeKey, withPreview)
     if withPreview then
         -- Full-bleed stage behind the header / source text (same layout as the mount and pet viewer).
         local slot = Factory:CreateContainer(panel, width, height, false)
-        slot:SetAllPoints(panel)
+        -- Inset by the panel's edge: the stage sits a level above the panel, so SetAllPoints painted
+        -- its viewport surface over the bordered panel's edge and the detail card lost its border.
+        local edge = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(panel)) or 1
+        slot:SetPoint("TOPLEFT", panel, "TOPLEFT", edge, -edge)
+        slot:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -edge, edge)
         slot:SetFrameLevel(panel:GetFrameLevel() + 1)
         if ns.UI_ApplyBorderlessSurface and M.ResolveCollectionsSurface then
             ns.UI_ApplyBorderlessSurface(slot, M.ResolveCollectionsSurface("viewport"))
@@ -286,7 +293,7 @@ local function PaintDetail(panel, entity, spec)
     panel._icon:SetTexture(entity.icon or spec.defaultIcon)
     panel._name:SetText(GoldHex() .. (entity.name or "") .. "|r")
 
-    local brightHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
+    local brightHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright
     -- Secret check first on each candidate (test_secret_check_order).
     local srcText = nil
     local candidates = { entity.source, entity.rewardText }

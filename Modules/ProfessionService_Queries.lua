@@ -41,7 +41,7 @@ function WarbandNexus:GetAllConcentrationData()
 
     for charKey, charData in pairs(self.db.global.characters) do
         if charData.concentration then
-            local charName = charData.name or charKey
+            local charName = ns.CharDisplayName(charData, charKey)
             local classFile = charData.classFile or "PRIEST"
             -- Same concentration currency can be stored under multiple skillLineIDs (duplicate rows).
             -- Deduplicate by currencyID per character; legacy rows without currencyID by profession name.
@@ -411,7 +411,7 @@ function WarbandNexus:GetCraftersForRecipe(recipeID)
 
                     result[#result + 1] = {
                         charKey        = charKey,
-                        charName       = charData.name or charKey,
+                        charName       = ns.CharDisplayName(charData, charKey),
                         classFile      = charData.classFile or "PRIEST",
                         professionName = profData.professionName or "",
                         skillLevel     = overallSkill,
@@ -640,7 +640,7 @@ function WarbandNexus:GetAllKnowledgeDataForProfession(profName)
             if kd then
                 result[#result + 1] = {
                     charKey          = charKey,
-                    charName         = charData.name or charKey,
+                    charName         = ns.CharDisplayName(charData, charKey),
                     classFile        = charData.classFile or "PRIEST",
                     hasUnspentPoints = kd.hasUnspentPoints or false,
                     unspentPoints    = kd.unspentPoints or 0,

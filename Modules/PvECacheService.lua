@@ -1523,15 +1523,22 @@ function WarbandNexus:UpdatePvEData()
     -- Ensure weekly reset stale keys/lockouts are pruned even if affix event did not fire this session.
     PruneAllPvEWeeklyData()
 
-    -- Update all PvE data (API > DB)
-    self:UpdateMythicPlusAffixes()
-    local keyChanged = self:UpdateCharacterKeystone(charKey)
-    self:UpdateMythicPlusBestRuns(charKey)
-    self:UpdateDungeonScores(charKey)
-    self:UpdateGreatVaultRewards(charKey)
+    -- Update all PvE data (API > DB). Mythic+ (PvECacheService_MythicPlus) and the Great Vault
+    -- (PvECacheService_Vault) are satellites WarbandNexus_Forever.toc does not load: no keystones or
+    -- vault there, so their passes are skipped when the satellite is absent.
+    local hasMythicPlus = self.UpdateCharacterKeystone ~= nil
+    local hasVault = self.UpdateGreatVaultRewards ~= nil
+    local keyChanged = false
+    if hasMythicPlus then
+        self:UpdateMythicPlusAffixes()
+        keyChanged = self:UpdateCharacterKeystone(charKey)
+        self:UpdateMythicPlusBestRuns(charKey)
+        self:UpdateDungeonScores(charKey)
+    end
+    if hasVault then self:UpdateGreatVaultRewards(charKey) end
     self:UpdateRaidLockouts(charKey)
     self:UpdateWorldBossKills(charKey)
-    self:UpdateMythicPlusRunHistory(charKey)
+    if hasMythicPlus then self:UpdateMythicPlusRunHistory(charKey) end
     self:UpdateDelvesData(charKey)
     
     -- FALLBACK: Populate vault activities from C_WeeklyRewards.GetActivities() only if
@@ -1542,7 +1549,9 @@ function WarbandNexus:UpdatePvEData()
         and self.db.global.pveCache.greatVault
         and self.db.global.pveCache.greatVault.activities
         and self.db.global.pveCache.greatVault.activities[charKey]
-    if not GreatVaultActivityHasRows(vaultActivities) then
+    if not hasVault then
+        -- no Great Vault on this client
+    elseif not GreatVaultActivityHasRows(vaultActivities) then
         self:UpdateGreatVaultActivities(charKey)
     elseif VaultActivitiesMissingILvl(vaultActivities) then
         self:ProcessGreatVaultActivities(charKey)
@@ -2244,7 +2253,7 @@ function WarbandNexus:RegisterPvECacheEvents()
             and pveCache.greatVault
             and pveCache.greatVault.activities
             and pveCache.greatVault.activities[charKey]
-        if not GreatVaultActivityHasRows(vaultActivities) then
+        if WarbandNexus.ProcessGreatVaultActivities and not GreatVaultActivityHasRows(vaultActivities) then
             WarbandNexus:ProcessGreatVaultActivities(charKey)
         end
         local afterSig = BuildPvESignature(pveCache, charKey)
@@ -2351,7 +2360,7 @@ function WarbandNexus:RegisterPvECacheEvents()
 
             -- Weekly reset just rolled over: last week's vault is now claimable, so pull fresh vault
             -- data instead of waiting for the player to open the Great Vault.
-            WarbandNexus:RequestWeeklyVaultRefresh()
+            if WarbandNexus.RequestWeeklyVaultRefresh then WarbandNexus:RequestWeeklyVaultRefresh() end
         end
 
         -- Also refresh keystone detection (new weekly key may be in bags)
@@ -2384,7 +2393,9 @@ function WarbandNexus:RegisterPvECacheEvents()
         end)
     end
     
-    -- Weekly Vault events
+    -- Weekly Vault events (only with PvECacheService_Vault; the Forever TOC has no vault)
+    local hasVaultSatellite = WarbandNexus.OnVaultDataReceived ~= nil
+    if hasVaultSatellite then
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_UPDATE triggered")
         vaultState.vaultDataFreshThisSession = true  -- Server has responded; HasAvailableRewards() is now reliable
@@ -2414,6 +2425,7 @@ function WarbandNexus:RegisterPvECacheEvents()
         -- the badge + PvE row clear on their own instead of the player opening the PvE tab or /reload.
         WarbandNexus:SchedulePostClaimVaultHeal(ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey)
     end)
+    end
     
     -- Raid lockout events
     self:RegisterEvent("UPDATE_INSTANCE_INFO", function()
@@ -2421,7 +2433,7 @@ function WarbandNexus:RegisterPvECacheEvents()
         instanceInfoSeenThisSession = true
         if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         -- A raid boss kill can fill a vault slot; ask for fresh vault data too (throttled).
-        WarbandNexus:RequestWeeklyVaultRefresh()
+        if WarbandNexus.RequestWeeklyVaultRefresh then WarbandNexus:RequestWeeklyVaultRefresh() end
         ThrottledPvEUpdate()
     end)
     -- Ask for the saved-instance list once per session so UPDATE_INSTANCE_INFO arrives even when no
@@ -2435,7 +2447,7 @@ function WarbandNexus:RegisterPvECacheEvents()
             -- Delve data feeds PvE (vault/delves) and Reputations (companion renown).
             if not (ns.Utilities and ns.Utilities:IsAnyModuleEnabled("pve", "reputations")) then return end
             -- Delve completion can fill the world vault slot.
-            WarbandNexus:RequestWeeklyVaultRefresh()
+            if WarbandNexus.RequestWeeklyVaultRefresh then WarbandNexus:RequestWeeklyVaultRefresh() end
             ThrottledPvEUpdate()
         end)
     end)

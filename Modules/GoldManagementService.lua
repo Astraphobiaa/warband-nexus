@@ -26,6 +26,8 @@ end
 -- CORE LOGIC
 
 local function PerformGoldManagement()
+    -- Deposits / withdrawals target the account bank (Enum.BankType.Account); none on Forever.
+    if WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("warbandBank") then return end
     local settings = GetEffectiveGoldSettings()
     if not settings or not settings.enabled then return end
 

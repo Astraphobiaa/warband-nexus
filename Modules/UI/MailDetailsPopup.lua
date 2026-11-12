@@ -559,7 +559,9 @@ function WarbandNexus:ShowMailDetailsPopup(char)
 
     PrefetchMailSnapshotItems(messages)
 
-    local nameRich = (ns.UI_FormatClassColoredName and ns.UI_FormatClassColoredName(char.name, char.classFile))
+    local printedName = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+        and ns.Utilities:GetCharacterDisplayName(char)) or char.name
+    local nameRich = (ns.UI_FormatClassColoredName and ns.UI_FormatClassColoredName(printedName, char.classFile))
         or (char.name or L("UNKNOWN", "Unknown"))
     local totalGold = (MailSnapshot.SumMailSnapshotGold and MailSnapshot.SumMailSnapshotGold(messages)) or 0
     local fmtMoney = ns.UI_FormatMoney
@@ -642,7 +644,14 @@ function WarbandNexus:ShowMailDetailsPopup(char)
     if ns.UI_EnableStandardScrollWheel then
         ns.UI_EnableStandardScrollWheel(scroll)
     end
-    if Factory.EnsureScrollBarColumnSync then
+    -- Dynamic lane: the column keeps its space only while the messages overflow. Without this
+    -- the dialog leaves an empty strip down its right edge whenever they fit.
+    if Factory.WireScrollLaneWithInsets then
+        Factory:WireScrollLaneWithInsets(scroll, contentFrame, scrollBarColumn, {
+            left = LAYOUT.PAD, top = scrollTop, right = LAYOUT.PAD,
+            bottom = scrollBottom, gap = scrollGap,
+        })
+    elseif Factory.EnsureScrollBarColumnSync then
         Factory:EnsureScrollBarColumnSync(scroll, scrollBarColumn, { width = SCROLLBAR_COL_W, gap = scrollGap })
     elseif Factory.SyncScrollBarColumnToViewport then
         Factory:SyncScrollBarColumnToViewport(scroll, scrollBarColumn, { width = SCROLLBAR_COL_W, gap = scrollGap })

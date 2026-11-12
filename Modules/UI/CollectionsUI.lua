@@ -531,7 +531,14 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.state._recentMinScrollSideMargin = sideMargin
         M.state._recentGridScrollWidth = nil
         M.DrawRecentContent(contentFrame)
-        contentHeight = contentFrame:GetHeight() or contentHeight
+        -- Recent may grow its own frame while drawing, but the Collections tab is a fill-the-
+        -- viewport page: every sub-tab scrolls inside its own panel, so the OUTER scroll must
+        -- never gain a range. `/wn uiprobe` measured the scroll child 22 px past the viewport
+        -- here, which is this re-read reporting a frame that had grown past the cap it was given.
+        local grown = contentFrame:GetHeight()
+        if grown and grown > 0 and grown < contentHeight then
+            contentHeight = grown
+        end
     elseif M.state.currentSubTab == "mounts" then
         M.DrawMountsContent(contentFrame)
     elseif M.state.currentSubTab == "pets" then
@@ -547,6 +554,19 @@ function WarbandNexus:DrawCollectionsTab(parent)
     end
 
     yOffset = yOffset + contentHeight + bottomPad
+
+    -- Collections fills the viewport with its own panels, each with its own scroll, so the OUTER
+    -- scroll has nothing to scroll. It never sized the main scroll child, though, which left that
+    -- child at whatever height the previous tab wrote -- a tall one gave Collections an outer
+    -- scrollbar and its lane over nothing. Stating the height here is what every other tab does.
+    if ns.UI_SyncMainTabScrollChrome then
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mf and parent == mf.scrollChild then
+            -- Collections fills the viewport: every sub-tab scrolls inside its own panel, so the
+            -- outer scroll must never gain a range, whatever the body measured mid-layout.
+            ns.UI_SyncMainTabScrollChrome(mf, parent, yOffset, true)
+        end
+    end
 
     -- Event-driven updates (same events as Plans): all sub-tabs (Mounts, Pets, Achievements) refresh when these fire.
     -- Use a dedicated listener key (CUIListeners) instead of WarbandNexus as self.

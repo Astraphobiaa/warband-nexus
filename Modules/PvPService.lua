@@ -160,8 +160,14 @@ end
 
 ---@param skipEmit boolean|nil
 ---@param authoritative boolean|nil true only for the PVP_RATED_STATS_UPDATE server reply
+--- Rated brackets exist only where rated PvP does; Forever answers the API with zeroed brackets.
+local function SupportsRatedPvP()
+    return not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("ratedPvP"))
+end
+PvPService.SupportsRatedPvP = SupportsRatedPvP
+
 function PvPService:SnapshotRatedInfo(skipEmit, authoritative)
-    if not CanCollect() then return end
+    if not CanCollect() or not SupportsRatedPvP() then return end
     local charKey = GetCharKey()
     if not charKey then return end
     local store = GetProgressStore(charKey)
@@ -237,7 +243,7 @@ end
 
 -- Ask the server for fresh rated stats; reply lands as PVP_RATED_STATS_UPDATE.
 function PvPService:RequestRatedRefresh()
-    if not CanCollect() then return end
+    if not CanCollect() or not SupportsRatedPvP() then return end
     if RequestRatedInfo then
         pcall(RequestRatedInfo)
     end
@@ -292,8 +298,43 @@ function PvPService:SnapshotHonor(skipEmit)
     store.honor.level = (okLvl and SafeNum(lvl)) or store.honor.level or 0
     store.honor.current = (okCur and SafeNum(cur)) or store.honor.current or 0
     store.honor.max = (okMax and SafeNum(mx)) or store.honor.max or 0
+    local ladder = PvPService:ReadRankLadder()
+    if ladder then store.rankLadder = ladder end
     store.lastUpdated = time()
     if not skipEmit then EmitUpdated() end
+end
+
+--[[
+    WoW Forever's honor ladder (Rank 1-14). Nothing here exists on retail, so it is gated on the
+    pvpRankLadder capability and returns nil elsewhere. Sources (client APIDocumentation, Forever):
+      C_MajorFactions.GetMajorFactionData(2800 "PvP Rank Points") -> renownLevel = current rank,
+        renownReputationEarned / renownLevelThreshold = progress to the next rank
+      GetPVPLifetimeStats() -> lifetimeHonorableKills, lifetimeMaxPVPRank (Enum.PvPRanks:
+        RankNone..RankDishonored = 0..4, Rank_1..Rank_14 = 5..18)
+]]
+local PVP_RANK_FACTION_ID = 2800
+local PVP_RANK_ENUM_RANK1 = 5
+function PvPService:ReadRankLadder()
+    if not (WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("pvpRankLadder")) then return nil end
+    local out = {}
+    if type(C_MajorFactions) == "table" and C_MajorFactions.GetMajorFactionData then
+        local ok, data = pcall(C_MajorFactions.GetMajorFactionData, PVP_RANK_FACTION_ID)
+        if ok and type(data) == "table" then
+            out.rank = SafeNum(data.renownLevel) or 0
+            out.earned = SafeNum(data.renownReputationEarned) or 0
+            out.threshold = SafeNum(data.renownLevelThreshold) or 0
+        end
+    end
+    if GetPVPLifetimeStats then
+        local ok, hk, maxRank = pcall(GetPVPLifetimeStats)
+        if ok then
+            out.lifetimeHK = SafeNum(hk) or 0
+            local mr = SafeNum(maxRank)
+            out.highestRank = (mr and mr >= PVP_RANK_ENUM_RANK1) and (mr - PVP_RANK_ENUM_RANK1 + 1) or 0
+        end
+    end
+    if next(out) == nil then return nil end
+    return out
 end
 
 -- MATCH RECORDING
@@ -559,7 +600,7 @@ function PvPService:GetWarbandOverview()
             end
             rows[#rows + 1] = {
                 charKey = charKey,
-                name = char.name,
+                name = ns.CharDisplayName(char, char.name),
                 realm = char.realm,
                 class = char.class,
                 classFile = char.classFile,
@@ -569,6 +610,7 @@ function PvPService:GetWarbandOverview()
                 honorLevel = honor and SafeNum(honor.level) or nil,
                 brackets = brackets,
                 bestRating = bestRating,
+                rankLadder = store and store.rankLadder or nil,
                 lastUpdated = store and store.lastUpdated or nil,
                 -- Snapshot taken before this week's reset: weekly W/P shows 0 in UI
                 weeklyStale = self:IsRatedWeeklyStale(store),
@@ -582,13 +624,23 @@ end
 -- RECENT MATCH FILTERS (shared with PvPUI + self-test; labels stay in UI/locale)
 local RECENT_FILTER_DEFS = {
     { key = "all", matches = function() return true end },
-    { key = "shuffle", matches = function(m) return m.mode == "shuffle" end },
-    { key = "blitz", matches = function(m) return m.mode == "blitz" end },
-    { key = "2v2", matches = function(m) return m.mode == "2v2" end },
-    { key = "3v3", matches = function(m) return m.mode == "3v3" end },
+    { key = "shuffle", rated = true, matches = function(m) return m.mode == "shuffle" end },
+    { key = "blitz", rated = true, matches = function(m) return m.mode == "blitz" end },
+    { key = "2v2", rated = true, matches = function(m) return m.mode == "2v2" end },
+    { key = "3v3", rated = true, matches = function(m) return m.mode == "3v3" end },
     { key = "bg", matches = function(m) return m.mode == "bg" or m.mode == "rbg" end },
 }
 PvPService.RECENT_FILTER_DEFS = RECENT_FILTER_DEFS
+
+local UNRATED_FILTER_DEFS = {}
+for i = 1, #RECENT_FILTER_DEFS do
+    if not RECENT_FILTER_DEFS[i].rated then UNRATED_FILTER_DEFS[#UNRATED_FILTER_DEFS + 1] = RECENT_FILTER_DEFS[i] end
+end
+
+--- Filter tabs this client can produce matches for: rated modes drop out without rated PvP.
+function PvPService:GetRecentFilterDefs()
+    return SupportsRatedPvP() and RECENT_FILTER_DEFS or UNRATED_FILTER_DEFS
+end
 
 function PvPService:GetRecentFilterDef(filterKey)
     for i = 1, #RECENT_FILTER_DEFS do
@@ -835,7 +887,7 @@ local function OnLogin()
     end)
 end
 
--- PvPService is the sole owner of these five events (no other module listens), so the
+-- PvPService owns this event set on its own listener (PvPEvents), so the
 -- module toggle can unregister them outright instead of guarding handler bodies only.
 local PVP_EVENT_HANDLERS = {
     PVP_MATCH_COMPLETE = function(_, winner, duration)
@@ -850,6 +902,17 @@ local PVP_EVENT_HANDLERS = {
     end,
     HONOR_LEVEL_UPDATE = function()
         PvPService:SnapshotHonor()
+    end,
+    -- WoW Forever honor ladder (documented in the Forever client's APIDocumentation). Retail never
+    -- moves the 2800 track, so the snapshot itself is gated on pvpRankLadder (ReadRankLadder).
+    PLAYER_PVP_RANK_CHANGED = function(_, unit)
+        if unit == "player" then PvPService:SnapshotHonor() end
+    end,
+    PLAYER_PVP_KILLS_CHANGED = function(_, unit)
+        if unit == "player" then PvPService:SnapshotHonor() end
+    end,
+    MAJOR_FACTION_RENOWN_LEVEL_CHANGED = function(_, factionID)
+        if factionID == PVP_RANK_FACTION_ID then PvPService:SnapshotHonor() end
     end,
     -- Server replies to RequestRatedInfo() land here (wiki: API_RequestRatedInfo).
     PVP_RATED_STATS_UPDATE = function()

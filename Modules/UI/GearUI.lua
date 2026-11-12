@@ -11,6 +11,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus, FontManager = ns.WarbandNexus, ns.FontManager
@@ -128,7 +131,7 @@ local function EnsureGearContentVeil(scrollChild, mf, gen)
         if FontManager then
             local titleFs = FontManager:CreateFontString(host, GFR("loadingCardTitle"), "OVERLAY")
             titleFs:SetPoint("TOP", spinner, "BOTTOM", 0, -10)
-            titleFs:SetText("|cff00ccff" .. GearTabL("GEAR_TAB_LOADING", "Loading gear...") .. "|r")
+            titleFs:SetText(HEX.info .. GearTabL("GEAR_TAB_LOADING", "Loading gear...") .. "|r")
             local hintFs = FontManager:CreateFontString(host, GFR("loadingCardHint"), "OVERLAY")
             hintFs:SetPoint("TOP", titleFs, "BOTTOM", 0, -4)
             ns.UI_SetTextColorRole(hintFs, "Dim")
@@ -1205,6 +1208,23 @@ function ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLa
     return math.max(120, (storageW or 0) - (storagePad or 0) - (storageLane or 0))
 end
 
+--[[
+    Lane the storage / recommendations panel reserves on its right.
+
+    This panel knows before it paints whether the rows overflow -- row count times row height
+    against the viewport -- so the lane is decided outright instead of being discovered after the
+    fact and flipped. The header strip, the viewport and the row widths all read this one value, so
+    a panel with three recommendations uses its full width and shows no empty strip.
+]]
+---@param storageBarW number scrollbar column width
+---@param rowsOverflow boolean
+---@return number
+--- Stable gutter: always reserved (header already reserves it), so row count never changes widths.
+function ns.GearUI_ResolveStorageRecLane(storageBarW)
+    return (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+        or ((storageBarW or 0) + 2)
+end
+
 --- Live resize: reflow recommendation table columns without rebuilding rows.
 local function RelayoutGearStorageRecColumns(recContent, contentW)
     if not recContent or not contentW or contentW < 40 then return end
@@ -1385,9 +1405,9 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     if upgradeSummary then
         upgradeSummary:Show()
         upgradeSummary:SetWordWrap(false)
-        local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffb8bcc6"
-        local greenHex = (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff55dd77"
-        local greenBrightHex = (ns.UI_GetSemanticGreenBrightHex and ns.UI_GetSemanticGreenBrightHex()) or "|cffc8ffd0"
+        local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.muted
+        local greenHex = (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or HEX.green
+        local greenBrightHex = (ns.UI_GetSemanticGreenBrightHex and ns.UI_GetSemanticGreenBrightHex()) or HEX.green
         local parts = {}
         parts[1] = mutedHex
         parts[2] = tostring(cur)
@@ -1848,8 +1868,8 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     local storagePanelH = (storagePanel.GetHeight and storagePanel:GetHeight()) or 0
     local viewportH = math.max(storagePanelH - storageHeaderH - storagePad - 10, 1)
     local hdrExtra = (#rows > 0) and GEAR_STORAGE_REC_TABLE_HDR or 0
-    local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
     local rowsOverflow = (#rows * rowH + hdrExtra) > viewportH
+    local storageLane = ns.GearUI_ResolveStorageRecLane(storageBarW, rowsOverflow)
 
     local contentW = ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLane)
 
@@ -1891,8 +1911,10 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     recScroll:ClearAllPoints()
     recScroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
     recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageLane, storagePad)
-    recScroll._wnKeepScrollLane = true
-    if sbCol and sbCol.Show then sbCol:Show() end
+    recScroll._wnKeepScrollLane = rowsOverflow or nil
+    if sbCol then
+        if rowsOverflow then sbCol:Show() else sbCol:Hide() end
+    end
     if sbCol and recScroll and ns.UI and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
         ns.UI.Factory:EnsureScrollBarColumnSync(recScroll, sbCol, { width = storageBarW, gap = 2 })
     elseif sbCol and recScroll.ScrollBar and ns.UI and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
@@ -2438,7 +2460,7 @@ local function RefreshGearHideFilterMenuRows()
 end
 
 local function GearDimMarkup(text)
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888") .. text .. "|r"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or HEX.dim) .. text .. "|r"
 end
 
 local GEAR_CHAR_SEP = GearDimMarkup(" | ")
@@ -2449,24 +2471,38 @@ local function MeasureGearCharNameColumnWidth(chars, measureFs)
     for i = 1, #chars do
         local c = chars[i].data
         local hex = GetClassHex(c.classFile)
-        local nm = c.name or chars[i].key or ""
+        -- Printed name: Forever names are two words ("Elementalist Vhorzen").
+        local nm = ns.CharDisplayName(c, chars[i].key or "") or ""
         measureFs:SetText("|cff" .. hex .. nm .. "|r")
         maxW = math.max(maxW, measureFs:GetStringWidth())
     end
     return maxW
 end
 
---- Name column width: wide enough for longest name, capped so realm keeps a readable minimum width.
+--- Max pixel width of the realm column text (Forever shows a short "PvE"/"PvP" tag).
+local function MeasureGearCharRealmColumnWidth(chars, measureFs)
+    local U = ns.Utilities
+    local maxW = 0
+    for i = 1, #chars do
+        local r = chars[i].data and chars[i].data.realm
+        if type(r) == "string" and r ~= "" then
+            measureFs:SetText((U and U.FormatRealmName and U:FormatRealmName(r)) or r)
+            maxW = math.max(maxW, measureFs:GetStringWidth())
+        end
+    end
+    return maxW
+end
+
+--- Name column width: wide enough for the longest name; the realm keeps only what it needs
+--- (up to a readable minimum), so a short realm tag never truncates the name.
 local function ComputeGearCharNameColW(chars, measureFs, textBudget)
     if textBudget < 56 then
         return math.max(36, math.floor(textBudget * 0.38))
     end
     local raw = MeasureGearCharNameColumnWidth(chars, measureFs) + 6
-    local minRealm = 102
+    local realmNeed = math.min(102, MeasureGearCharRealmColumnWidth(chars, measureFs) + 6)
     local sepReserve = 22
-    local capByRealm = textBudget - minRealm - sepReserve
-    local capByRatio = math.floor(textBudget * 0.48)
-    local cap = math.min(capByRatio, math.max(52, capByRealm))
+    local cap = math.max(52, textBudget - realmNeed - sepReserve)
     return math.min(math.max(raw, 48), cap)
 end
 
@@ -2614,7 +2650,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         if not nm then return end
         if cData and (cData.name and cData.name ~= "") then
             local hex   = GetClassHex(cData.classFile)
-            local namePart = "|cff" .. hex .. (cData.name or "") .. "|r"
+            local namePart = "|cff" .. hex .. (ns.CharDisplayName(cData, cData.name) or "") .. "|r"
             nm:SetText(namePart)
             ns.UI_SetTextColorRole(nm, "Bright")
             local realm = cData.realm and cData.realm ~= "" and cData.realm or nil
@@ -2769,7 +2805,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 list = {}
                 for fi = 1, #fullList do
                     local d = fullList[fi].data or {}
-                    local blob = ((d.name or "") .. " " .. (d.realm or "")):lower()
+                    local blob = ((ns.CharDisplayName(d, d.name) or "") .. " " .. (d.realm or "")):lower()
                     if blob:find(txt, 1, true) then
                         list[#list + 1] = fullList[fi]
                     end
@@ -2822,7 +2858,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local cKey   = charEntry.key
             local cData  = charEntry.data
             local hex    = GetClassHex(cData.classFile)
-            local namePart = "|cff" .. hex .. (cData.name or cKey) .. "|r"
+            local namePart = "|cff" .. hex .. ns.CharDisplayName(cData, cKey) .. "|r"
             local r = cData.realm and cData.realm ~= "" and cData.realm or ""
             entryBtn._nameLabel:SetText(namePart)
             ns.UI_SetTextColorRole(entryBtn._nameLabel, "Bright")

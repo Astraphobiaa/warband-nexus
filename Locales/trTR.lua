@@ -2287,6 +2287,65 @@ L["STAT_CRITICAL_STRIKE"] = "Kritik Vuruş"
 L["STAT_HASTE"] = "Hız"
 L["STAT_MASTERY"] = "Ustalık"
 L["STAT_VERSATILITY"] = "Çok Yönlülük"
+L["GEAR_FSTAT_ARMOR"] = "Zırh"
+L["GEAR_FSTAT_DODGE"] = "Sıyrılma"
+L["GEAR_FSTAT_PARRY"] = "Savuşturma"
+L["GEAR_FSTAT_BLOCK"] = "Blok"
+L["GEAR_FSTAT_ATTACK_POWER"] = "Saldırı Gücü"
+L["GEAR_FSTAT_RANGED_AP"] = "Menzilli Saldırı Gücü"
+L["GEAR_FSTAT_MELEE_HIT"] = "İsabet Şansı"
+L["GEAR_FSTAT_RANGED_CRIT"] = "Menzilli Kritik"
+L["GEAR_FSTAT_EXPERTISE"] = "Uzmanlık"
+L["GEAR_FSTAT_SPELL_POWER"] = "Büyü Gücü"
+L["GEAR_FSTAT_HEALING"] = "İyileştirme"
+L["GEAR_FSTAT_SPELL_HIT"] = "Büyü İsabeti"
+L["GEAR_FSTAT_SPELL_CRIT"] = "Büyü Kritiği"
+L["GEAR_FSTAT_SPELL_PEN"] = "Büyü Delme"
+L["GEAR_FSTAT_MANA_REGEN"] = "Mana Yenilenmesi (5 sn'de)"
+L["GEAR_FSTAT_RESIST_HOLY"] = "Kutsal Direnci"
+L["GEAR_FSTAT_RESIST_FIRE"] = "Ateş Direnci"
+L["GEAR_FSTAT_RESIST_NATURE"] = "Doğa Direnci"
+L["GEAR_FSTAT_RESIST_FROST"] = "Ayaz Direnci"
+L["GEAR_FSTAT_RESIST_SHADOW"] = "Gölge Direnci"
+L["GEAR_FSTAT_RESIST_ARCANE"] = "Arkan Direnci"
+L["GEAR_FSTAT_GROUP_ATTRIBUTES"] = STAT_CATEGORY_ATTRIBUTES or "Özellikler"
+L["GEAR_FSTAT_GROUP_ENHANCEMENTS"] = STAT_CATEGORY_ENHANCEMENTS or "Geliştirmeler"
+L["GEAR_FSTAT_GROUP_DEFENSE"] = "Savunma"
+L["GEAR_FSTAT_GROUP_PHYSICAL"] = "Yakın ve Menzilli"
+L["GEAR_FSTAT_GROUP_SPELL"] = "Büyü"
+L["GEAR_FSTAT_GROUP_RESISTANCES"] = "Dirençler"
+L["CHAR_SELF_FOUND_TAG"] = "Kendi Bulduğu"
+L["PVP_COL_RANK"] = "Rütbe"
+L["PVP_COL_HIGHEST_RANK"] = "En Yüksek"
+L["PVP_COL_LIFETIME_HK"] = "Toplam Onurlu Zafer"
+L["PVP_RANK_FMT"] = "Rütbe %d"
+L["PVP_COL_RANK_DESC"] = "Mevcut onur rütbesi ve bir sonraki rütbeye ilerleme"
+L["PVP_COL_HIGHEST_RANK_DESC"] = "Bu karakterin ulaştığı en yüksek onur rütbesi"
+L["PVP_COL_LIFETIME_HK_DESC"] = "Bu karakterin tüm zamanlardaki onurlu zaferleri"
+L["PVP_SUBTITLE_FOREVER"] = "Onur rütbesi, onur ve maç geçmişi"
+L["PVP_RANK_PROGRESS"] = "Rütbe İlerlemesi"
+L["SORT_MODE_PVP_RANK"] = "Rütbe (En Yüksek)"
+L["TAB_LEGACY"] = "Miras"
+L["LEGACY_TITLE"] = "Miras"
+L["LEGACY_SUBTITLE"] = "Hesap geneli Miras puanları, ödül kademeleri ve görevler"
+L["LEGACY_TRACK_TITLE"] = "Miras Yolu"
+L["LEGACY_POINTS_FMT"] = "%d / %d puan"
+L["LEGACY_TIER_EARNED"] = "Kazanıldı"
+L["LEGACY_TIER_NEED_FMT"] = "%d kaldı"
+L["LEGACY_TIER_FMT"] = "%d puan"
+L["LEGACY_REWARD_PENDING"] = "Ödül"
+L["LEGACY_COMPLETED"] = "Tamamlandı"
+L["LEGACY_EMPTY_TITLE"] = "Henüz Miras verisi yok"
+L["LEGACY_EMPTY_DESC"] = "Miras ilerlemesi girişten birkaç saniye sonra okunur.\nPuanlarını ve görevlerini yüklemek için WoW Forever'a giriş yap."
+L["LEGACY_NOT_STARTED"] = "Başlanmadı"
+L["LEGACY_EARNED_ON_FMT"] = "%s tarihinde kazanıldı"
+L["LEGACY_REWARD_MOUNT"] = "Binek"
+L["LEGACY_REWARD_PET"] = "Evcil Hayvan"
+L["LEGACY_REWARD_TOY"] = "Oyuncak"
+L["LEGACY_REWARD_TITLE"] = "Unvan"
+L["LEGACY_REWARD_APPEARANCE"] = "Görünüm"
+L["LEGACY_REWARD_SPELL"] = "Büyü"
+L["LEGACY_REWARD_ITEM"] = "Eşya"
 
 -- WoW jargon pinned to English on purpose.
 -- Turkish players use these untranslated, and the surrounding trTR copy already does
@@ -2312,25 +2371,24 @@ L["SOURCE_TYPE_PVP"] = "PvP"
 L["DIFFICULTY_NORMAL"] = "Normal"
 L["DIFFICULTY_HEROIC"] = "Heroic"
 L["DIFFICULTY_MYTHIC"] = "Mythic"
-L["CHANGELOG_V390"] = [=[v3.9.0 (2026-11-04)
+L["CHANGELOG_V3100"] = [=[v3.10.0 (2026-11-12)
 
-Collections gains Illusions and Titles tabs, a faction filter and better 3D previews, and the weekly planner covers Season 2.
+Warband Nexus now runs on WoW Forever, with its own build that loads only what that game has.
 
 Added:
-- New Illusions and Titles tabs in Collections, with a weapon preview for illusions and the achievement that awards each title.
-- Alliance and Horde filters for mounts, pets, toys and titles.
-- Season 2 weeklies in the To-Do weekly planner: Unity Against the Void, Vaults of Atal'Utek, Turn Back the Surge, Cursed Keepsake, the Midnight Prey, Dungeons, Raid, Ritual Sites and Offworld Showdowns weeklies, Hope in the Darkest Corners, Sparks of War: The Coiled Isle and the Aethas weekly rotation.
-- The Gear page has a new side card layout and a stats card that shows diminishing returns and updates live.
-- A new painted icon set across the addon: class crests, faction emblems, tabs, sources, Great Vault and more.
+- WoW Forever support: characters, gold, bags and bank, currencies, reputations, gear, collections, To-Do and PvP work on WoW Forever. Retail-only features stay out of that build.
+- Legacy tab on WoW Forever: account-wide Legacy points, reward tiers with their rewards, and challenges in collapsible groups.
+- Skills and Talents windows: trainer skills laid out by talent tree, rank strips under each skill and talent, and full rank tooltips.
+- A "skills ready to train" alert when a WoW Forever character levels up.
+- WoW Forever details on the Characters tab: two-word names, honor rank, and Hardcore and Self-Found tags.
+- Try Counter on WoW Forever tracks the drops that exist there: the Zul'Gurub raptor and tiger, Deathcharger's Reins, the Qiraji crystals and classic pets.
 
 Updated:
-- Mount, pet and illusion previews use Blizzard's own camera framing on a full black stage, without a rider. Right-click and drag to move the model.
-- Switching tabs is faster, with no duplicate repaints or per-paint hitches.
+- Gear stats are grouped, show bars beside every value, include resistances, and use larger icons. Empty slots have their own art.
+- Pages keep a fixed scrollbar gutter, so content no longer shifts when a scrollbar appears or hides.
 
 Fixed:
-- The To-Do button in a collectible's details now adds and removes it and updates its icon right away.
-- Great Vault cards for offline characters no longer show the current character's progress.
-- Placeholder [PH] entries, wrong pet and toy source groups and wrong toy counts no longer appear in Collections. The Wowhead link popup stays on screen.
+- Settings rows no longer drift out of line, and the empty Collections Recent page no longer scrolls.
 
 CurseForge: Warband Nexus]=]
 
@@ -2375,3 +2433,49 @@ L["EA_OPT_REWARD_PROGRESS"] = "Ödül İlerlemesini Göster"
 L["EA_OPT_REWARD_PROGRESS_DESC"] = "Bir sonraki kasa ödülü eşiğine doğru mevcut ilerlemeyi gösterir."
 L["EA_OPT_INCLUDE_BOUNTY"] = "Delver's Bounty'yi Dahil Et"
 L["EA_OPT_INCLUDE_BOUNTY_DESC"] = "Yalnızca Delver's Bounty toplamış karakterleri de gösterir."
+
+-- Character tab: Skills / Talents columns (WoW Forever)
+L["CHARS_COL_SKILLS"] = "Yetenekler"
+L["CHARS_COL_TALENTS"] = "Yetkinlikler"
+L["SKILLS_READY_TO_TRAIN"] = "Şimdi öğrenebilirsin"
+L["SKILLS_RANK_FMT"] = "Seviye %d"
+L["SKILLS_PILL_LEVEL_FMT"] = "Seviye %d gerekir"
+L["SKILLS_STATE_LEARNED"] = "Öğrenildi"
+L["SKILLS_READY_SUMMARY_FMT"] = "Öğrenilebilir: %d yetenek - %d seviye"
+L["SKILLS_NOT_LEARNED_YET"] = "Henüz öğrenilmedi"
+L["SKILLS_WEAPON_ARMOR"] = "Silah ve Zırh Becerileri"
+-- WoW Forever variants (ns.L_GameType): copy without Warband Bank / Vault / M+ / rated brackets
+L["MODULE_CURRENCIES_DESC_FOREVER"] = "Karakterlerinin para birimlerini takip eder (Altın, Onur vb.)"
+L["MODULE_ITEMS_DESC_FOREVER"] = "Banka ve çanta eşyalarını, aramayı ve eşya kategorilerini takip eder"
+L["MODULE_STORAGE_DESC_FOREVER"] = "Karakter çantalarını ve kişisel bankayı takip eder"
+L["MODULE_PVE_DESC_FOREVER"] = "Raid ve zindan kilitlerini takip eder (Kayıtlı Instance'lar)"
+L["MODULE_PVP_DESC_FOREVER"] = "Onur rütbesini, onur ilerlemesini ve maç geçmişini takip eder. Kapatmak tüm PvP veri toplamayı durdurur."
+L["MODULE_PROFESSIONS_DESC_FOREVER"] = "Karakterlerin meslek becerilerini ve tariflerini takip eder. Bir meslek penceresi açıkken Tarif Yardımcısı'nda malzeme sayılarını gösterir."
+L["ITEMS_SUBTITLE_FOREVER"] = "Kişisel eşyalarına göz at (Banka + Envanter)"
+L["EMPTY_ITEMS_DESC_FOREVER"] = "Eşyaları taramak için bankanı aç.\nEşyalar ilk ziyarette otomatik olarak kaydedilir."
+L["EMPTY_PLANS_ACTIVE_DESC_FOREVER"] = "Listene hedef eklemek için yukarıdan Binek, Evcil Hayvan veya Başarımlara göz at."
+L["SKILLS_VISIT_TRAINER"] = "Öğrenilebilir yetenekleri görmek için sınıf hocanı bir kez ziyaret et"
+L["SKILLS_LEVELUP_TITLE_FMT"] = "%d yetenek öğrenilmeye hazır"
+L["SKILLS_LEVELUP_NEW_SPELLS_FMT"] = "%d yeni"
+L["SKILLS_LEVELUP_NEW_RANKS_FMT"] = "%d yeni seviye"
+L["SKILLS_LOCKED_BY_LEVEL"] = "Daha yüksek seviye gerekli"
+L["SKILLS_NO_TRAINER_DATA"] = "Öğretilebilir büyüleri görmek için sınıf eğitmenine bir kez uğra."
+L["SKILLS_KNOWN"] = "Bilinen"
+L["TALENTS_SPENT"] = "Harcanan puan"
+L["TALENTS_UNSPENT"] = "Harcanmamış puan"
+L["TALENTS_TIER"] = "Kademe"
+L["TALENTS_TIER_NEEDS"] = "%d gerekli"
+L["TALENTS_TREE"] = "%d. ağaç"
+L["CLICK_FOR_FULL_VIEW"] = "Tamamı için tıkla"
+L["TALENTS_NONE_SELECTED"] = "Henüz yetkinlik seçilmedi"
+L["SKILLS_NONE_KNOWN"] = "Henüz yetenek kaydedilmedi"
+L["LEVEL_ABBR_N"] = "Sv. %d"
+L["SKILLS_CLICK_TO_OPEN"] = "Yetenek listesini açmak için tıkla"
+L["SKILLS_NOTHING_TO_TRAIN"] = "Şu an öğrenebileceğin bir şey yok"
+L["RECIPES_KNOWN"] = "Bilinen tarifler"
+L["RECIPES_NOT_LEARNED"] = "Öğrenilmemiş"
+L["RECIPES_NONE_KNOWN"] = "Henüz hiçbiri öğrenilmedi"
+L["RECIPES_ALL_LEARNED"] = "Buradaki her şey öğrenilmiş"
+L["RECIPES_OPEN_WINDOW_ONCE"] = "Tariflerini görmek için bu mesleğin penceresini bir kez aç."
+L["CONFIG_SHOW_CHARACTER_SURNAME"] = "Soyadı Göster"
+L["CONFIG_SHOW_CHARACTER_SURNAME_DESC"] = "Karakter adının ikinci yarısını gösterir. Kapatırsan her yerde yalnız ilk ad kullanılır."

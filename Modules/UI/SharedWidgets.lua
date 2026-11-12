@@ -10,6 +10,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local Constants = ns.Constants
 local E = Constants.EVENTS
 
@@ -1646,7 +1649,7 @@ local function CreateNoticeFrame(parent, title, description, iconType, width, he
     titleText:SetPoint("LEFT", icon, "RIGHT", 10, 5)
     titleText:SetPoint("RIGHT", -10, 5)
     titleText:SetJustifyH("LEFT")
-    titleText:SetText("|cffffcc00" .. title .. "|r")
+    titleText:SetText(HEX.gold .. title .. "|r")
     
     -- Description
     local descText = FontManager:CreateFontString(frame, UIFontRole("noticeBody"), "OVERLAY")
@@ -1742,12 +1745,37 @@ function ns.UI_EnsureScrollChildViewportFill(scrollChild)
     fill:Show()
 end
 
+--[[
+    Tabs whose page NEVER scrolls as a whole: they fill the viewport and all scrolling happens in
+    their own inner panels. Declared here, by tab, rather than passed in by whoever happens to call
+    -- a tab is redrawn from several paths (first paint, deferred body, partial redraw, resize
+    commit) and the rule has to hold whichever one runs last. Passing it per call meant the one
+    path that forgot it undid the others, which is how Collections kept its 12 px of range.
+]]
+local FILL_VIEWPORT_TABS = {
+    collections = true,
+}
+
 --- Characters / list tabs: scrollChild fills viewport between title chrome and footer.
-function ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, tabBodyHeight)
+---@param fillsViewport boolean|nil the page NEVER scrolls as a whole -- it fills the viewport and
+--- any scrolling happens in its own inner panels (Collections). The child is pinned to the
+--- viewport and the measured body is ignored. Without this, a body measured a pixel over a
+--- viewport that had not finished settling took the overflow branch and gained a bottom pad, so a
+--- page with nothing to scroll scrolled by exactly that pad. `/wn uiprobe` measured 12 px.
+function ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, tabBodyHeight, fillsViewport)
     if not mainFrame or not scrollChild or not mainFrame.scroll then return end
     local bottomPad = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
-    local scrollTop = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
-    local bodyH = scrollTop + (tabBodyHeight or 0)
+    --[[
+        `tabBodyHeight` is the content BOTTOM, measured from the top of the scroll child.
+
+        It used to have the tab content start offset added here on top of whatever the caller
+        passed -- and every caller already starts its own offset at that same value, because that is
+        where the first block is placed. So the offset was counted twice, every tab was reported
+        eight pixels taller than it drew, and a page that exactly filled the viewport was pushed
+        into scrolling by a gap that does not exist. Callers pass what they measured; this adds
+        nothing to it.
+    ]]
+    local bodyH = tabBodyHeight or 0
     local viewportH = mainFrame.scroll:GetHeight() or 0
     if viewportH < 2 and mainFrame.fixedHeader then
         local fhBot = mainFrame.fixedHeader:GetBottom()
@@ -1756,7 +1784,36 @@ function ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, tabBodyHeight)
             viewportH = fhBot - sb
         end
     end
-    scrollChild:SetHeight(math.max(bodyH + bottomPad, viewportH))
+    --[[
+        Padding below the content never creates a scrollbar.
+
+        `bottomPad` exists to stop the last row sitting flush against the bottom edge WHILE the page
+        scrolls. Adding it unconditionally made a body that exactly fills the viewport -- an empty
+        state, a fill-the-page card -- overflow by the pad alone, so tabs with nothing to scroll
+        showed a bar and gave up the lane for it. The pad is only real once the content itself
+        overflows.
+    ]]
+    if fillsViewport == nil then
+        fillsViewport = FILL_VIEWPORT_TABS[mainFrame.currentTab] or nil
+    end
+    -- Trace for `/wn uiprobe`: which branch ran, with the numbers it ran on. The scroll child's
+    -- height is written from several places, so when it ends up taller than the viewport the first
+    -- question is whether this function was even the one that set it.
+    scrollChild._wnLastSync = {
+        tab = mainFrame.currentTab,
+        bodyH = bodyH,
+        viewportH = viewportH,
+        fill = fillsViewport and true or false,
+        at = GetTime and GetTime() or 0,
+        n = ((scrollChild._wnLastSync and scrollChild._wnLastSync.n) or 0) + 1,
+    }
+    if fillsViewport or bodyH <= viewportH then
+        scrollChild._wnLastSync.result = viewportH
+        scrollChild:SetHeight(viewportH)
+    else
+        scrollChild._wnLastSync.result = bodyH + bottomPad
+        scrollChild:SetHeight(bodyH + bottomPad)
+    end
     if ns.UI_SyncMainScrollBarColumns then
         ns.UI_SyncMainScrollBarColumns(mainFrame)
     end
@@ -2318,9 +2375,24 @@ end
 --- Horizontal position is **parent-relative** (`desiredLeftFromParent`), cancelling the anchor's own indent.
 --- @param gapBelowPrev number|nil pixels below previous anchor bottom; defaults to SECTION_SPACING when prev exists
 --- @param fallbackYOffsetFromTop number|nil used only when `prevAnchorFrame` is nil (TOPLEFT from parent top)
-local function ChainSectionFrameBelow(parent, frame, prevAnchorFrame, desiredLeftFromParent, gapBelowPrev, fallbackYOffsetFromTop)
+--[[
+    `spanParent`: mark this section as one whose width tracks its parent.
+
+    A chained section is anchored by its TOPLEFT only -- to the previous sibling's bottom -- and
+    keeps whatever width it was created with. It cannot simply be anchored TOPRIGHT as well: the
+    two points would define the top edge twice, at different heights, which WoW resolves into a
+    skewed frame. So the width stays explicit, and this flag records that the frame WANTS to follow
+    its parent. UI_RelayoutResultsViewport re-applies it on every viewport width change, which is
+    how a section reaches the edge again after the scrollbar lane opens or closes, or the window is
+    resized, without the tab being redrawn.
+
+    Not every chained section wants this: Storage chains inside a scroll child deliberately wider
+    than its viewport so the tab can scroll sideways. Those pass nothing and keep their own width.
+]]
+local function ChainSectionFrameBelow(parent, frame, prevAnchorFrame, desiredLeftFromParent, gapBelowPrev, fallbackYOffsetFromTop, spanParent)
     if not parent or not frame then return end
     desiredLeftFromParent = desiredLeftFromParent or 0
+    frame._wnChainSpansParent = spanParent or nil
     frame:ClearAllPoints()
     if prevAnchorFrame then
         local layout = ns.UI_LAYOUT or {}
@@ -2453,7 +2525,7 @@ ns.UI_GetClassColorHexForSurface = GetClassColorHexForSurface
 ---@return string
 function ns.UI_FormatClassColoredName(name, classFile)
     if not name or (issecretvalue and issecretvalue(name)) or name == "" then
-        local muted = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+        local muted = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.dim
         return muted .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
     end
     local hex = GetClassColorHexForSurface(classFile)
@@ -2494,12 +2566,12 @@ end
 ---@return string
 function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
     if not displayName or (issecretvalue and issecretvalue(displayName)) or displayName == "" then
-        return "|cffaaaaaa"
+        return HEX.muted
     end
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
     local chars = db and db.characters
     if type(chars) ~= "table" then
-        return "|cffaaaaaa"
+        return HEX.muted
     end
     local cache = ns.UI_WarbandClassTokenCache
     local map = cache.map
@@ -2514,6 +2586,14 @@ function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
                 if map[lower] == nil then
                     map[lower] = ResolveClassFileTokenFromCharData(charData) or false
                 end
+                -- Printed labels carry the Forever surname ("Elementalist Vhorzen"); index that too.
+                local surname = charData.surname
+                if type(surname) == "string" and surname ~= "" and not (issecretvalue and issecretvalue(surname)) then
+                    local full = lower .. " " .. surname:lower()
+                    if map[full] == nil then
+                        map[full] = ResolveClassFileTokenFromCharData(charData) or false
+                    end
+                end
             end
         end
         cache.map = map
@@ -2523,7 +2603,7 @@ function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
     if token then
         return "|cff" .. GetClassColorHexForSurface(token)
     end
-    return "|cffaaaaaa"
+    return HEX.muted
 end
 
 -- NAMESPACE EXPORTS

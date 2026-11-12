@@ -45,11 +45,14 @@ M.DIFF_INFO = {
     [2]  = { short = "H",      name = "Heroic",           color = {0.00, 0.44, 0.87}, hex = "0070dd" },
     [23] = { short = "M",      name = "Mythic",           color = {0.64, 0.21, 0.93}, hex = "a335ee" },
     [8]  = { short = "M+",     name = "Mythic Keystone",  color = {0.90, 0.45, 0.10}, hex = "ff8000" },
+    -- Size-based raids (vanilla-plus / Forever): one difficulty each, drawn like Normal.
+    [9]   = { short = "40",    name = "40 Player",        color = {0.12, 0.78, 0.12}, hex = "1eff00" },
+    [148] = { short = "20",    name = "20 Player",        color = {0.12, 0.78, 0.12}, hex = "1eff00" },
 }
 M.FALLBACK_DIFF = { short = "?", name = "Unknown", color = {0.4, 0.4, 0.4}, hex = "aaaaaa" }
 M.DIFFICULTY_ORDER_DESC = { 16, 15, 14, 17 }  -- Mythic > Heroic > Normal > LFR
 -- Sort priority for the Saved Instances grid: LFR first, then N, H, M (dungeons align to same tiers)
-M.DIFF_SORT_RANK = { [17] = 1, [14] = 2, [1] = 2, [15] = 3, [2] = 3, [16] = 4, [23] = 4, [8] = 5 }
+M.DIFF_SORT_RANK = { [17] = 1, [14] = 2, [1] = 2, [9] = 2, [148] = 2, [15] = 3, [2] = 3, [16] = 4, [23] = 4, [8] = 5 }
 
 function M.GetDiffInfo(difficulty)
     return DIFF_INFO[difficulty] or FALLBACK_DIFF
@@ -334,6 +337,10 @@ function M.BuildSavedInstancesFrame()
         { key = "heroic",  label = "H",   diff = 15 },
         { key = "mythic",  label = "M",   diff = 16 },
     }
+    -- No LFR / H / M tiers on this client: the row keeps only the summary on the right.
+    if WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("raidDifficultyTiers") then
+        filterBtns = {}
+    end
     local fx = lay.rowInnerPad
     for _, fb in ipairs(filterBtns) do
         local di = GetDiffInfo(fb.diff)

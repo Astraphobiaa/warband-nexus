@@ -269,7 +269,7 @@ local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
             if state.sourceIndex == 1 then
                 pcall(function()
                     C_ToyBox.SetCollectedShown(true)
-                    C_ToyBox.SetUncollectedShown(true)
+                    pcall(C_ToyBox.SetUncollectedShown, true)
                     C_ToyBox.SetFilterString("")
                 end)
             end
@@ -296,7 +296,7 @@ local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
             pcall(function()
                 C_ToyBox.SetAllSourceTypeFilters(true)
                 if state.origCollected ~= nil then C_ToyBox.SetCollectedShown(state.origCollected) end
-                if state.origUncollected ~= nil then C_ToyBox.SetUncollectedShown(state.origUncollected) end
+                if state.origUncollected ~= nil then pcall(C_ToyBox.SetUncollectedShown, state.origUncollected) end
                 if state.origFilterString then C_ToyBox.SetFilterString(state.origFilterString) end
                 for i, checked in pairs(state.origSourceFilters) do
                     if C_ToyBox.SetSourceTypeFilter then C_ToyBox.SetSourceTypeFilter(i, checked) end
@@ -309,7 +309,7 @@ local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
             if not InCombatLockdown() then
                 pcall(function()
                     C_ToyBox.SetCollectedShown(true)
-                    C_ToyBox.SetUncollectedShown(true)
+                    pcall(C_ToyBox.SetUncollectedShown, true)
                     C_ToyBox.SetAllSourceTypeFilters(true)
                     C_ToyBox.SetFilterString("")
                     if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
@@ -342,7 +342,7 @@ local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
             if not InCombatLockdown() then
                 pcall(function()
                     if state.origCollected ~= nil then C_ToyBox.SetCollectedShown(state.origCollected) end
-                    if state.origUncollected ~= nil then C_ToyBox.SetUncollectedShown(state.origUncollected) end
+                    if state.origUncollected ~= nil then pcall(C_ToyBox.SetUncollectedShown, state.origUncollected) end
                     if state.origFilterString then C_ToyBox.SetFilterString(state.origFilterString) end
                     if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
                 end)

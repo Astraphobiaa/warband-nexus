@@ -136,9 +136,17 @@ local COLORS = {
     tabActive = {0.20, 0.12, 0.30, 1},
     tabHover = {0.24, 0.14, 0.35, 1},
     tabInactive = {0.05, 0.05, 0.065, 1},
+    --- Semantic accents. EVERY key here must also exist in EVERY SURFACE_VARIANTS entry:
+    --- a key present in one variant and missing from another silently keeps the wrong value.
+    --- Per-variant values are set by contrast target against `surfaceRowOdd` (darkest surface
+    --- the ink can land on), minimum 4.5:1 — never by lightening/darkening the other variant.
     gold = {1.00, 0.82, 0.00, 1},
     green = {0.30, 0.90, 0.30, 1},
     red = {0.95, 0.30, 0.30, 1},
+    orange = {1.00, 0.65, 0.25, 1},
+    info = {0.40, 0.80, 1.00, 1},
+    pet = {1.00, 0.41, 0.71, 1},
+    toy = {1.00, 0.40, 1.00, 1},
     textBright = {1, 1, 1, 1},
     textNormal = {0.85, 0.85, 0.85, 1},
     textMuted = {0.70, 0.70, 0.72, 1},
@@ -158,10 +166,17 @@ local SURFACE_VARIANTS = {
         surfaceHeaderChrome = {0.098, 0.098, 0.122, 0.97},
         surfaceRowEven = {0.112, 0.112, 0.138, 0.96},
         surfaceRowOdd = {0.090, 0.090, 0.112, 0.96},
-        borderLight = {0.30, 0.30, 0.38, 1},
+        -- Card/row boundary: 3:1 against the darkest surface it separates (WCAG 1.4.11 non-text).
+        -- At {0.30, 0.30, 0.38} this measured 2.15 -- edges a reader has to hunt for.
+        borderLight = {0.39, 0.39, 0.49, 1}, -- 3.05:1 on surfaceRowOdd
         tabInactive = {0.05, 0.05, 0.065, 1},
         gold = {1.00, 0.82, 0.00, 1},
         green = {0.30, 0.90, 0.30, 1},
+        red = {0.95, 0.30, 0.30, 1},
+        orange = {1.00, 0.65, 0.25, 1},
+        info = {0.40, 0.80, 1.00, 1},
+        pet = {1.00, 0.41, 0.71, 1},
+        toy = {1.00, 0.40, 1.00, 1},
         textBright = {1, 1, 1, 1},
         textNormal = {0.85, 0.85, 0.85, 1},
         textMuted = {0.70, 0.70, 0.72, 1},
@@ -176,17 +191,39 @@ local SURFACE_VARIANTS = {
         surfaceHeaderChrome = {0.905, 0.900, 0.890, 0.99},
         surfaceRowEven = {0.915, 0.910, 0.900, 0.98},
         surfaceRowOdd = {0.855, 0.850, 0.838, 0.98},
-        borderLight = {0.72, 0.70, 0.68, 1},
+        -- Same 3:1 boundary rule as dark. At {0.72, 0.70, 0.68} this measured 1.48 on rows: the
+        -- card and row edges were effectively invisible, so nothing told the eye where a row ended.
+        borderLight = {0.49, 0.47, 0.46, 1}, -- 3.05:1 on surfaceRowOdd
         tabInactive = {0.945, 0.940, 0.932, 1},
         tabActive = {0.910, 0.905, 0.895, 0.98},
         tabHover = {0.925, 0.920, 0.912, 0.98},
-        gold = {0.95, 0.78, 0.32, 1},
-        green = {0.55, 0.88, 0.45, 1},
-        -- Charcoal ink ladder (THEME-TOKENS.md); no outline on role ink — colored accents only.
-        textBright = {0.12, 0.12, 0.14, 1},
-        textNormal = {0.24, 0.24, 0.28, 1},
-        textMuted = {0.38, 0.38, 0.42, 1},
-        textDim = {0.50, 0.50, 0.54, 1},
+        -- Semantic accents move toward the INK end here, never toward white: a light-mode accent
+        -- is picked for contrast against `surfaceRowOdd` (>= 4.5:1), not by lightening the dark
+        -- value. The lightened set this replaced measured 1.14:1 on rows — legible only when the
+        -- text happened to carry an OUTLINE, which `GetAAFlags` withholds from inline |cff markup.
+        gold = {0.49, 0.34, 0.03, 1},   -- 4.60:1 on surfaceRowOdd
+        green = {0.09, 0.42, 0.17, 1},  -- 4.67:1
+        red = {0.66, 0.14, 0.14, 1},    -- 5.04:1
+        orange = {0.58, 0.29, 0.02, 1}, -- 4.59:1
+        info = {0.08, 0.34, 0.58, 1},   -- 5.28:1
+        pet = {0.62, 0.14, 0.42, 1},    -- 5.09:1
+        toy = {0.48, 0.18, 0.58, 1},    -- 5.60:1
+        --[[
+            Charcoal ink ladder; no outline on role ink -- colored accents only.
+
+            EVERY rung clears 4.5:1 on `surfaceRowOdd`, including Dim. The ladder used to let the
+            bottom rung sit at large-text contrast (3:1), but the body size here is 12 and small is
+            10 -- neither is large text, so Dim was shipping under AA wherever it was used, which is
+            secondary descriptions and empty-state copy: exactly the text that is already hardest.
+            This theme exists for a reader who needs the help, so there is no rung below AA.
+
+            Dim at 4.5 sits close to the old Muted, so Muted moved darker to keep four rungs
+            visibly apart. Spread, not just compliance: a ladder whose rungs look alike is one rung.
+        ]]
+        textBright = {0.12, 0.12, 0.14, 1}, -- 11.66:1
+        textNormal = {0.24, 0.24, 0.28, 1}, --  7.56:1
+        textMuted = {0.30, 0.30, 0.33, 1},  --  6.00:1 (was 0.36 -> 4.69, too near Dim)
+        textDim = {0.37, 0.37, 0.40, 1},    --  4.55:1 (was 0.46 -> 3.21, under AA)
     },
     classic = ns.UI_CLASSIC_SURFACE_VARIANT or {
         bg = { 0.065, 0.065, 0.075, 1 },
@@ -202,12 +239,42 @@ local SURFACE_VARIANTS = {
         tabHover = { 0.105, 0.105, 0.120, 0.98 },
         gold = { 1.00, 0.82, 0.00, 1 },
         green = { 0.35, 0.85, 0.35, 1 },
+        red = { 0.95, 0.30, 0.30, 1 },
+        orange = { 1.00, 0.65, 0.25, 1 },
+        info = { 0.40, 0.80, 1.00, 1 },
+        pet = { 1.00, 0.41, 0.71, 1 },
+        toy = { 1.00, 0.40, 1.00, 1 },
         textBright = { 1.00, 0.97, 0.85, 1 },
         textNormal = { 0.92, 0.88, 0.78, 1 },
         textMuted = { 0.78, 0.72, 0.62, 1 },
         textDim = { 0.62, 0.58, 0.50, 1 },
     },
 }
+
+-- Key parity guard: `UpdateColorsFromTheme` copies `for key in pairs(variant)`, so a key that
+-- exists in one variant and not another is never swapped back — it silently keeps whatever the
+-- previously applied variant left in the row. That is how `red` stayed dark-mode red on light
+-- surfaces. Reported once at load; never raises, so a missing key can't break the addon.
+-- Scoped to the semantic accents + ink ladder. `border` / `accent` / `accentDark` / `tabActive`
+-- / `tabHover` / `white` are deliberately absent from the variants: they come from the accent
+-- theme (class color or profile) via `CalculateThemeColors`, not from the surface variant.
+do
+    local required = {
+        "gold", "green", "red", "orange", "info", "pet", "toy",
+        "textBright", "textNormal", "textMuted", "textDim",
+    }
+    local missing = {}
+    for variantKey, variant in pairs(SURFACE_VARIANTS) do
+        for i = 1, #required do
+            if variant[required[i]] == nil then
+                missing[#missing + 1] = variantKey .. "." .. required[i]
+            end
+        end
+    end
+    if #missing > 0 and ns.DebugPrint then
+        ns.DebugPrint("[WN Theme] SURFACE_VARIANTS key parity gaps: " .. table.concat(missing, ", "))
+    end
+end
 
 local function TextLuminance(r, g, b)
     return 0.299 * r + 0.587 * g + 0.114 * b
@@ -1023,10 +1090,13 @@ end
 
 --- Theme-aware semantic gold RGBA (money amounts, iLvl labels in light mode).
 ---@return number r, number g, number b, number a
+--- Reads the live `COLORS` row, which `UpdateColorsFromTheme` already swapped for the active
+--- variant. It must NOT pass through `AdjustRGBForLightOutline`: that helper enforces a
+--- `minLum` floor meant to rescue arbitrary caller-supplied ink, and it would brighten these
+--- contrast-derived light-mode accents back out of spec.
 function ThemeAPI.GetSemanticGoldColor()
     local g = COLORS.gold
-    local r, gr, b = AdjustRGBForLightOutline(g[1], g[2], g[3])
-    return r, gr, b, g[4] or 1
+    return g[1], g[2], g[3], g[4] or 1
 end
 ns.UI_GetSemanticGoldColor = ThemeAPI.GetSemanticGoldColor
 
@@ -1041,11 +1111,7 @@ ns.UI_GetSemanticGoldHex = ThemeAPI.GetSemanticGoldHex
 --- Theme-aware semantic green RGBA (upgrade arrows, recommendation deltas).
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetSemanticGreenColor()
-    if IsLightModeEnabled() then
-        local g = COLORS.green or { 0.55, 0.88, 0.45, 1 }
-        return g[1], g[2], g[3], g[4] or 1
-    end
-    local g = COLORS.green or { 0.30, 0.90, 0.30, 1 }
+    local g = COLORS.green
     return g[1], g[2], g[3], g[4] or 1
 end
 ns.UI_GetSemanticGreenColor = ThemeAPI.GetSemanticGreenColor
@@ -1245,11 +1311,8 @@ ns.UI_FormatStackCountMarkup = ThemeAPI.FormatStackCountMarkup
 --- Secondary info lines (item ID, source hints) — theme-aware blue.
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetSemanticInfoColor()
-    if IsLightModeEnabled() then
-        local r, g, b = AdjustRGBForLightOutline(0.08, 0.34, 0.58)
-        return r, g, b, 1
-    end
-    return 0.4, 0.8, 1, 1
+    local c = COLORS.info
+    return c[1], c[2], c[3], c[4] or 1
 end
 ns.UI_GetSemanticInfoColor = ThemeAPI.GetSemanticInfoColor
 
@@ -1264,11 +1327,8 @@ ns.UI_GetSemanticInfoHex = ThemeAPI.GetSemanticInfoHex
 --- Collection stat accent — battle pets (theme-aware magenta).
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetSemanticPetColor()
-    if IsLightModeEnabled() then
-        local r, g, b = AdjustRGBForLightOutline(0.62, 0.14, 0.42)
-        return r, g, b, 1
-    end
-    return 1, 0.41, 0.71, 1
+    local c = COLORS.pet
+    return c[1], c[2], c[3], c[4] or 1
 end
 ns.UI_GetSemanticPetColor = ThemeAPI.GetSemanticPetColor
 
@@ -1282,11 +1342,8 @@ ns.UI_GetSemanticPetHex = ThemeAPI.GetSemanticPetHex
 --- Collection stat accent — toys (theme-aware purple).
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetSemanticToyColor()
-    if IsLightModeEnabled() then
-        local r, g, b = AdjustRGBForLightOutline(0.48, 0.18, 0.58)
-        return r, g, b, 1
-    end
-    return 1, 0.4, 1, 1
+    local c = COLORS.toy
+    return c[1], c[2], c[3], c[4] or 1
 end
 ns.UI_GetSemanticToyColor = ThemeAPI.GetSemanticToyColor
 
@@ -1389,21 +1446,16 @@ ns.UI_GetSubTabActiveBackdropRGBA = ThemeAPI.GetSubTabActiveBackdropRGBA
 --- Semantic negative (withdraw, deficits) — darker on light surfaces.
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetSemanticRedColor()
-    if IsLightModeEnabled() then
-        return 0.78, 0.18, 0.18, 1
-    end
-    local r = COLORS.red
-    return r[1], r[2], r[3], r[4] or 1
+    local c = COLORS.red
+    return c[1], c[2], c[3], c[4] or 1
 end
 ns.UI_GetSemanticRedColor = ThemeAPI.GetSemanticRedColor
 
 --- Semantic caution / withdraw-orange (money log withdraw column).
 ---@return number r, number g, number b, number a
 function ThemeAPI.GetSemanticOrangeColor()
-    if IsLightModeEnabled() then
-        return 0.72, 0.38, 0.06, 1
-    end
-    return 1, 0.65, 0.25, 1
+    local c = COLORS.orange
+    return c[1], c[2], c[3], c[4] or 1
 end
 ns.UI_GetSemanticOrangeColor = ThemeAPI.GetSemanticOrangeColor
 
@@ -1476,6 +1528,8 @@ function ThemeAPI.SyncSemanticColorAliases()
     if odd and spacing and spacing.ROW_COLOR_ODD then
         for i = 1, 4 do spacing.ROW_COLOR_ODD[i] = odd[i] end
     end
+    -- Defined further down this chunk; nil on the load-time call, re-synced right after.
+    if ThemeAPI.SyncUIHex then ThemeAPI.SyncUIHex() end
 end
 
 function ThemeAPI.SyncThemeSurfaceColors()
@@ -1500,8 +1554,62 @@ ns.UI_MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
     "professions",
     "collections",
     "plans",
+    "legacy",  -- WoW Forever only: built only where the "legacy" capability is on
     "stats",
 }
+
+-- ADDON-WIDE MARKUP TOKENS (`ns.UI_HEX`)
+--
+-- Roughly three quarters of the colored text in this addon is inline `|cff` markup spliced into
+-- a localized string, not a `SetTextColor` call. The RGBA getters above cannot serve that, so
+-- every file used to bridge the gap itself with a local `*Hex()` shim — 61 of them, wrapping the
+-- same getters behind conflicting hardcoded fallbacks (`ffd700` in one tab, `ffcc00` in the next).
+--
+-- This is that missing layer, generalized from the `PLAN_UI_COLORS` pattern below: one role ->
+-- markup table, re-synced in place on every theme change, so a cached `ns.UI_HEX` reference
+-- stays live. Read `ns.UI_HEX.<role>` at the call site.
+--
+-- RULE: no file under Modules/UI may define its own color resolver or write a bare `|cff`. If a
+-- role is missing here, add it here. A fallback literal at the call site is not a safety net —
+-- it is a second palette that diverges silently.
+ns.UI_HEX = {
+    -- Ink ladder
+    bright = "|cffffffff",
+    normal = "|cffffffff",
+    muted = "|cffb3b3b8",
+    dim = "|cff8c8c8c",
+    -- Semantic accents
+    gold = "|cffffd100",
+    green = "|cff4ce54c",
+    red = "|cfff24c4c",
+    orange = "|cffffa640",
+    info = "|cff66ccff",
+    pet = "|cffff69b5",
+    toy = "|cffff66ff",
+    accent = "|cff663394",
+}
+
+--- Re-point every `ns.UI_HEX` role at the live `COLORS` rows. Called from
+--- `SyncSemanticColorAliases`, which runs after any in-place `COLORS` mutation.
+function ThemeAPI.SyncUIHex()
+    local h = ns.UI_HEX
+    if not h then return end
+    h.bright = ThemeAPI.GetTextRoleHex("Bright")
+    h.normal = ThemeAPI.GetTextRoleHex("Normal")
+    h.muted = ThemeAPI.GetTextRoleHex("Muted")
+    h.dim = ThemeAPI.GetTextRoleHex("Dim")
+    h.gold = ThemeAPI.GetSemanticGoldHex()
+    h.green = ThemeAPI.GetSemanticGreenHex()
+    local rr, rg, rb = ThemeAPI.GetSemanticRedColor()
+    h.red = format("|cff%02x%02x%02x", rr * 255, rg * 255, rb * 255)
+    local orr, org, orb = ThemeAPI.GetSemanticOrangeColor()
+    h.orange = format("|cff%02x%02x%02x", orr * 255, org * 255, orb * 255)
+    h.info = ThemeAPI.GetSemanticInfoHex()
+    h.pet = ThemeAPI.GetSemanticPetHex()
+    h.toy = ThemeAPI.GetSemanticToyHex()
+    local r, g, b = ThemeAPI.GetAccentTextRGBA()
+    h.accent = format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
+end
 
 -- PLAN UI COLORS (factory-standardized for Plans, WN Plan, Collections achievement UIs)
 -- Semantic tiers: title/body/label/metric — accent is chrome-only (borders), never ink.
@@ -1553,6 +1661,7 @@ function ThemeAPI.SyncPlanUIColors()
         p.incompleteRgb = { 1, 1, 1 }
     end
 end
+ThemeAPI.SyncUIHex()
 ThemeAPI.SyncPlanUIColors()
 
 --- Live plan card markup color (`ns.PLAN_UI_COLORS` key).

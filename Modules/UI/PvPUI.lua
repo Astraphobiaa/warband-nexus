@@ -12,6 +12,9 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
 
@@ -96,19 +99,19 @@ local RATED_CARD_MIN_W = 108
 
 -- UI_GetTextRoleHex returns the FULL "|cffXXXXXX" escape — never re-prefix it.
 local function MutedHex()
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.muted
 end
 
 local function BrightHex()
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function OutcomeMarkup(outcome)
     if outcome == "win" then
-        local hex = (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff33cc55"
+        local hex = (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or HEX.green
         return hex .. ((VICTORY) or "Victory") .. "|r"
     elseif outcome == "loss" then
-        return "|cffcc4433" .. ((DEFEAT) or "Defeat") .. "|r"
+        return HEX.red .. ((DEFEAT) or "Defeat") .. "|r"
     elseif outcome == "draw" then
         return MutedHex() .. ((L and L["PVP_DRAW"]) or "Draw") .. "|r"
     end
@@ -689,8 +692,8 @@ local function ShowMatchTooltip(owner, m)
             local deltaStr = ""
             if delta and delta ~= 0 then
                 local hex = delta > 0
-                    and ((ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff33cc55")
-                    or "|cffcc4433"
+                    and ((ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or HEX.green)
+                    or HEX.red
                 deltaStr = string.format(" %s(%s%d)|r", hex, delta > 0 and "+" or "", delta)
             end
             GameTooltip:AddDoubleLine((L and L["PVP_TT_MMR"]) or "MMR",

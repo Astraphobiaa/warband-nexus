@@ -19,6 +19,9 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local Factory = ns.UI and ns.UI.Factory
@@ -50,7 +53,7 @@ local function TextHex(role)
         local hex = ns.UI_GetTextRoleHex(role)
         if hex then return hex end
     end
-    return "|cffeeeeee"
+    return HEX.bright
 end
 
 local function Marker(status)
@@ -60,7 +63,7 @@ local function Marker(status)
         if m and m ~= "" then return m end
     end
     -- Last resort stays inside printable ASCII; a unicode glyph would render as a box.
-    return (status == "fail") and "|cffff4444x|r" or "|cff888888-|r"
+    return (status == "fail") and HEX.red .. "x|r" or HEX.dim .. "-|r"
 end
 
 local function NewLine(parent, role)
@@ -157,7 +160,7 @@ function ns.UI_ShowTryCounterTestResults(rows, totals)
             text:SetWidth(TEXT_W)
             local body = TextHex(meta.role) .. tostring(row.label) .. "|r"
             if row.status == "fail" and row.err then
-                body = body .. "\n|cffff8888" .. tostring(row.err) .. "|r"
+                body = body .. "\n" .. HEX.red .. tostring(row.err) .. "|r"
             end
             text:SetText(body)
 

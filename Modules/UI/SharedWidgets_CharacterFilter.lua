@@ -841,6 +841,24 @@ local function SortOptionLabel(key, fallback)
     return (ns.L and ns.L[key]) or fallback
 end
 
+--[[
+    Sort modes that order by something this client does not show: on Forever the realm is an
+    internal id behind a PvE / PvP / RP tag (A-Z of ids looks random) and there is no average
+    item level (the column is gone; every row would tie).
+]]
+local SORT_MODE_CAPABILITY = { realm = { "realmTypeTag", false }, ilvl = { "averageItemLevel", true } }
+local function DropUnsupportedSortModes(out)
+    local WN = ns.WarbandNexus
+    if not (WN and WN.SupportsFeature) then return out end
+    for i = #out, 1, -1 do
+        local rule = SORT_MODE_CAPABILITY[out[i].key]
+        if rule and WN:SupportsFeature(rule[1]) ~= rule[2] then
+            table.remove(out, i)
+        end
+    end
+    return out
+end
+
 --- Shared character-list sort modes (same order on every tab).
 function ns.UI_BuildCharacterSortOptions()
     local out = {}
@@ -853,13 +871,18 @@ function ns.UI_BuildCharacterSortOptions()
     out[#out + 1] = { key = "gold", label = SortOptionLabel("SORT_MODE_GOLD", "Gold (Highest)") }
     out[#out + 1] = { key = "realm", label = SortOptionLabel("SORT_MODE_REALM", "Realm (A-Z)") }
     out[#out + 1] = { key = "guild", label = SortOptionLabel("SORT_MODE_GUILD", "Guild (A-Z)") }
-    return out
+    return DropUnsupportedSortModes(out)
 end
 
 --- PvP Warband Overview: roster sort modes + best rated bracket.
 function ns.UI_BuildPvpOverviewSortOptions()
     local out = {}
-    out[#out + 1] = { key = "pvpRating", label = SortOptionLabel("SORT_MODE_PVP_RATING", "Rating (Highest)") }
+    -- Forever has no rating: its roster sorts by honor rank instead.
+    if WarbandNexus and WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("pvpRankLadder") then
+        out[#out + 1] = { key = "pvpRank", label = SortOptionLabel("SORT_MODE_PVP_RANK", "Rank (Highest)") }
+    else
+        out[#out + 1] = { key = "pvpRating", label = SortOptionLabel("SORT_MODE_PVP_RATING", "Rating (Highest)") }
+    end
     out[#out + 1] = { key = "default", label = SortOptionLabel("SORT_MODE_DEFAULT", "Default Order") }
     out[#out + 1] = { key = "manual", label = SortOptionLabel("SORT_MODE_MANUAL", "Manual (Custom Order)") }
     out[#out + 1] = { key = "name", label = SortOptionLabel("SORT_MODE_NAME", "Name (A-Z)") }
@@ -869,7 +892,7 @@ function ns.UI_BuildPvpOverviewSortOptions()
     out[#out + 1] = { key = "gold", label = SortOptionLabel("SORT_MODE_GOLD", "Gold (Highest)") }
     out[#out + 1] = { key = "realm", label = SortOptionLabel("SORT_MODE_REALM", "Realm (A-Z)") }
     out[#out + 1] = { key = "guild", label = SortOptionLabel("SORT_MODE_GUILD", "Guild (A-Z)") }
-    return out
+    return DropUnsupportedSortModes(out)
 end
 
 ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown

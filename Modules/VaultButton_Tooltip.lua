@@ -138,7 +138,7 @@ function M.FormatProgressFraction(progress, maxVal, isCapped)
 end
 
 function M.FormatEasyAccessCharacterTitle(charRow, entry)
-    local name = (entry and entry.name) or (charRow and charRow.name) or "?"
+    local name = (entry and entry.name) or (charRow and ns.CharDisplayName(charRow, charRow.name)) or "?"
     if issecretvalue and issecretvalue(name) then name = "?" end
     local realm = (entry and entry.realm) or (charRow and charRow.realm) or ""
     if issecretvalue and issecretvalue(realm) then realm = "" end
@@ -581,7 +581,7 @@ BuildEasyAccessTooltipData = function(charKey, entry)
     local charRow = chars and chars[charKey]
     local tooltipEntry = entry or {}
     if not tooltipEntry.name and charRow then
-        tooltipEntry.name = charRow.name
+        tooltipEntry.name = ns.CharDisplayName(charRow, charRow.name)
     end
     if not tooltipEntry.classFile and charRow then
         tooltipEntry.classFile = charRow.classFile

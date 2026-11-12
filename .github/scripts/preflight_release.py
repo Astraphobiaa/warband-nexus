@@ -126,6 +126,15 @@ def main() -> int:
     if const_ver and toc_ver and const_ver != toc_ver:
         errors.append(f"Version mismatch: Constants={const_ver!r} TOC={toc_ver!r}")
 
+    # The WoW Forever TOCs are generated from WarbandNexus.toc (## Version included): a version bump
+    # without regenerating them would ship a Forever build that reports the previous version.
+    import subprocess
+    flavor = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_flavor_tocs.py"), "--check"],
+                            capture_output=True, text=True)
+    if flavor.returncode != 0:
+        errors.append("Forever TOCs stale: run python scripts/build_flavor_tocs.py ("
+                      + (flavor.stderr or flavor.stdout).strip() + ")")
+
     version = const_ver or toc_ver
     if version:
         ck = changelog_key_for_version(version)

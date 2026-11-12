@@ -145,7 +145,7 @@ function WarbandNexus:FindNearestEligibleAlt(targetID, targetMapID, targetX, tar
 
         candidates[#candidates + 1] = {
             charKey = charKey,
-            charName = charData.name or charKey,
+            charName = ns.CharDisplayName(charData, charKey),
             classFile = charData.classFile or "PRIEST",
             uiMapID = charMap,
             zoneName = loc and loc.zoneName or "",

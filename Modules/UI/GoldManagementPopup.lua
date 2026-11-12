@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
@@ -23,9 +26,9 @@ local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    if role == "Muted" then return "|cffaaaaaa" end
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    if role == "Muted" then return HEX.muted end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function TooltipTextRGB(role)
@@ -127,7 +130,8 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local perCharCB = CreateThemedCheckbox(contentFrame, isPerChar)
     perCharCB:SetPoint("TOPLEFT", PADDING, -yOffset)
     
-    local un = UnitName("player")
+    local un = (ns.Utilities and ns.Utilities.GetLivePlayerDisplayName and ns.Utilities:GetLivePlayerDisplayName())
+        or UnitName("player")
     local charName = (un and not (issecretvalue and issecretvalue(un))) and un or "?"
     local perCharLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     perCharLabel:SetPoint("LEFT", perCharCB, "RIGHT", 8, 0)

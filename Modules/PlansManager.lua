@@ -347,8 +347,12 @@ function WarbandNexus:InitializePlanTracking()
     if self._DeferVaultPlanCheckFromPvE then
         self:_DeferVaultPlanCheckFromPvE()
     end
-    -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed)
-    self:RegisterEvent("ENCOUNTER_END", "OnPvEUpdateCheckPlans")
+    -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed). The handler
+    -- lives in PlansManager_Vault, which WarbandNexus_Forever.toc does not load (no Great Vault):
+    -- AceEvent rejects a method name that does not exist, so register only when it does.
+    if self.OnPvEUpdateCheckPlans then
+        self:RegisterEvent("ENCOUNTER_END", "OnPvEUpdateCheckPlans")
+    end
     
     -- Daily quest updates
     WarbandNexus.RegisterMessage(PlansManagerEvents, E.QUEST_PROGRESS_UPDATED, function(event)
@@ -371,7 +375,7 @@ function WarbandNexus:InitializePlanTracking()
     C_Timer.After(3, function()
         if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
         self:CheckPlansForCompletion()
-        self:CheckWeeklyReset()
+        if self.CheckWeeklyReset then self:CheckWeeklyReset() end  -- vault plans (PlansManager_Vault)
         self:UpdatePlanSources()
         self:PreResolvePlansData()
     end)
@@ -382,7 +386,7 @@ function WarbandNexus:InitializePlanTracking()
         C_Timer.After(0.5, function()
             if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
             WarbandNexus:CheckPlansForCompletion()
-            WarbandNexus:CheckWeeklyReset()
+            if WarbandNexus.CheckWeeklyReset then WarbandNexus:CheckWeeklyReset() end
             WarbandNexus:CheckRecurringPlanResets()
             WarbandNexus:UpdatePlanSources()
             WarbandNexus:PreResolvePlansData()

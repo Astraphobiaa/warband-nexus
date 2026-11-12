@@ -6,6 +6,9 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager  -- Centralized font management
 
 local WP = ns.PlansUI_WeeklyProgress or {}
@@ -325,7 +328,7 @@ local function PaintWeeklyQuestRow(row, quest, width)
         titleFs:SetText("|cffff9933" .. (quest.title or "") .. "|r")
     elseif isSub then
         -- Fixed greys: kept in dark, text role in light (2026-10-22).
-        titleFs:SetText(PlanGreyHex("|cffaaaaaa", "Muted") .. (quest.title or "") .. "|r")
+        titleFs:SetText(PlanGreyHex(HEX.muted, "Muted") .. (quest.title or "") .. "|r")
     else
         titleFs:SetText(PlanBrightHex() .. (quest.title or "") .. "|r")
     end
@@ -347,7 +350,7 @@ local function PaintWeeklyQuestRow(row, quest, width)
             end
 
             local objText = obj.text or format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
-            local objColor = obj.finished and PlanGreenHex() or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted") or "|cffaaaaaa")
+            local objColor = obj.finished and PlanGreenHex() or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted") or HEX.muted)
             local objFs = WeeklyRowRegion(row, "_wnPlnObjFs", oi, "small")
             objFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20, objY + 2)
             objFs:SetWidth(width * 0.45)
@@ -368,7 +371,7 @@ local function PaintWeeklyQuestRow(row, quest, width)
             local zoneFs = WeeklyRowRegion(row, "_wnPlnZoneSmallFs", nil, "small")
             zoneFs:SetPoint("TOPRIGHT", -14, -6)
             zoneFs:SetJustifyH("RIGHT")
-            zoneFs:SetText(PlanGreyHex("|cff888888", "Dim") .. quest.zone .. "|r")
+            zoneFs:SetText(PlanGreyHex(HEX.dim, "Dim") .. quest.zone .. "|r")
         else
             HideWeeklyRowRegion(row, "_wnPlnZoneSmallFs")
         end
@@ -508,7 +511,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             local gr, gg, gb = ns.UI_GetSemanticGreenColor()
             resetTimeText:SetTextColor(gr, gg, gb)
         else
-            resetTimeText:SetTextColor(0.3, 0.9, 0.3)
+            resetTimeText:SetTextColor(ns.UI_GetSemanticGreenColor())
         end
         resetBar._resetTimeText = resetTimeText
     end
@@ -696,7 +699,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             "|cff%02x%02x%02x%s|r %s-%s|r",
             classColor.r * 255, classColor.g * 255, classColor.b * 255,
             plan.characterName or "Unknown",
-            PlanGreyHex("|cff888888", "Dim"),
+            PlanGreyHex(HEX.dim, "Dim"),
             realmHdr
         )
 

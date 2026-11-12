@@ -145,6 +145,46 @@ def compile_one(luac: str, path: Path) -> tuple[int, str]:
                 pass
 
 
+UPVALUE_HEADER = re.compile(r"^upvalues \((\d+)\)")
+FUNCTION_HEADER = re.compile(r"^(?:main|function) <.*:(\d+),\d+>")
+LUA51_MAX_UPVALUES = 60
+
+
+def upvalue_overflows(luac: str, path: Path) -> list[tuple[int, int]]:
+    """Functions over Lua 5.1's 60-upvalue ceiling, for a non-5.1 luac.
+
+    Lua 5.2+ allows 255 upvalues, so a newer luac compiles a function the game then refuses
+    to load ("function at line N has more than 60 upvalues" -- the whole file is lost). Read
+    the listing instead: each function's upvalue table, minus _ENV (5.2+ routes globals
+    through it; 5.1 has no such upvalue). Returns (function line, 5.1 upvalue count).
+    """
+    proc = subprocess.run([luac, "-l", "-l", "-p", str(path)], capture_output=True)
+    if proc.returncode != 0:
+        return []
+    out: list[tuple[int, int]] = []
+    line_no, count, in_upvalues = 0, 0, False
+    for raw in proc.stdout.decode("utf-8", errors="replace").splitlines():
+        m = FUNCTION_HEADER.match(raw)
+        if m:
+            line_no, in_upvalues = int(m.group(1)), False
+            continue
+        m = UPVALUE_HEADER.match(raw)
+        if m:
+            count, in_upvalues = int(m.group(1)), True
+            continue
+        if in_upvalues:
+            if raw.startswith("\t"):
+                if raw.split("\t")[2:3] == ["_ENV"]:
+                    count -= 1
+                continue
+            in_upvalues = False
+            if count > LUA51_MAX_UPVALUES:
+                out.append((line_no, count))
+    if in_upvalues and count > LUA51_MAX_UPVALUES:
+        out.append((line_no, count))
+    return out
+
+
 def scan_lua52(path: Path) -> list[tuple[int, str]]:
     hits: list[tuple[int, str]] = []
     lines = strip_block_comments(path.read_text(encoding="utf-8", errors="replace").splitlines())
@@ -175,8 +215,8 @@ def main() -> int:
     is_51 = "5.1" in version
     print(f"Compiler: {luac} ({version})")
     if not is_51:
-        print("  NOTE: not Lua 5.1 -- syntax errors and chunk ceilings are still")
-        print("        enforced, but 5.2+ syntax is caught by the scan below instead.")
+        print("  NOTE: not Lua 5.1 -- syntax errors and the 200-local ceiling are still")
+        print("        enforced; 5.2+ syntax and the 60-upvalue ceiling are checked below instead.")
 
     errors: list[str] = []
     warnings: list[str] = []
@@ -211,6 +251,15 @@ def main() -> int:
             errors.append(f"{path.relative_to(ROOT).as_posix()}: {detail}")
         else:
             compiled += 1
+
+    # --- Lua 5.1 upvalue ceiling (a newer luac does not enforce it) ---------
+    if not is_51 and not Path(luac).name.startswith("luajit"):
+        for path in targets:
+            for line_no, count in upvalue_overflows(luac, path):
+                errors.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{line_no}: function has {count} upvalues "
+                    f"-- Lua 5.1 allows {LUA51_MAX_UPVALUES}; the game will not load this file"
+                )
 
     # --- Lua 5.2+ syntax -----------------------------------------------------
     for path in targets:

@@ -36,14 +36,27 @@ local FEATURES = {
     "achievementTracking", -- the objective-tracker feature, NOT achievement data
     "encounterJournal",    -- boss/loot source data the collection + try counter paths read
     "transmog",
+    "illusions",           -- weapon enchant illusions (C_TransmogCollection.GetIllusions)
+    "toyBoxList",          -- the toy journal can be enumerated (C_ToyBox filtered list)
+    "toyBoxUncollected",   -- that list also carries toys the account does not own (journal-sized)
     "wowToken",            -- the Blizzard token commerce system
     "seasonalPvEColumns",  -- the Midnight-season PvE table columns, as one group
     "ratedPvP",            -- 2v2 / 3v3 / RBG / Solo Shuffle / Blitz brackets
     "accountWideReputations", -- warband-era shared reputation
     "conquest",            -- the Conquest currency and its weekly cap
     "legacy",              -- WoW Forever account-wide Legacy System
+    "pvpRankLadder",       -- WoW Forever honor ladder: Rank 1-14 (major faction 2800)
+    "firstAidProfession",  -- First Aid as a learnable secondary profession
+    "classicTalentTree",   -- Traits config type CamelotCombat: one tree, three posX tabs, 7 tiers
+    "averageItemLevel",    -- GetAverageItemLevel actually describing the equipped gear
+    "trainedSpells",       -- spells bought from a class trainer rather than granted on level-up
+    "realmTypeTag",        -- realm shown as a PvE / PvP / RP tag instead of a realm name
     "professionsTab",      -- the Professions tab as it is built today
     "pveTab",              -- the PvE tab surface
+    "raidDifficultyTiers", -- LFR / Normal / Heroic / Mythic lockout tiers (Saved Instances filter chips)
+    "midnightWeeklyQuests", -- To-Do "Weekly Progress": Midnight zones' weekly quests, hunts, events
+    "tryCounterRetailSources", -- Try Counter drop sources from every expansion + boss-kill statistics
+    "worldQuests",         -- Set Alert quest picker: world quests + content events of the modern zones
 }
 
 local caps = {}
@@ -128,6 +141,16 @@ local FOREVER_SUPPORT = {
     -- renown levels, and DisableHonorDecay is set. Rated arena and the rated brackets built on
     -- it (Solo Shuffle, Blitz) are later-expansion systems with nothing to read here.
     ratedPvP            = false,
+    -- /wn api 2026-11-11: C_TransmogCollection.GetIllusions() -> table(0). Illusions are a
+    -- Warlords-era wardrobe system; Forever ships none, so the Illusions sub-tabs and scan go.
+    illusions           = false,
+    -- /wn api 2026-11-12: GetNumToys 21, HasAnyToy false, and after SetUncollectedShown(true)
+    -- GetUncollectedShown still answers false. The toy list holds OWNED toys only (0 on a
+    -- character with none), so the Toy Box browse stays -- it shows what the account has -- but
+    -- nothing can list the toys still missing (no "missing" view, no toy To-Do category), and
+    -- GetNumToys is not a store-completeness yardstick.
+    toyBoxList          = true,
+    toyBoxUncollected   = false,
     -- Reputation on a vanilla-plus client is per character; the account-wide section would be
     -- an empty header carrying a warband glyph above the real list.
     accountWideReputations = false,
@@ -137,6 +160,35 @@ local FOREVER_SUPPORT = {
     -- "Legacy Track" exists only there. FEATURES defaults every key to true, so this has to be
     -- set explicitly in both directions.
     legacy              = true,
+    -- Enum.PvPRanks Rank_1..Rank_14 + major faction 2800 "PvP Rank Points" (14 renown levels).
+    pvpRankLadder       = true,
+    -- GetProfessions returns five values here, but the third is First Aid, not Archaeology:
+    -- /wn charprobe read back index 5 -> "First Aid", skillLine 129, 7/75 on a level 8 character
+    -- (retail dropped the firstAid return in 8.0.1). So the Forever signature is
+    -- (prof1, prof2, firstAid, fishing, cooking), and the secondary set is First Aid + Fishing +
+    -- Cooking rather than retail's Cooking alone. Forever-only, like legacy.
+    firstAidProfession  = true,
+    -- Talents are the Traits system under Enum.TraitConfigType.CamelotCombat (4), not the Classic
+    -- GetTalentInfo API -- every Classic talent global probed ABSENT. One tree (1082 for Shaman,
+    -- 50 nodes), three tabs separated by posX bands, seven tiers whose gates are the condition's
+    -- spentAmountRequired (0/5/10/15/20/25/30). Forever-only, like legacy.
+    classicTalentTree   = true,
+    -- GetAverageItemLevel answers 1.75 for all three of its returns on a level 8 character whose
+    -- ten equipped pieces scan as item levels 1..10 (own average 6.2), and
+    -- GetAverageItemLevelEquipped is ABSENT. The number does not describe the gear under any slot
+    -- count, so the roster column would be showing a constant. Per-item levels are sound and the
+    -- Gear tab keeps drawing them; only the average goes. Vanilla has no average-item-level
+    -- concept in its own UI either.
+    averageItemLevel    = false,
+    -- Spells are trained, not granted: the spellbook carries only learned ones (22 slots swept,
+    -- all Enum.SpellBookItemType.Spell), and the trainer API answers instead. Drives the Skill
+    -- column, which has nothing to say on a client where levelling hands you your abilities.
+    trainedSpells       = true,
+    -- Forever realm names are internal ids that encode the type ("CAMWOWEU4Realm5PvE"), so the
+    -- roster shows a PvE / PvP / RP tag in its own column instead of a realm name under the
+    -- character. That frees the identity block's second line for the surname, which otherwise
+    -- clips: "Elementalist Vhorzen" does not fit one line at the name column's width.
+    realmTypeTag        = true,
     -- The tab's rows come from professionExpansions, which is only ever seeded from Midnight
     -- child skill lines (2906-2918). Those do not exist here, so every row and 14 of its 15
     -- columns are blank. Hidden until the 1-300 model is built; see docs/forever-api-reference.
@@ -144,6 +196,22 @@ local FOREVER_SUPPORT = {
     -- PvE tab surface is off for now. PvECacheService keeps caching raid lockouts, so the
     -- data is there the moment the page comes back.
     pveTab              = false,
+    -- Vanilla-plus raids and dungeons have one difficulty each (raids by size, "40 Player"), so the
+    -- LFR / N / H / M chips in Saved Instances would filter by tiers that never occur here.
+    raidDifficultyTiers = false,
+    -- To-Do "Weekly Progress" / Add Quest read DailyQuestManager's Midnight map + quest catalog
+    -- (Prey hunts, world quests, assignments, content events). No such zones on Forever.
+    midnightWeeklyQuests = false,
+    -- The drop database is retail: thousands of sources from content Forever does not have, with
+    -- npc ids that partly survive here (Onyxia 10184 -> the Wrath Onyxian Drake). Forever keeps
+    -- only vanilla-era drops (CollectibleSourceDB FOREVER_DROP_ITEMS) and counts their misses on
+    -- loot / kill, not on retail Statistics ids (1097, 1098) this client has not been shown to keep.
+    tryCounterRetailSources = false,
+    -- The Set Alert quest picker's world-quest and content-event sections list Midnight / War Within
+    -- zones (Soiree, Abundance, Haranir, Stormarion, ...). C_TaskQuest answers here (12 functions)
+    -- but Forever's world is Kalimdor + Eastern Kingdoms: none of those zones or events exist.
+    -- The calendar "World Events" section stays.
+    worldQuests         = false,
     -- renown is deliberately absent: GetMajorFactionIDs returned table(2) on Forever. Until it
     -- is known whether those are real factions or leftover Mainline client data, renown stays
     -- on -- hiding a working panel is worse than showing an empty one.
@@ -167,6 +235,11 @@ function M:Resolve(force)
     end
     -- Forever-only systems are off everywhere else, so they cannot ride the default-on rule.
     caps.legacy = false
+    caps.pvpRankLadder = false
+    caps.firstAidProfession = false
+    caps.classicTalentTree = false
+    caps.trainedSpells = false
+    caps.realmTypeTag = false
     if forever then
         local ok = pcall(ResolveForever)
         if not ok then

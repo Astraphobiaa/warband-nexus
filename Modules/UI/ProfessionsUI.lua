@@ -51,6 +51,9 @@ local issecretvalue = issecretvalue
 -- Unique AceEvent handler identity for ProfessionsUI
 local ProfessionsUIEvents = {}
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
@@ -103,7 +106,7 @@ function PUI.SetProfessionPanelButtonLabel(btn, text)
 end
 --- Full `|cffrrggbb` prefix from theme text roles (do not prepend another `|cff`).
 function PUI.TextRoleMarkup(role)
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex(role)) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex(role)) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or HEX.bright
 end
 function PUI.ProgressRgb(kind)
     if kind == "complete" then
@@ -3283,7 +3286,7 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
                     sectionContent._wnProfRunningYOffset = sectionYOffset + rowStride
                     if IsDebugModeEnabled and IsDebugModeEnabled() then
                         local who = (char and char.name) or "?"
-                        DebugPrint("|cffff0000[ProfessionsUI] DrawProfessionRow failed for " .. tostring(who) .. ": " .. tostring(nextYOffset) .. "|r")
+                        DebugPrint(HEX.red .. "[ProfessionsUI] DrawProfessionRow failed for " .. tostring(who) .. ": " .. tostring(nextYOffset) .. "|r")
                     end
                 end
             end

@@ -39,7 +39,8 @@ local lastLockoutSkipChatTime = 0
 local function SendTryCounterCollectibleObtained(self, payload, sourceItemID)
     if not self or not self.SendMessage or not payload then return end
     if not payload.obtainedBy then
-        local name = UnitName("player")
+        local U = ns.Utilities
+        local name = (U and U.GetLivePlayerDisplayName and U:GetLivePlayerDisplayName()) or UnitName("player")
         if not (issecretvalue and issecretvalue(name)) and name and name ~= "" then
             payload.obtainedBy = name
         end

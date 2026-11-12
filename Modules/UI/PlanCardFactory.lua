@@ -11,6 +11,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 
 local issecretvalue = issecretvalue
 
@@ -40,7 +43,7 @@ local function SetSemanticGreenText(fs)
         local r, g, b = ns.UI_GetSemanticGreenColor()
         fs:SetTextColor(r, g, b)
     else
-        fs:SetTextColor(0.2, 1, 0.2)
+        fs:SetTextColor(ns.UI_GetSemanticGreenColor())
     end
 end
 
@@ -60,7 +63,7 @@ local function BuildAchievementProgressLabelText(achievementID)
     local P2 = ns.PLAN_UI_COLORS or {}
     local done = (summary.displayMode == "quantity_bar" and summary.totalReqQuantity > 0 and summary.totalQuantity >= summary.totalReqQuantity)
         or (summary.completedCount >= summary.rawNumCriteria)
-    local progressColor = done and (P2.progressFull or PCol("progressFull", "|cff00ff00")) or PCol("incomplete")
+    local progressColor = done and (P2.progressFull or PCol("progressFull", HEX.green)) or PCol("incomplete")
     local label = PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r "
     if summary.displayMode == "quantity_bar" and summary.hasProgressBased then
         local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
@@ -114,14 +117,14 @@ local function AppendPlanReminderSummaryTooltipLines(planID, tooltipLines)
     if settings.onZoneEnter then chunks[#chunks + 1] = (L and L["REMINDER_SHORT_ZONE"]) or "Zone enter" end
     if settings.onInstanceEnter then chunks[#chunks + 1] = (L and L["REMINDER_SHORT_INSTANCE"]) or "Instance" end
     if #chunks > 0 then
-        tooltipLines[#tooltipLines + 1] = { text = "|cffaaaaaa" .. table.concat(chunks, ", ") .. "|r" }
+        tooltipLines[#tooltipLines + 1] = { text = HEX.muted .. table.concat(chunks, ", ") .. "|r" }
     end
     local tipPlan = WarbandNexus.GetPlanByID and WarbandNexus:GetPlanByID(planID)
     if tipPlan and ns.PlanGeography and ns.PlanGeography.AppendReminderTerritoryTooltipLine then
         ns.PlanGeography.AppendReminderTerritoryTooltipLine(tipPlan, tooltipLines)
     end
     tooltipLines[#tooltipLines + 1] = {
-        text = "|cff888888" .. ((L and L["REMINDER_CARD_CLICK_CONFIGURE"]) or "Click to configure reminders.") .. "|r",
+        text = HEX.dim .. ((L and L["REMINDER_CARD_CLICK_CONFIGURE"]) or "Click to configure reminders.") .. "|r",
     }
 end
 
@@ -167,11 +170,11 @@ local function CreatePlanReminderAlertButton(card, plan)
             tooltipLines = {}
             for li = 1, #activeReminders do
                 local label = activeReminders[li]
-                tooltipLines[#tooltipLines + 1] = { text = "|cffcccccc" .. label .. "|r" }
+                tooltipLines[#tooltipLines + 1] = { text = HEX.muted .. label .. "|r" }
             end
             tooltipLines[#tooltipLines + 1] = { text = " " }
             tooltipLines[#tooltipLines + 1] = {
-                text = "|cff888888" .. ((ns.L and ns.L["REMINDER_CARD_CLICK_OPEN_SETTINGS"]) or "Click the horn to open reminder settings.") .. "|r",
+                text = HEX.dim .. ((ns.L and ns.L["REMINDER_CARD_CLICK_OPEN_SETTINGS"]) or "Click the horn to open reminder settings.") .. "|r",
             }
         else
             local reminderNow = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
@@ -570,7 +573,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local nameText = FontManager:CreateFontString(card, "title", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     local P = ns.PLAN_UI_COLORS or {}
-    local nameColor = (progress and progress.collected) and (P.completed or "|cff44ff44") or (P.incomplete or PCol("incomplete"))
+    local nameColor = (progress and progress.collected) and (P.completed or HEX.green) or (P.incomplete or PCol("incomplete"))
     
     -- Resolve localized name from API (falls back to stored plan.name)
     local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
@@ -1485,49 +1488,49 @@ function PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, 
             end
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create achievement card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create achievement card: " .. tostring(err))
         end
     elseif plan.type == "mount" then
         local success, err = pcall(function()
             self:CreateMountCard(card, plan, progress, nameText)
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create mount card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create mount card: " .. tostring(err))
         end
     elseif plan.type == "pet" then
         local success, err = pcall(function()
             self:CreatePetCard(card, plan, progress, nameText)
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create pet card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create pet card: " .. tostring(err))
         end
     elseif plan.type == "toy" then
         local success, err = pcall(function()
             self:CreateToyCard(card, plan, progress, nameText)
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create toy card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create toy card: " .. tostring(err))
         end
     elseif plan.type == "illusion" then
         local success, err = pcall(function()
             self:CreateIllusionCard(card, plan, progress, nameText)
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create illusion card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create illusion card: " .. tostring(err))
         end
     elseif plan.type == "title" then
         local success, err = pcall(function()
             self:CreateTitleCard(card, plan, progress, nameText)
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create title card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create title card: " .. tostring(err))
         end
     elseif plan.type == "weekly_vault" then
         local success, err = pcall(function()
             self:CreateWeeklyVaultCard(card, plan, progress, nameText)
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create weekly vault card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create weekly vault card: " .. tostring(err))
         end
     elseif plan.type == "daily_quests" then
         -- Daily quests handled separately in PlansUI
@@ -1538,7 +1541,7 @@ function PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, 
             self:CreateDefaultCard(card, plan, progress, nameText)
         end)
         if not success then
-            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create default card: " .. tostring(err))
+            WarbandNexus:Print(HEX.red .. "[PlanCardFactory Error]|r Failed to create default card: " .. tostring(err))
         end
     end
     
@@ -1950,7 +1953,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                     if plan.resetCycle.infiniteRepeat then
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(format("|cffaaaaaa%s|r", (ns.L and ns.L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"]) or "Until removed"))
+                        cycleText:SetText(format(HEX.muted .. "%s|r", (ns.L and ns.L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"]) or "Until removed"))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     elseif plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
@@ -1962,7 +1965,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                             or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
+                        cycleText:SetText(format(HEX.muted .. "%d / %d %s|r", elapsed, total, unitText))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     end
@@ -1981,7 +1984,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                     if plan.resetCycle.infiniteRepeat then
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(format("|cffaaaaaa%s|r", (ns.L and ns.L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"]) or "Until removed"))
+                        cycleText:SetText(format(HEX.muted .. "%s|r", (ns.L and ns.L["CUSTOM_PLAN_CYCLES_UNTIL_REMOVED"]) or "Until removed"))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     elseif plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
@@ -1993,7 +1996,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                             or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
+                        cycleText:SetText(format(HEX.muted .. "%d / %d %s|r", elapsed, total, unitText))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     end
@@ -2276,7 +2279,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
             rl:SetWidth(math.max(32, innerBarWidth / math.max(1, #thresholds) - 2))
             rl:SetJustifyH("CENTER")
             local P = ns.PLAN_UI_COLORS or {}
-            rl:SetText((P.completed or "|cff44ff44") .. readyShort .. "|r")
+            rl:SetText((P.completed or HEX.green) .. readyShort .. "|r")
         elseif opts.isEmpty then
             -- no markers
         elseif completed then
@@ -2793,7 +2796,7 @@ function PlanCardFactory.CreateAddButton(parent, options)
                 local gr, gg, gb = ns.UI_GetSemanticGoldColor()
                 btnText:SetTextColor(gr, gg, gb, 1)
             else
-                btnText:SetTextColor(1, 0.95, 0.55, 1)
+                btnText:SetTextColor(ns.UI_GetSemanticGoldColor())
             end
             if btnText.EnableMouse then
                 btnText:EnableMouse(false)
@@ -2918,7 +2921,7 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
     addedText:SetPoint("CENTER", addedFrame, "CENTER", 9, 0)
     local P = ns.PLAN_UI_COLORS or {}
-    addedText:SetText((P.completed or "|cff44ff44") .. label .. "|r")
+    addedText:SetText((P.completed or HEX.green) .. label .. "|r")
     local addedIcon = CreateIcon(addedFrame, ns.UI_GetIconFile("status_ok"), 14, false, nil, true)
     if addedIcon.texture then ns.UI_SetIcon(addedIcon.texture, "status_ok") end
     addedIcon:SetPoint("RIGHT", addedText, "LEFT", -2, 0)

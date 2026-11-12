@@ -4,6 +4,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
@@ -1707,7 +1710,7 @@ function PD.FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
         local fmt = (ns.L and ns.L["GEAR_SLOT_CURRENCY_HAVE_NEED"]) or "%d/%d"
         local suffix = " |cff" .. hex .. "(" .. format(fmt, have, crestNeed) .. ")|r"
         if up.nextUpgradeIsDiscounted then
-            suffix = suffix .. " |cff88ccff*|r"
+            suffix = suffix .. " " .. HEX.info .. "*|r"
         end
         return suffix
     end
@@ -1837,6 +1840,42 @@ local SECONDARY_STATS = {
     { label = (ns.L and ns.L["STAT_MASTERY"]) or "Mastery",                 icon = 132177, ratingIndex = 26, fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
     { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         icon = 636277, ratingIndex = 29, fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
 }
+-- WoW Forever sheet stats: collector key -> locale key, English fallback, icon. Icons are vanilla-era
+-- Interface\Icons paths (Forever ships the classic sheet); verify in-game, a missing path renders blank.
+local FOREVER_STAT_DEFS = {
+    ARMOR               = { group = "DEFENSE", key = "GEAR_FSTAT_ARMOR",             fallback = "Armor",               icon = "Interface\\Icons\\inv_chest_plate01" },
+    DODGE               = { group = "DEFENSE", key = "GEAR_FSTAT_DODGE",             fallback = "Dodge",               icon = "Interface\\Icons\\ability_rogue_feint" },
+    PARRY               = { group = "DEFENSE", key = "GEAR_FSTAT_PARRY",             fallback = "Parry",               icon = "Interface\\Icons\\ability_parry" },
+    BLOCK               = { group = "DEFENSE", key = "GEAR_FSTAT_BLOCK",             fallback = "Block",               icon = "Interface\\Icons\\ability_defend" },
+    ATTACK_POWER        = { group = "PHYSICAL", key = "GEAR_FSTAT_ATTACK_POWER",      fallback = "Attack Power",        icon = "Interface\\Icons\\ability_warrior_battleshout" },
+    RANGED_ATTACK_POWER = { group = "PHYSICAL", key = "GEAR_FSTAT_RANGED_AP",         fallback = "Ranged Attack Power", icon = "Interface\\Icons\\inv_weapon_bow_02" },
+    MELEE_HIT           = { group = "PHYSICAL", key = "GEAR_FSTAT_MELEE_HIT",         fallback = "Hit Chance",          icon = "Interface\\Icons\\ability_marksmanship" },
+    RANGED_CRIT         = { group = "PHYSICAL", key = "GEAR_FSTAT_RANGED_CRIT",       fallback = "Ranged Crit",         icon = "Interface\\Icons\\inv_ammo_arrow_02" },
+    EXPERTISE           = { group = "PHYSICAL", key = "GEAR_FSTAT_EXPERTISE",         fallback = "Expertise",           icon = "Interface\\Icons\\inv_sword_04" },
+    SPELL_POWER         = { group = "SPELL", key = "GEAR_FSTAT_SPELL_POWER",       fallback = "Spell Power",         icon = "Interface\\Icons\\spell_fire_flamebolt" },
+    HEALING             = { group = "SPELL", key = "GEAR_FSTAT_HEALING",           fallback = "Healing",             icon = "Interface\\Icons\\spell_holy_flashheal" },
+    SPELL_HIT           = { group = "SPELL", key = "GEAR_FSTAT_SPELL_HIT",         fallback = "Spell Hit",           icon = "Interface\\Icons\\spell_frost_frostbolt02" },
+    SPELL_CRIT          = { group = "SPELL", key = "GEAR_FSTAT_SPELL_CRIT",        fallback = "Spell Crit",          icon = "Interface\\Icons\\spell_fire_fireball02" },
+    SPELL_PENETRATION   = { group = "SPELL", key = "GEAR_FSTAT_SPELL_PEN",         fallback = "Spell Penetration",   icon = "Interface\\Icons\\spell_arcane_starfire" },
+    MANA_REGEN          = { group = "SPELL", key = "GEAR_FSTAT_MANA_REGEN",        fallback = "Mana Regen (per 5s)", icon = "Interface\\Icons\\spell_nature_manaregentotem" },
+    RESIST_HOLY         = { group = "RESISTANCES", key = "GEAR_FSTAT_RESIST_HOLY",       fallback = "Holy Resistance",     icon = "Interface\\Icons\\spell_holy_holybolt" },
+    RESIST_FIRE         = { group = "RESISTANCES", key = "GEAR_FSTAT_RESIST_FIRE",       fallback = "Fire Resistance",     icon = "Interface\\Icons\\spell_fire_firearmor" },
+    RESIST_NATURE       = { group = "RESISTANCES", key = "GEAR_FSTAT_RESIST_NATURE",     fallback = "Nature Resistance",   icon = "Interface\\Icons\\spell_nature_resistnature" },
+    RESIST_FROST        = { group = "RESISTANCES", key = "GEAR_FSTAT_RESIST_FROST",      fallback = "Frost Resistance",    icon = "Interface\\Icons\\spell_frost_frostward" },
+    RESIST_SHADOW       = { group = "RESISTANCES", key = "GEAR_FSTAT_RESIST_SHADOW",     fallback = "Shadow Resistance",   icon = "Interface\\Icons\\spell_shadow_antishadow" },
+    RESIST_ARCANE       = { group = "RESISTANCES", key = "GEAR_FSTAT_RESIST_ARCANE",     fallback = "Arcane Resistance",   icon = "Interface\\Icons\\spell_nature_starfall" },
+}
+
+-- Stat card group titles (Forever only): locale key, Blizzard GlobalString first, English fallback.
+local FOREVER_STAT_GROUPS = {
+    ATTRIBUTES   = { key = "GEAR_FSTAT_GROUP_ATTRIBUTES",   fallback = "Attributes" },
+    ENHANCEMENTS = { key = "GEAR_FSTAT_GROUP_ENHANCEMENTS", fallback = "Enhancements" },
+    DEFENSE      = { key = "GEAR_FSTAT_GROUP_DEFENSE",      fallback = "Defense" },
+    PHYSICAL     = { key = "GEAR_FSTAT_GROUP_PHYSICAL",     fallback = "Melee & Ranged" },
+    SPELL        = { key = "GEAR_FSTAT_GROUP_SPELL",        fallback = "Spell" },
+    RESISTANCES  = { key = "GEAR_FSTAT_GROUP_RESISTANCES",  fallback = "Resistances" },
+}
+
 -- Diminishing returns on a live secondary rating. GetCombatRatingBonusForCombatRatingValue(ratingIndex,
 -- value) is a global in Blizzard APIDocumentationGenerated PlayerScriptDocumentation (checked 2026-11-04):
 -- the post-DR bonus for any rating value. Effectiveness compares the full rating with the undiminished rate
@@ -1992,6 +2031,21 @@ end
 -- Percent sub-column of secondary stat rows (rating and percent read as two aligned columns).
 local GEAR_STAT_PCT_COL_W = 64
 local GEAR_STAT_PCT_GAP = 8
+-- Stat row geometry: share bar height, clear gap between text band and bar, icon cap.
+-- Share bar sits inline: label column | bar | value columns, all on the row's vertical middle.
+local GEAR_STAT_BAR_H = 6
+local GEAR_STAT_BAR_GAP = 10          -- clear space between label column and bar, and bar and values
+local GEAR_STAT_LABEL_SHARE = 0.32    -- label column = this share of the row's text span
+local GEAR_STAT_LABEL_MIN_W = 110
+local GEAR_STAT_LABEL_MAX_W = 180
+-- Bars run right up to the numbers: the value block is the percent column + gap + a rating column,
+-- the same for every row so all bars end on one x.
+local GEAR_STAT_RATING_COL_W = 52
+local GEAR_STAT_BAR_MIN_W = 24
+local GEAR_STAT_ICON_MAX = 28
+-- Stat group title row (Forever): shorter than a stat row; colour matches the "Character Stats" title.
+local GEAR_STAT_GROUP_HDR_H = 24
+local GEAR_STAT_GROUP_TITLE_RGB = { 0.52, 0.82, 0.95 }
 
 ---@param pctStr string|nil secondary stats: percent in its own right-aligned column, rating left of it
 ---@param barFrac number|nil 0..1: thin accent bar along the row bottom (secondary stat share)
@@ -2010,10 +2064,11 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
         rows[idx] = rec
     end
     local labelLeft = pad
-    -- Icon, label and values hang on the row's vertical middle (top-anchored text sat above the icon centre).
+    -- Icon, label, bar and values all hang on the row's vertical middle; the bar sits right of the label.
+    local hasBar = type(barFrac) == "number"
     local midY = rowY - rowH * 0.5
     if iconFileID then
-        local iconSz = math.min(22, rowH - 2)
+        local iconSz = math.min(GEAR_STAT_ICON_MAX, rowH - 4)
         local ico = rec.ico
         if not ico then
             ico = col:CreateTexture(nil, "ARTWORK")
@@ -2073,7 +2128,18 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
     end
     row:ClearAllPoints()
     row:SetPoint("LEFT", col, "TOPLEFT", labelLeft, midY)
-    row:SetPoint("RIGHT", col, "TOPRIGHT", -labelRightInset, midY)
+    -- With a bar: the label owns a fixed column so every row's bar starts at the same x.
+    local barRightInset = pad + GEAR_STAT_PCT_COL_W + GEAR_STAT_PCT_GAP + GEAR_STAT_RATING_COL_W + GEAR_STAT_BAR_GAP
+    local span = (col:GetWidth() or 0) - labelLeft - barRightInset
+    local labelColW = math.min(GEAR_STAT_LABEL_MAX_W,
+        math.max(GEAR_STAT_LABEL_MIN_W, math.floor(span * GEAR_STAT_LABEL_SHARE + 0.5)))
+    local barW = span - labelColW - GEAR_STAT_BAR_GAP
+    if hasBar and barW < GEAR_STAT_BAR_MIN_W then hasBar = false end
+    if hasBar then
+        row:SetPoint("RIGHT", col, "TOPLEFT", labelLeft + labelColW, midY)
+    else
+        row:SetPoint("RIGHT", col, "TOPRIGHT", -labelRightInset, midY)
+    end
     ns.UI_SetTextColorRole(row, "Bright")
     row:SetText(label or "")
     row:Show()
@@ -2087,7 +2153,7 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
             tag = FontManager:CreateFontString(col, GFR("gearStatLabel"), "OVERLAY")
             rec.drTag = tag
         end
-        local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
+        local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
         tag:SetText(goldHex .. ((ns.L and ns.L["GEAR_STAT_DR_TAG"]) or "DR") .. "|r")
         tag:ClearAllPoints()
         tag:SetPoint("LEFT", row, "LEFT", math.floor((row:GetStringWidth() or 0) + 6), 0)
@@ -2116,7 +2182,7 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
     end
 
     -- Share bar: track across the text span, fill = barFrac of it, both from the theme accent.
-    if type(barFrac) == "number" then
+    if hasBar then
         local frac = math.max(0, math.min(1, barFrac))
         local track, fill = rec.barTrack, rec.barFill
         if not track then
@@ -2126,15 +2192,14 @@ function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueS
             rec.barFill = fill
         end
         local ac = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
-        local barH = 4
-        local barY = rowY - rowH + barH + 1
+        local barH = GEAR_STAT_BAR_H
         track:ClearAllPoints()
-        track:SetPoint("TOPLEFT", col, "TOPLEFT", labelLeft, barY)
-        track:SetPoint("TOPRIGHT", col, "TOPRIGHT", -pad, barY)
+        track:SetPoint("LEFT", col, "TOPLEFT", labelLeft + labelColW + GEAR_STAT_BAR_GAP, midY)
+        track:SetPoint("RIGHT", col, "TOPRIGHT", -barRightInset, midY)
         track:SetHeight(barH)
         track:SetColorTexture(ac[1], ac[2], ac[3], 0.18)
         track:Show()
-        local trackW = (col:GetWidth() or 0) - labelLeft - pad
+        local trackW = barW
         -- Diminishing-returns threshold on the bar (red tick): the stat's percent with the rating part
         -- swapped for the threshold bonus, i.e. the bar position where DR starts.
         local mark = rec.barMark
@@ -2218,6 +2283,7 @@ function PD.BuildGearPaperStatRows(charData, isCurrentChar)
                             label = stat.label,
                             value = valueStr,
                             icon = stat.icon,
+                            num = PD.SafeGearStatNumber(total),
                         }
                     end
                 end
@@ -2264,6 +2330,7 @@ function PD.BuildGearPaperStatRows(charData, isCurrentChar)
                             label = stat.label,
                             value = valueStr,
                             icon = stat.icon,
+                            num = PD.SafeGearStatNumber(prim[stat.id]),
                         }
                     end
                 end
@@ -2287,7 +2354,119 @@ function PD.BuildGearPaperStatRows(charData, isCurrentChar)
             end
         end
     end
+    -- Attribute bars: flat numbers have no absolute scale, so each bar is this character's value
+    -- against the best saved value of the same stat across the warband.
+    local warbandBest = PD.GetWarbandStatBest()
+    for i = 1, #primaryRows do
+        local r = primaryRows[i]
+        if r.num and r.statId then
+            local best = math.max(r.num, warbandBest["P" .. r.statId] or 0)
+            r.frac = (best > 0) and (r.num / best) or 0
+        end
+    end
+    -- Forever: the sheet is long enough to need groups; retail keeps its ungrouped card.
+    if PD.AppendForeverExtendedStatRows(secondaryRows, charData, isCurrentChar) then
+        if #primaryRows > 0 then table.insert(primaryRows, 1, PD.GearStatGroupHeaderRow("ATTRIBUTES")) end
+        table.insert(secondaryRows, 1, PD.GearStatGroupHeaderRow("ENHANCEMENTS"))
+    end
     return primaryRows, secondaryRows
+end
+
+--- 0..1 bar share for a Forever sheet stat (see AppendForeverExtendedStatRows).
+function PD.ForeverStatBarFrac(e, v, groupMaxV)
+    local f = PD.SafeGearStatNumber(e.frac)
+    if f then return math.max(0, math.min(1, f)) end
+    if e.kind == "pct" then return math.max(0, math.min(1, v / 100)) end
+    local best = math.max(v, groupMaxV or 0)
+    if best > 0 then return v / best end
+    return 0
+end
+
+--- Best saved value per stat across all characters: primary stats as "P<statId>", Forever sheet
+--- stats by collector key. Read-only over db.global.characters[*].stats (persisted by DataService).
+function PD.GetWarbandStatBest()
+    local best = {}
+    local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    if type(chars) ~= "table" then return best end
+    for _, c in pairs(chars) do
+        local st = type(c) == "table" and c.stats
+        if type(st) == "table" then
+            if type(st.primary) == "table" then
+                for id, v in pairs(st.primary) do
+                    v = PD.SafeGearStatNumber(v)
+                    local k = "P" .. tostring(id)
+                    if v and v > (best[k] or 0) then best[k] = v end
+                end
+            end
+            if type(st.extended) == "table" then
+                for i = 1, #st.extended do
+                    local e = st.extended[i]
+                    local v = e and PD.SafeGearStatNumber(e.value)
+                    if v and e.key and v > (best[e.key] or 0) then best[e.key] = v end
+                end
+            end
+        end
+    end
+    return best
+end
+
+--- Header row marker for the stat card (painted by PD.PaintGearStatGroupHeader).
+function PD.GearStatGroupHeaderRow(groupKey)
+    local g = FOREVER_STAT_GROUPS[groupKey]
+    local L = ns.L or {}
+    return { header = true, label = (g and (L[g.key] or g.fallback)) or groupKey }
+end
+
+--- Group title line: label only, in the stat section title colour, on a shorter row than a stat.
+function PD.PaintGearStatGroupHeader(col, rowY, pad, text)
+    local c = GEAR_STAT_GROUP_TITLE_RGB
+    local hex = format("|cff%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+    return PD.PaintGearPaperBandRow(col, rowY, GEAR_STAT_GROUP_HDR_H, pad, 0, hex .. (text or "") .. "|r")
+end
+
+--- WoW Forever sheet stats (armor, avoidance, attack/spell power, hit, crit, regen, resistances) after the
+--- secondary block: one right-aligned value, no share bar. Live from the service collector, offline from
+--- `stats.extended`; neither exists off Forever, so retail is untouched.
+function PD.AppendForeverExtendedStatRows(rows, charData, isCurrentChar)
+    local ext
+    if isCurrentChar and WarbandNexus.CollectForeverExtendedStats then
+        ext = WarbandNexus:CollectForeverExtendedStats()
+    end
+    if not ext and charData and charData.stats then
+        ext = charData.stats.extended
+    end
+    if type(ext) ~= "table" then return false end
+    local L = ns.L or {}
+    local added, lastGroup = false, nil
+    -- Bar scale: percent stats show their percent; armor shows its damage reduction (collector `frac`);
+    -- flat values are this character's value against the warband's best saved value for that stat.
+    local warbandBest = PD.GetWarbandStatBest()
+    for i = 1, #ext do
+        local e = ext[i]
+        local def = e and FOREVER_STAT_DEFS[e.key]
+        local v = e and PD.SafeGearStatNumber(e.value)
+        if def and v then
+            if def.group ~= lastGroup then
+                lastGroup = def.group
+                rows[#rows + 1] = PD.GearStatGroupHeaderRow(def.group)
+            end
+            added = true
+            local valueStr
+            if e.kind == "pct" then
+                valueStr = format("%.2f%%", v)
+            else
+                valueStr = FormatNumber and FormatNumber(math.floor(v)) or tostring(math.floor(v))
+            end
+            rows[#rows + 1] = {
+                label = L[def.key] or def.fallback,
+                icon = def.icon,
+                ratingStr = valueStr,
+                pctStr = "",
+                frac = PD.ForeverStatBarFrac(e, v, warbandBest[e.key]),
+            }
+        end
+    end
+    return added
 end
 
 local GEAR_VIEWPORT_IDENTITY_H = 42
@@ -2298,7 +2477,7 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent, bar)
     local pad = 8
     local classFile = charData and charData.classFile
     local classHex = PD.GetClassHex(classFile)
-    local name = (charData and charData.name) or ""
+    local name = ns.CharDisplayName(charData, "")
     local realm = (charData and charData.realm) or ""
     if realm ~= "" and ns.Utilities and ns.Utilities.FormatRealmName then
         realm = ns.Utilities:FormatRealmName(realm) or realm
@@ -2339,11 +2518,11 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent, bar)
         nameRealmFs:SetShadowColor(0, 0, 0, 1)
     end
     if name ~= "" and realm ~= "" then
-        nameRealmFs:SetText("|cff" .. classHex .. name .. "|r |cff888888-|r |cffb8bac4" .. realm .. "|r")
+        nameRealmFs:SetText("|cff" .. classHex .. name .. "|r " .. HEX.dim .. "-|r " .. HEX.muted .. realm .. "|r")
     elseif name ~= "" then
         nameRealmFs:SetText("|cff" .. classHex .. name .. "|r")
     else
-        nameRealmFs:SetText("|cff888888" .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
+        nameRealmFs:SetText(HEX.dim .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
     end
 
     if bar._wnIlvlFs then bar._wnIlvlFs:Hide() end
@@ -2586,15 +2765,23 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     if #primaryRows > 0 or #secondaryRows > 0 then
         for i = 1, #primaryRows do
             local stat = primaryRows[i]
-            statY = PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valColW, stat.label, stat.value, nil, stat.icon)
+            if stat.header then
+                statY = PD.PaintGearStatGroupHeader(statCol, statY, statPad, stat.label)
+            else
+                statY = PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valColW, stat.label, stat.value, nil, stat.icon, stat.frac)
+            end
         end
 
         for i = 1, #secondaryRows do
             local stat = secondaryRows[i]
+            if stat.header then
+                statY = PD.PaintGearStatGroupHeader(statCol, statY, statPad, stat.label)
+            else
             statY = PD.PaintGearStatGridRow(
                 statCol, statY, statRowH, statPad, valColW,
                 stat.label, stat.ratingStr or "0", stat.pctStr or "0.0%",
-                stat.icon, stat.pct and (stat.pct / 100) or nil, stat.dr)
+                stat.icon, stat.frac or (stat.pct and (stat.pct / 100)) or nil, stat.dr)
+            end
         end
         -- Legend for the red ticks: tinted WHITE8X8 markup (|T path:h:w:ox:oy:texW:texH:l:r:t:b:R:G:B, the full
         -- form used by ns.UI_GetIconMarkup) shaped like the tick, then the label.
@@ -2746,7 +2933,7 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
             copper = goldCurrency._goldCopper
         end
         local goldLabel = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
-        local goldValue = "|cffffff00" .. FormatGold(copper) .. "|r"
+        local goldValue = HEX.gold .. FormatGold(copper) .. "|r"
         local target, c = NextCurrencyTarget()
         if c then
             cellY[c] = PD.PaintGearPaperBandRow(target, cellY[c] or -subHdr, crestRowH, currPad, valColW,
@@ -3419,7 +3606,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
             portrait._iconRing:SetVertexColor(cc.r, cc.g, cc.b, 0.45)
         end
 
-        local pnDisplayName = (charData and charData.name) or ""
+        local pnDisplayName = ns.CharDisplayName(charData, "")
         local pnFallback = ((ns.L and ns.L["GEAR_NO_PREVIEW"]) or "No Preview")
         if portrait._name then
             if pnDisplayName ~= "" then
@@ -3492,7 +3679,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
         ns._gearIlvlFrame = ilvlFrame
     end
 
-    local displayName = (charData and charData.name) or ""
+    local displayName = ns.CharDisplayName(charData, "")
     local nameWrapper = ns._gearNameWrapper
     if not nameWrapper then
         nameWrapper = GearFact:CreateContainer(card, 200, 20, false)
@@ -3990,7 +4177,13 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             sc.scroll = scroll
         end
         local storageHdrScroll = (#storageRows > 0) and ns.GearUI_STORAGE_REC_TABLE_HDR or 0
-        local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
+        -- Row count and viewport are both known here, so the lane is decided rather than discovered:
+        -- no strip when the recommendations fit. The header strip above re-points to the same value.
+        local storageRowsOverflow = (#storageRows * rowH + storageHdrScroll) > viewportH
+        local storageLane = ns.GearUI_ResolveStorageRecLane(storageBarW, storageRowsOverflow)
+        if storageHdr and not storageHdr._wnGearFallbackHdr then
+            storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -(storagePad + storageLane), 0)
+        end
         if scroll then
             if scroll.SetFrameLevel and storagePanel.GetFrameLevel then
                 scroll:SetFrameLevel(storagePanel:GetFrameLevel() + 2)
@@ -4005,19 +4198,21 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             end
             scroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
             scroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageLane, storagePad)
-            scroll._wnKeepScrollLane = true
+            scroll._wnKeepScrollLane = storageRowsOverflow or nil
             if sbCol and scroll.ScrollBar then
                 scroll.ScrollBar._wnOwningScrollFrame = scroll
             end
             if scrollReused then
-                if sbCol then sbCol:Show() end
+                if sbCol then
+                    if storageRowsOverflow then sbCol:Show() else sbCol:Hide() end
+                end
             elseif sbCol and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
                 ns.UI.Factory:EnsureScrollBarColumnSync(scroll, sbCol, { width = storageBarW, gap = 2 })
-                sbCol:Show()
+                if storageRowsOverflow then sbCol:Show() else sbCol:Hide() end
             elseif sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
                 scroll.ScrollBar._wnOwningScrollFrame = scroll
                 ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, sbCol, 0)
-                sbCol:Show()
+                if storageRowsOverflow then sbCol:Show() else sbCol:Hide() end
             end
             local contentW = ns.GearUI_ResolveStorageRecContentWidth(storageW, storagePad, storageLane)
             storageContentW = contentW
@@ -4072,6 +4267,7 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             end
         end
         gearHosts.storagePanel = storagePanel
+        gearHosts.storageHdr = sc and sc.hdr or nil
         PD.RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
     end
 
@@ -4299,6 +4495,9 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             recScroll = recScroll,
             recContent = recContent,
             sbCol = sbCol,
+            -- The relayout pass re-points this to the lane it resolves; without it the header keeps
+            -- the width of the pass that built it and drifts away from the rows below it.
+            storageHdr = gearHosts.storageHdr,
             storageBarW = storageBarW,
             storageRowCount = storageRows and #storageRows or 0,
             rowH = rowH,
@@ -4512,25 +4711,34 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
     end
 
     local recContent = layout.recContent
+    -- One lane value for the whole relayout pass: the column widths below and the viewport further
+    -- down have to agree, or the rows end up a strip wider or narrower than the frame holding them.
+    local relayoutStoragePad = layout.storagePad or 8
+    local relayoutStorageBarW = layout.storageBarW or 0
+    local relayoutRowH = layout.rowH or 34
+    local relayoutHdrScroll = (layout.storageRowCount and layout.storageRowCount > 0)
+        and (ns.GearUI_STORAGE_REC_TABLE_HDR or 0) or 0
+    local relayoutViewportH = math.max(((layout.storagePanel and layout.storagePanel.GetHeight)
+        and layout.storagePanel:GetHeight() or panelH) - (layout.storageHeaderH or 30)
+        - relayoutStoragePad - 10, 1)
+    local relayoutOverflow =
+        ((layout.storageRowCount or 0) * relayoutRowH + relayoutHdrScroll) > relayoutViewportH
+    local relayoutLane = ns.GearUI_ResolveStorageRecLane(relayoutStorageBarW, relayoutOverflow)
+
     if not chromeOnly and recContent and layout.storageW and ns.GearUI_RelayoutStorageRecColumns then
-        local storagePad = layout.storagePad or 8
-        local storageBarW = layout.storageBarW or 0
-        local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
-        local contentW = ns.GearUI_ResolveStorageRecContentWidth(layout.storageW, storagePad, storageLane)
+        local contentW = ns.GearUI_ResolveStorageRecContentWidth(
+            layout.storageW, relayoutStoragePad, relayoutLane)
         ns.GearUI_RelayoutStorageRecColumns(recContent, contentW)
     end
 
     if not chromeOnly and recContent and layout.storagePanel then
         local storageHeaderH = layout.storageHeaderH or 30
-        local storagePad = layout.storagePad or 8
-        local storageBarW = layout.storageBarW or 0
-        local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
-        local rowH = layout.rowH or 34
-        local storagePanelH = (layout.storagePanel and layout.storagePanel.GetHeight)
-            and layout.storagePanel:GetHeight() or panelH
-        local newViewportH = storagePanelH - storageHeaderH - storagePad - 10
-        local storageHdrScroll = (layout.storageRowCount and layout.storageRowCount > 0)
-            and (ns.GearUI_STORAGE_REC_TABLE_HDR or 0) or 0
+        local storagePad = relayoutStoragePad
+        local storageBarW = relayoutStorageBarW
+        local storageLane = relayoutLane
+        local rowH = relayoutRowH
+        local newViewportH = relayoutViewportH
+        local storageHdrScroll = relayoutHdrScroll
         recContent:SetHeight(math.max((layout.storageRowCount or 0) * rowH + storageHdrScroll, math.max(newViewportH, 40)))
         local recScroll = layout.recScroll
         local sbCol = layout.sbCol
@@ -4538,8 +4746,14 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
             recScroll:ClearAllPoints()
             recScroll:SetPoint("TOPLEFT", layout.storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
             recScroll:SetPoint("BOTTOMRIGHT", layout.storagePanel, "BOTTOMRIGHT", -storageLane, storagePad)
-            recScroll._wnKeepScrollLane = true
-            if sbCol and sbCol.Show then sbCol:Show() end
+            recScroll._wnKeepScrollLane = relayoutOverflow or nil
+            if sbCol then
+                if relayoutOverflow then sbCol:Show() else sbCol:Hide() end
+            end
+            local relayoutHdr = layout.storageHdr
+            if relayoutHdr and not relayoutHdr._wnGearFallbackHdr then
+                relayoutHdr:SetPoint("TOPRIGHT", layout.storagePanel, "TOPRIGHT", -(storagePad + storageLane), 0)
+            end
             if sbCol and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
                 ns.UI.Factory:EnsureScrollBarColumnSync(recScroll, sbCol, { width = storageBarW, gap = 2 })
             elseif sbCol and recScroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then

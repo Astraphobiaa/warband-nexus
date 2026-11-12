@@ -161,7 +161,7 @@ local function ResolveMoneyLogCharacterLabel(entry)
     end
     local charData = LookupCharacterRow(storageKey)
     if charData and charData.name and charData.name ~= "" then
-        local name = charData.name
+        local name = ns.CharDisplayName(charData, charData.name)
         local realm = charData.realm
         if realm and realm ~= "" then
             local pretty = ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(realm) or realm
@@ -345,7 +345,9 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         tabBar:SetSize(TAB_BAR_W, TAB_BAR_H)
     end
     tabBar:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PADDING, -8)
-    tabBar:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -(PADDING + SCROLLBAR_LANE + SCROLL_GAP), -8)
+    -- Full width: the tab row is above the table, not inside the viewport, so the vertical lane is
+    -- none of its business. Only the viewport and the bar beside it have to agree.
+    tabBar:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -PADDING, -8)
 
     local tabButtons = {}
     local function setTabVisuals(btn, selected)
@@ -439,6 +441,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     end
 
     local activeMoneyLogScroll
+    -- Reserved while building; the Factory hands it back when the rows turn out to fit.
+    local laneReserved = true
 
     local function SyncMoneyLogScrollBar(scroll)
         if not scrollBarColumn or not scroll then return end
@@ -451,7 +455,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
                 Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
             end
         end
-        scrollBarColumn:Show()
+        if laneReserved then scrollBarColumn:Show() else scrollBarColumn:Hide() end
     end
 
     local function RefreshMoneyLogScrollChrome(scroll)
@@ -646,6 +650,39 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local contribScroll, contribScrollChild = SetupContribScroll(contribPanel, contribHeaderRow, TABLE_CONTENT_W)
 
+    --[[
+        The dynamic scrollbar lane for this window.
+
+        The table chrome sits BESIDE the viewport (tab row, header strip, footer), so none of it can
+        be anchored to the scroll frame without a SetPoint cycle -- the Factory tells us instead,
+        through _wnScrollLaneChanged. All four right edges move together, the viewport grows with
+        them, and ApplyTableWidth (hooked to OnSizeChanged) re-resolves the flex columns into the
+        width that frees up. Content height here does not depend on width, so the flip cannot
+        oscillate.
+    ]]
+    local function ApplyMoneyLogLane(reserve)
+        reserve = reserve and true or false
+        if reserve == laneReserved then return end
+        laneReserved = reserve
+        local inset = reserve and (SCROLLBAR_LANE + SCROLL_GAP) or 0
+
+        logHeaderRow:SetPoint("TOPRIGHT", logPanel, "TOPRIGHT", -inset, 0)
+        logFooter:SetPoint("BOTTOMRIGHT", logPanel, "BOTTOMRIGHT", -inset, 0)
+        contribHeaderRow:SetPoint("TOPRIGHT", contribPanel, "TOPRIGHT", -inset, 0)
+        -- The log scroll trails its footer; the contributions scroll is pinned to its panel.
+        if contribScroll then
+            contribScroll:SetPoint("BOTTOMRIGHT", contribPanel, "BOTTOMRIGHT", -inset, 0)
+        end
+        if reserve then scrollBarColumn:Show() else scrollBarColumn:Hide() end
+
+        -- The anchors above only take effect on the next layout pass, so the column sync that runs
+        -- in the same UpdateScrollBarVisibility call still sees the old viewport. Re-sync once the
+        -- new width is real; the state guard above makes the re-entry a no-op.
+        if reserve and C_Timer and C_Timer.After then
+            C_Timer.After(0, function() RefreshMoneyLogScrollChrome(activeMoneyLogScroll) end)
+        end
+    end
+
     local function populateContribScroll()
         if not contribScroll or not contribScrollChild then return end
         clearScrollHost(contribScroll, contribScrollChild, contribRowPool)
@@ -723,9 +760,11 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     end
     if logScroll then
         logScroll:HookScript("OnSizeChanged", function(_, w) ApplyTableWidth(w) end)
+        logScroll._wnScrollLaneChanged = function(_, reserve) ApplyMoneyLogLane(reserve) end
     end
     if contribScroll then
         contribScroll:HookScript("OnSizeChanged", function(_, w) ApplyTableWidth(w) end)
+        contribScroll._wnScrollLaneChanged = function(_, reserve) ApplyMoneyLogLane(reserve) end
     end
     ApplyTableWidth(logScroll and logScroll:GetWidth() or TABLE_CONTENT_W)
 

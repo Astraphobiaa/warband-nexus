@@ -10,6 +10,9 @@
 
 local _, ns = ...
 local M = ns.CollectionsUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M and M.state, "CollectionsUI_Shared.lua must load before this file")
 
 local WarbandNexus = M.WarbandNexus
@@ -84,7 +87,7 @@ function M.BuildFlatMountList(groupedData, collapsedHeaders)
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
-    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or HEX.bright
     local countColor = whiteHex
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
@@ -128,7 +131,7 @@ function M.BuildFlatPetList(groupedData, collapsedHeaders)
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
-    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or HEX.bright
     local countColor = whiteHex
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
@@ -175,7 +178,7 @@ function M.BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverride, e
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
-    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or HEX.bright
     local countColor = whiteHex
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
@@ -405,10 +408,10 @@ end
 -- Shared row pool for all three collection lists (Mounts, Pets, Achievements). Row structure from SharedWidgets.
 local CollectionRowPool = {}
 local function CollectionsCollectedNameHex()
-    return M.CollectionsCollectedHex and M.CollectionsCollectedHex() or "|cff33e533"
+    return M.CollectionsCollectedHex and M.CollectionsCollectedHex() or HEX.green
 end
 local function CollectionsUncollectedNameHex()
-    return M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
+    return M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright
 end
 local DEFAULT_ICON_MOUNT = "Interface\\Icons\\Ability_Mount_RidingHorse"
 local DEFAULT_ICON_PET = "Interface\\Icons\\INV_Box_PetCarrier_01"
@@ -890,7 +893,7 @@ end
 function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchievementID, onSelectAchievement, redraw, cf)
     local ach = item.achievement
     local achCollected = ach.isCollected == true
-    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or HEX.bright
     local nameColor = achCollected and CollectionsCollectedNameHex() or whiteHex
     local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""
     local labelText = nameColor .. (ach.name or "") .. "|r" .. (pointsStr ~= "" and (whiteHex .. pointsStr .. "|r") or "")

@@ -108,6 +108,33 @@ local function withRestoredState(fn)
 end
 
 
+-- ── Retail fixtures ──────────────────────────────────────────────────────────
+-- These probes drive the engine through real retail source rows (Undermine dumpster 469857,
+-- Nitro, Gallywix, Sylvanas' chest, slot-outcome rules). WoW Forever loads only vanilla-era
+-- sources (CollectibleSourceDB FOREVER_DROP_ITEMS), so the rows are absent there by design:
+-- those probes report SKIP on Forever instead of failing on data the client never had.
+local RETAIL_FIXTURE_PROBES = {
+    ["Classify: Overflowing Dumpster -> npc (not skip)"] = true,
+    ["MatchGuidExact: dumpster objectID"] = true,
+    ["MatchGuidExact: rare NPC (Nitro)"] = true,
+    ["MatchGuidExact: raid boss NPC (Gallywix)"] = true,
+    ["LootSessionHasTrackedObjectSource(dumpster)"] = true,
+    ["ProcessNPCLoot: rare defers until close (Nitro)"] = true,
+    ["ProcessNPCLoot closed: single increment without open defer"] = true,
+    ["Late LOOT_OPENED after closed route: no second increment"] = true,
+    ["Currency fallback: tracked dumpster miss (fake via mechanica restore)"] = true,
+    ["slot outcome rules resolve to eligible boss drop rows"] = true,
+    ["Sylvanas chest constant points at an objectDropDB row holding the mount"] = true,
+    ["slot rule template id agrees with the live instance (when its boss is here)"] = true,
+    ["ENCOUNTER_END seeds recentKill for Sylvanas (2435)"] = true,
+}
+
+local function SkipsRetailFixture(label)
+    if not RETAIL_FIXTURE_PROBES[label] then return false end
+    local WN = ns.WarbandNexus
+    return WN and WN.SupportsFeature and not WN:SupportsFeature("tryCounterRetailSources") or false
+end
+
 -- ── Result sink ──────────────────────────────────────────────────────────────
 -- /wn tc test renders into a window when the UI layer is loaded; chat stays the fallback.
 -- Duplicate labels are dropped: a probe label repeated across suites says nothing new.
@@ -189,6 +216,10 @@ local function runSelfTestHarness(WN, title, fn)
         if not SinkEmit("section", st) then WN:Print("|cff9370DB[WN-TC-Test]|r — " .. st) end
     end
     local function probe(label, pfn)
+        if SkipsRetailFixture(label) then
+            lineSkip(label .. " (retail fixture)")
+            return
+        end
         warnedInProbe = false
         local ok, err = pcall(pfn)
         if not ok then
@@ -262,6 +293,10 @@ function WarbandNexus:RunTryCounterSelfTest()
         if not SinkEmit("section", title) then WN:Print("|cff9370DB[WN-TC-Test]|r — " .. title) end
     end
     local function probe(label, fn)
+        if SkipsRetailFixture(label) then
+            lineSkip(label .. " (retail fixture)")
+            return
+        end
         warnedInProbe = false
         local ok, err = pcall(fn)
         if not ok then

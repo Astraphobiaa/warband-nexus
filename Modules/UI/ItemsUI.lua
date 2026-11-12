@@ -11,6 +11,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 ns.ItemsUI = ns.ItemsUI or {}
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
@@ -281,7 +284,7 @@ local function ItemsBankSubTabIconApply(tex, tabInfo)
 end
 
 local function ItemsDimMarkup(text)
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888") .. text .. "|r"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or HEX.dim) .. text .. "|r"
 end
 
 local ApplyItemsSubTabButtonVisuals = ns.UI_ApplySubTabButtonVisuals
@@ -391,7 +394,7 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
             local fromSub = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()
             if fromSub == tabInfo.key then return end
             if tabInfo.key == "guild" and not CanViewGuildBankSubTab() then
-                WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
+                WarbandNexus:Print(HEX.orange .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
                 return
             end
             ns.UI_SetItemsSubTab(tabInfo.key)
@@ -701,13 +704,13 @@ local function RegisterItemsEvents(parent)
             return
         end
         if IsDebugModeEnabled and IsDebugModeEnabled() then
-            DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
+            DebugPrint(HEX.green .. "[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
         end
         FlushItemsMetadataRedraw()
     end)
     
     if ns.IsDebugVerboseEnabled and ns.IsDebugVerboseEnabled() then
-        DebugPrint("|cff9370DB[ItemsUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
+        DebugPrint(HEX.accent .. "[ItemsUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
     end
 end
 
@@ -838,7 +841,7 @@ local function EnsureWarbandDrawIndicator(container)
     end
     local line1 = (ns.L and ns.L["ITEMS_LOADING"]) or "Loading..."
     local line2 = (ns.L and ns.L["ITEMS_WARBAND_UPDATING"]) or "Building Warband list..."
-    local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+    local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.muted
     fs:SetText(mutedHex .. line1 .. "\n" .. line2 .. "|r")
     return fs
 end
@@ -1446,12 +1449,14 @@ function WarbandNexus:DrawItemList(parent)
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "items",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r",
-        subtitleText = (ns.L and ns.L["ITEMS_SUBTITLE"]) or "Browse your Warband Bank and Personal Items (Bank + Inventory)",
+        subtitleText = ns.L_GameType("ITEMS_SUBTITLE", "Browse your Warband Bank and Personal Items (Bank + Inventory)"),
         textRightInset = itemsToolbarReserve,
     }))
     headerYOffset = ns.UI_PageStack_Place(chrome, titleCard)
     
-    local goldMgrBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+    -- Gold Target and Money Logs move gold to / from the account bank; Forever has none.
+    local hasWarbandBank = not (self.SupportsFeature and not self:SupportsFeature("warbandBank"))
+    local goldMgrBtn = hasWarbandBank and ns.UI_CreateTitleToolbarTextButton(titleCard, {
         preset = "action",
         autoWidth = true,
         text = (ns.L and ns.L["GOLD_MANAGER_BTN"]) or "Gold Target",
@@ -1465,7 +1470,7 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_AnchorTitleToolbarControlRight(titleCard, goldMgrBtn)
     end
 
-    local moneyLogsBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+    local moneyLogsBtn = hasWarbandBank and ns.UI_CreateTitleToolbarTextButton(titleCard, {
         preset = "action",
         autoWidth = true,
         text = (ns.L and ns.L["MONEY_LOGS_BTN"]) or "Money Logs",
@@ -2001,15 +2006,20 @@ function WarbandNexus:ApplyItemsVirtualFlatListOnly()
 
     rc:SetHeight(math.max(contentHeight or 1, 1))
 
+    -- Canonical path, same call the partial-redraw sibling above makes: the viewport floor, the
+    -- bar columns and both visibility passes live in UI_SyncMainTabScrollChrome, not here.
     local CONTENT_BOTTOM_PADDING = 8
     local tabBodyHeight = 8 + (contentHeight or 0)
-    scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight()))
-
-    if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
-        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
-    end
-    if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
-        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+    if ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mf, scrollChild, tabBodyHeight)
+    else
+        scrollChild:SetHeight(math.max(tabBodyHeight + CONTENT_BOTTOM_PADDING, mf.scroll:GetHeight()))
+        if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+            ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+        end
+        if ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+            ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+        end
     end
 
     local sc = mf.scroll
@@ -2081,7 +2091,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             ns.UI.Factory:ApplyRowBackground(row, rowNum)
 
             row.qtyText:SetText(ns.UI_FormatStackCountMarkup and ns.UI_FormatStackCountMarkup(item.stackCount or 1)
-            or format("|cffffcc00%s|r", FormatNumber(item.stackCount or 1)))
+            or format(HEX.gold .. "%s|r", FormatNumber(item.stackCount or 1)))
             row.icon:SetTexture(ns.Utilities and ns.Utilities.ResolveItemRowIcon and ns.Utilities:ResolveItemRowIcon(item) or (item.iconFileID or 134400))
 
             local baseName = item.name

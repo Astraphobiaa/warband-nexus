@@ -6,6 +6,9 @@
 
 local ADDON_NAME, ns = ...
 local M = ns.SettingsUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M and M._H, "SettingsUI_Notifications.lua loaded before SettingsUI.lua - check the TOC")
 
 ---@param ctx table `{ parent, effectiveWidth, sideInset, yOffset, skipPanelIntro, AnchorSectionTop }`
@@ -346,6 +349,19 @@ function M.AppendNotificationsPanel(ctx)
         end
     end
 
+    -- Toggles for systems this client lacks (Forever: Great Vault, weapon illusions) are dropped.
+    local OPTION_FEATURE = { vault = "vault", lootIllusion = "illusions" }
+    local function DropUnsupported(list)
+        for i = #list, 1, -1 do
+            local feature = OPTION_FEATURE[list[i].key]
+            if feature and WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature(feature) then
+                table.remove(list, i)
+            end
+        end
+    end
+    DropUnsupported(notifMasterOptions)
+    DropUnsupported(notifCollectibleOptions)
+
     notifStackY = StackSettingsSubPanel(notifSection.content, notifInnerW, 0, function(inner, iw)
         local cy = 0
         local w
@@ -532,7 +548,7 @@ function M.AppendNotificationsPanel(ctx)
                 if ok and WarbandNexus.Print then
                     WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_OK"]) or "|cff9966ff[Warband Nexus]|r Try counter enabled on the selected chat tab.")
                 elseif WarbandNexus.Print then
-                    WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"]) or "|cffff6600[Warband Nexus]|r Could not update the chat tab (no chat frame or API blocked).")
+                    WarbandNexus:Print((ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_FAIL"]) or HEX.orange .. "[Warband Nexus]|r Could not update the chat tab (no chat frame or API blocked).")
                 end
             end
         end)
@@ -679,7 +695,7 @@ function M.AppendNotificationsPanel(ctx)
         if not InCombatLockdown() then return false end
         if WarbandNexus and WarbandNexus.Print then
             local msg = (ns.L and ns.L["SETTINGS_NOTIF_POSITION_COMBAT"]) or "Cannot position notification previews during combat."
-            WarbandNexus:Print("|cffff6600[Warband Nexus]|r " .. msg .. "|r")
+            WarbandNexus:Print(HEX.orange .. "[Warband Nexus]|r " .. msg .. "|r")
         end
         return true
     end
@@ -881,14 +897,14 @@ function M.AppendNotificationsPanel(ctx)
 
         xBox:SetScript("OnEnterPressed", function(self)
             if ApplyFromDialog() then
-                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+                WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
             end
             self:ClearFocus()
         end)
         xBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         yBox:SetScript("OnEnterPressed", function(self)
             if ApplyFromDialog() then
-                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+                WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
             end
             self:ClearFocus()
         end)
@@ -906,7 +922,7 @@ function M.AppendNotificationsPanel(ctx)
         RegisterSettingsAccentChrome(applyBtn)
         applyBtn:SetScript("OnClick", function()
             if not ApplyFromDialog() then return end
-            WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+            WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
             CloseNotificationCoordDialog()
         end)
 
@@ -1015,7 +1031,7 @@ function M.AppendNotificationsPanel(ctx)
                 saveGhostPositionBoth(WarbandNexus._positionGhostHolder)
             end
             closePositionGhosts()
-            WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+            WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
             return
         end
         local pt, px, py = "TOP", 0, -100
@@ -1074,14 +1090,14 @@ function M.AppendNotificationsPanel(ctx)
         holder:Show()
         WarbandNexus._notifGhostLane = lane
         WarbandNexus._positionGhostHolder = holder
-        WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["NOTIF_DRAG_LANE_GHOST_MSG"]) or "Drag the preview, then right-click for coordinates. Click the lane button again to save.") .. "|r")
+        WarbandNexus:Print(HEX.gold .. ((ns.L and ns.L["NOTIF_DRAG_LANE_GHOST_MSG"]) or "Drag the preview, then right-click for coordinates. Click the lane button again to save.") .. "|r")
     end
 
     setPosBtn:SetScript("OnClick", function()
         if WarbandNexus.db.profile.notifications.useAlertFramePosition then return end
         if WarbandNexus.db.profile.notifications.unifiedToastLayout == false then
             if WarbandNexus.Print then
-                WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["NOTIF_USE_PER_LANE_BUTTONS"]) or "Use the per-type buttons below to position each toast lane, or turn unified stack back on.") .. "|r")
+                WarbandNexus:Print(HEX.gold .. ((ns.L and ns.L["NOTIF_USE_PER_LANE_BUTTONS"]) or "Use the per-type buttons below to position each toast lane, or turn unified stack back on.") .. "|r")
             end
             return
         end
@@ -1089,7 +1105,7 @@ function M.AppendNotificationsPanel(ctx)
         if WarbandNexus._positionGhostHolder then
             saveGhostPositionBoth(WarbandNexus._positionGhostHolder)
             closePositionGhosts()
-            WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+            WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
             return
         end
         WarbandNexus._notifGhostLane = nil
@@ -1157,7 +1173,7 @@ function M.AppendNotificationsPanel(ctx)
         holder:Show()
         WarbandNexus._positionGhostHolder = holder
 
-        WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["DRAG_POSITION_STACK_MSG"]) or "Drag the stacked preview. Right-click for coordinates. Click Set Position again to save.") .. "|r")
+        WarbandNexus:Print(HEX.gold .. ((ns.L and ns.L["DRAG_POSITION_STACK_MSG"]) or "Drag the stacked preview. Right-click for coordinates. Click Set Position again to save.") .. "|r")
     end)
 
     local resetBtn = ns.UI.Factory:CreateButton(notifSection.content)
@@ -1188,7 +1204,7 @@ function M.AppendNotificationsPanel(ctx)
         if useAlertFrameCheck then useAlertFrameCheck:SetChecked(false); if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(false) end end
         if unifiedLayoutCheck then unifiedLayoutCheck:SetChecked(true); if unifiedLayoutCheck.checkTexture then unifiedLayoutCheck.checkTexture:SetShown(true) end end
         if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
-        WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_RESET_MSG"]) or "Position reset to default.") .. "|r")
+        WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["POSITION_RESET_MSG"]) or "Position reset to default.") .. "|r")
     end)
 
     local testBtn = ns.UI.Factory:CreateButton(notifSection.content)

@@ -49,7 +49,7 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
             {
                 key = "currencies",
                 label = (ns.L and ns.L["MODULE_CURRENCIES"]) or "Currencies",
-                tooltip = (ns.L and ns.L["MODULE_CURRENCIES_DESC"]) or "Track account-wide and character-specific currencies (Gold, Honor, Conquest, etc.)",
+                tooltip = ns.L_GameType("MODULE_CURRENCIES_DESC", "Track account-wide and character-specific currencies (Gold, Honor, Conquest, etc.)"),
                 get = function() return WarbandNexus.db.profile.modulesEnabled.currencies ~= false end,
                 set = function(value)
                     WarbandNexus.db.profile.modulesEnabled.currencies = value
@@ -69,7 +69,7 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
             {
                 key = "items",
                 label = (ns.L and ns.L["MODULE_ITEMS"]) or "Items",
-                tooltip = (ns.L and ns.L["MODULE_ITEMS_DESC"]) or "Track Warband Bank items, search functionality, and item categories",
+                tooltip = ns.L_GameType("MODULE_ITEMS_DESC", "Track Warband Bank items, search functionality, and item categories"),
                 get = function() return WarbandNexus.db.profile.modulesEnabled.items ~= false end,
                 set = function(value)
                     WarbandNexus.db.profile.modulesEnabled.items = value
@@ -79,7 +79,7 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
             {
                 key = "storage",
                 label = (ns.L and ns.L["MODULE_STORAGE"]) or "Storage",
-                tooltip = (ns.L and ns.L["MODULE_STORAGE_DESC"]) or "Track character bags, personal bank, and Warband Bank storage",
+                tooltip = ns.L_GameType("MODULE_STORAGE_DESC", "Track character bags, personal bank, and Warband Bank storage"),
                 get = function() return WarbandNexus.db.profile.modulesEnabled.storage ~= false end,
                 set = function(value)
                     WarbandNexus.db.profile.modulesEnabled.storage = value
@@ -89,7 +89,7 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
             {
                 key = "pve",
                 label = (ns.L and ns.L["MODULE_PVE"]) or "PvE",
-                tooltip = (ns.L and ns.L["MODULE_PVE_DESC"]) or "Track Mythic+ dungeons, raid progress, and Weekly Vault rewards",
+                tooltip = ns.L_GameType("MODULE_PVE_DESC", "Track Mythic+ dungeons, raid progress, and Weekly Vault rewards"),
                 get = function() return WarbandNexus.db.profile.modulesEnabled.pve ~= false end,
                 set = function(value)
                     if WarbandNexus.SetPvEModuleEnabled then
@@ -103,7 +103,7 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
             {
                 key = "pvp",
                 label = (ns.L and ns.L["MODULE_PVP"]) or "PvP",
-                tooltip = (ns.L and ns.L["MODULE_PVP_DESC"]) or "Track rated brackets, honor progress, and match history. Disabling stops all PvP data collection.",
+                tooltip = ns.L_GameType("MODULE_PVP_DESC", "Track rated brackets, honor progress, and match history. Disabling stops all PvP data collection."),
                 get = function() return WarbandNexus.db.profile.modulesEnabled.pvp ~= false end,
                 set = function(value)
                     if WarbandNexus.SetPvPModuleEnabled then
@@ -131,7 +131,7 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
             {
                 key = "professions",
                 label = (ns.L and ns.L["MODULE_PROFESSIONS"]) or "Professions",
-                tooltip = (ns.L and ns.L["MODULE_PROFESSIONS_DESC"]) or "Track profession skills, tools, concentration, knowledge, and recipes across characters. Shows Recipe Companion reagent counts while a profession window is open.",
+                tooltip = ns.L_GameType("MODULE_PROFESSIONS_DESC", "Track profession skills, tools, concentration, knowledge, and recipes across characters. Shows Recipe Companion reagent counts while a profession window is open."),
                 get = function() return WarbandNexus.db.profile.modulesEnabled.professions ~= false end,
                 set = function(value)
                     if WarbandNexus.SetProfessionModuleEnabled then

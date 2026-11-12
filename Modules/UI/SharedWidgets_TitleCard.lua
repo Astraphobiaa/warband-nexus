@@ -38,6 +38,7 @@ local TAB_REGISTRY_ICON_KEYS = {
     pve = "dungeon",
     pvp = "pvp",
     stats = "bar_chart",
+    legacy = "trophy",
     collections = "book",
     professions = "anvil",
     gear = "cuirass",

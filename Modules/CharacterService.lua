@@ -185,6 +185,25 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         and not (issecretvalue and issecretvalue(uSecond)) then
         entry.surname = uSecond
     end
+    -- WoW Forever game rules are per character (realm ruleset, Self-Found), but the client only
+    -- answers for the one logged in -- so they are persisted here and every row reads its own.
+    -- C_PlayerInfo.IsSelfFoundActive() -> active:bool (client APIDocumentation, Forever build).
+    if foreverNames then
+        local rules = {}
+        -- Realm tag as it applies to THIS character: live ruleset (Hardcore / PvP / RP), else the
+        -- type encoded in the realm id. Rows read this instead of asking the client.
+        local U = ns.Utilities
+        local realmNow = GetNormalizedRealmName and GetNormalizedRealmName()
+        if issecretvalue and issecretvalue(realmNow) then realmNow = nil end
+        rules.ruleset = U and U.GetRealmTypeLabel and U:GetRealmTypeLabel(realmNow or entry.realm) or nil
+        if type(C_PlayerInfo) == "table" and type(C_PlayerInfo.IsSelfFoundActive) == "function" then
+            local okSF, sf = pcall(C_PlayerInfo.IsSelfFoundActive)
+            if okSF and not (issecretvalue and issecretvalue(sf)) then
+                rules.selfFound = sf and true or false
+            end
+        end
+        entry.gameRules = rules
+    end
     if not entry.name or not entry.realm then
         local un = uName
         if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
@@ -1675,6 +1694,7 @@ CharacterService.VALID_CHARACTER_SORT_KEYS = {
     realm = true,
     guild = true,
     pvpRating = true,
+    pvpRank = true,
 }
 
 local function CharSortSafeLower(s)
@@ -1766,6 +1786,12 @@ function CharacterService:CompareCharactersBySortKey(a, b, sortKey, opts)
         if ga ~= gb then
             return ga < gb
         end
+        return compareName(a, b)
+    elseif sortKey == "pvpRank" then
+        -- WoW Forever honor ladder: rank, then progress toward the next one.
+        local la, lb = a.rankLadder or {}, b.rankLadder or {}
+        if (la.rank or 0) ~= (lb.rank or 0) then return (la.rank or 0) > (lb.rank or 0) end
+        if (la.earned or 0) ~= (lb.earned or 0) then return (la.earned or 0) > (lb.earned or 0) end
         return compareName(a, b)
     elseif sortKey == "pvpRating" then
         if (a.bestRating or 0) ~= (b.bestRating or 0) then
@@ -1966,7 +1992,7 @@ function CharacterService:GetAllCharacterLocations(addon)
                 mapY = entry.mapY,
                 isResting = entry.isResting or false,
                 savedAt = entry.locationSavedAt or entry.lastSeen or 0,
-                charName = entry.name or charKey,
+                charName = ns.CharDisplayName(entry, charKey),
                 classFile = entry.classFile or "PRIEST",
             }
         end

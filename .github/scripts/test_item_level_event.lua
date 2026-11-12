@@ -49,7 +49,9 @@ ns.CharacterService = {
     ResolveSubsidiaryCharacterKey = function() return "Player-01" end,
     ResolveCharactersTableKey = function() return "Player-01" end,
 }
-ns.Utilities = { IsModuleEnabled = function() return true end }
+-- The real Utilities, because EventManager now reads the equipped average through
+-- Utilities:GetEquippedItemLevel rather than calling GetAverageItemLevel itself. Loading the
+-- shipped module keeps this test covering the actual path instead of a stub that agrees with it.
 
 local function LoadFile(rel)
     local fh = assert(io.open(ROOT .. "/" .. rel, "rb"), "missing file: " .. rel)
@@ -63,6 +65,12 @@ local function LoadFile(rel)
 end
 
 LoadFile("Modules/Constants.lua")
+LoadFile("Modules/Utilities.lua")
+if not ns.Utilities then
+    error("Utilities did not register on ns", 0)
+end
+-- No capability module here, so SupportsFeature is absent and the helper trusts the API -- which
+-- is the retail path, and the one this suite is about.
 LoadFile("Modules/EventManager.lua")
 
 local row = { name = "Gearhound", itemLevel = 280.5 }
@@ -85,6 +93,38 @@ do
     WarbandNexus:OnItemLevelChanged()
     stub.Advance(1)
     assert_eq(row.itemLevel, 284.25, "stored item level kept when the API reads 0")
+end
+
+print("Phase 3: where the API misreports, the average comes from the equipped pieces")
+do
+    -- WoW Forever answers a constant 1.75 from GetAverageItemLevel while the equipped gear scans
+    -- as item levels 1..10. With the averageItemLevel capability off, Utilities must ignore the
+    -- API and average the pieces itself.
+    local equipped = { [1] = 10, [3] = 8, [4] = 1, [5] = 7, [16] = 12, [19] = 2 }
+    GetInventoryItemLink = function(_, slot)
+        return equipped[slot] and ("|Hitem:" .. slot .. "|h") or nil
+    end
+    C_Item = C_Item or {}
+    C_Item.GetDetailedItemLevelInfo = function(link)
+        local slot = tonumber(link:match("|Hitem:(%d+)|h"))
+        return equipped[slot]
+    end
+    liveIlvl = 1.75
+    WarbandNexus.SupportsFeature = function(_, key)
+        if key == "averageItemLevel" then return false end
+        return true
+    end
+
+    -- Shirt (4) and tabard (19) are excluded, so the average is over slots 1, 3, 5 and 16.
+    local expected = (10 + 8 + 7 + 12) / 4
+    assert_eq(ns.Utilities:GetEquippedItemLevel(), expected, "computed from equipped pieces, not the API")
+
+    local _, count = ns.Utilities:ComputeEquippedItemLevel()
+    assert_eq(count, 4, "shirt and tabard are left out of the count")
+
+    WarbandNexus.SupportsFeature = function() return true end
+    assert_eq(ns.Utilities:GetEquippedItemLevel(), 1.75, "with the capability on, the API wins again")
+    WarbandNexus.SupportsFeature = nil
 end
 
 assert_eq(#stub.errors, 0, "no errors raised inside stubbed timers/handlers")

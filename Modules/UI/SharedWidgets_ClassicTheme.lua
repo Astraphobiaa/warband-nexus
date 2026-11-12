@@ -28,8 +28,15 @@ ns.UI_CLASSIC_SURFACE_VARIANT = {
     tabInactive = { 0.055, 0.055, 0.065, 1 },
     tabActive = { 0.095, 0.095, 0.110, 0.98 },
     tabHover = { 0.105, 0.105, 0.120, 0.98 },
+    --- Key parity with COLORS / SURFACE_VARIANTS.dark is mandatory (see SharedWidgets_Theme.lua).
+    --- Classic surfaces are dark, so the dark-mode accents apply unchanged.
     gold = { 1.00, 0.82, 0.00, 1 },
     green = { 0.35, 0.85, 0.35, 1 },
+    red = { 0.95, 0.30, 0.30, 1 },
+    orange = { 1.00, 0.65, 0.25, 1 },
+    info = { 0.40, 0.80, 1.00, 1 },
+    pet = { 1.00, 0.41, 0.71, 1 },
+    toy = { 1.00, 0.40, 1.00, 1 },
     textBright = { 1.00, 0.97, 0.85, 1 },
     textNormal = { 0.92, 0.88, 0.78, 1 },
     textMuted = { 0.78, 0.72, 0.62, 1 },

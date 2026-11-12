@@ -172,6 +172,11 @@ ns.UI_ICONS = {
     tag            = { file = Icon("Tent") },  -- colored
     question       = { file = Icon("RedQuestion") },  -- colored
     sparkle        = { file = Icon("Sparkle") },  -- colored
+    -- WoW Forever character columns. Spellbook is the Collections book wearing a flame instead of
+    -- its horseshoe; TalentTree is that flame over a paw and a bolt. Both built by
+    -- scripts/build_character_icons.py from art the set already ships.
+    skills         = { file = Icon("Spellbook") },   -- colored
+    talents        = { file = Icon("TalentTree") },  -- colored
     pin            = { file = Icon("GoldPin") },  -- colored
     illusion       = { file = Icon("Illusion") },  -- colored
     title          = { file = Icon("TitleCrown") },  -- colored

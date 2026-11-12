@@ -13,7 +13,7 @@ local issecretvalue = issecretvalue
 
 --- Tooltip line name: prefer DB name; never :match on secret charKey.
 local function GetMinimapTooltipCharName(charKey, charData)
-    local n = charData and charData.name
+    local n = charData and ns.CharDisplayName(charData, charData.name)
     if not (issecretvalue and issecretvalue(n)) and n then return n end
     if not (issecretvalue and issecretvalue(charKey)) and charKey then
         return charKey:match("^([^-]+)") or charKey
@@ -140,14 +140,18 @@ function WarbandNexus:InitializeMinimapButton()
         -- Summary: Characters Gold / Warband Gold / Total Gold
         tooltip:AddLine(" ")
         
-        local warbandCopper = ns.Utilities:GetWarbandBankMoney() or 0
-        if warbandCopper == 0 then
+        -- No account bank on this client (Forever): no Warband Gold line, total = characters.
+        local hasWarbandBank = not (addon.SupportsFeature and not addon:SupportsFeature("warbandBank"))
+        local warbandCopper = hasWarbandBank and (ns.Utilities:GetWarbandBankMoney() or 0) or 0
+        if hasWarbandBank and warbandCopper == 0 then
             warbandCopper = ns.Utilities:GetWarbandBankTotalCopper(addon) or 0
         end
         
         local brightHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
         tooltip:AddDoubleLine(brightHex .. charsGoldLbl .. "|r",  "|cffffff00" .. FormatGold(totalCopper) .. "|r")
-        tooltip:AddDoubleLine(brightHex .. warbandGoldLbl .. ":|r", "|cffffff00" .. FormatGold(warbandCopper) .. "|r")
+        if hasWarbandBank then
+            tooltip:AddDoubleLine(brightHex .. warbandGoldLbl .. ":|r", "|cffffff00" .. FormatGold(warbandCopper) .. "|r")
+        end
         tooltip:AddDoubleLine(brightHex .. totalGoldLbl .. "|r",  "|cff00ff00" .. FormatGold(totalCopper + warbandCopper) .. "|r")
 
         tooltip:AddLine(" ")

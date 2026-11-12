@@ -8,6 +8,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local issecretvalue = issecretvalue
 local FontManager = ns.FontManager
 
@@ -308,7 +311,7 @@ end
 
 local function GetCollectedNameColor()
     return (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex())
-        or (ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completed) or "|cff33e533"
+        or (ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completed) or HEX.green
 end
 local DEFAULT_ICON_PLANS_ACHIEVEMENT = "Interface\\Icons\\Achievement_General"
 
@@ -589,10 +592,10 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
 
         local title = FormatTextNumbers(ach.name or "")
         if ach.isPlanned and showAchievementPlannedSuffix then
-            title = title .. " |cffffcc00(" .. ((ns.L and ns.L["PLANNED"]) or "Planned") .. ")|r"
+            title = title .. " " .. HEX.gold .. "(" .. ((ns.L and ns.L["PLANNED"]) or "Planned") .. ")|r"
         end
         local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""
-        local nameColor = ach.isCollected and GetCollectedNameColor() or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        local nameColor = ach.isCollected and GetCollectedNameColor() or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
         local labelText = nameColor .. title .. "|r" .. pointsStr
         local cui = ns.CollectionsUI
         local earnedDateRich, earnedEarnerRich
@@ -1372,8 +1375,8 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gr
         local count = self:GetTryCount(category, item.id) or 0
         local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
         trySuffix = ns.UI_FormatPlanTryCountSuffix and ns.UI_FormatPlanTryCountSuffix(count)
-            or ((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r "
-                .. ((ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee") .. tostring(count) .. "|r")
+            or ((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or HEX.info) .. triesLabel .. ":|r "
+                .. ((ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or HEX.bright) .. tostring(count) .. "|r")
     end
 
     local canExpand = false
@@ -1591,7 +1594,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             return newYOffset
         else
             if IsDebugModeEnabled and IsDebugModeEnabled() then
-                DebugPrint("|cffff0000[WN PlansUI]|r UI_CreateLoadingStateCard not found!")
+                DebugPrint(HEX.red .. "[WN PlansUI]|r UI_CreateLoadingStateCard not found!")
             end
             return yOffset + 120
         end
@@ -1727,11 +1730,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         local helpText = FontManager:CreateFontString(helpCard, "body", "OVERLAY")
         helpText:SetPoint("CENTER", 0, 10)
-        helpText:SetText("|cffffcc00" .. ((ns.L and ns.L["RECIPE_BROWSER"]) or "Recipe Browser") .. "|r")
+        helpText:SetText(HEX.gold .. ((ns.L and ns.L["RECIPE_BROWSER"]) or "Recipe Browser") .. "|r")
         
         local helpDesc = FontManager:CreateFontString(helpCard, "small", "OVERLAY")
         helpDesc:SetPoint("TOP", helpText, "BOTTOM", 0, -8)
-        helpDesc:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. ((ns.L and ns.L["RECIPE_BROWSER_DESC"]) or "Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.") .. "|r")
+        helpDesc:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or HEX.bright) .. ((ns.L and ns.L["RECIPE_BROWSER_DESC"]) or "Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.") .. "|r")
         helpDesc:SetJustifyH("CENTER")
         helpDesc:SetWidth(width - 40)
         
@@ -1889,7 +1892,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         truncationMsg:SetPoint("TOPRIGHT", 0, -gridTop)
         truncationMsg:SetJustifyH("CENTER")
         local showingFormat = (ns.L and ns.L["SHOWING_X_OF_Y"]) or "Showing %d of %d results"
-        truncationMsg:SetText("|cff888888" .. format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
+        truncationMsg:SetText(HEX.dim .. format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
         truncationMsg:Show()
         gridTop = gridTop + 24
     elseif parent._wnBrowseTruncFS then

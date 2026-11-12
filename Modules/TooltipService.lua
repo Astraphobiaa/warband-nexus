@@ -1516,7 +1516,7 @@ local function BuildCurrencyPerCharacterRows(currencyID)
                             realm = U:FormatRealmName(realm)
                         end
                         rows[#rows + 1] = {
-                            name = char.name or "?",
+                            name = ns.CharDisplayName(char, "?"),
                             realm = realm,
                             classFile = char.classFile or char.class,
                             amount = amount,

@@ -5,6 +5,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 ns.GearUI_Paperdoll = ns.GearUI_Paperdoll or {}
@@ -49,6 +52,50 @@ end
     local GearSlotHideLegacyIncreaseLabels = D("GearSlotHideLegacyIncreaseLabels")
     local SLOT_HALF = D("SLOT_HALF")
     local LocalizeUpgradeTrackName = D("LocalizeUpgradeTrackName")
+
+--- Slot frame. Equipped item: 1px edge in its quality colour. Empty slot: theme fill, neutral edge and a
+--- "?" glyph -- Blizzard's empty-slot silhouettes are dark-on-dark here and not on every client, so an
+--- empty slot used to read as nothing at all. Blizzard-chrome mode keeps the plain cell.
+function ns.GearUI_Paperdoll.ApplySlotFrame(btn, data)
+    local bf = btn and btn.borderFrame
+    if not bf or not bf.SetBackdrop then return end
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then return end
+    local hasItem = data and data.itemLink and not (issecretvalue and issecretvalue(data.itemLink)) and true or false
+    local edge = (ns.UI_GetBorderThickness and ns.UI_GetBorderThickness(btn)) or 1
+    if bf._wnSlotEdge ~= edge then
+        bf:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = edge })
+        bf._wnSlotEdge = edge
+    end
+    local q = hasItem and tonumber(data.quality) or nil
+    local qc = q and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+    if qc then
+        bf:SetBackdropBorderColor(qc.r, qc.g, qc.b, 0.9)
+    else
+        local s = (ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor()) or { 0.35, 0.35, 0.38, 1 }
+        bf:SetBackdropBorderColor(s[1], s[2], s[3], hasItem and 0.9 or 0.6)
+    end
+    bf:Show()
+
+    local bg, glyph = btn._gearSlotBg, btn._gearEmptyGlyph
+    if hasItem then
+        if bg then bg:Hide() end
+        if glyph then glyph:Hide() end
+        return
+    end
+    if bg then
+        local c = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or COLORS.bgCard or { 0.12, 0.12, 0.15, 1 }
+        bg:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+        bg:Show()
+    end
+    if not glyph then
+        glyph = FontManager:CreateFontString(bf, "header", "OVERLAY")
+        glyph:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        btn._gearEmptyGlyph = glyph
+    end
+    glyph:SetText("?")
+    ns.UI_SetTextColorRole(glyph, "Muted")
+    glyph:Show()
+end
 
 function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, inspectListHost)
     -- Slot is always the same size; space reserved even when the icon is hidden (empty texture)
@@ -173,12 +220,12 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                 btn.ilvlLabel:Hide()
             end
         else
-            -- Empty slot
-            tex:SetTexture(EMPTY_SLOT_TEXTURE[slotID] or SLOT_FALLBACK_TEXTURE)
-            tex:SetTexCoord(0, 1, 0, 1)
+            -- Empty slot: drawn by ApplySlotFrame (fill + edge + "?"), no Blizzard silhouette.
+            tex:SetTexture(nil)
             if btn.ilvlLabel then btn.ilvlLabel:Hide() end
             GearSlotClearPaperdollOverlays(btn)
         end
+        ns.GearUI_Paperdoll.ApplySlotFrame(btn, data)
     end
 
     Populate(slotData)
@@ -520,7 +567,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     elseif slotName ~= "" then
         slotNameLabel = FontManager:CreateFontString(parent, GFR("gearSlotName"), "OVERLAY")
         btn._gearSlotNameLabel = slotNameLabel
-        local slotHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        local slotHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
         slotNameLabel:SetText(slotHex .. slotName .. "|r")
         slotNameLabel:SetNonSpaceWrap(false)
         if slotNameLabel.SetWordWrap then slotNameLabel:SetWordWrap(false) end

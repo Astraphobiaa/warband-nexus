@@ -271,7 +271,14 @@ function M.VBCreateEasyAccessScrollBody(parent, opts)
         end)
     end
 
-    if VF.EnsureScrollBarColumnSync and barColumn then
+    -- Dynamic lane first: the bar column only keeps its space while the content overflows, and
+    -- the OnSizeChanged hook above already re-widths the child when the viewport grows. Every
+    -- caller of this helper (the Plans tracker body and the Easy Access panel) gets it. A caller
+    -- that wants the lane held open regardless passes keepScrollLane, which the Factory honours.
+    if VF.WireScrollLaneWithInsets and barColumn then
+        VF:WireScrollLaneWithInsets(scroll, scrollHost, barColumn,
+            { left = 0, top = 0, right = 0, bottom = 0, gap = scrollGap })
+    elseif VF.EnsureScrollBarColumnSync and barColumn then
         VF:EnsureScrollBarColumnSync(scroll, barColumn, barSyncOpts)
     elseif VF.SyncScrollBarColumnToViewport and barColumn then
         VF:SyncScrollBarColumnToViewport(scroll, barColumn, barSyncOpts)
@@ -632,6 +639,7 @@ M.LAUNCHER_ACTION_DEFS = {
     },
     vault = {
         kind = "vault",
+        feature = "vault",
         labelKey = "VAULT_BUTTON_MENU_TRACKER", labelFallback = "Vault Tracker",
         settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_VAULT", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_VAULT_DESC",
         iconKey = "great_vault",
@@ -674,14 +682,29 @@ function M.GetLauncherLeftClickLookup()
     return t
 end
 
+--- Main tabs that only exist where a capability is on (mirrors UI_MainShell TAB_CAPABILITY).
+local LAUNCHER_TAB_FEATURE = { pve = "pveTab", professions = "professionsTab", legacy = "legacy" }
+
+--- False when the action leads to a system this client does not have (Forever: Vault Tracker,
+--- the PvE tab). Menu rows, left-click choices and Settings checkboxes all skip those.
+function M.IsLauncherActionAvailable(actionId)
+    local def = M.LAUNCHER_ACTION_DEFS[actionId]
+    if not def then return false end
+    local feature = def.feature or (def.kind == "main_tab" and LAUNCHER_TAB_FEATURE[def.tabKey]) or nil
+    if feature and WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature(feature) then
+        return false
+    end
+    return true
+end
+
 function M.IsAllowedLeftClickAction(actionId)
     if not actionId or actionId == "" then return false end
-    return M.GetLauncherLeftClickLookup()[actionId] == true
+    return M.GetLauncherLeftClickLookup()[actionId] == true and M.IsLauncherActionAvailable(actionId)
 end
 
 function M.NormalizeLeftClickAction(actionId)
     if M.IsAllowedLeftClickAction(actionId) then return actionId end
-    return "pve"
+    return M.IsLauncherActionAvailable("pve") and "pve" or "chars"
 end
 
 function M.GetMinimapSettings()
@@ -792,7 +815,24 @@ function M.GetSettings()
     return settings
 end
 
+local EA_DISPLAY_FEATURE = {
+    tooltipVault = "vault", menuVault = "vault",
+    tooltipKeystone = "mythicPlus", tooltipMythicScore = "mythicPlus",
+    menuKeystone = "mythicPlus", menuMythicScore = "mythicPlus",
+    tooltipBounty = "seasonalPvEColumns", tooltipVoidcore = "seasonalPvEColumns",
+    tooltipGildedStash = "seasonalPvEColumns", tooltipManaflux = "seasonalPvEColumns",
+}
+
+--- False when the display row belongs to a system this client lacks (Settings hides its checkbox).
+function M.IsEasyAccessDisplayAvailable(key)
+    local feature = EA_DISPLAY_FEATURE[key]
+    return not (feature and WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature(feature))
+end
+
 function M.ShowEasyAccessDisplay(key)
+    if not M.IsEasyAccessDisplayAvailable(key) then
+        return false
+    end
     local display = GetSettings().display
     if not display or display[key] == nil then
         return EA_DISPLAY_DEFAULTS[key] ~= false

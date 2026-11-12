@@ -11,6 +11,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -60,21 +63,21 @@ local COLORS = ns.UI_COLORS
 
 local function PlanGreenHex()
     local P = ns.PLAN_UI_COLORS
-    return (P and P.completed) or (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff44ff44"
+    return (P and P.completed) or (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or HEX.green
 end
 
 local function PlanGoldHex()
     local P = ns.PLAN_UI_COLORS
-    return (P and P.progressLabel) or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
+    return (P and P.progressLabel) or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
 end
 
 local function PlanBrightHex()
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function PlanTryCountSuffix(count)
     local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-    local labelHex = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex()) or "|cffaaddff"
+    local labelHex = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex()) or HEX.info
     return labelHex .. triesLabel .. ":|r " .. PlanBrightHex() .. tostring(count) .. "|r"
 end
 ns.UI_FormatPlanTryCountSuffix = PlanTryCountSuffix
@@ -223,7 +226,7 @@ local function EnsurePlansAchievementExpandCache(achievementID)
     end
 
     if not (issecretvalue and issecretvalue(achDesc)) and achDesc and achDesc ~= "" then
-        local bodyHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        local bodyHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
         entry.information = bodyHex .. achDesc .. "|r"
     end
 
@@ -398,11 +401,24 @@ local function NormalizeCheckButtonChecked(button)
     return v == true or v == 1
 end
 
+--- A category this client has data for (Illusions are absent on WoW Forever).
+local PLANS_CATEGORY_CAPABILITY = { illusion = "illusions", toy = "toyBoxUncollected", daily_tasks = "midnightWeeklyQuests" }
+ns.PlansUI_CATEGORY_CAPABILITY = PLANS_CATEGORY_CAPABILITY
+local function PlansCategoryAvailable(key)
+    local cap = PLANS_CATEGORY_CAPABILITY[key]
+    if cap and WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature(cap) then
+        return false
+    end
+    return true
+end
+
 --- Sync session category key (To-Do browse subtabs).
 local function ResolvePlansCategoryFromSession()
     local validCat = {}
     for i = 1, #CATEGORIES do
-        validCat[CATEGORIES[i].key] = true
+        if PlansCategoryAvailable(CATEGORIES[i].key) then
+            validCat[CATEGORIES[i].key] = true
+        end
     end
     local sc = ns._sessionPlansCategory
     if sc and validCat[sc] then
@@ -787,9 +803,10 @@ Browse.Install(WarbandNexus, {
     PLANS_ACH_CATEGORY_CACHE_MIN_IDS = PLANS_ACH_CATEGORY_CACHE_MIN_IDS,
 })
 
+-- Weekly Progress (Midnight weekly quests) is not part of WarbandNexus_Forever.toc: the category is
+-- gated off there (midnightWeeklyQuests), so a missing satellite is expected, not a load-order bug.
 local WeeklyProgress = ns.PlansUI_WeeklyProgress
-assert(WeeklyProgress and WeeklyProgress.Install, "load PlansUI_WeeklyProgress.lua before PlansUI.lua")
-WeeklyProgress.Install(WarbandNexus, {
+if WeeklyProgress and WeeklyProgress.Install then WeeklyProgress.Install(WarbandNexus, {
     IsSafeDisplayString = IsSafeDisplayString,
     PlanGreenHex = PlanGreenHex,
     PlanGoldHex = PlanGoldHex,
@@ -800,7 +817,7 @@ WeeklyProgress.Install(WarbandNexus, {
     PAGE_STACK = PAGE_STACK,
     PlansContentPadH = PlansContentPadH,
     CATEGORIES = CATEGORIES,
-})
+}) end
 
 local Dialogs = ns.PlansUI_Dialogs
 assert(Dialogs and Dialogs.Install, "load PlansUI_Dialogs.lua before PlansUI.lua")
@@ -907,7 +924,7 @@ function WarbandNexus:DrawPlansTab(parent)
     end
     
     local activePlanCount = self:GetActiveNonDailyIncompleteCount()
-    local titleHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    local titleHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
     local titleTextContent = titleHex .. collectionPlansLabel .. "|r"
     local plansSubtitle = (ns.L and ns.L["PLANS_SUBTITLE_TEXT"]) or "Track your weekly goals & collections"
@@ -987,7 +1004,9 @@ function WarbandNexus:DrawPlansTab(parent)
             ns.UI_ChainTitleToolbarControl(titleCard, addWeeklyBtn, addCustomBtn)
         end
         
-        local addDailyBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        -- Add Quest tracks Midnight weekly objectives; none on a client without them (Forever).
+        local hasWeeklyQuests = not (self.SupportsFeature and not self:SupportsFeature("midnightWeeklyQuests"))
+        local addDailyBtn = hasWeeklyQuests and ns.UI_CreateTitleToolbarTextButton(titleCard, {
             preset = "action",
             text = (ns.L and ns.L["ADD_QUEST"]) or "Add Quest",
             onClick = function()
@@ -1002,8 +1021,8 @@ function WarbandNexus:DrawPlansTab(parent)
             end,
             onLeave = function() ns.UI_SafeHideGameTooltip() end,
         })
-        if addDailyBtn and addWeeklyBtn then
-            ns.UI_ChainTitleToolbarControl(titleCard, addDailyBtn, addWeeklyBtn)
+        if addDailyBtn and (addWeeklyBtn or addCustomBtn) then
+            ns.UI_ChainTitleToolbarControl(titleCard, addDailyBtn, addWeeklyBtn or addCustomBtn)
         end
         local hdrToolbarGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
 
@@ -1014,16 +1033,16 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         if not checkbox then
             if IsDebugModeEnabled and IsDebugModeEnabled() then
-                DebugPrint("|cffff0000WN DEBUG: CreateThemedCheckbox returned nil! titleCard:|r", titleCard)
+                DebugPrint(HEX.red .. "WN DEBUG: CreateThemedCheckbox returned nil! titleCard:|r", titleCard)
             end
             return
         end
         
         if IsDebugModeEnabled and IsDebugModeEnabled() then
             if not checkbox.HasScript then
-                DebugPrint("|cffff0000WN DEBUG: Checkbox missing HasScript method! Type:|r", checkbox:GetObjectType())
+                DebugPrint(HEX.red .. "WN DEBUG: Checkbox missing HasScript method! Type:|r", checkbox:GetObjectType())
             elseif not checkbox:HasScript("OnClick") then
-                DebugPrint("|cffffff00WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
+                DebugPrint(HEX.gold .. "WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
             end
         end
         
@@ -1052,8 +1071,9 @@ function WarbandNexus:DrawPlansTab(parent)
             end,
             onLeave = function() ns.UI_SafeHideGameTooltip() end,
         })
-        if resetBtn and addDailyBtn then
-            ns.UI_ChainTitleToolbarControl(titleCard, resetBtn, addDailyBtn)
+        local resetAnchor = addDailyBtn or addWeeklyBtn or addCustomBtn
+        if resetBtn and resetAnchor then
+            ns.UI_ChainTitleToolbarControl(titleCard, resetBtn, resetAnchor)
         end
 
         -- Checkbox (left of Reset button)
@@ -1246,13 +1266,15 @@ function WarbandNexus:DrawPlansTab(parent)
     local plansSubTabs = {}
     for i = 1, #CATEGORIES do
         local cat = CATEGORIES[i]
-        plansSubTabs[i] = {
-            key = cat.key,
-            label = cat.name,
-            icon = cat.icon,
-            iconAtlas = cat.iconAtlas,
-            iconKey = cat.iconKey,
-        }
+        if PlansCategoryAvailable(cat.key) then
+            plansSubTabs[#plansSubTabs + 1] = {
+                key = cat.key,
+                label = cat.name,
+                icon = cat.icon,
+                iconAtlas = cat.iconAtlas,
+                iconKey = cat.iconKey,
+            }
+        end
     end
 
     local categoryBar = ns.UI_CreateSubTabBar and ns.UI_CreateSubTabBar(headerParent, {
@@ -1409,7 +1431,9 @@ function WarbandNexus:DrawPlansTab(parent)
             if not mf or mf.currentTab ~= "plans" or mf._tabSwitchGen ~= deferGen then return end
             local endY = PaintPlansScrollBody()
             if ns.UI_SyncMainTabScrollChrome then
-                ns.UI_SyncMainTabScrollChrome(mf, deferParent, endY)
+                -- PaintPlansScrollBody already added BOTTOM_PAD; the helper adds its own, and the
+                -- two together pushed a page that exactly filled the viewport into scrolling.
+                ns.UI_SyncMainTabScrollChrome(mf, deferParent, endY - (PAGE_STACK.BOTTOM_PAD or 0))
             end
         end)
         if ns.UI_SyncMainTabScrollChrome then
@@ -1542,7 +1566,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
     end
 
-    if category == "daily_tasks" then
+    if category == "daily_tasks" and self.DrawDailyTasksView then
         parent._plansCardLayoutManager = nil
         return self:DrawDailyTasksView(parent, yOffset, width, plans)
     end

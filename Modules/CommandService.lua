@@ -34,7 +34,9 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn saved|r — " .. ((ns.L and ns.L["SAVED_INSTANCES_TITLE"]) or "Saved Instances"))
     addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "To-Do Tracker"))
     addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
-    addon:Print("  |cff00ccff/wn keys|r — " .. ((ns.L and ns.L["CMD_KEYS"]) or "Announce alt keystones (party)"))
+    if not (addon.SupportsFeature and not addon:SupportsFeature("mythicPlus")) then
+        addon:Print("  |cff00ccff/wn keys|r — " .. ((ns.L and ns.L["CMD_KEYS"]) or "Announce alt keystones (party)"))
+    end
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
 end
@@ -323,7 +325,7 @@ function CommandService:HandleSlashCommand(addon, input)
                     -- Construct Class Colored Name for Local Print
                     local classColor = char.classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[char.classFile] or {r=1, g=1, b=1}
                     local colorHex = string.format("ff%02x%02x%02x", classColor.r * 255, classColor.g * 255, classColor.b * 255)
-                    local coloredName = string.format("|c%s%s|r", colorHex, char.name)
+                    local coloredName = string.format("|c%s%s|r", colorHex, ns.CharDisplayName(char, char.name))
 
                     -- Construct Clickable Keystone Link for Local Print
                     local keystoneLink = string.format("|cffa335ee|Hitem:180653::::::::80:253::::::|h[%s (+%d)]|h|r", dungeonName, keystone.level)
@@ -333,7 +335,7 @@ function CommandService:HandleSlashCommand(addon, input)
                     -- Use plain text for Party to prevent WoW Server from dropping unverified item links
                     -- Format: Name [+Level Dungeon]
                     local shortDungeonName = dungeonName:gsub("The ", ""):sub(1, 15) -- shorten dungeon names slightly if needed
-                    tinsert(reportLinesParty, string.format("%s [+%d %s]", char.name, keystone.level, shortDungeonName))
+                    tinsert(reportLinesParty, string.format("%s [+%d %s]", ns.CharDisplayName(char, char.name), keystone.level, shortDungeonName))
                     keysFound = keysFound + 1
                 end
             end
@@ -607,6 +609,37 @@ function CommandService:HandleSlashCommand(addon, input)
     -- Spellbook / skill lines / professions / talents / crafting, as this client really answers
     -- them. The chat summary is only a sanity check that the sweep ran; the dump itself goes to
     -- SavedVariables, because a few hundred spell rows do not fit in the frame.
+    -- Reads back what a trainer visit captured, so the cache can be checked without a tooltip.
+    elseif cmd == "trainer" then
+        if not addon.GetTrainerSkills then
+            addon:Print("|cffff6600[WN]|r TrainerService not loaded - restart the client.|r")
+            return
+        end
+        local store = addon:GetTrainerSkills()
+        if not store then
+            addon:Print("|cffff6600[WN]|r no trainer data yet - visit your class trainer once.|r")
+            return
+        end
+        addon:Print(string.format("|cff00ccff[WN]|r %d trainable spell(s), last seen %d",
+            #store.services, store.lastSeen or 0))
+        for i = 1, math.min(#store.services, 40) do
+            local e = store.services[i]
+            addon:Print(string.format("   lvl %-3s %s%s", tostring(e.level or "?"),
+                e.name, e.rank and (" (" .. e.rank .. ")") or ""))
+        end
+        if #store.services > 40 then
+            addon:Print(string.format("   ... and %d more", #store.services - 40))
+        end
+        return
+
+    elseif cmd == "uiprobe" then
+        if not addon.PrintUILayoutProbe then
+            addon:Print("|cffff6600[WN]|r UILayoutProbe not loaded - restart the client, not /reload.|r")
+            return
+        end
+        addon:PrintUILayoutProbe()
+        return
+
     elseif cmd == "charprobe" then
         if not addon.WriteCharacterProbe then
             addon:Print("|cffff6600[WN]|r CharacterProbe not loaded - restart the client, not /reload.|r")

@@ -13,6 +13,9 @@ assert(M, "PvPUI.lua must load before PvPUI_Overview.lua")
 local L = ns.L
 local COLORS = ns.UI_COLORS
 local FontManager = ns.FontManager
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local PUI = ns.ProfessionsUI
 local TK = ns.UI_TableKit
 assert(TK, "SharedWidgets_TableKit.lua must load before PvPUI_Overview.lua")
@@ -212,6 +215,35 @@ local function MeasureStatColumns(measureFs, hdrFs, rosterRows)
             align = "CENTER", label = conquestLabel, tooltip = conquestLabel,
         }
     end
+    -- WoW Forever honor ladder: current rank (+ progress), highest rank reached, lifetime HKs.
+    if WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("pvpRankLadder") then
+        local rankSamples, hkSamples = { M.FormatForeverRankCell({ rank = 14, earned = 99, threshold = 100 }) }, { "-" }
+        for i = 1, #rosterRows do
+            local ld = rosterRows[i].rankLadder
+            if ld then
+                rankSamples[#rankSamples + 1] = M.FormatForeverRankCell(ld)
+                hkSamples[#hkSamples + 1] = M.FormatRosterCurrencyQty(ld.lifetimeHK or 0) or "0"
+            end
+        end
+        local rankLabel = (L and L["PVP_COL_RANK"]) or "Rank"
+        local highestLabel = (L and L["PVP_COL_HIGHEST_RANK"]) or "Highest"
+        local hkLabel = (L and L["PVP_COL_LIFETIME_HK"]) or "Lifetime HKs"
+        columns[#columns + 1] = {
+            key = "pvpRank", align = "CENTER", label = rankLabel,
+            tooltip = (L and L["PVP_COL_RANK_DESC"]) or "Current honor rank and progress to the next rank",
+            width = MeasureIconColumn(hdrFs, measureFs, rankLabel, OVERVIEW_RATING_MIN, rankSamples),
+        }
+        columns[#columns + 1] = {
+            key = "pvpHighestRank", align = "CENTER", label = highestLabel,
+            tooltip = (L and L["PVP_COL_HIGHEST_RANK_DESC"]) or "Highest honor rank this character has reached",
+            width = MeasureIconColumn(hdrFs, measureFs, highestLabel, OVERVIEW_RATING_MIN, rankSamples),
+        }
+        columns[#columns + 1] = {
+            key = "pvpLifetimeHK", align = "CENTER", label = hkLabel,
+            tooltip = (L and L["PVP_COL_LIFETIME_HK_DESC"]) or "Honorable kills over this character's lifetime",
+            width = MeasureIconColumn(hdrFs, measureFs, hkLabel, OVERVIEW_RATING_MIN, hkSamples),
+        }
+    end
     local statIcons = M.ROSTER_STAT_HEADER_ICONS or {}
     local bracketLabels = M.BRACKET_LABELS or {}
     for bi = 1, #bracketOrder do
@@ -240,6 +272,23 @@ local function MeasureStatColumns(measureFs, hdrFs, rosterRows)
         }
     end
     return columns
+end
+
+--- "Rank 7 (42%)": current honor rank and progress toward the next one (Forever ladder).
+--- Colour hexes are optional so the same string doubles as a width sample.
+function M.FormatForeverRankCell(ld, brightHex, mutedHex)
+    local rank = tonumber(ld and ld.rank) or 0
+    local thr = tonumber(ld and ld.threshold) or 0
+    local earned = tonumber(ld and ld.earned) or 0
+    local head = string.format((L and L["PVP_RANK_FMT"]) or "Rank %d", rank)
+    local tail = ""
+    if thr > 0 and rank < 14 then
+        tail = string.format(" (%d%%)", math.floor(math.min(1, math.max(0, earned / thr)) * 100 + 0.5))
+    end
+    if brightHex then
+        return brightHex .. head .. "|r" .. ((tail ~= "" and mutedHex) and (mutedHex .. tail .. "|r") or tail)
+    end
+    return head .. tail
 end
 
 local function PvpGroupIdFromSecKey(secKey)
@@ -836,7 +885,7 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
     for i = 1, #rosterRows do
         overallBest = math.max(overallBest, rosterRows[i].bestRating or 0)
     end
-    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
+    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
     local noData = muted .. "-|r"
     -- Empty on a client without rated PvP, which collapses the bracket columns and their headers.
     local bracketOrder = (M.RosterBracketOrder and M.RosterBracketOrder())
@@ -984,6 +1033,18 @@ function M.DrawWarbandOverview(parent, bundle, ctx)
             local cell = EnsureOverviewCell(bundle, paintedRowIdx, ci, row, col)
             if col.key == "honor" then
                 local t = M.FormatRosterCurrencyQty(M.RosterCurrencyQuantity(rrow.charKey, M.ROSTER_HONOR_CURRENCY_ID))
+                cell:SetText(t and (bright .. t .. "|r") or noData)
+            elseif col.key == "pvpRank" then
+                local ld = rrow.rankLadder
+                cell:SetText(ld and M.FormatForeverRankCell(ld, bright, muted) or noData)
+            elseif col.key == "pvpHighestRank" then
+                local ld = rrow.rankLadder
+                local hr = ld and tonumber(ld.highestRank) or 0
+                cell:SetText((hr > 0) and (bright .. string.format((L and L["PVP_RANK_FMT"]) or "Rank %d", hr) .. "|r")
+                    or (ld and (muted .. "-|r") or noData))
+            elseif col.key == "pvpLifetimeHK" then
+                local ld = rrow.rankLadder
+                local t = ld and M.FormatRosterCurrencyQty(ld.lifetimeHK or 0)
                 cell:SetText(t and (bright .. t .. "|r") or noData)
             elseif col.key == "conquest" then
                 local t = M.FormatRosterCurrencyQty(M.RosterCurrencyQuantity(rrow.charKey, M.ROSTER_CONQUEST_CURRENCY_ID))

@@ -5,6 +5,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local B = assert(ns.CharactersUI and ns.CharactersUI._bind, "CharactersUI_Dialogs: load Modules/UI/CharactersUI.lua first")
@@ -530,7 +533,7 @@ function WarbandNexus:ConfirmDeleteCustomCharacterHeader(groupId, groupName)
     warn:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD * 2)
     warn:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -PAD, -PAD * 2)
     warn:SetJustifyH("CENTER")
-    local fmt = (ns.L and ns.L["CUSTOM_HEADER_DELETE_DIALOG_BODY"]) or "Remove header |cffffcc00%s|r and ungroup its characters?"
+    local fmt = (ns.L and ns.L["CUSTOM_HEADER_DELETE_DIALOG_BODY"]) or "Remove header " .. HEX.gold .. "%s|r and ungroup its characters?"
     warn:SetText(string.format(fmt, nm))
 
     local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, 360, 40)

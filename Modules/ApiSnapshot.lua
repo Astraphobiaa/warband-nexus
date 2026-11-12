@@ -424,6 +424,109 @@ local function SnapshotRenownTracks()
     return out
 end
 
+--[[
+    Collection journal sizes as the client answers them, next to what the addon has stored. Settles
+    "the API returns nothing here" vs "our scan never ran / never finished" without guessing -- the
+    Forever store showed 0 toys and 0 illusions with no illusion completion stamp.
+    Each call is pcall'd and recorded as a value, "nil", "error" or "ABSENT".
+]]
+local function SnapshotCollectionCounts()
+    local out = { api = {}, store = {} }
+    local function call(label, ns_, fnName, ...)
+        if type(ns_) ~= "table" or type(ns_[fnName]) ~= "function" then out.api[label] = "ABSENT" return nil end
+        local ok, a = pcall(ns_[fnName], ...)
+        if not ok then out.api[label] = "error" return nil end
+        if a == nil then out.api[label] = "nil" return nil end
+        out.api[label] = (type(a) == "table") and ("table(" .. #a .. ")") or tostring(a)
+        return a
+    end
+    call("ToyBox.GetNumToys", C_ToyBox, "GetNumToys")
+    call("ToyBox.GetNumTotalDisplayedToys", C_ToyBox, "GetNumTotalDisplayedToys")
+    call("ToyBox.GetNumLearnedDisplayedToys", C_ToyBox, "GetNumLearnedDisplayedToys")
+    call("ToyBox.GetNumFilteredToys", C_ToyBox, "GetNumFilteredToys")
+    -- Same counts the way the journal scan reads them: Blizzard_Collections loaded and every toy
+    -- filter opened (shared helper), then the player's filters restored. Out of combat only.
+    local Mat = ns.CollectionMaterialize
+    local RT = ns.CollectionServiceRT
+    if not (InCombatLockdown and InCombatLockdown()) and RT and RT.OpenAllToyBoxFilters and RT.RestoreToyBoxFilters then
+        if Mat and Mat.EnsureBlizzardCollectionsLoaded then pcall(Mat.EnsureBlizzardCollectionsLoaded) end
+        local saved = RT.OpenAllToyBoxFilters()
+        call("ToyBox.open.GetNumFilteredToys", C_ToyBox, "GetNumFilteredToys")
+        call("ToyBox.open.GetNumTotalDisplayedToys", C_ToyBox, "GetNumTotalDisplayedToys")
+        call("ToyBox.open.GetToyFromIndex1", C_ToyBox, "GetToyFromIndex", 1)
+        -- Did the setters stick, and what does the filter space look like on this client?
+        call("ToyBox.open.GetCollectedShown", C_ToyBox, "GetCollectedShown")
+        call("ToyBox.open.GetUncollectedShown", C_ToyBox, "GetUncollectedShown")
+        call("ToyBox.open.GetUnusableShown", C_ToyBox, "GetUnusableShown")
+        call("ToyBoxInfo.IsUsingDefaultFilters", C_ToyBoxInfo, "IsUsingDefaultFilters")
+        call("ToyBoxInfo.HasAnyToy", C_ToyBoxInfo, "HasAnyToy")
+        out.api["GetNumExpansions"] = tostring(GetNumExpansions and GetNumExpansions() or "ABSENT")
+        --[[
+            The client may rebuild the filtered list asynchronously (Blizzard's ToyBox redraws on
+            TOYS_UPDATED). Re-read once that fires, or after 3s, then restore the player's filters.
+            Lands in apiSnapshot.collections.api["ToyBox.later.*"]; /reload to flush it to disk.
+        ]]
+        local addon = WarbandNexus
+        local done = false
+        local function later()
+            if done then return end
+            done = true
+            pcall(addon.UnregisterEvent, addon, "TOYS_UPDATED")
+            local snap = addon.db and addon.db.global and addon.db.global.apiSnapshot
+            local api = snap and snap.collections and snap.collections.api
+            if type(api) == "table" then
+                local function put(label, fnName, ...)
+                    local fn = C_ToyBox and C_ToyBox[fnName]
+                    if type(fn) ~= "function" then api[label] = "ABSENT" return nil end
+                    local ok, v = pcall(fn, ...)
+                    api[label] = ok and tostring(v) or "error"
+                    return ok and v or nil
+                end
+                local n = put("ToyBox.later.GetNumFilteredToys", "GetNumFilteredToys")
+                put("ToyBox.later.GetNumTotalDisplayedToys", "GetNumTotalDisplayedToys")
+                put("ToyBox.later.GetNumLearnedDisplayedToys", "GetNumLearnedDisplayedToys")
+                local ids = {}
+                n = (type(n) == "number" and not (issecretvalue and issecretvalue(n))) and n or 0
+                for i = 1, math.min(n, 40) do
+                    local ok, id = pcall(C_ToyBox.GetToyFromIndex, i)
+                    if ok and type(id) == "number" and not (issecretvalue and issecretvalue(id)) then
+                        local has = PlayerHasToy and PlayerHasToy(id)
+                        ids[#ids + 1] = id .. ((has == true) and "+" or "")
+                    end
+                end
+                api["ToyBox.later.ids"] = table.concat(ids, ",")
+            end
+            RT.RestoreToyBoxFilters(saved)
+        end
+        pcall(addon.RegisterEvent, addon, "TOYS_UPDATED", later)
+        C_Timer.After(3, later)
+    end
+    local illusions = call("TransmogCollection.GetIllusions", C_TransmogCollection, "GetIllusions")
+    if type(illusions) == "table" then
+        local collected, hidden = 0, 0
+        for i = 1, #illusions do
+            local info = illusions[i]
+            if type(info) == "table" then
+                if info.isCollected == true then collected = collected + 1 end
+                if info.isHideVisual == true then hidden = hidden + 1 end
+            end
+        end
+        out.api["TransmogCollection.GetIllusions.collected"] = collected
+        out.api["TransmogCollection.GetIllusions.hideVisual"] = hidden
+    end
+    local store = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.collectionStore
+    if type(store) == "table" then
+        for _, cat in ipairs({ "mount", "pet", "toy", "achievement", "title", "illusion" }) do
+            local n = 0
+            for _ in pairs(store[cat] or {}) do n = n + 1 end
+            out.store[cat] = n
+        end
+        out.store.scanCompleted = store.scanCompleted
+        out.store.achievementScanTotal = store.achievementScanTotal
+    end
+    return out
+end
+
 function WarbandNexus:WriteApiSnapshot()
     if not self.db or not self.db.global then return nil end
     local namespaces, fnCount = SnapshotNamespaces()
@@ -454,6 +557,7 @@ function WarbandNexus:WriteApiSnapshot()
         playerName = playerName,
         renownTracks = renownTracks,
         paragon = paragon,
+        collections = SnapshotCollectionCounts(),
     }
     return self.db.global.apiSnapshot, fnCount, okUsed, badUsed, okNew, badNew, enumCount
 end

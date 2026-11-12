@@ -6,6 +6,9 @@
 
 local _, ns = ...
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 
 local state = {
     stopListening = nil,
@@ -72,7 +75,7 @@ function ns.SettingsKeybind.SaveToggleKeybind(key)
             WarbandNexus:ApplyToggleKeybind()
         end
         if WarbandNexus.Print then
-            WarbandNexus:Print("|cffff6600Toggle keybind cannot be ESC. Binding cleared.|r")
+            WarbandNexus:Print(HEX.orange .. "Toggle keybind cannot be ESC. Binding cleared.|r")
         end
         return false
     end

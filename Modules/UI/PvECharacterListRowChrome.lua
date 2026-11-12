@@ -5,6 +5,9 @@
 
 local ADDON_NAME, ns = ...
 local FontManager = ns.FontManager
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local max = math.max
 local issecretvalue = issecretvalue
 
@@ -245,8 +248,8 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     itemLevelText:ClearAllPoints()
     itemLevelText:SetPoint("LEFT", charHeader, "LEFT", layout.ilvlLeft, 0)
     local itemLevel = char.itemLevel or 0
-    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
-    local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "|cff666666"
+    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
+    local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or HEX.dim
     if itemLevel > 0 then
         itemLevelText:SetText(string.format("%s%s %s|r", goldHex, (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", ns.UI_FormatCharRowItemLevel(itemLevel)))
     else

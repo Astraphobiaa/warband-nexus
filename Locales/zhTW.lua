@@ -1207,25 +1207,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "過濾「總遊戲時間」與「本�
 
 
 
-L["CHANGELOG_V390"] = [=[v3.9.0 (2026-11-04)
+L["CHANGELOG_V3100"] = [=[v3.10.0 (2026-11-12)
 
-Collections gains Illusions and Titles tabs, a faction filter and better 3D previews, and the weekly planner covers Season 2.
+Warband Nexus now runs on WoW Forever, with its own build that loads only what that game has.
 
 Added:
-- New Illusions and Titles tabs in Collections, with a weapon preview for illusions and the achievement that awards each title.
-- Alliance and Horde filters for mounts, pets, toys and titles.
-- Season 2 weeklies in the To-Do weekly planner: Unity Against the Void, Vaults of Atal'Utek, Turn Back the Surge, Cursed Keepsake, the Midnight Prey, Dungeons, Raid, Ritual Sites and Offworld Showdowns weeklies, Hope in the Darkest Corners, Sparks of War: The Coiled Isle and the Aethas weekly rotation.
-- The Gear page has a new side card layout and a stats card that shows diminishing returns and updates live.
-- A new painted icon set across the addon: class crests, faction emblems, tabs, sources, Great Vault and more.
+- WoW Forever support: characters, gold, bags and bank, currencies, reputations, gear, collections, To-Do and PvP work on WoW Forever. Retail-only features stay out of that build.
+- Legacy tab on WoW Forever: account-wide Legacy points, reward tiers with their rewards, and challenges in collapsible groups.
+- Skills and Talents windows: trainer skills laid out by talent tree, rank strips under each skill and talent, and full rank tooltips.
+- A "skills ready to train" alert when a WoW Forever character levels up.
+- WoW Forever details on the Characters tab: two-word names, honor rank, and Hardcore and Self-Found tags.
+- Try Counter on WoW Forever tracks the drops that exist there: the Zul'Gurub raptor and tiger, Deathcharger's Reins, the Qiraji crystals and classic pets.
 
 Updated:
-- Mount, pet and illusion previews use Blizzard's own camera framing on a full black stage, without a rider. Right-click and drag to move the model.
-- Switching tabs is faster, with no duplicate repaints or per-paint hitches.
+- Gear stats are grouped, show bars beside every value, include resistances, and use larger icons. Empty slots have their own art.
+- Pages keep a fixed scrollbar gutter, so content no longer shifts when a scrollbar appears or hides.
 
 Fixed:
-- The To-Do button in a collectible's details now adds and removes it and updates its icon right away.
-- Great Vault cards for offline characters no longer show the current character's progress.
-- Placeholder [PH] entries, wrong pet and toy source groups and wrong toy counts no longer appear in Collections. The Wowhead link popup stays on screen.
+- Settings rows no longer drift out of line, and the empty Collections Recent page no longer scrolls.
 
 CurseForge: Warband Nexus]=]
 
@@ -2465,6 +2464,65 @@ L["STAT_CRITICAL_STRIKE"] = STAT_CRITICAL_STRIKE or "致命一擊"
 L["STAT_HASTE"] = STAT_HASTE or "加速"
 L["STAT_MASTERY"] = STAT_MASTERY or "精通"
 L["STAT_VERSATILITY"] = STAT_VERSATILITY or "臨機應變"
+L["GEAR_FSTAT_ARMOR"] = "護甲"
+L["GEAR_FSTAT_DODGE"] = "閃躲"
+L["GEAR_FSTAT_PARRY"] = "招架"
+L["GEAR_FSTAT_BLOCK"] = "格擋"
+L["GEAR_FSTAT_ATTACK_POWER"] = "攻擊強度"
+L["GEAR_FSTAT_RANGED_AP"] = "遠程攻擊強度"
+L["GEAR_FSTAT_MELEE_HIT"] = "命中機率"
+L["GEAR_FSTAT_RANGED_CRIT"] = "遠程致命一擊"
+L["GEAR_FSTAT_EXPERTISE"] = "熟練"
+L["GEAR_FSTAT_SPELL_POWER"] = "法術能量"
+L["GEAR_FSTAT_HEALING"] = "治療"
+L["GEAR_FSTAT_SPELL_HIT"] = "法術命中"
+L["GEAR_FSTAT_SPELL_CRIT"] = "法術致命一擊"
+L["GEAR_FSTAT_SPELL_PEN"] = "法術穿透"
+L["GEAR_FSTAT_MANA_REGEN"] = "法力恢復（每5秒）"
+L["GEAR_FSTAT_RESIST_HOLY"] = "神聖抗性"
+L["GEAR_FSTAT_RESIST_FIRE"] = "火焰抗性"
+L["GEAR_FSTAT_RESIST_NATURE"] = "自然抗性"
+L["GEAR_FSTAT_RESIST_FROST"] = "冰霜抗性"
+L["GEAR_FSTAT_RESIST_SHADOW"] = "暗影抗性"
+L["GEAR_FSTAT_RESIST_ARCANE"] = "秘法抗性"
+L["GEAR_FSTAT_GROUP_ATTRIBUTES"] = STAT_CATEGORY_ATTRIBUTES or "屬性"
+L["GEAR_FSTAT_GROUP_ENHANCEMENTS"] = STAT_CATEGORY_ENHANCEMENTS or "強化屬性"
+L["GEAR_FSTAT_GROUP_DEFENSE"] = "防禦"
+L["GEAR_FSTAT_GROUP_PHYSICAL"] = "近戰與遠程"
+L["GEAR_FSTAT_GROUP_SPELL"] = "法術"
+L["GEAR_FSTAT_GROUP_RESISTANCES"] = "抗性"
+L["CHAR_SELF_FOUND_TAG"] = "自力更生"
+L["PVP_COL_RANK"] = "軍階"
+L["PVP_COL_HIGHEST_RANK"] = "最高軍階"
+L["PVP_COL_LIFETIME_HK"] = "榮譽擊殺總數"
+L["PVP_RANK_FMT"] = "%d級軍階"
+L["PVP_COL_RANK_DESC"] = "目前榮譽軍階與升至下一級的進度"
+L["PVP_COL_HIGHEST_RANK_DESC"] = "此角色達到過的最高榮譽軍階"
+L["PVP_COL_LIFETIME_HK_DESC"] = "此角色生涯榮譽擊殺數"
+L["PVP_SUBTITLE_FOREVER"] = "榮譽軍階、榮譽與比賽紀錄"
+L["PVP_RANK_PROGRESS"] = "軍階進度"
+L["SORT_MODE_PVP_RANK"] = "軍階（最高）"
+L["TAB_LEGACY"] = "傳承"
+L["LEGACY_TITLE"] = "傳承"
+L["LEGACY_SUBTITLE"] = "帳號通用的傳承點數、獎勵階段與挑戰"
+L["LEGACY_TRACK_TITLE"] = "傳承之路"
+L["LEGACY_POINTS_FMT"] = "%d / %d 點"
+L["LEGACY_TIER_EARNED"] = "已獲得"
+L["LEGACY_TIER_NEED_FMT"] = "還差 %d"
+L["LEGACY_TIER_FMT"] = "%d 點"
+L["LEGACY_REWARD_PENDING"] = "獎勵"
+L["LEGACY_COMPLETED"] = "已完成"
+L["LEGACY_EMPTY_TITLE"] = "尚無傳承資料"
+L["LEGACY_EMPTY_DESC"] = "傳承進度會在登入數秒後讀取。\n登入 WoW Forever 以載入你的點數與挑戰。"
+L["LEGACY_NOT_STARTED"] = "未開始"
+L["LEGACY_EARNED_ON_FMT"] = "於 %s 獲得"
+L["LEGACY_REWARD_MOUNT"] = "坐騎"
+L["LEGACY_REWARD_PET"] = "寵物"
+L["LEGACY_REWARD_TOY"] = "玩具"
+L["LEGACY_REWARD_TITLE"] = "頭銜"
+L["LEGACY_REWARD_APPEARANCE"] = "外觀"
+L["LEGACY_REWARD_SPELL"] = "法術"
+L["LEGACY_REWARD_ITEM"] = "物品"
 L["VAULT_DUNGEON"] = LFG_TYPE_DUNGEON or "地城"
 L["VAULT_SLOT_DUNGEON"] = DUNGEONS or "地城"
 L["VAULT_SLOT_RAIDS"] = RAIDS or "團隊副本"
@@ -2610,3 +2668,49 @@ L["EA_OPT_REWARD_PROGRESS"] = "顯示獎勵進度"
 L["EA_OPT_REWARD_PROGRESS_DESC"] = "顯示距離下一個寶庫獎勵門檻的目前進度。"
 L["EA_OPT_INCLUDE_BOUNTY"] = "包含 Delver's Bounty"
 L["EA_OPT_INCLUDE_BOUNTY_DESC"] = "同時顯示僅拾取過 Delver's Bounty 的角色。"
+
+-- Character tab: Skills / Talents columns (WoW Forever)
+L["CHARS_COL_SKILLS"] = "技能"
+L["CHARS_COL_TALENTS"] = "天賦"
+L["SKILLS_READY_TO_TRAIN"] = "可以學習"
+L["SKILLS_RANK_FMT"] = "等級 %d"
+L["SKILLS_PILL_LEVEL_FMT"] = "需要等級 %d"
+L["SKILLS_STATE_LEARNED"] = "已學會"
+L["SKILLS_READY_SUMMARY_FMT"] = "可學習：%d 個技能 - %d 個等級"
+L["SKILLS_NOT_LEARNED_YET"] = "尚未學會"
+L["SKILLS_WEAPON_ARMOR"] = "武器與護甲技能"
+-- WoW Forever variants (ns.L_GameType): copy without Warband Bank / Vault / M+ / rated brackets
+L["MODULE_CURRENCIES_DESC_FOREVER"] = "追蹤你角色的貨幣（金幣、榮譽等）"
+L["MODULE_ITEMS_DESC_FOREVER"] = "追蹤銀行和背包物品、搜尋功能和物品分類"
+L["MODULE_STORAGE_DESC_FOREVER"] = "追蹤角色背包和個人銀行儲存"
+L["MODULE_PVE_DESC_FOREVER"] = "追蹤團隊副本和地城鎖定（已儲存的副本）"
+L["MODULE_PVP_DESC_FOREVER"] = "追蹤榮譽軍階、榮譽進度和比賽紀錄。停用後將停止所有PvP資料收集。"
+L["MODULE_PROFESSIONS_DESC_FOREVER"] = "追蹤各角色的專業技能和配方。專業視窗開啟時，配方助手會顯示材料數量。"
+L["ITEMS_SUBTITLE_FOREVER"] = "瀏覽你的個人物品（銀行 + 背包）"
+L["EMPTY_ITEMS_DESC_FOREVER"] = "開啟銀行以掃描物品。\n首次造訪時會自動快取物品。"
+L["EMPTY_PLANS_ACTIVE_DESC_FOREVER"] = "在上方瀏覽坐騎、寵物或成就，將目標加入你的清單。"
+L["SKILLS_VISIT_TRAINER"] = "拜訪一次職業訓練師以列出可學習的技能"
+L["SKILLS_LEVELUP_TITLE_FMT"] = "%d 個技能可以學習"
+L["SKILLS_LEVELUP_NEW_SPELLS_FMT"] = "%d 個新技能"
+L["SKILLS_LEVELUP_NEW_RANKS_FMT"] = "%d 個新等級"
+L["SKILLS_LOCKED_BY_LEVEL"] = "需要更高等級"
+L["SKILLS_NO_TRAINER_DATA"] = "去職業訓練師處看一次，即可列出可學習的法術。"
+L["SKILLS_KNOWN"] = "已學"
+L["TALENTS_SPENT"] = "已用點數"
+L["TALENTS_UNSPENT"] = "未用點數"
+L["TALENTS_TIER"] = "層級"
+L["TALENTS_TIER_NEEDS"] = "需要 %d"
+L["TALENTS_TREE"] = "第 %d 系"
+L["CLICK_FOR_FULL_VIEW"] = "點擊查看全部"
+L["TALENTS_NONE_SELECTED"] = "尚未選擇天賦"
+L["SKILLS_NONE_KNOWN"] = "尚未記錄技能"
+L["LEVEL_ABBR_N"] = "%d 級"
+L["SKILLS_CLICK_TO_OPEN"] = "點擊打開技能列表"
+L["SKILLS_NOTHING_TO_TRAIN"] = "暫時沒有可學的內容"
+L["RECIPES_KNOWN"] = "已學配方"
+L["RECIPES_NOT_LEARNED"] = "未學習"
+L["RECIPES_NONE_KNOWN"] = "尚未學習任何配方"
+L["RECIPES_ALL_LEARNED"] = "這裡的全部已學會"
+L["RECIPES_OPEN_WINDOW_ONCE"] = "打開一次該專業視窗，即可列出配方。"
+L["CONFIG_SHOW_CHARACTER_SURNAME"] = "顯示第二個名字"
+L["CONFIG_SHOW_CHARACTER_SURNAME_DESC"] = "顯示角色名字的後半部分。關閉後處處只用前半部分。"

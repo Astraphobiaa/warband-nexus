@@ -61,6 +61,9 @@ local L = B.L
 local _uiChildEnumScratch = B._uiChildEnumScratch
 local _uiRegionEnumScratch = B._uiRegionEnumScratch
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 
 
 
@@ -101,7 +104,7 @@ function ns.UIShell.CreateMainWindow(self)
                 createFontStringExists = ns.FontManager and ns.FontManager.CreateFontString ~= nil,
             })
         end
-        DebugPrint("|cffff0000[WN UI]|r ERROR: FontManager not initialized. Cannot create UI.")
+        DebugPrint(HEX.red .. "[WN UI]|r ERROR: FontManager not initialized. Cannot create UI.")
         return nil
     end
     
@@ -440,7 +443,9 @@ function ns.UIShell.CreateMainWindow(self)
     trackingAccent:SetWidth(3)
     trackingAccent:SetPoint("TOPLEFT", trackingChip, "TOPLEFT", 0, 0)
     trackingAccent:SetPoint("BOTTOMLEFT", trackingChip, "BOTTOMLEFT", 0, 0)
-    trackingAccent:SetColorTexture(0.22, 0.9, 0.42, 1)
+    -- Same green as every other "this is on" signal in the addon; the literal here did not follow
+    -- the theme, so the chip stayed neon on a light shell.
+    trackingAccent:SetColorTexture(ns.UI_GetSemanticGreenColor())
     f.trackingStatusAccent = trackingAccent
 
     local trackingStatusBtn = CreateFrame("Button", nil, trackingChip)
@@ -1089,6 +1094,7 @@ function ns.UIShell.CreateMainWindow(self)
         professions = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions",
         collections = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections",
         plans       = (ns.L and ns.L["TAB_PLANS"]) or "To-Do",
+        legacy      = (ns.L and ns.L["TAB_LEGACY"]) or "Legacy",
         stats       = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics",
         about       = (ns.L and ns.L["SETTINGS_PANEL_ABOUT"]) or "About",
     }
@@ -1101,7 +1107,7 @@ function ns.UIShell.CreateMainWindow(self)
         -- Legacy is WoW Forever only. On retail the button is not built at all, so the nav keeps
         -- its shape instead of carrying a tab that opens an empty page.
         -- A tab whose whole data model is missing on this client is not built at all.
-        local TAB_CAPABILITY = { professions = "professionsTab", pve = "pveTab" }
+        local TAB_CAPABILITY = { professions = "professionsTab", pve = "pveTab", legacy = "legacy" }
         local capKey = TAB_CAPABILITY[key]
         local skipTab = capKey and WarbandNexus.SupportsFeature
             and not WarbandNexus:SupportsFeature(capKey)
@@ -1319,17 +1325,32 @@ function ns.UIShell.CreateMainWindow(self)
     local H_BAR_BOTTOM = MSC.H_BAR_BOTTOM_OFFSET or 6
     local SCROLL_INSET_BOTTOM = H_BAR_BOTTOM + H_ROW_H + SCROLL_GAP
     local SCROLL_INSET_LEFT = MSC.SCROLL_INSET_LEFT or 4
-    --- Same total as Tracker / Recipe Companion: `scrollbarColumnWidth + MAIN_SCROLL.SCROLL_GAP` via SharedWidgets helper.
-    local SCROLL_INSET_RIGHT = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+    --- The lane itself: `scrollbarColumnWidth + MAIN_SCROLL.SCROLL_GAP` (Tracker / Recipe parity).
+    local SCROLL_LANE = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
         or (SCROLL_COLUMN_W + SCROLL_GAP)
-    local BORDER_INSET = MSC.VIEWPORT_BORDER_INSET or 1
+    --- Viewport right inset = the container's own edge PLUS the lane.
+    ---
+    --- It used to be the lane alone, measured from `content`. That was consistent only while the
+    --- rim also ended at the lane; once the rim moved in to the container edge, the column -- which
+    --- hangs off the viewport's right edge -- straddled it by exactly SCROLL_INSET_LEFT. `/wn
+    --- uiprobe` measured the overhang at 4 px, which is that inset.
+    local SCROLL_INSET_RIGHT = SCROLL_INSET_LEFT + SCROLL_LANE
 
     -- Factory candidate: `Factory:CreateContainer` â€” viewport rim (scroll insets anchor to this).
     local viewportBorder = CreateFrame("Frame", nil, content)
     viewportBorder:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT, -SCROLL_INSET_TOP)
-    viewportBorder:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_RIGHT, -SCROLL_INSET_TOP)
+    --[[
+        The rim ENCLOSES the scrollbar lane; it does not stop before it.
+
+        It used to end at SCROLL_INSET_RIGHT, the same inset as the viewport, which left the bar
+        column sitting outside the drawn container -- a bar floating against the window edge, with
+        the panel it scrolls ending a lane short of it. A scrollbar belongs inside the thing it
+        scrolls, so the rim takes the same inset as the fixed header above it and the viewport sits
+        within it, beside the bar.
+    ]]
+    viewportBorder:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_LEFT, -SCROLL_INSET_TOP)
     viewportBorder:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
-    viewportBorder:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_RIGHT, SCROLL_INSET_BOTTOM)
+    viewportBorder:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
     viewportBorder:SetFrameLevel(content:GetFrameLevel() + 1)
     if not viewportBorder.SetBackdrop then
         Mixin(viewportBorder, BackdropTemplateMixin)
@@ -1352,9 +1373,12 @@ function ns.UIShell.CreateMainWindow(self)
     f.viewportBorder = viewportBorder
 
     -- Factory candidate: `Factory:CreateContainer` â€” non-scroll title/search host.
+    -- Full width, always. The title card and the search box are not scrolled, so the vertical
+    -- lane is none of their business -- only the viewport and the bar beside it have to line up.
+    -- Reserving the lane here left a bar-wide notch at the right of every page header.
     local fixedHeader = CreateFrame("Frame", nil, content)
     fixedHeader:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT, 0)
-    fixedHeader:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_RIGHT, 0)
+    fixedHeader:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_LEFT, 0)
     fixedHeader:SetHeight(1)
     fixedHeader:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
     f.fixedHeader = fixedHeader
@@ -1380,7 +1404,7 @@ function ns.UIShell.CreateMainWindow(self)
     local columnHeaderClip = CreateFrame("Frame", nil, content)
     columnHeaderClip:SetClipsChildren(true)
     columnHeaderClip:SetPoint("TOPLEFT", fixedHeader, "BOTTOMLEFT", 0, 0)
-    columnHeaderClip:SetPoint("TOPRIGHT", fixedHeader, "BOTTOMRIGHT", 0, 0)
+    columnHeaderClip:SetPoint("TOPRIGHT", fixedHeader, "BOTTOMRIGHT", -(SCROLL_INSET_RIGHT - SCROLL_INSET_LEFT), 0)
     columnHeaderClip:SetHeight(1)
     columnHeaderClip:SetFrameLevel(viewportBorder:GetFrameLevel() + 5)
     f.columnHeaderClip = columnHeaderClip
@@ -1398,7 +1422,7 @@ function ns.UIShell.CreateMainWindow(self)
 
     local scroll = ns.UI.Factory:CreateScrollFrame(content, "UIPanelScrollFrameTemplate", true)
     scroll:SetPoint("TOPLEFT", fixedHeader, "BOTTOMLEFT", 0, 0)
-    scroll:SetPoint("TOPRIGHT", fixedHeader, "BOTTOMRIGHT", 0, 0)
+    scroll:SetPoint("TOPRIGHT", fixedHeader, "BOTTOMRIGHT", -(SCROLL_INSET_RIGHT - SCROLL_INSET_LEFT), 0)
     scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
     scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_RIGHT, SCROLL_INSET_BOTTOM)
     scroll:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
@@ -1410,13 +1434,16 @@ function ns.UIShell.CreateMainWindow(self)
     scrollBarColumn:SetFrameLevel(viewportBorder:GetFrameLevel() + 2)
     f.scrollBarColumn = scrollBarColumn
     if ns.UI.Factory.EnsureScrollBarColumnSync then
-        ns.UI.Factory:EnsureScrollBarColumnSync(scroll, scrollBarColumn, { width = SCROLL_COLUMN_W, gap = SCROLL_GAP })
+        -- Column starts where the page body starts (PAGE_STACK.BODY_TOP), level with the content cards.
+        local bodyTop = (ns.UI_LAYOUT and ns.UI_LAYOUT.PAGE_STACK and ns.UI_LAYOUT.PAGE_STACK.BODY_TOP) or 8
+        ns.UI.Factory:EnsureScrollBarColumnSync(scroll, scrollBarColumn, { width = SCROLL_COLUMN_W, gap = SCROLL_GAP, top = bodyTop })
     elseif scroll.ScrollBar and ns.UI.Factory.SyncScrollBarColumnToViewport then
         ns.UI.Factory:SyncScrollBarColumnToViewport(scroll, scrollBarColumn, { width = SCROLL_COLUMN_W, gap = SCROLL_GAP })
     elseif scroll.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
         ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
     end
-    scroll._wnKeepScrollLane = true
+    -- The lane is NOT held open permanently: ApplyMainScrollLane (below) gives it back when the
+    -- tab's content fits, so header, search bar and viewport reach the window edge.
 
     -- Factory candidate: scroll child is a dumb host; only bottom-fill band (`scrollChild._wnScrollBottomFill`) matters for Factory parity.
     local scrollChild = CreateFrame("Frame", nil, scroll)
@@ -1442,6 +1469,20 @@ function ns.UIShell.CreateMainWindow(self)
             f.hScroll = hScroll
         end
     end
+
+    --[[
+        Stable scrollbar gutter for the main window.
+
+        The lane is reserved permanently: the bar column always holds its width, and only the bar
+        itself (thumb + arrows) shows when the content overflows. The viewport width therefore never
+        depends on the content height, so a scrollbar appearing or disappearing is never a relayout.
+
+        The old dynamic lane handed the strip back when a tab fit, which made width a function of
+        height: draw -> measure -> flip lane -> new width -> relayout -> new height -> flip again.
+        Settle timers, a flip budget and per-tab lane memory only slowed that loop down.
+    ]]
+    f._wnMainScrollLaneInset = SCROLL_INSET_RIGHT
+    scroll._wnKeepScrollLane = true
 
     -- Sync column header horizontal offset with main scroll frame.
     -- Every call to SetHorizontalScroll (scrollbar drag, Shift+wheel, button click,

@@ -8,6 +8,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local issecretvalue = issecretvalue
 
 ns.PlanCardFactory = ns.PlanCardFactory or {}
@@ -37,7 +40,7 @@ local function BuildAchievementProgressLabelText(achievementID)
     local P2 = ns.PLAN_UI_COLORS or {}
     local done = (summary.displayMode == "quantity_bar" and summary.totalReqQuantity > 0 and summary.totalQuantity >= summary.totalReqQuantity)
         or (summary.completedCount >= summary.rawNumCriteria)
-    local progressColor = done and (P2.progressFull or "|cff00ff00") or PCol("incomplete")
+    local progressColor = done and (P2.progressFull or HEX.green) or PCol("incomplete")
     local label = PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r "
     if summary.displayMode == "quantity_bar" and summary.hasProgressBased then
         local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
@@ -300,7 +303,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                     textColor = row.completed and "|cff44ddff" or "|cff44bbff"
                 else
                     local P3 = ns.PLAN_UI_COLORS or {}
-                    textColor = row.completed and (P3.completed or "|cff44ff44") or (P3.incomplete or PCol("incomplete"))
+                    textColor = row.completed and (P3.completed or HEX.green) or (P3.incomplete or PCol("incomplete"))
                 end
                 local formattedCriteriaName = FormatTextNumbers(row.name)
                 local plannedSuffix = ""
@@ -308,7 +311,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                     local WarbandNexus = ns.WarbandNexus
                     if WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(linkedAchievementID) then
                         local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
-                        plannedSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
+                        plannedSuffix = " " .. HEX.gold .. "(" .. plannedWord .. ")|r"
                     end
                 end
                 criteriaDetails[#criteriaDetails + 1] = {
@@ -931,7 +934,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local factionText = PlanSourceIconMarkup("class") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["FACTION_LABEL"]) or "Faction:") .. "|r " .. PCol("body") .. source.faction .. "|r"
                     if source.renown then
                         local repType = source.isFriendship and ((ns.L and ns.L["FRIENDSHIP_LABEL"]) or "Friendship") or ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown")
-                        factionText = factionText .. " |cffffcc00(" .. repType .. " " .. source.renown .. ")|r"
+                        factionText = factionText .. " " .. HEX.gold .. "(" .. repType .. " " .. source.renown .. ")|r"
                     end
                     local factionLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     factionLabel:SetPoint("TOPLEFT", 0, yOffset)

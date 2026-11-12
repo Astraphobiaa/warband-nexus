@@ -376,7 +376,7 @@ end
 local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
     local allCharsDB = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
     local charData = allCharsDB and allCharsDB[sourceCharKey]
-    local charName = (charData and charData.name) or sourceCharKey
+    local charName = ns.CharDisplayName(charData, sourceCharKey)
 
     if storageType == "warband" then
         -- Warband Bank: storage is account-wide; Blizzard engine restricts bank to BoE / Warbound / WuE only.
@@ -1466,7 +1466,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             local otherNorm = getCanonicalKey(otherCharKey) or otherCharKey
             local otherGear = WarbandNexus:GetEquippedGear(otherNorm) or WarbandNexus:GetEquippedGear(otherCharKey)
             if otherGear and otherGear.slots then
-            local otherName = (otherCharData and otherCharData.name) or otherCharKey
+            local otherName = ns.CharDisplayName(otherCharData, otherCharKey)
             for slotID, slotData in pairs(otherGear.slots) do
                 local _partner = PARTNER_SLOT[slotID]
                 local _sameInPartner = slotData and slotData.itemID and _partner and equippedItemIDBySlot[_partner] == tonumber(slotData.itemID)

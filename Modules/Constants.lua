@@ -14,9 +14,9 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.9.0",
+    ADDON_VERSION = "3.10.0",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-11-04",
+    ADDON_RELEASE_DATE = "2026-11-12",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.
@@ -126,6 +126,10 @@ local Constants = {
     EVENTS = {
         -- Data updates
         CHARACTER_UPDATED = "WN_CHARACTER_UPDATED",
+        -- Talent tree + spellbook scan for the Character tab's Skill / Talent columns.
+        CHARACTER_SYSTEMS_UPDATED = "WN_CHARACTER_SYSTEMS_UPDATED",
+        -- Class trainer cache: the only source of not-yet-learned spells on WoW Forever.
+        TRAINER_SKILLS_UPDATED = "WN_TRAINER_SKILLS_UPDATED",
         ITEMS_UPDATED = "WN_ITEMS_UPDATED",
         BAGS_UPDATED = "WN_BAGS_UPDATED",
         GEAR_UPDATED = "WN_GEAR_UPDATED",

@@ -721,7 +721,8 @@ local function ResolveLiveCharacterLabel(liveChar)
         return liveChar.charName
     end
     if UnitName then
-        local name = UnitName("player")
+        local name = (Utilities and Utilities.GetLivePlayerDisplayName and Utilities:GetLivePlayerDisplayName())
+            or UnitName("player")
         if not (issecretvalue and issecretvalue(name)) and name and name ~= "" then
             return name
         end
@@ -1112,7 +1113,7 @@ local function AppendWNKeystoneLines(tooltip, hyperlink)
                     and Utilities:ResolveKeystoneDungeonName(keystone)
                     or (keystone.dungeonName or keystone.name or "Unknown Dungeon")
                 roster[#roster + 1] = {
-                    name = char.name or "?",
+                    name = ns.CharDisplayName(char, "?"),
                     classFile = char.classFile or char.class,
                     level = keystone.level,
                     dungeon = dungeonName,

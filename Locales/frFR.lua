@@ -1207,25 +1207,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V390"] = [=[v3.9.0 (2026-11-04)
+L["CHANGELOG_V3100"] = [=[v3.10.0 (2026-11-12)
 
-Collections gains Illusions and Titles tabs, a faction filter and better 3D previews, and the weekly planner covers Season 2.
+Warband Nexus now runs on WoW Forever, with its own build that loads only what that game has.
 
 Added:
-- New Illusions and Titles tabs in Collections, with a weapon preview for illusions and the achievement that awards each title.
-- Alliance and Horde filters for mounts, pets, toys and titles.
-- Season 2 weeklies in the To-Do weekly planner: Unity Against the Void, Vaults of Atal'Utek, Turn Back the Surge, Cursed Keepsake, the Midnight Prey, Dungeons, Raid, Ritual Sites and Offworld Showdowns weeklies, Hope in the Darkest Corners, Sparks of War: The Coiled Isle and the Aethas weekly rotation.
-- The Gear page has a new side card layout and a stats card that shows diminishing returns and updates live.
-- A new painted icon set across the addon: class crests, faction emblems, tabs, sources, Great Vault and more.
+- WoW Forever support: characters, gold, bags and bank, currencies, reputations, gear, collections, To-Do and PvP work on WoW Forever. Retail-only features stay out of that build.
+- Legacy tab on WoW Forever: account-wide Legacy points, reward tiers with their rewards, and challenges in collapsible groups.
+- Skills and Talents windows: trainer skills laid out by talent tree, rank strips under each skill and talent, and full rank tooltips.
+- A "skills ready to train" alert when a WoW Forever character levels up.
+- WoW Forever details on the Characters tab: two-word names, honor rank, and Hardcore and Self-Found tags.
+- Try Counter on WoW Forever tracks the drops that exist there: the Zul'Gurub raptor and tiger, Deathcharger's Reins, the Qiraji crystals and classic pets.
 
 Updated:
-- Mount, pet and illusion previews use Blizzard's own camera framing on a full black stage, without a rider. Right-click and drag to move the model.
-- Switching tabs is faster, with no duplicate repaints or per-paint hitches.
+- Gear stats are grouped, show bars beside every value, include resistances, and use larger icons. Empty slots have their own art.
+- Pages keep a fixed scrollbar gutter, so content no longer shifts when a scrollbar appears or hides.
 
 Fixed:
-- The To-Do button in a collectible's details now adds and removes it and updates its icon right away.
-- Great Vault cards for offline characters no longer show the current character's progress.
-- Placeholder [PH] entries, wrong pet and toy source groups and wrong toy counts no longer appear in Collections. The Wowhead link popup stays on screen.
+- Settings rows no longer drift out of line, and the empty Collections Recent page no longer scrolls.
 
 CurseForge: Warband Nexus]=]
 
@@ -2465,6 +2464,65 @@ L["STAT_CRITICAL_STRIKE"] = STAT_CRITICAL_STRIKE or "Score de crit."
 L["STAT_HASTE"] = STAT_HASTE or "Hâte"
 L["STAT_MASTERY"] = STAT_MASTERY or "Maîtrise"
 L["STAT_VERSATILITY"] = STAT_VERSATILITY or "Polyvalence"
+L["GEAR_FSTAT_ARMOR"] = "Armure"
+L["GEAR_FSTAT_DODGE"] = "Esquive"
+L["GEAR_FSTAT_PARRY"] = "Parade"
+L["GEAR_FSTAT_BLOCK"] = "Blocage"
+L["GEAR_FSTAT_ATTACK_POWER"] = "Puissance d'attaque"
+L["GEAR_FSTAT_RANGED_AP"] = "Puissance d'attaque à distance"
+L["GEAR_FSTAT_MELEE_HIT"] = "Chances de toucher"
+L["GEAR_FSTAT_RANGED_CRIT"] = "Critique à distance"
+L["GEAR_FSTAT_EXPERTISE"] = "Expertise"
+L["GEAR_FSTAT_SPELL_POWER"] = "Puissance des sorts"
+L["GEAR_FSTAT_HEALING"] = "Soins"
+L["GEAR_FSTAT_SPELL_HIT"] = "Toucher des sorts"
+L["GEAR_FSTAT_SPELL_CRIT"] = "Critique des sorts"
+L["GEAR_FSTAT_SPELL_PEN"] = "Pénétration des sorts"
+L["GEAR_FSTAT_MANA_REGEN"] = "Régén. de mana (toutes les 5 s)"
+L["GEAR_FSTAT_RESIST_HOLY"] = "Résistance au Sacré"
+L["GEAR_FSTAT_RESIST_FIRE"] = "Résistance au Feu"
+L["GEAR_FSTAT_RESIST_NATURE"] = "Résistance à la Nature"
+L["GEAR_FSTAT_RESIST_FROST"] = "Résistance au Givre"
+L["GEAR_FSTAT_RESIST_SHADOW"] = "Résistance à l'Ombre"
+L["GEAR_FSTAT_RESIST_ARCANE"] = "Résistance aux Arcanes"
+L["GEAR_FSTAT_GROUP_ATTRIBUTES"] = STAT_CATEGORY_ATTRIBUTES or "Caractéristiques"
+L["GEAR_FSTAT_GROUP_ENHANCEMENTS"] = STAT_CATEGORY_ENHANCEMENTS or "Améliorations"
+L["GEAR_FSTAT_GROUP_DEFENSE"] = "Défense"
+L["GEAR_FSTAT_GROUP_PHYSICAL"] = "Mêlée et distance"
+L["GEAR_FSTAT_GROUP_SPELL"] = "Sorts"
+L["GEAR_FSTAT_GROUP_RESISTANCES"] = "Résistances"
+L["CHAR_SELF_FOUND_TAG"] = "Autonome"
+L["PVP_COL_RANK"] = "Rang"
+L["PVP_COL_HIGHEST_RANK"] = "Plus haut"
+L["PVP_COL_LIFETIME_HK"] = "Victoires honorables"
+L["PVP_RANK_FMT"] = "Rang %d"
+L["PVP_COL_RANK_DESC"] = "Rang d'honneur actuel et progression vers le suivant"
+L["PVP_COL_HIGHEST_RANK_DESC"] = "Rang d'honneur le plus élevé atteint par ce personnage"
+L["PVP_COL_LIFETIME_HK_DESC"] = "Victoires honorables sur toute la vie de ce personnage"
+L["PVP_SUBTITLE_FOREVER"] = "Rang d'honneur, honneur et historique des parties"
+L["PVP_RANK_PROGRESS"] = "Progression du rang"
+L["SORT_MODE_PVP_RANK"] = "Rang (plus haut)"
+L["TAB_LEGACY"] = "Héritage"
+L["LEGACY_TITLE"] = "Héritage"
+L["LEGACY_SUBTITLE"] = "Points d'Héritage, paliers de récompenses et défis du compte"
+L["LEGACY_TRACK_TITLE"] = "Voie de l'Héritage"
+L["LEGACY_POINTS_FMT"] = "%d / %d points"
+L["LEGACY_TIER_EARNED"] = "Obtenu"
+L["LEGACY_TIER_NEED_FMT"] = "encore %d"
+L["LEGACY_TIER_FMT"] = "%d points"
+L["LEGACY_REWARD_PENDING"] = "Récompense"
+L["LEGACY_COMPLETED"] = "Terminé"
+L["LEGACY_EMPTY_TITLE"] = "Aucune donnée d'Héritage"
+L["LEGACY_EMPTY_DESC"] = "La progression d'Héritage est lue quelques secondes après la connexion.\nConnectez-vous sur WoW Forever pour charger vos points et défis."
+L["LEGACY_NOT_STARTED"] = "Non commencé"
+L["LEGACY_EARNED_ON_FMT"] = "Obtenu le %s"
+L["LEGACY_REWARD_MOUNT"] = "Monture"
+L["LEGACY_REWARD_PET"] = "Mascotte"
+L["LEGACY_REWARD_TOY"] = "Jouet"
+L["LEGACY_REWARD_TITLE"] = "Titre"
+L["LEGACY_REWARD_APPEARANCE"] = "Apparence"
+L["LEGACY_REWARD_SPELL"] = "Sort"
+L["LEGACY_REWARD_ITEM"] = "Objet"
 L["VAULT_DUNGEON"] = LFG_TYPE_DUNGEON or "Donjon"
 L["VAULT_SLOT_DUNGEON"] = DUNGEONS or "Donjons"
 L["VAULT_SLOT_RAIDS"] = RAIDS or "Raids"
@@ -2610,3 +2668,49 @@ L["EA_OPT_REWARD_PROGRESS"] = "Afficher la progression des récompenses"
 L["EA_OPT_REWARD_PROGRESS_DESC"] = "Affiche la progression actuelle vers le prochain seuil de récompense du coffre."
 L["EA_OPT_INCLUDE_BOUNTY"] = "Inclure Delver's Bounty"
 L["EA_OPT_INCLUDE_BOUNTY_DESC"] = "Affiche aussi les personnages qui ont seulement ramassé un Delver's Bounty."
+
+-- Character tab: Skills / Talents columns (WoW Forever)
+L["CHARS_COL_SKILLS"] = "Compétences"
+L["CHARS_COL_TALENTS"] = "Talents"
+L["SKILLS_READY_TO_TRAIN"] = "Prêt à apprendre"
+L["SKILLS_RANK_FMT"] = "Rang %d"
+L["SKILLS_PILL_LEVEL_FMT"] = "Niveau %d requis"
+L["SKILLS_STATE_LEARNED"] = "Appris"
+L["SKILLS_READY_SUMMARY_FMT"] = "Prêt à apprendre : %d techniques - %d rangs"
+L["SKILLS_NOT_LEARNED_YET"] = "Pas encore appris"
+L["SKILLS_WEAPON_ARMOR"] = "Armes et armures"
+-- WoW Forever variants (ns.L_GameType): copy without Warband Bank / Vault / M+ / rated brackets
+L["MODULE_CURRENCIES_DESC_FOREVER"] = "Suit les monnaies de vos personnages (or, honneur, etc.)"
+L["MODULE_ITEMS_DESC_FOREVER"] = "Suit les objets de la banque et des sacs, la recherche et les catégories d'objets"
+L["MODULE_STORAGE_DESC_FOREVER"] = "Suit les sacs des personnages et la banque personnelle"
+L["MODULE_PVE_DESC_FOREVER"] = "Suit les verrouillages de raids et de donjons (instances sauvegardées)"
+L["MODULE_PVP_DESC_FOREVER"] = "Suit le rang d'honneur, la progression d'honneur et l'historique des parties. La désactivation arrête toute collecte de données JcJ."
+L["MODULE_PROFESSIONS_DESC_FOREVER"] = "Suit les compétences de métier et les recettes de vos personnages. Affiche les composants dans le Compagnon de recettes tant qu'une fenêtre de métier est ouverte."
+L["ITEMS_SUBTITLE_FOREVER"] = "Parcourez vos objets personnels (banque + inventaire)"
+L["EMPTY_ITEMS_DESC_FOREVER"] = "Ouvrez votre banque pour analyser les objets.\nLes objets sont mis en cache automatiquement à la première visite."
+L["EMPTY_PLANS_ACTIVE_DESC_FOREVER"] = "Parcourez les montures, mascottes ou hauts faits ci-dessus pour ajouter des objectifs à votre liste."
+L["SKILLS_VISIT_TRAINER"] = "Rendez visite une fois à votre maître de classe pour lister les techniques"
+L["SKILLS_LEVELUP_TITLE_FMT"] = "%d techniques prêtes à apprendre"
+L["SKILLS_LEVELUP_NEW_SPELLS_FMT"] = "%d nouvelles"
+L["SKILLS_LEVELUP_NEW_RANKS_FMT"] = "%d nouveaux rangs"
+L["SKILLS_LOCKED_BY_LEVEL"] = "Niveau insuffisant"
+L["SKILLS_NO_TRAINER_DATA"] = "Visitez une fois votre maître de classe pour lister les sorts."
+L["SKILLS_KNOWN"] = "Connus"
+L["TALENTS_SPENT"] = "Points dépensés"
+L["TALENTS_UNSPENT"] = "Points disponibles"
+L["TALENTS_TIER"] = "Palier"
+L["TALENTS_TIER_NEEDS"] = "exige %d"
+L["TALENTS_TREE"] = "Arbre %d"
+L["CLICK_FOR_FULL_VIEW"] = "Cliquez pour tout voir"
+L["TALENTS_NONE_SELECTED"] = "Aucun talent choisi pour le moment"
+L["SKILLS_NONE_KNOWN"] = "Aucune compétence enregistrée"
+L["LEVEL_ABBR_N"] = "Niv. %d"
+L["SKILLS_CLICK_TO_OPEN"] = "Cliquez pour ouvrir la liste des compétences"
+L["SKILLS_NOTHING_TO_TRAIN"] = "Rien à apprendre pour le moment"
+L["RECIPES_KNOWN"] = "Recettes connues"
+L["RECIPES_NOT_LEARNED"] = "Non apprises"
+L["RECIPES_NONE_KNOWN"] = "Aucune apprise pour le moment"
+L["RECIPES_ALL_LEARNED"] = "Tout est appris ici"
+L["RECIPES_OPEN_WINDOW_ONCE"] = "Ouvrez une fois la fenêtre de ce métier pour voir ses recettes."
+L["CONFIG_SHOW_CHARACTER_SURNAME"] = "Afficher le second nom"
+L["CONFIG_SHOW_CHARACTER_SURNAME_DESC"] = "Affiche la seconde moitié du nom du personnage. Désactivé : seul le prénom partout."

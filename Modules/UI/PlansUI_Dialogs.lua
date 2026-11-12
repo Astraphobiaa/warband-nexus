@@ -11,6 +11,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager  -- Centralized font management
 local issecretvalue = issecretvalue
 
@@ -184,13 +187,13 @@ function WarbandNexus:ShowCustomPlanDialog()
         local gr, gg, gb = ns.UI_GetSemanticGoldColor()
         charText:SetTextColor(gr, gg, gb)
     else
-        charText:SetTextColor(1, 0.8, 0)
+        charText:SetTextColor(ns.UI_GetSemanticGoldColor())
     end
     charText:SetText(currentName .. "-" .. currentRealm)
     
     -- Title label
     local titleLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+    local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.muted
     titleLabel:SetText(mutedHex .. ((ns.L and ns.L["TITLE_LABEL"]) or "Title:") .. "|r")
     -- One label height for every field label: reserve, grown to the live font height.
     local labelH = math.max(LAYOUT.LABEL_H, math.ceil(titleLabel:GetStringHeight() or 0))
@@ -974,7 +977,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                             local gr, gg, gb = ns.UI_GetSemanticGreenColor()
                             milestoneText:SetTextColor(gr, gg, gb)
                         else
-                            milestoneText:SetTextColor(0.35, 1, 0.4)
+                            milestoneText:SetTextColor(ns.UI_GetSemanticGreenColor())
                         end
                     else
                         ns.UI_SetTextColorRole(milestoneText, "Muted")

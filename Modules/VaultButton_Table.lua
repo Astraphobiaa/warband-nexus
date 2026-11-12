@@ -288,7 +288,8 @@ function M.BuildTableFrame()
     settingsBtn:SetNormalTexture(ns.UI_GetIconFile("settings"))
     ns.UI_SetIcon(settingsBtn:GetNormalTexture(), "settings")
     settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
-    settingsBtn:SetScript("OnClick", function() ToggleOptionsFrame(f, "RIGHT") end)
+    -- VaultButton_TrackerUI (ToggleOptionsFrame) is retail-only (not in WarbandNexus_Forever.toc).
+    settingsBtn:SetScript("OnClick", function() if ToggleOptionsFrame then ToggleOptionsFrame(f, "RIGHT") end end)
 
     -- Column header row (full width between shell insets)
     local headerY = -(chromeBandH + lay.rowBelowChrome)

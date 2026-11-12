@@ -259,11 +259,6 @@ COLLECTION_CONFIGS = {
             -- Without it, GetNumFilteredToys() returns 0 and filter manipulation has no effect.
             Mat.EnsureBlizzardCollectionsLoaded()
             
-            -- Save original filter state to restore after scan
-            local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
-            local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-            local origFilterString = Mat.GetToyBoxSearchText()
-
             -- Capture per-source itemID → sourceTypeIndex via filter trick (Blizzard ToyBox source filter).
             -- Pure API: Blizzard's source filter is the authoritative classifier.
             local toyToSource = {}
@@ -275,16 +270,15 @@ COLLECTION_CONFIGS = {
             end
             ns._toyItemIDToSourceIndex = toyToSource
 
-            -- Ensure all toys are visible for scanning (GetToyFromIndex uses filtered list)
+            -- Ensure all toys are visible for scanning (GetToyFromIndex uses filtered list).
+            -- The shared helper opens EVERY filter -- expansion and unusable too. Opening only
+            -- collected / source / search left the expansion and unusable filters at the player's
+            -- (or the client's default) state, which can hide the whole list (WoW Forever: 21 toys,
+            -- 0 filtered, 0 stored).
             -- TAINT GUARD: ToyBox filter manipulation is protected; skip during combat
-            if not InCombatLockdown() then
-                pcall(function()
-                    C_ToyBox.SetCollectedShown(true)
-                    C_ToyBox.SetUncollectedShown(true)
-                    C_ToyBox.SetAllSourceTypeFilters(true)
-                    C_ToyBox.SetFilterString("")
-                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-                end)
+            local savedToyFilters
+            if not InCombatLockdown() and RT.OpenAllToyBoxFilters then
+                savedToyFilters = RT.OpenAllToyBoxFilters()
             end
             
             -- Try GetNumFilteredToys first; fall back to GetNumTotalDisplayedToys or GetNumToys
@@ -311,15 +305,10 @@ COLLECTION_CONFIGS = {
                 end
             end
             
-            -- Restore original filter state to avoid side effects on player ToyBox UI
+            -- Restore the player's filter state (every filter the helper opened).
             -- TAINT GUARD: Same guard as above - skip restore if in combat
-            if not InCombatLockdown() then
-                pcall(function()
-                    if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
-                    if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
-                    if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
-                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-                end)
+            if savedToyFilters and not InCombatLockdown() and RT.RestoreToyBoxFilters then
+                RT.RestoreToyBoxFilters(savedToyFilters)
             end
             
             return toys

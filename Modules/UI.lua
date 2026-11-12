@@ -104,6 +104,7 @@ local MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
     "professions",
     "collections",
     "plans",
+    "legacy",  -- WoW Forever only: built only where the "legacy" capability is on
     "stats",
 }
 
@@ -1549,7 +1550,7 @@ end
 --- A tab can be missing on this client (Legacy is Forever-only, Professions is hidden there),
 --- and the saved lastTab does not know that. Opening onto one would show content with no nav
 --- button to leave it, so an unavailable key falls back to Characters.
-local TAB_OPEN_CAPABILITY = { professions = "professionsTab", pve = "pveTab" }
+local TAB_OPEN_CAPABILITY = { professions = "professionsTab", pve = "pveTab", legacy = "legacy" }
 local function MainTabAvailable(tabKey)
     local capKey = TAB_OPEN_CAPABILITY[tabKey]
     if not capKey then return true end
@@ -2339,7 +2340,7 @@ function WarbandNexus:DrawTrackingRequiredBanner(parent)
         local wr, wg, wb = ns.UI_GetSemanticOrangeColor()
         title:SetTextColor(wr, wg, wb)
     else
-        title:SetTextColor(1, 0.55, 0.45)
+        title:SetTextColor(ns.UI_GetSemanticOrangeColor())
     end
     title:SetText((ns.L and ns.L["TRACKING_TAB_LOCKED_TITLE"]) or "Character is not tracked")
 
@@ -2781,7 +2782,7 @@ do
         if ns.UI_SetTextColorRole then
             ns.UI_SetTextColorRole(loadText, "Bright")
         else
-            loadText:SetTextColor(0.3, 0.9, 0.4, 1)
+            loadText:SetTextColor(ns.UI_GetSemanticGreenColor())
         end
         loadText:SetWordWrap(false)
         bar.loadingText = loadText
@@ -2796,7 +2797,7 @@ do
         if ns.UI_SetTextColorRole then
             ns.UI_SetTextColorRole(progText, "Bright")
         else
-            progText:SetTextColor(0.3, 0.9, 0.4, 1)
+            progText:SetTextColor(ns.UI_GetSemanticGreenColor())
         end
         bar.progressText = progText
 

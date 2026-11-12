@@ -1,0 +1,19 @@
+# Known bare `|cff` literals under Modules/UI, one `path|count` per line.
+# The gate fails only when a file's count RISES above its recorded number,
+# so new literals break CI while this backlog is migrated onto `ns.UI_HEX`.
+# Each hit is a color that does not follow the theme: it keeps its dark-mode
+# value on light surfaces, where several of these measure under 2:1.
+# Fix one by reading `ns.UI_HEX.<role>` at the call site -- never by adding
+# a fallback literal -- then rerun with --update-baseline to lock the drop in.
+# Never raise a number by hand to silence a new finding.
+Modules/UI/CardLayoutManager.lua|1
+Modules/UI/CollectionsUI_SourceData.lua|1
+Modules/UI/FormatHelpers.lua|7
+Modules/UI/PlanCardFactory_Expanded.lua|2
+Modules/UI/PlansUI_WeeklyProgress.lua|2
+Modules/UI/ProfessionsUI.lua|1
+Modules/UI/PvEUI_BodyPaint.lua|2
+Modules/UI/ReminderSetAlertDialog_ZonePanel.lua|1
+Modules/UI/SettingsUI_Notifications.lua|1
+Modules/UI/SharedWidgets_Factory.lua|1
+Modules/UI/TryCounterTestResultsWindow.lua|1

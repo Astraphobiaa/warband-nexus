@@ -1,8 +1,8 @@
-## Interface: 120105, 16001
+## Interface: 120105
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 3.9.0
+## Version: 3.10.0
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0, Rarity, Blizzard_Collections, Blizzard_AchievementUI
@@ -72,6 +72,11 @@ Modules\CollectionRules.lua
 Modules\DataService_Compression.lua
 Modules\DataService_RosterHelpers.lua
 Modules\DataService.lua
+# CharacterSystemsService: Forever talent tree (Traits/CamelotCombat) + spellbook scan
+# for the Character tab Skill / Talent columns.
+Modules\CharacterSystemsService.lua
+# TrainerService: class trainer cache; the locked-spell list Forever keeps off the client.
+Modules\TrainerService.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
 Modules\SearchStateManager.lua
@@ -252,6 +257,7 @@ Modules\UI\PvPUI_Draw.lua
 Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
+Modules\UI\LegacyUI.lua
 Modules\UI\CollectionsUI_SourceData.lua
 Modules\UI\CollectionsUI_Shared.lua
 Modules\UI\CollectionsUI_Lists.lua
@@ -281,10 +287,13 @@ Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
 Modules\UI\WarbandBankDepositPopup.lua
 Modules\UI\CharacterBankMoneyLogPopup.lua
+# CharacterSystemsPopup: Forever talent tree grid + skill list, with real spell tooltips.
+Modules\UI\CharacterSystemsPopup.lua
 Modules\UI\TryCounterTestResultsWindow.lua
 Modules\UI\UI_RefreshRouter.lua
 Modules\UI.lua
 Modules\UI\UI_MainShell.lua
+Modules\UI\UILayoutProbe.lua
 Modules\UI\UI_TabHost.lua
 
 # Gold & Bank Management (MUST load after UI modules)

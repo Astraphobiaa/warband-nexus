@@ -3117,7 +3117,7 @@ function CountRows.CompareCharacter(a, b)
 end
 
 function CountRows.CharacterName(charKey, charData)
-    if charData.name then return charData.name end
+    if charData.name then return ns.CharDisplayName(charData, charData.name) end
     if issecretvalue and issecretvalue(charKey) then return nil end
     if type(charKey) ~= "string" or charKey == "" then return nil end
     return charKey:match("^([^-]+)")

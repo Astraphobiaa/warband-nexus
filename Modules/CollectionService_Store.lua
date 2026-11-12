@@ -219,6 +219,7 @@ function WarbandNexus:SaveCollectionStore()
         title = RT.collectionStore.title,
         illusion = RT.collectionStore.illusion,
         scanCompleted = RT.collectionStore.scanCompleted or {},
+        achievementScanTotal = RT.collectionStore.achievementScanTotal or 0,
     }
     DebugPrint("|cff00ff00[WN CollectionService]|r Saved collectionStore to DB")
 end

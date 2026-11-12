@@ -144,7 +144,8 @@ function WarbandNexus:ShowReagentDepositPopup(anchorFrame)
     local perCharCB = CreateThemedCheckbox(contentFrame, isPerChar)
     perCharCB:SetPoint("TOPLEFT", PADDING, -yOffset)
 
-    local un = UnitName("player")
+    local un = (ns.Utilities and ns.Utilities.GetLivePlayerDisplayName and ns.Utilities:GetLivePlayerDisplayName())
+        or UnitName("player")
     local charName = (un and not (issecretvalue and issecretvalue(un))) and un or "?"
     local perCharLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     perCharLabel:SetPoint("LEFT", perCharCB, "RIGHT", 8, 0)

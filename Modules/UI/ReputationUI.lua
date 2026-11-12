@@ -16,6 +16,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local Constants = ns.Constants
 local E = Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
@@ -30,7 +33,7 @@ local function SafeLower(s)
 end
 
 -- Debug helper
-local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00ff00[RepUI]|r"))
+local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(HEX.green .. "[RepUI]|r"))
     or ns.DebugPrint
     or function() end
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
@@ -61,16 +64,16 @@ local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    if role == "Muted" then return "|cffaaaaaa" end
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    if role == "Muted" then return HEX.muted end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function SemanticGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
     end
-    return "|cffffcc00"
+    return HEX.gold
 end
 
 local function SemanticColorHex(color)
@@ -432,7 +435,7 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     pb.fill:Show()
 
     if baseReputationMaxed and not isParagon then
-        pb.fill:SetColorTexture(0, 0.8, 0, 1)
+        pb.fill:SetColorTexture(ns.UI_GetSemanticGreenColor())
     elseif isParagon then
         pb.fill:SetColorTexture(1, 0.4, 1, 1)
     elseif (not hasRenown and reputation.type ~= "friendship") and standingID then
@@ -856,7 +859,7 @@ local function BuildReputationFactionMap(cachedFactions, characters, onlyFaction
                 factionMap[factionID] = {
                     data = reputation,
                     characterKey = sessionKey or ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide"),
-                    characterName = sessionChar and sessionChar.name or ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account"),
+                    characterName = sessionChar and ns.CharDisplayName(sessionChar, sessionChar.name) or ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account"),
                     characterRealm = sessionChar and (sessionChar.realm or "") or "",
                     characterClass = sessionChar and (sessionChar.classFile or sessionChar.class) or "WARRIOR",
                     characterLevel = sessionChar and sessionChar.level or 80,
@@ -909,7 +912,8 @@ local function BuildReputationFactionMap(cachedFactions, characters, onlyFaction
             
             -- Add to allCharData array
             table.insert(allCharData, {
-                characterName = char.name,
+                characterName = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+                    and ns.Utilities:GetCharacterDisplayName(char)) or char.name,
                 characterRealm = char.realm or "",
                 characterClass = char.classFile or char.class,
                 characterLevel = char.level,
@@ -939,7 +943,7 @@ local function BuildReputationFactionMap(cachedFactions, characters, onlyFaction
             factionMap[factionID] = {
                 data = bestReputation,
                 characterKey = resolvedAW and ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") or bestCharKey,
-                characterName = resolvedAW and ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account") or bestChar.name,
+                characterName = resolvedAW and ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account") or ns.CharDisplayName(bestChar, bestChar.name),
                 characterRealm = resolvedAW and "" or (bestChar.realm or ""),
                 characterClass = resolvedAW and "WARRIOR" or (bestChar.classFile or bestChar.class),
                 characterLevel = resolvedAW and 80 or bestChar.level,
@@ -1350,7 +1354,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     })
                 end
                 if reputation.paragon.hasRewardPending then
-                    table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
+                    table.insert(lines, {text = HEX.green .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
                 end
             end
             
@@ -1373,7 +1377,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 if type(err) == "string" and not (issecretvalue and issecretvalue(err)) and err ~= "" then
                     errMsg = err
                 end
-                DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)
+                DebugPrint(HEX.red .. "[RepUI Tooltip Error]|r " .. errMsg)
             end
         end
     end)
@@ -1416,7 +1420,7 @@ local function RepRowShowTooltip(self, tooltipService, reputation, characterInfo
             })
         end
         if reputation.paragon.hasRewardPending then
-            table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
+            table.insert(lines, {text = HEX.green .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
         end
     end
 
@@ -1446,7 +1450,7 @@ local function RepRowOnEnter(self)
             if type(err) == "string" and not (issecretvalue and issecretvalue(err)) and err ~= "" then
                 errMsg = err
             end
-            DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. errMsg)
+            DebugPrint(HEX.red .. "[RepUI Tooltip Error]|r " .. errMsg)
         end
     end
 end
@@ -1764,7 +1768,7 @@ local function TryPatchReputationRows(container, changedFactionIDs)
                 if fid and changedFactionIDs[fid] and v.frame then
                     local ok, err = pcall(PopulateReputationRow, v.frame, pe)
                     if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
-                        DebugPrint("|cffff0000[RepUI patch]|r " .. tostring(err))
+                        DebugPrint(HEX.red .. "[RepUI patch]|r " .. tostring(err))
                     end
                 end
             end
@@ -2014,14 +2018,21 @@ function WarbandNexus:DrawReputationList(container, width)
         if not (mf and scrollChild and mf.scroll and scrollChild == mf.scrollChild) then
             return
         end
-        local targetTabBodyH = 8 + totalH
-        local targetScrollChildH = math.max(targetTabBodyH + 8, mf.scroll:GetHeight())
-        scrollChild:SetHeight(targetScrollChildH)
-        if Factory and Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(mf.scroll)
-        end
-        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
-            Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+        -- The canonical path (SharedWidgets: UI_SyncMainTabScrollChrome). It owns the viewport
+        -- floor, the bar columns and both visibility passes; this function used to carry its own
+        -- copy of all of that, which is how the tabs drifted apart from each other in the first
+        -- place. It adds the content start offset itself, so it gets the bare content height.
+        if ns.UI_SyncMainTabScrollChrome then
+            -- Content bottom from the scroll child's top: the results block starts at BODY_TOP.
+            ns.UI_SyncMainTabScrollChrome(mf, scrollChild, 8 + totalH)
+        else
+            scrollChild:SetHeight(math.max(8 + totalH + 8, mf.scroll:GetHeight()))
+            if Factory and Factory.UpdateScrollBarVisibility then
+                Factory:UpdateScrollBarVisibility(mf.scroll)
+            end
+            if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+                Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+            end
         end
         if mf._virtualScrollUpdate then
             mf._virtualScrollUpdate()
@@ -2068,7 +2079,7 @@ function WarbandNexus:DrawReputationList(container, width)
 
     local function ChainTopFrame(frame, gap)
         if not frame then return end
-        ChainSectionFrameBelow(parent, frame, repChainTail, 0, gap, repChainTail and nil or 0)
+        ChainSectionFrameBelow(parent, frame, repChainTail, 0, gap, repChainTail and nil or 0, true)
         repChainTail = frame
     end
 
@@ -2267,7 +2278,7 @@ function WarbandNexus:DrawReputationList(container, width)
             populateRowFn = function(row, it, _idx)
                 local ok, err = pcall(PopulateReputationRow, row, it.populateEntry)
                 if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
-                    DebugPrint("|cffff0000[RepUI VLM]|r populateRowFn: " .. tostring(err))
+                    DebugPrint(HEX.red .. "[RepUI VLM]|r populateRowFn: " .. tostring(err))
                 end
             end,
             releaseRowFn = ReleaseReputationRow,
@@ -2343,21 +2354,52 @@ function WarbandNexus:DrawReputationList(container, width)
 
         local headerTail = nil
         local sectionHeaders = headers or {}
+
+        -- Pre-pass: the search filter decides which categories render at all, and how many survive
+        -- it decides whether their headers carry anything. Resolving it here also keeps
+        -- BuildFilteredList to one call per category instead of one per draw path.
+        local rendered = {}
         for shi = 1, #sectionHeaders do
             local headerData = sectionHeaders[shi]
             if #headerData.factions > 0 then
                 local factionList, filteredFactionList, isSearching = BuildFilteredList(headerData, scopeTag)
                 if not isSearching or #filteredFactionList > 0 then
+                    rendered[#rendered + 1] = {
+                        data = headerData,
+                        list = filteredFactionList,
+                        searching = isSearching,
+                        count = isSearching and #filteredFactionList or #factionList,
+                    }
+                end
+            end
+        end
+
+        --[[
+            A section holding one category says everything twice: that category's name and count
+            repeat the section header directly above it, and collapsing one band only uncovers the
+            other. Its rows go straight into the section body, one indent level up and at full
+            width. Two or more categories keep their headers -- there the names are what the player
+            navigates by, not chrome.
+        ]]
+        if #rendered == 1 then
+            RenderRowsIntoBody(sectionBody, width, rendered[1].list)
+        else
+            for ri = 1, #rendered do
+                local entry = rendered[ri]
+                local headerData = entry.data
+                local filteredFactionList = entry.list
+                local isSearching = entry.searching
+                local filteredCount = entry.count
+                do
                     local headerKey = (scopeTag == "AW" and "filtered-header-" or "filtered-cb-header-") .. (headerData.name or "")
                     local headerExpanded = isSearching and true or IsExpanded(headerKey, false)
                     local headerWrap = CreateWrap(sectionBody, width - BASE_INDENT, headerKey)
                     local headerBody = headerWrap and CreateBody(headerWrap, width - BASE_INDENT, headerKey)
                     if headerWrap and headerBody then
-                        ChainSectionFrameBelow(sectionBody, headerWrap, headerTail, BASE_INDENT, headerTail and SECTION_SPACING or nil, headerTail and nil or SECTION_SPACING)
+                        ChainSectionFrameBelow(sectionBody, headerWrap, headerTail, BASE_INDENT, headerTail and SECTION_SPACING or nil, headerTail and nil or SECTION_SPACING, true)
                         headerTail = headerWrap
 
                         local nodeCtx = { body = headerBody, wrap = headerWrap, parentCtx = sectionCtx }
-                        local filteredCount = isSearching and #filteredFactionList or #factionList
                         local header = CreateCollapsibleHeader(
                             headerWrap,
                             (headerData.name or "") .. " (" .. FormatNumber(filteredCount) .. ")",
@@ -2572,7 +2614,7 @@ end
 
 function WarbandNexus:DrawReputationTab(parent)
     if not parent then
-        self:Print("|cffff0000ERROR: No parent container provided to DrawReputationTab|r")
+        self:Print(HEX.red .. "ERROR: No parent container provided to DrawReputationTab|r")
         return
     end
     

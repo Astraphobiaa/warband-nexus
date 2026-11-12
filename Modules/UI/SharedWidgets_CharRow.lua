@@ -31,33 +31,36 @@ local CHAR_ROW_COLUMNS = {
     },
     name = {
         width = 100,
-        spacing = 15,
-        total = 115,
+        spacing = 10,
+        total = 110,
     },
     -- `min` = readability floor for flex columns: narrow viewports shrink these toward min
     -- (proportional) before the horizontal scrollbar takes over.
     guild = {
         width = 130,
-        spacing = 15,
-        total = 145,
+        spacing = 10,
+        total = 140,
         min = 60,
     },
     level = {
         width = 82,
-        spacing = 15,
-        total = 97,
+        spacing = 10,
+        total = 92,
         min = 70,   -- "Zzz 150.00%" rested line
     },
     itemLevel = {
         width = 82,
-        spacing = 15,
-        total = 97,
+        spacing = 10,
+        total = 92,
         min = 74,   -- "iLvl 288.9"
     },
     gold = {
-        width = 190,
-        spacing = 15,
-        total = 205,
+        -- 190 was padding: `min` already states that 150 fits three coin groups at FormatMoney's
+        -- 12-char cap, and the text is right-justified, so the slack showed up as a hole to the
+        -- LEFT of the money rather than around it.
+        width = 160,
+        spacing = 10,
+        total = 170,
         min = 150,  -- three coin groups at FormatMoney's 12-char cap
     },
     professions = {
@@ -65,6 +68,31 @@ local CHAR_ROW_COLUMNS = {
         spacing = 0,
         total = 150,
         min = 128,  -- 3 icons x 39 + 2 x 5 gaps
+    },
+    -- WoW Forever only: the realm is a PvE / PvP / RP tag rather than a name, so it gets a
+    -- column of its own and the identity block's second line carries the surname instead.
+    realmType = {
+        width = 54,
+        spacing = 10,
+        total = 64,
+        min = 40,
+    },
+    -- WoW Forever only (see CHAR_ROW_OPTIONAL_COLUMNS). Skills shows how many abilities are
+    -- waiting at the trainer; Talents shows points per tab the way a vanilla build is read.
+    -- One icon each, the same 39 px square the profession icons use, and sitting the same 5 px
+    -- apart, so the two read as one pair of glyphs rather than two stray columns. Only the second
+    -- one carries the wider trailing gap out to whatever follows.
+    skills = {
+        width = 39,
+        spacing = 5,    -- the profession strip's own icon gap
+        total = 44,
+        min = 39,       -- never smaller than the glyph: the icon would overlap its neighbour
+    },
+    talents = {
+        width = 39,
+        spacing = 15,
+        total = 54,
+        min = 39,
     },
     mythicKey = {
         width = 120,
@@ -105,9 +133,56 @@ local CHAR_ROW_COLUMNS = {
 }
 
 local CHAR_ROW_COLUMN_ORDER = {
-    "favorite", "faction", "race", "class", "name", "mail", "guild", "level", "itemLevel",
-    "gold", "professions", "mythicKey", "reorder", "lastSeen", "headerAssign", "tracking", "delete",
+    -- Level leads the text block, then the identity (name, guild) and the mail badge beside it.
+    -- Only Guild has a measured width, so everything after it is chained off that rather than
+    -- read from this order; see ApplyCharacterRowInteriorLayout.
+    "favorite", "faction", "race", "class", "level", "name", "guild", "mail", "realmType",
+    "itemLevel", "gold", "professions", "skills", "talents", "mythicKey",
+    "reorder", "lastSeen", "headerAssign", "tracking", "delete",
 }
+
+--- Columns that only mean something where their system exists. On WoW Forever Mythic+ does not,
+--- so the Keystone column collapses to zero width and the chained offsets close the gap by
+--- themselves. The item level column is NOT in here: GetAverageItemLevel misreports there, but
+--- the per-item levels behind it are sound, so DataService computes the average itself rather
+--- than the column being hidden.
+local CHAR_ROW_OPTIONAL_COLUMNS = {
+    mythicKey = "mythicPlus",
+    skills = "trainedSpells",
+    talents = "classicTalentTree",
+    realmType = "realmTypeTag",
+}
+-- The profession strip is a fixed five slots where the vanilla secondary set exists: two
+-- primaries, then Cooking, Fishing and First Aid, each keeping its place whether or not the
+-- character has it. Five 39 px squares with 5 px between them need 215. Everywhere else the
+-- column keeps the width it has always had, so retail's row does not move.
+local PROF_SLOT_ICON = 39
+local PROF_SLOT_GAP = 5
+local PROF_SLOTS_CLASSIC = 5
+
+local function CharRowProfessionColumnWidth()
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature and addon:SupportsFeature("firstAidProfession") then
+        return PROF_SLOTS_CLASSIC * PROF_SLOT_ICON + (PROF_SLOTS_CLASSIC - 1) * PROF_SLOT_GAP
+    end
+    return CHAR_ROW_COLUMNS.professions.width
+end
+ns.UI_CharRowProfessionColumnWidth = CharRowProfessionColumnWidth
+
+local function CharRowProfessionColumnTotal()
+    return CharRowProfessionColumnWidth() + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+end
+
+local function CharRowColumnEnabled(key)
+    local feature = CHAR_ROW_OPTIONAL_COLUMNS[key]
+    if not feature then return true end
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature then
+        return addon:SupportsFeature(feature)
+    end
+    return true
+end
+ns.UI_CharRowColumnEnabled = CharRowColumnEnabled
 
 local function GetColumnOffset(columnKey)
     local offset = 10
@@ -116,41 +191,44 @@ local function GetColumnOffset(columnKey)
         if key == columnKey then
             return offset
         end
-        offset = offset + CHAR_ROW_COLUMNS[key].total
+        -- A collapsed column contributes nothing, so the ones after it move up. This only
+        -- started mattering when an optional column landed BEFORE others in the order
+        -- (realmType); the earlier ones were all at the tail.
+        if CharRowColumnEnabled(key) then
+            offset = offset + (key == "professions" and CharRowProfessionColumnTotal()
+                or CHAR_ROW_COLUMNS[key].total)
+        end
     end
     return offset
 end
 
+
 local function GetCharRowTotalWidth()
     local width = 10
     for oi = 1, #CHAR_ROW_COLUMN_ORDER do
-        width = width + CHAR_ROW_COLUMNS[CHAR_ROW_COLUMN_ORDER[oi]].total
+        local key = CHAR_ROW_COLUMN_ORDER[oi]
+        if CharRowColumnEnabled(key) then
+            width = width + (key == "professions" and CharRowProfessionColumnTotal()
+                or CHAR_ROW_COLUMNS[key].total)
+        end
     end
     return width + 10
 end
 
---- Name column width. 100 px fits a single classic name; WoW Forever characters also carry a
---- surname ("Elementalist Vhorzen"), which clips at that width. The Keystone column collapses
---- on the same client and frees 135 px, so widening here costs the row nothing.
-local CHAR_ROW_NAME_WIDTH_FOREVER = 165
+--- Name column width.
+---
+--- This used to widen to 165 px on WoW Forever so "Elementalist Vhorzen" fit on one line. It no
+--- longer has to: the surname moved onto the identity block's second line (where the realm used
+--- to sit, now a column of its own), so the widest line is a single word again. Widening also
+--- disagreed with the column's own `total`, which the offset chain is built from -- the name
+--- text ran 65 px into whatever came next.
 local function CharRowNameWidth()
-    local c = CHAR_ROW_COLUMNS.name
-    local addon = ns.WarbandNexus
-    if addon and addon.SupportsFeature and not addon:SupportsFeature("mythicPlus") then
-        return CHAR_ROW_NAME_WIDTH_FOREVER
-    end
-    return c.width
+    return CHAR_ROW_COLUMNS.name.width
 end
 ns.UI_CharRowNameWidth = CharRowNameWidth
 
---- The Keystone column only means anything where Mythic+ exists. On WoW Forever it does not, so
---- the column collapses to zero width and the chained offsets close the gap by themselves.
 local function CharRowMythicKeyEnabled()
-    local addon = ns.WarbandNexus
-    if addon and addon.SupportsFeature then
-        return addon:SupportsFeature("mythicPlus")
-    end
-    return true
+    return CharRowColumnEnabled("mythicKey")
 end
 ns.UI_CharRowMythicKeyEnabled = CharRowMythicKeyEnabled
 
@@ -185,8 +263,11 @@ local function GetCharRowMiddleBlockWidth()
     return (c.level and c.level.total or 97)
         + (c.itemLevel and c.itemLevel.total or 90)
         + (c.gold and c.gold.total or 205)
-        + (c.professions and c.professions.total or 150)
-        + (CharRowMythicKeyEnabled() and (c.mythicKey and c.mythicKey.total or 135) or 0)
+        + CharRowProfessionColumnTotal()
+        + (CharRowColumnEnabled("realmType") and (c.realmType and c.realmType.total or 66) or 0)
+        + (CharRowColumnEnabled("skills") and (c.skills and c.skills.total or 72) or 0)
+        + (CharRowColumnEnabled("talents") and (c.talents and c.talents.total or 104) or 0)
+        + (CharRowColumnEnabled("mythicKey") and (c.mythicKey and c.mythicKey.total or 135) or 0)
 end
 
 local function ComputeCharRowGuildColumnWidth(listRowW, measuredGuildW)
@@ -199,7 +280,7 @@ local function ComputeCharRowGuildColumnWidth(listRowW, measuredGuildW)
     return math.min(measured, math.max(gCol.min or 60, maxGuild))
 end
 
-local CHAR_ROW_FLEX_ORDER = { "level", "itemLevel", "gold", "professions", "mythicKey" }
+local CHAR_ROW_FLEX_ORDER = { "level", "itemLevel", "gold", "professions", "skills", "talents", "mythicKey" }
 
 --- Effective column widths for a given row width. At or above the ideal total every column
 --- keeps its ideal width; below it, guild compresses first (measured cap), then the flex pool
@@ -214,24 +295,35 @@ local function ComputeCharRowFlexColumns(rowW, measuredGuildW)
         level = c.level.width,
         itemLevel = c.itemLevel.width,
         gold = c.gold.width,
-        professions = c.professions.width,
-        mythicKey = CharRowMythicKeyEnabled() and c.mythicKey.width or 0,
+        professions = CharRowProfessionColumnWidth(),
+        realmType = CharRowColumnEnabled("realmType") and c.realmType.width or 0,
+        skills = CharRowColumnEnabled("skills") and c.skills.width or 0,
+        talents = CharRowColumnEnabled("talents") and c.talents.width or 0,
+        mythicKey = CharRowColumnEnabled("mythicKey") and c.mythicKey.width or 0,
     }
     if not rowW or rowW < 1 then return out end
     local deficit = GetCharRowTotalWidthForGuild(out.guild) - rowW
     if deficit <= 0 then return out end
+    -- A collapsed column has no width to give and must not be handed any back: writing
+    -- out[key] unconditionally below would resurrect a hidden column as soon as the row got
+    -- narrow enough to have a deficit.
     local slack = 0
     for i = 1, #CHAR_ROW_FLEX_ORDER do
-        local col = c[CHAR_ROW_FLEX_ORDER[i]]
-        slack = slack + math.max(0, col.width - (col.min or col.width))
+        local key = CHAR_ROW_FLEX_ORDER[i]
+        if CharRowColumnEnabled(key) then
+            local col = c[key]
+            slack = slack + math.max(0, col.width - (col.min or col.width))
+        end
     end
     if slack <= 0 then return out end
     local ratio = math.min(1, deficit / slack)
     for i = 1, #CHAR_ROW_FLEX_ORDER do
         local key = CHAR_ROW_FLEX_ORDER[i]
-        local col = c[key]
-        local give = math.max(0, col.width - (col.min or col.width)) * ratio
-        out[key] = math.floor(col.width - give + 0.5)
+        if CharRowColumnEnabled(key) then
+            local col = c[key]
+            local give = math.max(0, col.width - (col.min or col.width)) * ratio
+            out[key] = math.floor(col.width - give + 0.5)
+        end
     end
     return out
 end
@@ -239,9 +331,16 @@ end
 local function GetCharRowTotalWidthAtMinimums()
     local width = 10
     for oi = 1, #CHAR_ROW_COLUMN_ORDER do
-        local col = CHAR_ROW_COLUMNS[CHAR_ROW_COLUMN_ORDER[oi]]
-        local w = (col.min or col.width) + (col.spacing or 0)
-        width = width + math.min(col.total, w)
+        local key = CHAR_ROW_COLUMN_ORDER[oi]
+        if CharRowColumnEnabled(key) then
+            local col = CHAR_ROW_COLUMNS[key]
+            if key == "professions" then
+                width = width + CharRowProfessionColumnTotal()
+            else
+                local w = (col.min or col.width) + (col.spacing or 0)
+                width = width + math.min(col.total, w)
+            end
+        end
     end
     return width + 10
 end

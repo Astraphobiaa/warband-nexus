@@ -26,6 +26,9 @@ local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(.
 -- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
 local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
@@ -971,7 +974,7 @@ local function CreateCompanionWindow()
             local allOwnedFmt = (ns.L and ns.L["SHOPPING_LIST_ALL_OWNED"]) or "All reagents for %s are available in your Warband!"
             local msg = string.format(allOwnedFmt, currentRecipeName or "this recipe")
             if WarbandNexus.Print then
-                WarbandNexus:Print("|cff00ff00" .. msg .. "|r")
+                WarbandNexus:Print(HEX.green .. msg .. "|r")
             end
             return
         end
@@ -1005,7 +1008,7 @@ local function CreateCompanionWindow()
         local copyFmt = (ns.L and ns.L["SHOPPING_LIST_COPIED"]) or "Copied shopping list for %s (%d items) to clipboard."
         local copyMsg = string.format(copyFmt, currentRecipeName or "recipe", #missingData.missingReagents)
         if WarbandNexus.Print then
-            WarbandNexus:Print("|cff00ccff" .. copyMsg .. "|r")
+            WarbandNexus:Print(HEX.info .. copyMsg .. "|r")
         end
     end)
 
@@ -1038,7 +1041,12 @@ local function CreateCompanionWindow()
     local scrollBarColumn = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(contentArea, RC_SB_COL_W)
         or Factory:CreateScrollBarColumn(contentArea, RC_SB_COL_W, 0, 0)
     frame.contentScrollBarColumn = scrollBarColumn
-    if Factory.EnsureScrollBarColumnSync then
+    -- Dynamic lane: the column only keeps its space while the recipe content overflows.
+    if Factory.WireScrollLaneWithInsets then
+        Factory:WireScrollLaneWithInsets(scrollFrame, contentArea, scrollBarColumn, {
+            left = PADDING, top = PADDING, right = PADDING, bottom = PADDING, gap = 2,
+        })
+    elseif Factory.EnsureScrollBarColumnSync then
         Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = RC_SB_COL_W, gap = 2 })
     elseif Factory.SyncScrollBarColumnToViewport then
         Factory:SyncScrollBarColumnToViewport(scrollFrame, scrollBarColumn, { width = RC_SB_COL_W, gap = 2 })

@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager
 local UI_SPACING = ns.UI_SPACING
 
@@ -14,16 +17,16 @@ local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    if role == "Muted" then return "|cffaaaaaa" end
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    if role == "Muted" then return HEX.muted end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function SemanticGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
     end
-    return "|cffffd700"
+    return HEX.gold
 end
 
 local function SemanticGoldRGB()
@@ -188,7 +191,22 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
     local CARD_PAD = 12
     local CARD_ICON = 24
     local CARD_TITLE_GAP = 8
+    -- Tabs this client does not have (Forever: PvE, Professions) get no card; Legacy exists only
+    -- there (same capability keys as UI_MainShell's TAB_CAPABILITY).
+    local FEATURE_TAB_CAPABILITY = { pve = "pveTab", professions = "professionsTab", legacy = "legacy" }
+    local function AvailableFeatures(items)
+        local out = {}
+        for i = 1, #items do
+            local cap = FEATURE_TAB_CAPABILITY[items[i].tab]
+            if not (cap and WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature(cap)) then
+                out[#out + 1] = items[i]
+            end
+        end
+        return out
+    end
+
     local function AddFeatureGrid(items)
+        items = AvailableFeatures(items)
         local side = UI_SPACING.SIDE_MARGIN + 2
         local usable = math.max(200, innerWidth - side * 2)
         local cols = math.floor(usable / FEATURE_MIN_COL)
@@ -431,6 +449,7 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
         { tab = "collections", title = (ns.L and ns.L["INFO_TAB_COLLECTIONS"]) or "Collections", desc = (ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, and other collectibles. Track collection progress and find missing items." },
         { tab = "plans", title = (ns.L and ns.L["INFO_TAB_PLANS"]) or "To-Do", desc = (ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, and achievements. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon." },
         { tab = "stats", title = (ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", desc = (ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics." },
+        { tab = "legacy", title = (ns.L and ns.L["TAB_LEGACY"]) or "Legacy", desc = (ns.L and ns.L["LEGACY_SUBTITLE"]) or "Account-wide Legacy points, reward tiers and challenges" },
     })
 
     AddDivider()

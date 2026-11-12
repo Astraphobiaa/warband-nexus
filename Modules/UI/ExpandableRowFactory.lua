@@ -22,19 +22,22 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
 local CreateButton = ns.UI_CreateButton
 local FontManager = ns.FontManager
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 
 local function BrightMarkup(text)
-    local hex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    local hex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
     return hex .. (text or "") .. "|r"
 end
 
 local function GoldMarkup(text)
-    local hex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
+    local hex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
     return hex .. (text or "") .. "|r"
 end
 
 local function NormalMarkup(text)
-    local hex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Normal")) or "|cffcccccc"
+    local hex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Normal")) or HEX.muted
     return hex .. (text or "") .. "|r"
 end
 
@@ -75,9 +78,9 @@ local function CreateDetailsFrame(row, parentFrame, options)
         local labelCol = (ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor("metric"))
             or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
             or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted"))
-            or "|cffaaaaaa"
+            or HEX.muted
         local bodyCol = (ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.body)
-            or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+            or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
         infoText:SetText(labelCol .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r " .. bodyCol .. data.information .. "|r")
         infoText:SetWordWrap(true)
         infoText:SetNonSpaceWrap(false)
@@ -129,7 +132,7 @@ local function CreateDetailsFrame(row, parentFrame, options)
             sectionFs:SetPoint("TOPLEFT", leftMargin, yOffset)
             sectionFs:SetPoint("TOPRIGHT", -rightMargin, yOffset)
             sectionFs:SetJustifyH("LEFT")
-            sectionFs:SetText((Psec.label or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa") .. data.criteriaSectionLabel .. "|r")
+            sectionFs:SetText((Psec.label or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.muted) .. data.criteriaSectionLabel .. "|r")
             local secW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
             sectionFs:SetWidth(math.max(60, secW - leftMargin - rightMargin))
             local secH = sectionFs:GetStringHeight()
@@ -145,7 +148,7 @@ local function CreateDetailsFrame(row, parentFrame, options)
             local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
             local reqMetric = (ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor("metric"))
                 or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
-                or "|cffffcc00"
+                or HEX.gold
             local headerText = reqMetric .. reqLabel .. "|r"
             if progressLine then
                 headerText = headerText .. " " .. progressLine
@@ -637,7 +640,7 @@ end
 local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
     -- Validate dependencies on first use (fail gracefully if not loaded)
     if not COLORS or not ApplyVisuals or not CreateIcon or not FontManager then
-        DebugPrint("|cffff0000[ExpandableRowFactory] CRITICAL: Missing dependencies! SharedWidgets must load before ExpandableRowFactory.|r")
+        DebugPrint(HEX.red .. "[ExpandableRowFactory] CRITICAL: Missing dependencies! SharedWidgets must load before ExpandableRowFactory.|r")
         return nil
     end
     

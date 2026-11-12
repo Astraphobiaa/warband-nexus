@@ -17,6 +17,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
 ns.CharactersUI = ns.CharactersUI or {}
@@ -69,16 +72,16 @@ local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    if role == "Muted" then return "|cffaaaaaa" end
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    if role == "Muted" then return HEX.muted end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function SemanticGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
     end
-    return "|cffffd700"
+    return HEX.gold
 end
 
 --- Set row/cell text then refresh light-mode outline when markup or colored ink is present.
@@ -824,7 +827,7 @@ function WarbandNexus:DrawCharacterList(parent)
         local affordableCount = math.floor(totalWithWarband / tokenPrice)
         tkValueRef:SetText(
             FormatMoney(tokenPrice, 12)
-                .. "  |cff66c0ff("
+                .. "  " .. HEX.info .. "("
                 .. affordableCount
                 .. " "
                 .. (((ns.L and ns.L["WOW_TOKEN_COUNT_LABEL"]) or "Tokens"))

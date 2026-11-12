@@ -6,6 +6,9 @@
 
 local _, ns = ...
 local M = ns.PvPUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M, "PvPUI.lua must load before PvPUI_Draw.lua")
 
 function M.DrawTab(parent)
@@ -46,7 +49,10 @@ function M.DrawTab(parent)
         titleCard = select(1, M.ns.UI_CreateStandardTabTitleCard(headerParent, {
             tabKey = "pvp",
             titleText = "|cff" .. hexColor .. ((M.L and M.L["TAB_PVP"]) or "PvP") .. "|r",
-            subtitleText = (M.L and M.L["PVP_SUBTITLE"]) or "Rated progress, honor, and match history",
+            -- Forever has no rated PvP: its page is the honor rank ladder.
+            subtitleText = (WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("pvpRankLadder"))
+                and ((M.L and M.L["PVP_SUBTITLE_FOREVER"]) or "Honor rank, honor, and match history")
+                or ((M.L and M.L["PVP_SUBTITLE"]) or "Rated progress, honor, and match history"),
             showUnderline = false,
             textRightInset = pvpToolbarReserve,
         }))
@@ -64,6 +70,11 @@ function M.DrawTab(parent)
 
     if profile then
         profile.pvpSort = profile.pvpSort or { key = "pvpRating", ascending = true }
+        -- Forever offers "pvpRank" in place of "pvpRating"; carry the old default over.
+        if profile.pvpSort.key == "pvpRating" and WarbandNexus.SupportsFeature
+            and WarbandNexus:SupportsFeature("pvpRankLadder") then
+            profile.pvpSort.key = "pvpRank"
+        end
         if not profile.pvpSectionFilter then profile.pvpSectionFilter = { sectionKey = "all" } end
         if M.ns.CharacterService and M.ns.CharacterService.EnsureCustomCharacterSectionsProfile then
             M.ns.CharacterService:EnsureCustomCharacterSectionsProfile(profile)
@@ -164,10 +175,22 @@ function M.DrawTab(parent)
         levelCard:SetPoint("TOPLEFT", SIDE, -yOffset)
         levelCard:SetWidth(triW)
         levelCard:SetHeight(progressCardH)
-        M.EnsureCardTitleWithIcon(bundle, "levelTitle", "levelTitleIcon", levelCard,
-            (M.L and M.L["PVP_LEVEL_PROGRESS"]) or "PvP Level Progress", M.PROGRESS_TITLE_ICONS.level)
-        M.EnsureBarRow(bundle, "levelBarRow", levelCard, barY,
-            string.format(lvlFmt, honor.level or 0), honor.current or 0, honor.max or 0, goldColor)
+        -- Forever's progression is the honor rank ladder (PvP Rank Points, major faction 2800), not the
+        -- retail honor level: the API still answers UnitHonorLevel with its level-1 defaults there.
+        local ladder = progress and progress.rankLadder
+        if ladder and WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("pvpRankLadder") then
+            M.EnsureCardTitleWithIcon(bundle, "levelTitle", "levelTitleIcon", levelCard,
+                (M.L and M.L["PVP_RANK_PROGRESS"]) or "Rank Progress", M.PROGRESS_TITLE_ICONS.level)
+            local rank = tonumber(ladder.rank) or 0
+            M.EnsureBarRow(bundle, "levelBarRow", levelCard, barY,
+                string.format((M.L and M.L["PVP_RANK_FMT"]) or "Rank %d", rank),
+                tonumber(ladder.earned) or 0, (rank < 14) and (tonumber(ladder.threshold) or 0) or 0, goldColor)
+        else
+            M.EnsureCardTitleWithIcon(bundle, "levelTitle", "levelTitleIcon", levelCard,
+                (M.L and M.L["PVP_LEVEL_PROGRESS"]) or "PvP Level Progress", M.PROGRESS_TITLE_ICONS.level)
+            M.EnsureBarRow(bundle, "levelBarRow", levelCard, barY,
+                string.format(lvlFmt, honor.level or 0), honor.current or 0, honor.max or 0, goldColor)
+        end
 
         local honorCard = M.EnsureCard(bundle, "honorCard", parent, progressCardH)
         honorCard:ClearAllPoints()
@@ -330,7 +353,8 @@ function M.DrawTab(parent)
         local innerW = width - SIDE * 2 - M.CARD_PAD * 2
         local recentCols = M.BuildRecentColumns(innerW)
 
-        local filterDefs = (PvPS and PvPS.RECENT_FILTER_DEFS) or {}
+        local filterDefs = (PvPS and PvPS.GetRecentFilterDefs and PvPS:GetRecentFilterDefs())
+            or (PvPS and PvPS.RECENT_FILTER_DEFS) or {}
         local subTabH = 30
         local filterTop = M.CARD_PAD + M.RECENT_TITLE_H + M.RECENT_FILTER_GAP
         local hdrTop = filterTop + subTabH + 8
@@ -450,8 +474,8 @@ function M.DrawTab(parent)
             if m.ratingChange and m.ratingChange ~= 0 then
                 local sign = m.ratingChange > 0 and "+" or ""
                 local hex = m.ratingChange > 0
-                    and ((M.ns.UI_GetSemanticGreenHex and M.ns.UI_GetSemanticGreenHex()) or "|cff33cc55")
-                    or "|cffcc4433"
+                    and ((M.ns.UI_GetSemanticGreenHex and M.ns.UI_GetSemanticGreenHex()) or HEX.green)
+                    or HEX.red
                 cells[3]:SetText(hex .. sign .. tostring(m.ratingChange) .. "|r")
             else
                 cells[3]:SetText("")

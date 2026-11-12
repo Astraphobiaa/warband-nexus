@@ -609,7 +609,7 @@ function WarbandNexus:GetKeystoneSynergyMatrix()
         if mk and mk.level and tonumber(mk.level) and tonumber(mk.level) > 0 then
             holders[#holders + 1] = {
                 charKey = charKey,
-                charName = charData.name or charKey,
+                charName = ns.CharDisplayName(charData, charKey),
                 classFile = charData.classFile or "WARRIOR",
                 mythicKey = {
                     level = tonumber(mk.level) or 0,
@@ -645,7 +645,7 @@ function WarbandNexus:GetKeystoneSynergyMatrix()
                     local estRatingGain = math.floor(levelDelta * 7.5)
                     beneficiaries[#beneficiaries + 1] = {
                         charKey = otherKey,
-                        charName = otherData.name or otherKey,
+                        charName = ns.CharDisplayName(otherData, otherKey),
                         classFile = otherData.classFile or "PRIEST",
                         currentBest = currentBestForDungeon,
                         keyLevel = kLevel,

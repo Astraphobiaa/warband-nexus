@@ -88,7 +88,21 @@ function M.AppendAccessPanel(ctx)
         RefreshVaultButton()
     end
 
+    --- Drops the `false` slots left by options gated off on this client.
+    local function CompactOptions(list)
+        local out = {}
+        for i = 1, table.maxn(list) do
+            if list[i] then out[#out + 1] = list[i] end
+        end
+        return out
+    end
+
+    -- Rows for systems this client lacks (Forever: vault, M+, the Midnight season) get no checkbox.
     local function VaultDisplayCheckbox(displayKey, labelKey, descKey, labelFallback, descFallback)
+        local VBd = ns.VaultButton
+        if VBd and VBd.IsEasyAccessDisplayAvailable and not VBd.IsEasyAccessDisplayAvailable(displayKey) then
+            return false
+        end
         return {
             key = "vaultDisplay_" .. displayKey,
             label = (ns.L and ns.L[labelKey]) or labelFallback,
@@ -113,7 +127,8 @@ function M.AppendAccessPanel(ctx)
         if value then
             settings.leftClickAction = action
         elseif settings.leftClickAction == action then
-            settings.leftClickAction = "pve"
+            local VBn = ns.VaultButton
+            settings.leftClickAction = (VBn and VBn.NormalizeLeftClickAction and VBn.NormalizeLeftClickAction(nil)) or "pve"
         end
         RefreshVaultButton()
     end
@@ -139,7 +154,7 @@ function M.AppendAccessPanel(ctx)
                 RefreshVaultButton()
             end,
         },
-        {
+        (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("vault")) and false or {
             key = "vaultButtonSummaryMouseover",
             label = (ns.L and ns.L["CONFIG_VAULT_OPT_SUMMARY_MOUSEOVER"]) or "Warband Summary Mouseover",
             tooltip = (ns.L and ns.L["CONFIG_VAULT_OPT_SUMMARY_MOUSEOVER_DESC"]) or "Show the warband's vault summary on mouseover. Turning this off shows the current character's only.",
@@ -162,7 +177,7 @@ function M.AppendAccessPanel(ctx)
     for li = 1, #leftClickOrder do
         local actionId = leftClickOrder[li]
         local def = actionDefs[actionId]
-        if def and def.settingsLabelKey then
+        if def and def.settingsLabelKey and not (VB and VB.IsLauncherActionAvailable and not VB.IsLauncherActionAvailable(actionId)) then
             leftClickOptions[#leftClickOptions + 1] = MakeLauncherLeftClickCheckboxOption(
                 "vaultButtonLeftClick_",
                 actionId,
@@ -252,7 +267,7 @@ function M.AppendAccessPanel(ctx)
         for li = 1, #mmLeftClickOrder do
             local actionId = mmLeftClickOrder[li]
             local def = mmActionDefs[actionId]
-            if def and def.settingsLabelKey then
+            if def and def.settingsLabelKey and not (VBm and VBm.IsLauncherActionAvailable and not VBm.IsLauncherActionAvailable(actionId)) then
                 minimapLeftClickOptions[#minimapLeftClickOptions + 1] = MakeLauncherLeftClickCheckboxOption(
                     "minimapLeftClick_",
                     actionId,
@@ -302,7 +317,7 @@ function M.AppendAccessPanel(ctx)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_VAULT_GENERAL"]) or "Shortcut behavior",
             iw, cy, {})
-        cy = CreateCheckboxGrid(inner, vaultOptions, cy, iw)
+        cy = CreateCheckboxGrid(inner, CompactOptions(vaultOptions), cy, iw)
 
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_HEADER"]) or "Left Click",
@@ -364,11 +379,14 @@ function M.AppendAccessPanel(ctx)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["CONFIG_VAULT_DISPLAY_TOOLTIP_HEADER"]) or "Hover tooltip",
             iw, cy, { compact = true })
-        cy = CreateCheckboxGrid(inner, tooltipDisplayOptions, cy, iw)
-        cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["CONFIG_VAULT_DISPLAY_MENU_HEADER"]) or "Right-click menu",
-            iw, cy, { compact = true })
-        cy = CreateCheckboxGrid(inner, menuDisplayOptions, cy, iw)
+        cy = CreateCheckboxGrid(inner, CompactOptions(tooltipDisplayOptions), cy, iw)
+        menuDisplayOptions = CompactOptions(menuDisplayOptions)
+        if #menuDisplayOptions > 0 then
+            cy = AppendSettingsSubSectionHeader(inner,
+                (ns.L and ns.L["CONFIG_VAULT_DISPLAY_MENU_HEADER"]) or "Right-click menu",
+                iw, cy, { compact = true })
+            cy = CreateCheckboxGrid(inner, menuDisplayOptions, cy, iw)
+        end
 
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_VAULT_LOOK"]) or "Look & Opacity",

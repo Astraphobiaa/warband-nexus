@@ -5,6 +5,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(ns.UI and ns.UI_ApplyVisuals and ns.UI_CreateCard, "SharedWidgets_PlansLayout: load after SharedWidgets.lua")
 local issecretvalue = issecretvalue
 local UI_SPACING = ns.UI_SPACING
@@ -337,7 +340,7 @@ function ns.UI_FormatPlanPoints(points)
     if type(ptsFmt) ~= "string" or ptsFmt == "" or ptsFmt == "POINTS_FORMAT" then
         ptsFmt = "%d Points"
     end
-    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
+    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
     local ok, out = pcall(format, goldHex .. ptsFmt .. "|r", pts)
     if ok and out and out ~= "" then return out end
     return goldHex .. tostring(pts) .. " " .. ((ns.L and ns.L["POINTS_LABEL"]) or "Points") .. "|r"

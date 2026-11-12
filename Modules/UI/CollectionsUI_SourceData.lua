@@ -6,6 +6,9 @@
 
 local _, ns = ...
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local issecretvalue = issecretvalue
 -- Category `iconKey` values are ns.UI_ICONS keys (Modules/UI/IconRegistry.lua, loads early in .toc).
 

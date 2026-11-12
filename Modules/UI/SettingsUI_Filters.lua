@@ -109,14 +109,18 @@ function M.AppendFiltersPanel(ctx)
     local tabStackY = 0
     tabStackY = StackSettingsSubPanel(tabSection.content, tabInnerW, 0, function(inner, iw)
         local cy = 0
-        cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_TAB_WARBAND"]) or "Warband Bank",
-            iw, cy, { skipGapBefore = true })
-        cy = CreateCheckboxGrid(inner, warbandOptions, cy, iw)
+        -- No account bank on this client (Forever): the section starts at Personal Bank.
+        local hasWarbandBank = not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("warbandBank"))
+        if hasWarbandBank then
+            cy = AppendSettingsSubSectionHeader(inner,
+                (ns.L and ns.L["SETTINGS_SECTION_TAB_WARBAND"]) or "Warband Bank",
+                iw, cy, { skipGapBefore = true })
+            cy = CreateCheckboxGrid(inner, warbandOptions, cy, iw)
+        end
 
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_TAB_PERSONAL_BANK"]) or "Personal Bank",
-            iw, cy)
+            iw, cy, hasWarbandBank and nil or { skipGapBefore = true })
         cy = CreateCheckboxGrid(inner, personalBankOptions, cy, iw)
 
         cy = AppendSettingsSubSectionHeader(inner,

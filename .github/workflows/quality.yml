@@ -47,11 +47,26 @@ jobs:
       - name: Lua compiles + TOC integrity
         run: python scripts/check_lua_compile.py
 
+      - name: Flavor TOCs (WoW Forever build in sync with WarbandNexus.toc)
+        run: python scripts/build_flavor_tocs.py --check
+
+      # Every file WarbandNexus_Forever.toc keeps must load without the retail-only files it drops.
+      - name: Forever TOC load (no dependency on retail-only files)
+        run: |
+          if command -v lua5.1 >/dev/null 2>&1; then
+            lua5.1 .github/scripts/test_forever_toc_load.lua
+          else
+            lua5.4 .github/scripts/test_forever_toc_load.lua
+          fi
+
       - name: Forward-reference audit
         run: python scripts/audit_lua_forward_refs.py
 
       - name: UI chrome bypass
         run: python scripts/check_ui_chrome_bypass.py
+
+      - name: Markup tokens
+        run: python scripts/check_markup_tokens.py
 
       - name: Locale quality
         run: python scripts/check_locale_quality.py
@@ -178,6 +193,9 @@ jobs:
             lua5.1 .github/scripts/test_character_merge_gold.lua
             lua5.1 .github/scripts/test_full_character_save_keys.lua
             lua5.1 .github/scripts/test_character_row_fields.lua
+            lua5.1 .github/scripts/test_char_row_optional_columns.lua
+            lua5.1 .github/scripts/test_profession_recipe_scan.lua
+            lua5.1 .github/scripts/test_profession_slots.lua
             lua5.1 .github/scripts/test_reputation_warm_new_alt.lua
             lua5.1 .github/scripts/test_timer_handles.lua
             lua5.1 .github/scripts/test_vault_plan_progress.lua

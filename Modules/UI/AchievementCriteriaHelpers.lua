@@ -606,9 +606,9 @@ local function SummaryFieldsToColoredLines(fields)
     local lines = {}
     if not fields then return lines end
     local P = ns.PLAN_UI_COLORS or {}
-    local labCol = P.label or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
-    local metricCol = P.metric or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
-    local body = P.incomplete or (ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor("body")) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
+    local labCol = P.label or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or ns.UI_HEX.muted
+    local metricCol = P.metric or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or ns.UI_HEX.gold
+    local body = P.incomplete or (ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor("body")) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or ns.UI_HEX.bright
     for i = 1, #fields do
         local field = fields[i]
         if field and field.value and field.value ~= "" then

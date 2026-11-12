@@ -31,6 +31,14 @@ local function assert_eq(actual, expected, msg)
     end
 end
 
+-- Shared pieces the loaded UI files read from ns but that live in files not loaded here:
+-- SharedWidgets_Theme.lua's markup role table (any role -> plain white) and Utilities.lua's
+-- printed character name (Forever two-word names; the plain name stands in).
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+end
+
 local SCRIPT_DIR = ".github/scripts"
 local ROOT = os.getenv("WN_ROOT") or "."
 local stub = dofile(SCRIPT_DIR .. "/wow_stub.lua")
@@ -87,6 +95,7 @@ function Frame:GetTop() return nil end
 
 local function Constants()
     local ns = {}
+    StubSharedNs(ns)
     LoadFile("Modules/Constants.lua", ns)
     return ns.Constants
 end
@@ -95,6 +104,7 @@ end
 print("Phase 1 (A5): router sends Bags / Bank updates to the in-place results refresh")
 do
     local ns = { Constants = Constants() }
+    StubSharedNs(ns)
     local handlers = {}
     local WN = {
         RegisterMessage = function(_, msg, fn) handlers[msg] = fn end,
@@ -164,6 +174,7 @@ end
 print("Phase 2 (A5): TryRefreshItemsResultsForBagUpdate refreshes stats + results only when safe")
 do
     local ns = { UI = { Factory = {} }, Constants = Constants() }
+    StubSharedNs(ns)
     local WN = { db = { profile = {}, global = {} }, RegisterMessage = noop }
     ns.WarbandNexus = WN
     ns.SearchStateManager = { UpdateResults = noop, GetQuery = function() return "" end }
@@ -232,6 +243,7 @@ print("Phase 3 (A4 / C5): currency aggregate cache + collapsed sections build no
 local currencyDraw
 do
     local ns = { UI = {}, Constants = Constants() }
+    StubSharedNs(ns)
     local WN = { db = { profile = { currencyShowZero = true, currencyExpanded = {} },
                         global = { currencyData = {} } }, RegisterMessage = noop }
     ns.WarbandNexus = WN
@@ -287,10 +299,14 @@ do
         if accountWide then e.value = qtyA end
         return e
     end
-    local model = { [1] = entry("Alpha", 5, 3, false), [2] = entry("Beta", 0, 7, false), [3] = entry("Gamma", 9, 9, true) }
+    local model = { [1] = entry("Alpha", 5, 3, false), [2] = entry("Beta", 0, 7, false), [3] = entry("Gamma", 9, 9, true),
+                    [4] = entry("Delta", 1, 0, false) }
     WN.GetCurrenciesForUI = function() return model end
     WN.db.global.currencyData.headers = {
         { name = "Midnight", depth = 0, currencies = { 1, 2, 3 }, children = {} },
+        -- Second category: a lone leaf category is folded into its section without a header,
+        -- so the lazy child-header path below needs a sibling to exist at all.
+        { name = "Legacy", depth = 0, currencies = { 4 }, children = {} },
     }
     WN.GetAllCharacters = function()
         return { { key = "A", name = "Ana", realm = "R", classFile = "MAGE" },
@@ -312,7 +328,8 @@ do
     assert_eq(charsReads, readsFirst, "second draw, unchanged data: aggregate served from cache")
     assert_eq(rowsBuilt, 0, "second draw: still no row built")
 
-    model = { [1] = entry("Alpha", 6, 3, false), [2] = entry("Beta", 0, 7, false), [3] = entry("Gamma", 9, 9, true) }
+    model = { [1] = entry("Alpha", 6, 3, false), [2] = entry("Beta", 0, 7, false), [3] = entry("Gamma", 9, 9, true),
+              [4] = entry("Delta", 1, 0, false) }
     local readsBefore = charsReads
     pcall(draw)
     assert_eq(charsReads > readsBefore, true, "new read model (CURRENCY_UPDATED) -> re-aggregated")
@@ -351,6 +368,7 @@ end
 print("Phase 4 (A3): tracker coalesces WN_PLANS_UPDATED and re-uses the vault card frame")
 do
     local ns = { UI = {}, Constants = Constants() }
+    StubSharedNs(ns)
     local WN = { db = { profile = {}, global = { plansTracker = { width = 380, height = 420 } } },
                  RegisterMessage = noop }
     ns.WarbandNexus = WN

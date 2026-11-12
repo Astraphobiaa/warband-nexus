@@ -24,6 +24,9 @@ local function CompareCharNameLower(a, b)
 end
 
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants and ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -32,14 +35,14 @@ local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
 
 local function PveBrightHex()
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function PveMplusScoreColor500()
     if ns.UI_IsLightMode and ns.UI_IsLightMode() then
         return PveBrightHex()
     end
-    return "|cffffffff"
+    return HEX.bright
 end
 
 -- Import shared UI components (always get fresh reference)
@@ -1006,7 +1009,15 @@ local function PvEUI_SyncPveScrollChildExtent(scrollChild, scrollFrameRef)
     end
     if not extent then return end
     local viewportH = (scrollFrameRef and scrollFrameRef.GetHeight and scrollFrameRef:GetHeight()) or 0
-    scrollChild:SetHeight(math.max(viewportH, extent + pad))
+    -- Padding never creates a scrollbar: `extent + pad` floored at the viewport gave this tab a few
+    -- pixels of range whenever the painted content landed just under the viewport, which is the
+    -- same defect `/wn uiprobe` found on Collections. The pad is only real once the content itself
+    -- overflows; the shared helper owns that rule for every tab.
+    if extent <= viewportH then
+        scrollChild:SetHeight(viewportH)
+    else
+        scrollChild:SetHeight(extent + pad)
+    end
     scrollChild._pvePaintedCoreH = math.max(1, extent)
     if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
         local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
@@ -1834,7 +1845,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                         
                         local levelText = FontManager:CreateFontString(iconFrame, "header", "OVERLAY")
                         levelText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
-                        levelText:SetText(string.format("|cffffcc00+%d|r", dungeon.bestLevel))
+                        levelText:SetText(string.format(HEX.gold .. "+%d|r", dungeon.bestLevel))
                         
                         local dungeonScore = FontManager:CreateFontString(iconFrame, "title", "OVERLAY")
                         dungeonScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
@@ -1862,11 +1873,11 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                         
                         local notDone = FontManager:CreateFontString(iconFrame, "header", "OVERLAY")
                         notDone:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
-                        notDone:SetText(ns.UI_GetThemedGreyHex("|cff666666", "Dim") .. "?|r")
+                        notDone:SetText(ns.UI_GetThemedGreyHex(HEX.dim, "Dim") .. "?|r")
                         
                         local zeroScore = FontManager:CreateFontString(iconFrame, "title", "OVERLAY")
                         zeroScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
-                        zeroScore:SetText("|cff444444-|r")
+                        zeroScore:SetText(HEX.dim .. "-|r")
                     end
                     
                     if ShowTooltip and HideTooltip then
@@ -1878,7 +1889,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                             if hasBestLevel then
                                 local bestKeyLabel = GetLocalizedText("VAULT_BEST_KEY", "Best Key:")
                                 table.insert(tooltipLines, {
-                                    text = string.format("%s |cffffcc00+%d|r", bestKeyLabel, dungeon.bestLevel),
+                                    text = string.format("%s " .. HEX.gold .. "+%d|r", bestKeyLabel, dungeon.bestLevel),
                                     color = {0.9, 0.9, 0.9}
                                 })
                                 local scoreLabel = GetLocalizedText("VAULT_SCORE", "Score:")
@@ -1889,7 +1900,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                             else
                                 local notCompletedLabel = GetLocalizedText("NOT_COMPLETED_SEASON", "Not completed this season")
                                 table.insert(tooltipLines, {
-                                    text = ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. notCompletedLabel .. "|r",
+                                    text = ns.UI_GetThemedGreyHex(HEX.dim, "Dim") .. notCompletedLabel .. "|r",
                                     color = {0.6, 0.6, 0.6}
                                 })
                             end
@@ -1915,7 +1926,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 local noData = FontManager:CreateFontString(mplusCard, "small", "OVERLAY")
                 noData:SetPoint("TOPLEFT", 15, -mplusY)
                 local noDataLabel = GetLocalizedText("NO_DATA", "No data")
-                noData:SetText(ns.UI_GetThemedGreyHex("|cff666666", "Dim") .. noDataLabel .. "|r")
+                noData:SetText(ns.UI_GetThemedGreyHex(HEX.dim, "Dim") .. noDataLabel .. "|r")
                 mplusNeededH = math.max(baseCardHeight, mplusY + 40)
             end
             
@@ -1964,7 +1975,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                     
                     local kLevelText = FontManager:CreateFontString(summaryCard, "header", "OVERLAY")
                     kLevelText:SetPoint("TOP", keystoneIcon, "BOTTOM", 0, -3)
-                    kLevelText:SetText(string.format("|cff00ff00+%d|r", keystoneLevel))
+                    kLevelText:SetText(string.format(HEX.green .. "+%d|r", keystoneLevel))
                     kLevelText:SetJustifyH("CENTER")
                     
                     local nameText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
@@ -1978,14 +1989,14 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                     local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                     noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
                     local noKeyLabel = GetLocalizedText("NO_KEY", "No Key")
-                    noKeyText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. noKeyLabel .. "|r")
+                    noKeyText:SetText(ns.UI_GetThemedGreyHex(HEX.dim, "Dim") .. noKeyLabel .. "|r")
                     noKeyText:SetJustifyH("CENTER")
                 end
             else
                 local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
                 local noKeyLabel = GetLocalizedText("NO_KEY", "No Key")
-                noKeyText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. noKeyLabel .. "|r")
+                noKeyText:SetText(ns.UI_GetThemedGreyHex(HEX.dim, "Dim") .. noKeyLabel .. "|r")
                 noKeyText:SetJustifyH("CENTER")
             end
             
@@ -2062,7 +2073,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -30)
                 local noAffixesLabel = GetLocalizedText("NO_AFFIXES", "No Affixes")
-                noAffixesText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Dim") .. noAffixesLabel .. "|r")
+                noAffixesText:SetText(ns.UI_GetThemedGreyHex(HEX.dim, "Dim") .. noAffixesLabel .. "|r")
                 noAffixesText:SetJustifyH("CENTER")
             end
 
@@ -2121,8 +2132,8 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                     local amtColor = PveBrightHex()
                     if maxQuantity > 0 then
                         local pct = (quantity / maxQuantity) * 100
-                        if pct >= 100 then amtColor = "|cffff4444"
-                        elseif pct >= 80 then amtColor = "|cffffaa00" end
+                        if pct >= 100 then amtColor = HEX.red
+                        elseif pct >= 80 then amtColor = HEX.orange end
                     end
                     amountText:SetText(string.format("%s%s|r", amtColor, FormatNumber(quantity)))
                 end
@@ -2289,7 +2300,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             local noVault = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
             noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
             local noVaultLabel = GetLocalizedText("NO_VAULT_DATA", "No vault data")
-            noVault:SetText(ns.UI_GetThemedGreyHex("|cff666666", "Dim") .. noVaultLabel .. "|r")
+            noVault:SetText(ns.UI_GetThemedGreyHex(HEX.dim, "Dim") .. noVaultLabel .. "|r")
         end
         
         vaultCard:Show()
@@ -2480,8 +2491,8 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     else
         local FormatNumberFn = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
         -- Fixed greys stay in dark; light resolves the text role (2026-10-22).
-        local countHex = ((visualOpts and visualOpts.sectionPreset == "danger") and ns.UI_GetThemedGreyHex("|cff888888", "Dim"))
-            or ns.UI_GetThemedGreyHex("|cffaaaaaa", "Muted")
+        local countHex = ((visualOpts and visualOpts.sectionPreset == "danger") and ns.UI_GetThemedGreyHex(HEX.dim, "Dim"))
+            or ns.UI_GetThemedGreyHex(HEX.muted, "Muted")
         if not header._wnPveSectionCount then
             header._wnPveSectionCount = FontManager:CreateFontString(header, "header", "OVERLAY")
         end
@@ -2731,7 +2742,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                     classColor.r * 255,
                     classColor.g * 255,
                     classColor.b * 255,
-                    char.name or "?"
+                    ns.CharDisplayName(char, "?")
                 )
                 local realmDisp = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
                 if realmDisp ~= "" and #realmDisp > 14 then
@@ -2739,7 +2750,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                 end
                 local realmCol = ""
                 if realmDisp ~= "" then
-                    realmCol = ns.UI_GetThemedGreyHex("|cffaaaaaa", "Muted") .. realmDisp .. "|r"
+                    realmCol = ns.UI_GetThemedGreyHex(HEX.muted, "Muted") .. realmDisp .. "|r"
                 end
 
                 rows[#rows + 1] = {

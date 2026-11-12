@@ -1,6 +1,9 @@
 --[[ ItemsUI storage tree draw (ops split) ]]
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local B = assert(ns.ItemsUI and ns.ItemsUI._bind, "ItemsUI_StorageDraw: load Modules/UI/ItemsUI.lua first")
 local issecretvalue = issecretvalue
 local format = string.format
@@ -101,7 +104,7 @@ local function ItemsUI_PopulateStorageRowDirect(row, item, rowIdx, rowWidth, loc
     ns.UI.Factory:ApplyRowBackground(row, rowIdx)
 
     row.qtyText:SetText(ns.UI_FormatStackCountMarkup and ns.UI_FormatStackCountMarkup(item.stackCount or 1)
-        or format("|cffffcc00%s|r", FormatNumber(item.stackCount or 1)))
+        or format(HEX.gold .. "%s|r", FormatNumber(item.stackCount or 1)))
     row.icon:SetTexture(U and U.ResolveItemRowIcon and U:ResolveItemRowIcon(item) or (item.iconFileID or 134400))
 
     local nameCache = ns.ItemsUI._storageNameCache
@@ -1072,7 +1075,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             if not itemsData or not (itemsData.bags or itemsData.bank) then
                 return false
             end
-            local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+            -- Printed name, so the Forever surname and the player's setting reach this list
+            -- too instead of it showing half a name.
+            local charName = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+                and ns.Utilities:GetCharacterDisplayName(char))
+                or char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
             local charRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
             local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
             local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",

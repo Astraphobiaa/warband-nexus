@@ -608,17 +608,24 @@ function ns.UI_SyncMainScrollBarColumns(mainFrame)
     local hBarBottom = hints.horizontalLaneBottomOffset or ms.H_BAR_BOTTOM_OFFSET or 6
     local hRowH = colW
 
+    -- Same top inset as CreateMainWindow: the column starts level with the page body (BODY_TOP).
+    local bodyTop = (layout.PAGE_STACK and layout.PAGE_STACK.BODY_TOP) or 8
     if ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
-        ns.UI.Factory:EnsureScrollBarColumnSync(mainFrame.scroll, col, { width = colW, gap = scrollGap })
+        ns.UI.Factory:EnsureScrollBarColumnSync(mainFrame.scroll, col, { width = colW, gap = scrollGap, top = bodyTop })
     elseif ns.UI.Factory and ns.UI.Factory.SyncScrollBarColumnToViewport then
-        ns.UI.Factory:SyncScrollBarColumnToViewport(mainFrame.scroll, col, { width = colW, gap = scrollGap })
+        ns.UI.Factory:SyncScrollBarColumnToViewport(mainFrame.scroll, col, { width = colW, gap = scrollGap, top = bodyTop })
     end
+
+    -- The lane is dynamic (UI_MainShell: ApplyMainScrollLane). Re-pinning the horizontal strip to
+    -- the reserved inset here would drag it back out of line with the viewport whenever the bar is
+    -- hidden, so follow the shell's live inset when it has one.
+    local laneInset = mainFrame._wnMainScrollLaneInset or scrollInsetRight
 
     local hCont = mainFrame.hScrollContainer
     if hCont then
         hCont:ClearAllPoints()
         hCont:SetPoint("LEFT", content, "LEFT", scrollInsetLeft, 0)
-        hCont:SetPoint("RIGHT", content, "RIGHT", -scrollInsetRight, 0)
+        hCont:SetPoint("RIGHT", content, "RIGHT", -laneInset, 0)
         hCont:SetPoint("BOTTOM", content, "BOTTOM", 0, hBarBottom)
         hCont:SetHeight(hRowH)
         if mainFrame.hScroll and mainFrame.hScroll.PositionInContainer then

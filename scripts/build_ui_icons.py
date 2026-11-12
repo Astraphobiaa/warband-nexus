@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ROOT / "Media"
 SIZE = 64
 # Painted with Z-Image Turbo (512 px masters kept outside the repo); never overwrite these TGAs from SVG.
-PAINTED = {"FactionPortraits", "WowBag34", "WowBox", "Handshake", "Checklist", "Currency", "CrossedSwords", "BarChart", "AnvilHammer", "BossSkull", "HorseHead", "PlateArmor", "Info", "GearGold", "MoneySacks", "Tabard", "Campfire", "WowLootChest", "RolledScroll", "DrawstringSack", "Paw", "Trophy", "Calendar", "Present", "TarotCards", "Spyglass", "RedQuestion", "Sparkle", "GoldPin", "Cart", "Tent"}
+PAINTED = {"FactionPortraits", "WowBag34", "WowBox", "Handshake", "Checklist", "Currency", "CrossedSwords", "BarChart", "AnvilHammer", "BossSkull", "HorseHead", "PlateArmor", "Info", "GearGold", "MoneySacks", "Tabard", "Campfire", "WowLootChest", "RolledScroll", "DrawstringSack", "Paw", "Trophy", "Calendar", "Present", "TarotCards", "Spyglass", "RedQuestion", "Sparkle", "GoldPin", "Cart", "Tent", "Spellbook", "TalentTree"}
 
 OUTLINE = "#1B130B"
 OUTLINE_RGB = (0x1B, 0x13, 0x0B)

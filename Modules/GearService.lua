@@ -1037,6 +1037,11 @@ ns.Gear_IsIlvlOnCurrentSeasonTrack = IsIlvlOnCurrentSeasonTrack
 
 local function ResolveSlotUpgradeTrackAndTier(slot)
     if not slot then return nil, nil, nil end
+    -- No upgrade tracks / crests / recrafting on this client (Forever): no track, so no upgrade,
+    -- crest or "Recraft to" lines -- crafted items used to bypass the season-ilvl guard below.
+    if WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("itemUpgrade") then
+        return nil, nil, nil
+    end
     local ilvl = tonumber(slot.itemLevel) or 0
     if ilvl <= 0 then return nil, nil, nil end
     -- Off the season's ranks (previous-season gear) or a tooltip without an upgrade line: no track, no tier.

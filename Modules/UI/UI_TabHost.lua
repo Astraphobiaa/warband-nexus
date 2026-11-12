@@ -350,13 +350,19 @@ local function PopulateContentBody(self, forceRepaint)
     elseif tab == "items" then
         height = self:DrawItemList(scrollChild)
     elseif tab == "pve" then
-        height = self:DrawPvEProgress(scrollChild)
+        -- PvE / Professions are not in WarbandNexus_Forever.toc (their tabs are gated off there too).
+        height = self.DrawPvEProgress and self:DrawPvEProgress(scrollChild) or 200
     elseif tab == "pvp" then
         height = self:DrawPvPTab(scrollChild)
     elseif tab == "reputations" then
         height = self:DrawReputationTab(scrollChild)
     elseif tab == "stats" then
         height = self:DrawStatistics(scrollChild)
+    elseif tab == "legacy" then
+        -- Account-wide (db.global.legacy): no tracked-character gate.
+        height = self.DrawLegacyTab and self:DrawLegacyTab(scrollChild) or 200
+    elseif tab == "professions" and not self.DrawProfessionsTab then
+        height = 200
     elseif tab == "professions" then
         local P = ns.Profiler
         if P and P.enabled and P.Wrap and P.SliceLabel then
@@ -414,24 +420,29 @@ local function PopulateContentBody(self, forceRepaint)
     scrollChild._preparedByPopulate = nil
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_postLayout")
-    -- Set scrollChild height based on content + bottom padding
-    local CONTENT_BOTTOM_PADDING = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
-    local contentBottom = height + CONTENT_BOTTOM_PADDING
+    --[[
+        The scroll child's height, for every tab.
+
+        This is the LAST writer on a tab switch: it runs after the tab's own draw, so whatever
+        height the tab settled on, this line decides. It used to add CONTENT_BOTTOM_PADDING
+        unconditionally and floor the result at the viewport, which pushed a page whose body
+        exactly fills the viewport into overflow by the pad alone -- a bar, and the scroll lane
+        given up for it, on a tab with nothing to scroll. `/wn uiprobe` measured that as
+        Collections' residual 12 px of range, and it survived every fix made in the tab itself
+        because this ran afterwards.
+
+        The padding rule ("padding never creates a scrollbar") and the fills-the-viewport rule
+        both live in UI_SyncMainTabScrollChrome. Delegate to it rather than keep a second,
+        divergent copy of the arithmetic here.
+    ]]
+    local contentBottom = height
     if tab == "professions" and scrollChild._wnProfEstimatedScrollBody then
-        contentBottom = math.max(contentBottom, scrollChild._wnProfEstimatedScrollBody + CONTENT_BOTTOM_PADDING)
+        contentBottom = math.max(contentBottom, scrollChild._wnProfEstimatedScrollBody)
     end
-    -- Gear tab: extend scrollChild to viewport so the gear card can fill downward (see DrawPaperDollCard fill).
-    local viewportH = mainFrame.scroll and mainFrame.scroll:GetHeight() or 0
-    -- First layout frame: GetHeight() can be 0 while anchors are valid â€” derive from geometry so scrollChild fills the viewport.
-    if viewportH < 2 and mainFrame.scroll and mainFrame.fixedHeader then
-        local fhBot = mainFrame.fixedHeader:GetBottom()
-        local sb = mainFrame.scroll:GetBottom()
-        if fhBot and sb and fhBot > sb then
-            viewportH = fhBot - sb
-        end
+    if ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, contentBottom)
     end
-    local totalScrollH = math.max(contentBottom, viewportH)
-    scrollChild:SetHeight(totalScrollH)
+    local totalScrollH = scrollChild:GetHeight() or 0
 
     if ns.UI_ConfigureMainScrollViewportForTab then
         ns.UI_ConfigureMainScrollViewportForTab(mainFrame, tab)

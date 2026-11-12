@@ -4,6 +4,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local H = ns.ReminderSetAlertDialogHelpers
 
 local Z = {}
@@ -16,10 +19,10 @@ function Z.Install(ctx)
     local L = ctx.L
     local COLORS = ctx.COLORS
     local function PickerBrightHex()
-        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
     end
     local function PickerMutedHex()
-        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.dim
     end
     local Factory = ctx.Factory
     local FontManager = ctx.FontManager
@@ -472,11 +475,11 @@ function Z.Install(ctx)
                         if entry.kind and UICK and UICK.FormatPickerTag then
                             row.tagFs:SetText(UICK.FormatPickerTag(entry.kind))
                         elseif entry.tag == "instance" then
-                            row.tagFs:SetText("|cffc8b68e" .. ((Lz and Lz["REMINDER_ZONE_CAT_TAG_INSTANCE"]) or "[I]") .. "|r")
+                            row.tagFs:SetText(HEX.gold .. ((Lz and Lz["REMINDER_ZONE_CAT_TAG_INSTANCE"]) or "[I]") .. "|r")
                         elseif entry.tag == "related" then
-                            row.tagFs:SetText("|cff8eb0ca" .. ((Lz and Lz["REMINDER_ZONE_CAT_TAG_RELATED"]) or "[+]") .. "|r")
+                            row.tagFs:SetText(HEX.muted .. ((Lz and Lz["REMINDER_ZONE_CAT_TAG_RELATED"]) or "[+]") .. "|r")
                         else
-                            row.tagFs:SetText("|cff9ecfae" .. ((Lz and Lz["REMINDER_ZONE_CAT_TAG_ZONE"]) or "[Z]") .. "|r")
+                            row.tagFs:SetText(HEX.green .. ((Lz and Lz["REMINDER_ZONE_CAT_TAG_ZONE"]) or "[Z]") .. "|r")
                         end
                         local labelMax = 48
                         if zw and zw > 0 then

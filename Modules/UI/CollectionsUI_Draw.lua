@@ -7,6 +7,9 @@ local _, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.CollectionsUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M and M.state, "CollectionsUI_Shared.lua must load before this file")
 
 local WarbandNexus = M.WarbandNexus
@@ -37,6 +40,11 @@ local STATUS_ICON_SIZE = M.STATUS_ICON_SIZE
 local SCROLL_CONTENT_TOP_PADDING = M.SCROLL_CONTENT_TOP_PADDING
 local CONTENT_INSET = M.CONTENT_INSET
 local CONTAINER_INSET = M.CONTAINER_INSET
+-- Detail panels inset their viewport equally on all four sides; the lane wire needs them as a table.
+local DETAIL_LANE_INSETS = {
+    left = CONTAINER_INSET, top = CONTAINER_INSET,
+    right = CONTAINER_INSET, bottom = CONTAINER_INSET,
+}
 local TEXT_GAP = M.TEXT_GAP
 local SEARCH_ROW_HEIGHT = M.SEARCH_ROW_HEIGHT
 local COLLECTIONS_TITLE_CARD_HEIGHT = M.COLLECTIONS_TITLE_CARD_HEIGHT
@@ -1036,23 +1044,22 @@ function M.DrawToysContent(contentFrame)
             M.state.toyDetailEmptyOverlay = emptyOverlay
         end
 
-        local detailSbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
-            or (scrollBarColumnWidth + SCROLLBAR_SIDE_GAP)
         local scroll = Factory:CreateScrollFrame(detailContainer, "UIPanelScrollFrameTemplate", true)
-        scroll:SetPoint("TOPLEFT", detailContainer, "TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
-        scroll:SetPoint("BOTTOMRIGHT", detailContainer, "BOTTOMRIGHT", -detailSbLane, CONTAINER_INSET)
         M.EnableStandardScrollWheel(scroll)
         M.state._toyDetailScroll = scroll
 
+        local scrollChild = M.CreateStandardScrollChild(scroll, detailWidth - (CONTAINER_INSET * 2) - SCROLLBAR_GAP, 1)
+
+        -- Lane and viewport anchors both come from the wire: a toy with a short description leaves
+        -- no empty strip down the right edge of the panel.
         M.state.toyDetailScrollBarContainer = M.EnsureDetailScrollBarContainer(
             M.state.toyDetailScrollBarContainer,
             detailContainer,
             scroll,
             scrollBarColumnWidth,
-            SCROLLBAR_SIDE_GAP
+            SCROLLBAR_SIDE_GAP,
+            DETAIL_LANE_INSETS
         )
-
-        local scrollChild = M.CreateStandardScrollChild(scroll, detailWidth - (CONTAINER_INSET * 2) - SCROLLBAR_GAP, 1)
         M.state._toyDetailScrollChild = scrollChild
 
         -- Header row: same right column as Mounts/Pets (Wowhead + Add + try, try at Add width).
@@ -1161,11 +1168,9 @@ function M.DrawToysContent(contentFrame)
                 M.state.toyDetailContainer,
                 M.state._toyDetailScroll,
                 scrollBarColumnWidth,
-                SCROLLBAR_SIDE_GAP
+                SCROLLBAR_SIDE_GAP,
+                DETAIL_LANE_INSETS
             )
-        end
-        if M.state._toyDetailScrollChild then
-            M.state._toyDetailScrollChild:SetWidth(detailWidth - (CONTAINER_INSET * 2) - SCROLLBAR_GAP)
         end
     end
 
@@ -1230,7 +1235,7 @@ function M.DrawToysContent(contentFrame)
             local goldHex = M.CollectionsGoldHex and M.CollectionsGoldHex()
                 or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
                 or ns.UI_RGBToHex(gold[1], gold[2], gold[3])
-            local brightHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
+            local brightHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright
             srcLabel:SetText(goldHex .. sourceTitle .. ":|r " .. brightHex .. srcText .. "|r")
         end
         if M.state._toyDetailObtainedLine and M.state._toyDetailSourceLabel then
@@ -1597,19 +1602,9 @@ function M.DrawAchievementsContent(contentFrame)
                 M.state.achievementDetailPanel,
                 M.state.achievementDetailPanel.scrollFrame,
                 scrollBarColumnWidth,
-                SCROLLBAR_SIDE_GAP
+                SCROLLBAR_SIDE_GAP,
+                DETAIL_LANE_INSETS
             )
-        end
-        if M.state.achievementDetailPanel.scrollFrame then
-            local achDetailLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
-                or (scrollBarColumnWidth + SCROLLBAR_SIDE_GAP)
-            M.state.achievementDetailPanel.scrollFrame:ClearAllPoints()
-            M.state.achievementDetailPanel.scrollFrame:SetPoint("TOPLEFT", M.state.achievementDetailPanel, "TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
-            M.state.achievementDetailPanel.scrollFrame:SetPoint("BOTTOMRIGHT", M.state.achievementDetailPanel, "BOTTOMRIGHT", -achDetailLane, CONTAINER_INSET)
-        end
-        local achChild = M.state.achievementDetailPanel.scrollFrame and M.state.achievementDetailPanel.scrollFrame:GetScrollChild()
-        if achChild then
-            achChild:SetWidth((detailWidth - (CONTAINER_INSET * 2)) - (CONTAINER_INSET * 2) - SCROLLBAR_GAP)
         end
     end
     if not M.state.selectedAchievementID then

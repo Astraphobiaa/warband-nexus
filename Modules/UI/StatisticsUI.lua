@@ -10,13 +10,16 @@ local E = ns.Constants.EVENTS
 local StatisticsUIEvents = {}
 
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager  -- Centralized font management
 
 local issecretvalue = issecretvalue
 
 --- Display name for stats rows: never :match on secret charKey or use secret stored name.
 local function GetStatCharDisplayName(charData, charKey)
-    local n = charData and charData.name
+    local n = charData and ns.CharDisplayName(charData, charData.name)
     if not (issecretvalue and issecretvalue(n)) and n then return n end
     if not (issecretvalue and issecretvalue(charKey)) and charKey then
         return charKey:match("^([^-]+)") or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
@@ -157,16 +160,16 @@ local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    if role == "Muted" then return "|cffaaaaaa" end
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    if role == "Muted" then return HEX.muted end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function SemanticGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
     end
-    return "|cffffcc00"
+    return HEX.gold
 end
 
 local function SemanticGoldRGB()
@@ -191,7 +194,7 @@ local function AccentHex()
     if a then
         return string.format("|cff%02x%02x%02x", a[1] * 255, a[2] * 255, a[3] * 255)
     end
-    return "|cff0099ff"
+    return HEX.info
 end
 
 local function SemanticInfoHex()
@@ -205,14 +208,14 @@ local function SemanticPetHex()
     if ns.UI_GetSemanticPetHex then
         return ns.UI_GetSemanticPetHex()
     end
-    return "|cffff69b4"
+    return HEX.pet
 end
 
 local function SemanticToyHex()
     if ns.UI_GetSemanticToyHex then
         return ns.UI_GetSemanticToyHex()
     end
-    return "|cffff66ff"
+    return HEX.toy
 end
 
 ---@param slot table|nil When given, stripe + name FontString are cached on it and reused on repaint.

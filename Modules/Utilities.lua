@@ -259,11 +259,64 @@ function Utilities:GetCharacterDisplayName(char)
     if type(char) ~= "table" then return nil end
     local name = char.name
     if type(name) ~= "string" or name == "" then return nil end
+    if not self:ShowsCharacterSurname() then return name end
     local surname = char.surname
     if type(surname) == "string" and surname ~= "" then
         return name .. " " .. surname
     end
     return name
+end
+
+--- Printed character name with a caller fallback -- the drop-in for display sites that used
+--- `char.name or fallback`. Keys, lookups and migrations keep using `char.name`.
+---@param char table|nil characters row
+---@param fallback string|nil
+---@return string|nil
+--- Localized text with a WoW Forever variant: `key .. "_FOREVER"` on Forever when that key exists,
+--- else `key`, else the fallback. For copy that names systems Forever does not have (Warband
+--- Bank, Great Vault, Mythic+, rated brackets, concentration).
+---@param key string
+---@param fallback string
+---@param foreverFallback string|nil
+---@return string
+function ns.L_GameType(key, fallback, foreverFallback)
+    local L = ns.L
+    local caps = ns.Capabilities
+    if caps and caps.IsForeverClient and caps.IsForeverClient() then
+        local v = L and L[key .. "_FOREVER"]
+        if v then return v end
+        if foreverFallback then return foreverFallback end
+    end
+    return (L and L[key]) or fallback
+end
+
+function ns.CharDisplayName(char, fallback)
+    local printed = Utilities:GetCharacterDisplayName(char)
+    if type(printed) == "string" and printed ~= "" then return printed end
+    return fallback
+end
+
+--- Live player name as it should be PRINTED (UnitName's second value is the Forever surname;
+--- on retail it is the realm, so it is only read where surnames exist).
+---@return string|nil
+function Utilities:GetLivePlayerDisplayName()
+    local name, second = UnitName("player")
+    if type(name) ~= "string" or name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    local forever = ns.Capabilities and ns.Capabilities.IsForeverClient and ns.Capabilities.IsForeverClient()
+    if forever and self:ShowsCharacterSurname() and type(second) == "string" and second ~= ""
+        and not (issecretvalue and issecretvalue(second)) then
+        return name .. " " .. second
+    end
+    return name
+end
+
+--- Whether the second half of a Forever name is shown. One place decides it, so the roster, the
+--- tooltips, the dialogs and the detail windows cannot drift apart.
+---@return boolean
+function Utilities:ShowsCharacterSurname()
+    local addon = ns.WarbandNexus
+    local profile = addon and addon.db and addon.db.profile
+    return not profile or profile.showCharacterSurname ~= false
 end
 
 --[[
@@ -312,7 +365,7 @@ end
 --- Uses the same realm normalization as GetCharacterKey; realm is shown with FormatRealmName spacing.
 ---@return string|nil "Name — Realm" style, or name-only, or nil if unavailable / secret
 function Utilities:GetCurrentCharacterDisplayLabel()
-    local name = UnitName("player")
+    local name = self:GetLivePlayerDisplayName()
     if not name or (issecretvalue and issecretvalue(name)) or name == "" then return nil end
     local realm
     if GetNormalizedRealmName then
@@ -1227,6 +1280,68 @@ function Utilities:ParseKeystoneHyperlink(link)
         return { mapID = mapID, level = level }
     end
     return nil
+end
+
+--[[
+    Equipped item level.
+
+    GetAverageItemLevel is the right answer wherever it describes the gear. On WoW Forever it does
+    not: all three of its returns read 1.75 for a character whose ten equipped pieces scan as item
+    levels 1..10, and GetAverageItemLevelEquipped is absent entirely (/wn charprobe, build 70790).
+    The per-item levels behind it are sound, though, and the Gear tab already draws them -- so
+    rather than hiding the column where the API misreports, average those instead.
+
+    Shirt (4) and tabard (19) are left out: they carry an item level but no power, and retail's own
+    average excludes them. The divisor is the number of slots that actually hold something, so an
+    empty slot reads as missing data rather than as an item of level zero -- during vanilla
+    levelling most characters have real gaps, and counting those as zeroes would report gear
+    quality as a penalty for not owning a helm yet.
+]]
+local ITEM_LEVEL_AVERAGE_SLOTS = {
+    1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    18,  -- ranged: WoW Forever only; retail answers nil here and the slot is skipped
+}
+
+--- Average item level of the equipped gear, computed from the individual pieces.
+---@return number|nil average, number count
+function Utilities:ComputeEquippedItemLevel()
+    if type(GetInventoryItemLink) ~= "function" then return nil, 0 end
+    local getIlvl = C_Item and C_Item.GetDetailedItemLevelInfo
+    if type(getIlvl) ~= "function" then return nil, 0 end
+    local sum, count = 0, 0
+    for i = 1, #ITEM_LEVEL_AVERAGE_SLOTS do
+        local slot = ITEM_LEVEL_AVERAGE_SLOTS[i]
+        local okL, link = pcall(GetInventoryItemLink, "player", slot)
+        if okL and link and not (issecretvalue and issecretvalue(link)) then
+            local okI, ilvl = pcall(getIlvl, link)
+            if okI and type(ilvl) == "number" and ilvl > 0 then
+                sum = sum + ilvl
+                count = count + 1
+            end
+        end
+    end
+    if count == 0 then return nil, 0 end
+    return sum / count, count
+end
+
+--- The equipped average this client can be trusted to report: the API where it works, our own
+--- arithmetic where it does not. Callers store the raw fractional value either way.
+---@return number|nil
+function Utilities:GetEquippedItemLevel()
+    local addon = ns.WarbandNexus
+    local trustAPI = true
+    if addon and addon.SupportsFeature then
+        trustAPI = addon:SupportsFeature("averageItemLevel")
+    end
+    if trustAPI and type(GetAverageItemLevel) == "function" then
+        local ok, _, equipped = pcall(GetAverageItemLevel)
+        if ok and type(equipped) == "number" and equipped > 0 then
+            if issecretvalue and issecretvalue(equipped) then return nil end
+            return equipped
+        end
+    end
+    local computed = self:ComputeEquippedItemLevel()
+    return computed
 end
 
 -- EXPORT

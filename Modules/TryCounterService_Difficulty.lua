@@ -42,6 +42,7 @@ local DIFFICULTY_ID_TO_LABELS = {
     [3]   = "10N",      -- 10-player Normal (legacy)
     [4]   = "25N",      -- 25-player Normal (legacy)
     [9]   = "Normal",   -- 40-player raid (MC, BWL, AQ40, Naxx)
+    [148] = "Normal",   -- 20-player raid (ZG, AQ20) -- warcraft.wiki.gg DifficultyID, Classic table
     [33]  = "Normal",   -- Timewalking raid
     [150] = "Normal",   -- Normal dungeon (alternate)
     [172] = "Normal",   -- World Boss

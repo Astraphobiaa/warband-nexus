@@ -102,7 +102,9 @@ end
 local recentNotifications = CreateRingBuffer(64)
 
 local function CollectiblePayloadObtainedBy()
-    local name = UnitName("player")
+    -- Printed name: on WoW Forever this carries the surname ("Elementalist Vhorzen").
+    local U = ns.Utilities
+    local name = (U and U.GetLivePlayerDisplayName and U:GetLivePlayerDisplayName()) or UnitName("player")
     if not name or (issecretvalue and issecretvalue(name)) or name == "" then return nil end
     return name
 end

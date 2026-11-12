@@ -12,6 +12,9 @@
 
 local ADDON_NAME, ns = ...
 
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local wipe = wipe
 local format = string.format
 local tonumber = tonumber
@@ -152,7 +155,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
     local achRowH = math.max(18, math.floor(baseRowH * scale + 0.5))
     local achRowStride = achRowH + ACH_ROW_GAP
     local whiteHex = (ns.CollectionsUI and ns.CollectionsUI.CollectionsListWhiteHex and ns.CollectionsUI.CollectionsListWhiteHex())
-        or "|cffffffff"
+        or HEX.bright
     local countColor = whiteHex
     local rB, gB, bB = (COLORS.textBright[1] or 1), (COLORS.textBright[2] or 1), (COLORS.textBright[3] or 1)
     local titleColor = format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)

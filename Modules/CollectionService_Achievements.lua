@@ -21,6 +21,7 @@ local collectionStore = RT.collectionStore
 local ACHIEVEMENT_STORE_MIN_TRUST = RT.ACHIEVEMENT_STORE_MIN_TRUST
 local CountAchievementStoreEntries = RT.CountAchievementStoreEntries
 local IsAchievementStoreInadequate = RT.IsAchievementStoreInadequate
+local RecordCompleteAchievementScan = RT.RecordCompleteAchievementScan
 local SignalAchievementScanPipelineDone = RT.SignalAchievementScanPipelineDone
 local collectionCache = RT.collectionCache
 local WipeUncollectedResultsCacheAndMergedAchievements = RT.WipeUncollectedResultsCacheAndMergedAchievements
@@ -31,10 +32,25 @@ local ACHIEVEMENT_CATEGORY_LIST_MIN_IDS = 40
 local achievementScanDeferAttempts = 0
 local ACHIEVEMENT_SCAN_DEFER_MAX_ATTEMPTS = 24
 
+--[[
+    Ready = hydrated. The retail journal has hundreds of categories, so reaching the floor proves
+    it. A small journal never reaches it -- WoW Forever's is the 29-category Legacy tree -- and with
+    the floor alone the scan deferred 24 times, gave up, and was re-requested by the next paint,
+    forever (0 rows stored, "Scanning Achievements 0%"). So a non-empty list that did not grow
+    between two defer polls is hydrated too, whatever its size.
+]]
+local lastCategoryListSize = -1
 local function AchievementCategoryListReady()
     if not GetCategoryList then return false end
     local list = GetCategoryList() or {}
-    return #list >= ACHIEVEMENT_CATEGORY_LIST_MIN_IDS
+    local n = #list
+    if n >= ACHIEVEMENT_CATEGORY_LIST_MIN_IDS then
+        lastCategoryListSize = n
+        return true
+    end
+    local stable = n > 0 and n == lastCategoryListSize
+    lastCategoryListSize = n
+    return stable
 end
 
 ---Async achievement scanner (background scanning with coroutine)
@@ -246,8 +262,13 @@ function WarbandNexus:ScanAchievementsAsync()
         -- Achievement-specific timestamp only. Writing the shared lastScan here made
         -- ScanCollection's 5-minute skip gate treat title/illusion caches as fresh and
         -- starve those scans right after an achievement pass.
+        -- Reaching this line means every category was walked: record the size of a complete
+        -- scan so the store is trusted on clients whose whole journal is small (WoW Forever).
         local storedAchCount = CountAchievementStoreEntries()
-        if storedAchCount >= ACHIEVEMENT_STORE_MIN_TRUST then
+        if storedAchCount > 0 and RecordCompleteAchievementScan then
+            RecordCompleteAchievementScan()
+        end
+        if not IsAchievementStoreInadequate() then
             collectionCache.lastAchievementScan = time()
         else
             collectionCache.lastAchievementScan = 0

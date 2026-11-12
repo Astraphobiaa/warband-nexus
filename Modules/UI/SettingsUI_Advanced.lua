@@ -8,6 +8,22 @@ local ADDON_NAME, ns = ...
 local M = ns.SettingsUI
 assert(M and M._H, "SettingsUI_Advanced.lua loaded before SettingsUI.lua - check the TOC")
 
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change, so this
+--- reference stays current — never copy a role out of it into another local.
+local HEX = ns.UI_HEX
+
+--- One map for the entry-type accent, read by both the dropdown label and the detail title.
+--- Keyed to ink ROLES, not to hues: `toy` reuses the purple "toy" role, `illusion` borrows it.
+local TYPE_HEX_ROLE = {
+    mount = "info",
+    pet = "green",
+    toy = "orange",
+    illusion = "toy",
+}
+local function TypeHex(entryType)
+    return HEX[TYPE_HEX_ROLE[entryType or ""] or "dim"]
+end
+
 ---@param ctx table `{ parent, effectiveWidth, sideInset, yOffset, skipPanelIntro, AnchorSectionTop }`
 ---@return number yOffset
 function M.AppendAdvancedPanel(ctx)
@@ -84,7 +100,7 @@ function M.AppendAdvancedPanel(ctx)
     
     local manageHeader = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
     manageHeader:SetPoint("TOPLEFT", 0, trackYOffset)
-    manageHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["MANAGE_ITEMS"]) or "Item Tracking") .. "|r")
+    manageHeader:SetText(HEX.gold .. ((ns.L and ns.L["MANAGE_ITEMS"]) or "Item Tracking") .. "|r")
     trackYOffset = trackYOffset - 20
     
     -- Build unique item list from CollectibleSourceDB
@@ -103,18 +119,19 @@ function M.AppendAdvancedPanel(ctx)
                 guaranteed = drop.guaranteed or false,
                 sources = {},
             }
-            local typeLabel = ""
+            local typeWord
             if drop.type == "mount" then
-                typeLabel = "|cff00ccff[" .. ((ns.L and ns.L["TYPE_MOUNT"]) or "Mount") .. "]|r "
+                typeWord = (ns.L and ns.L["TYPE_MOUNT"]) or "Mount"
             elseif drop.type == "pet" then
-                typeLabel = "|cff44ff44[" .. ((ns.L and ns.L["TYPE_PET"]) or "Pet") .. "]|r "
+                typeWord = (ns.L and ns.L["TYPE_PET"]) or "Pet"
             elseif drop.type == "toy" then
-                typeLabel = "|cffff8800[" .. ((ns.L and ns.L["TYPE_TOY"]) or "Toy") .. "]|r "
+                typeWord = (ns.L and ns.L["TYPE_TOY"]) or "Toy"
             elseif drop.type == "illusion" then
-                typeLabel = "|cffcc66ff[" .. ((ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion") .. "]|r "
+                typeWord = (ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion"
             else
-                typeLabel = "|cff888888[" .. ((ns.L and ns.L["TYPE_ITEM"]) or "Item") .. "]|r "
+                typeWord = (ns.L and ns.L["TYPE_ITEM"]) or "Item"
             end
+            local typeLabel = TypeHex(drop.type) .. "[" .. typeWord .. "]|r "
             dropdownValues[key] = typeLabel .. drop.name
         end
         local sources = itemRegistry[key].sources
@@ -197,7 +214,7 @@ function M.AppendAdvancedPanel(ctx)
     local detailPlaceholder = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
     detailPlaceholder:SetPoint("TOPLEFT", 10, -8)
     detailPlaceholder:SetPoint("RIGHT", detailCard, "RIGHT", -10, 0)
-    detailPlaceholder:SetText("|cff555555" .. ((ns.L and ns.L["SELECT_ITEM_HINT"]) or "Select an item above to view details.") .. "|r")
+    detailPlaceholder:SetText(HEX.dim .. ((ns.L and ns.L["SELECT_ITEM_HINT"]) or "Select an item above to view details.") .. "|r")
     detailPlaceholder:SetJustifyH("LEFT")
     
     trackedCheckbox:SetScript("OnClick", function(self)
@@ -213,9 +230,9 @@ function M.AppendAdvancedPanel(ctx)
             WarbandNexus:SetBuiltinTracked(src.sourceType, src.sourceID, info.itemID, isChecked)
         end
         local statusStr = isChecked
-            and ("|cff00ff00" .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r")
-            or ("|cffff6600" .. ((ns.L and ns.L["UNTRACKED"]) or "Untracked") .. "|r")
-        WarbandNexus:Print(format("|cff9370DB[WN]|r %s → %s", info.name, statusStr))
+            and (HEX.green .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r")
+            or (HEX.orange .. ((ns.L and ns.L["UNTRACKED"]) or "Untracked") .. "|r")
+        WarbandNexus:Print(format(HEX.accent .. "[WN]|r %s → %s", info.name, statusStr))
     end)
     
     repeatableCheckbox:SetScript("OnClick", function(self)
@@ -229,9 +246,9 @@ function M.AppendAdvancedPanel(ctx)
         -- Update the info line to reflect the change
         info.repeatable = isChecked
         local repeatStr = isChecked
-            and ("|cff00ff00" .. ((ns.L and ns.L["YES"]) or "Yes") .. "|r")
-            or ("|cff666666" .. ((ns.L and ns.L["NO"]) or "No") .. "|r")
-        WarbandNexus:Print(format("|cff9370DB[WN]|r %s → Repeatable: %s", info.name, repeatStr))
+            and (HEX.green .. ((ns.L and ns.L["YES"]) or "Yes") .. "|r")
+            or (HEX.dim .. ((ns.L and ns.L["NO"]) or "No") .. "|r")
+        WarbandNexus:Print(format(HEX.accent .. "[WN]|r %s → Repeatable: %s", info.name, repeatStr))
     end)
     
     local function IsItemFullyTracked(info)
@@ -262,18 +279,13 @@ function M.AppendAdvancedPanel(ctx)
         detailPlaceholder:Hide()
         
         -- Name with type color
-        local typeColor = "ffffff"
-        if info.type == "mount" then typeColor = "00ccff"
-        elseif info.type == "pet" then typeColor = "44ff44"
-        elseif info.type == "toy" then typeColor = "ff8800"
-        elseif info.type == "illusion" then typeColor = "cc66ff" end
-        detailNameText:SetText("|cff" .. typeColor .. info.name .. "|r")
+        detailNameText:SetText(TypeHex(info.type) .. info.name .. "|r")
         
         -- Info line (type + source count only, repeatable is now a checkbox)
         local typeName = info.type:sub(1,1):upper() .. info.type:sub(2)
         local srcCount = #info.sources
         local srcLabel = srcCount == 1 and ((ns.L and ns.L["SOURCE_SINGULAR"]) or "source") or ((ns.L and ns.L["SOURCE_PLURAL"]) or "sources")
-        detailInfoText:SetText(format("%s  |cff444444·|r  %d %s", typeName, srcCount, srcLabel))
+        detailInfoText:SetText(format("%s  " .. HEX.dim .. "·|r  %d %s", typeName, srcCount, srcLabel))
         
         -- Tracked checkbox
         local isTracked = IsItemFullyTracked(info)
@@ -345,7 +357,7 @@ function M.AppendAdvancedPanel(ctx)
     -- Sub-header
     local customSectionHeader = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
     customSectionHeader:SetPoint("TOPLEFT", 0, trackYOffset)
-    customSectionHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["CUSTOM_ENTRIES"]) or "Custom Entries") .. "|r")
+    customSectionHeader:SetText(HEX.gold .. ((ns.L and ns.L["CUSTOM_ENTRIES"]) or "Custom Entries") .. "|r")
     trackYOffset = trackYOffset - 20
     
     -- Custom entries list (no separate "Current:" label — shown inline)
@@ -359,13 +371,13 @@ function M.AppendAdvancedPanel(ctx)
     local removeDropdownValues = {}
     local function RefreshCustomList()
         if not WarbandNexus.db or not WarbandNexus.db.global then
-            customListText:SetText("|cff555555" .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
+            customListText:SetText(HEX.dim .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
             wipe(removeDropdownValues)
             return
         end
         local trackDB = WarbandNexus.db.global.trackDB
         if not trackDB or not trackDB.custom then
-            customListText:SetText("|cff555555" .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
+            customListText:SetText(HEX.dim .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
             wipe(removeDropdownValues)
             return
         end
@@ -374,8 +386,8 @@ function M.AppendAdvancedPanel(ctx)
         for npcID, drops in pairs(trackDB.custom.npcs or {}) do
             for i = 1, #drops do
                 local d = drops[i]
-                local repStr = d.repeatable and " |cff44cc44(R)|r" or ""
-                lines[#lines + 1] = format("|cff00ccff%s|r%s  |cff666666npc:%s|r",
+                local repStr = d.repeatable and (" " .. HEX.green .. "(R)|r") or ""
+                lines[#lines + 1] = format(HEX.info .. "%s|r%s  " .. HEX.dim .. "npc:%s|r",
                     d.name or "?", repStr, tostring(npcID))
                 local removeKey = "npc:" .. tostring(npcID) .. ":" .. tostring(d.itemID or 0)
                 removeDropdownValues[removeKey] = (d.name or "?") .. " (npc:" .. npcID .. ")"
@@ -384,15 +396,15 @@ function M.AppendAdvancedPanel(ctx)
         for objID, drops in pairs(trackDB.custom.objects or {}) do
             for i = 1, #drops do
                 local d = drops[i]
-                local repStr = d.repeatable and " |cff44cc44(R)|r" or ""
-                lines[#lines + 1] = format("|cff00ccff%s|r%s  |cff666666obj:%s|r",
+                local repStr = d.repeatable and (" " .. HEX.green .. "(R)|r") or ""
+                lines[#lines + 1] = format(HEX.info .. "%s|r%s  " .. HEX.dim .. "obj:%s|r",
                     d.name or "?", repStr, tostring(objID))
                 local removeKey = "object:" .. tostring(objID) .. ":" .. tostring(d.itemID or 0)
                 removeDropdownValues[removeKey] = (d.name or "?") .. " (obj:" .. objID .. ")"
             end
         end
         if #lines == 0 then
-            customListText:SetText("|cff555555" .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
+            customListText:SetText(HEX.dim .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
         else
             customListText:SetText(table.concat(lines, "\n"))
         end
@@ -474,9 +486,9 @@ function M.AppendAdvancedPanel(ctx)
                 ns._trackDBForm.itemIcon = icon
                 ns._trackDBForm.itemType = cType
                 local iconStr = icon and ("|T" .. icon .. ":16|t ") or ""
-                lookupResultText:SetText(iconStr .. "|cff00ff00" .. name .. "|r |cff888888(" .. (cType or "item") .. ")|r")
+                lookupResultText:SetText(iconStr .. HEX.green .. name .. "|r " .. HEX.dim .. "(" .. (cType or "item") .. ")|r")
             else
-                lookupResultText:SetText("|cffff4444" .. ((ns.L and ns.L["ITEM_LOOKUP_FAILED"]) or "Item not found.") .. "|r")
+                lookupResultText:SetText(HEX.red .. ((ns.L and ns.L["ITEM_LOOKUP_FAILED"]) or "Item not found.") .. "|r")
             end
         end)
     end)
@@ -544,7 +556,7 @@ function M.AppendAdvancedPanel(ctx)
                 local itemID = tonumber(rawItem)
                 local sourceID = tonumber(rawSrc)
                 if not itemID or not sourceID then
-                    WarbandNexus:Print("|cffff4444" .. ((ns.L and ns.L["ENTRY_ADD_FAILED"]) or "Item ID and Source ID are required.") .. "|r")
+                    WarbandNexus:Print(HEX.red .. ((ns.L and ns.L["ENTRY_ADD_FAILED"]) or "Item ID and Source ID are required.") .. "|r")
                     return
                 end
                 local drop = {
@@ -555,14 +567,14 @@ function M.AppendAdvancedPanel(ctx)
                 }
                 local ok = WarbandNexus:AddCustomDrop(f.sourceType or "npc", sourceID, drop, nil)
                 if ok then
-                    WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["ENTRY_ADDED"]) or "Custom entry added.") .. "|r")
+                    WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["ENTRY_ADDED"]) or "Custom entry added.") .. "|r")
                     ns._trackDBForm = {}
                     itemIDBox:SetText("")
                     sourceIDBox:SetText("")
                     lookupResultText:SetText("")
                     RefreshCustomList()
                 else
-                    WarbandNexus:Print("|cffff4444" .. ((ns.L and ns.L["ENTRY_ADD_FAILED"]) or "Failed to add entry.") .. "|r")
+                    WarbandNexus:Print(HEX.red .. ((ns.L and ns.L["ENTRY_ADD_FAILED"]) or "Failed to add entry.") .. "|r")
                 end
             end,
             color = { 0.20, 0.60, 0.40 },
@@ -579,7 +591,7 @@ function M.AppendAdvancedPanel(ctx)
                 if sourceType and sourceID and itemID then
                     local ok = WarbandNexus:RemoveCustomDrop(sourceType, sourceID, itemID)
                     if ok then
-                        WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["ENTRY_REMOVED"]) or "Entry removed.") .. "|r")
+                        WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["ENTRY_REMOVED"]) or "Entry removed.") .. "|r")
                         ns._trackDBRemoveKey = nil
                         RefreshCustomList()
                     end

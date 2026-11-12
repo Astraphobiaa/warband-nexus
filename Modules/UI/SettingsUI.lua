@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 
@@ -283,7 +286,7 @@ local function SettingsEscDebug(msg, ...)
     else
         text = tostring(msg)
     end
-    W:Print("|cff00ccff[WN Settings ESC]|r " .. text)
+    W:Print(HEX.info .. "[WN Settings ESC]|r " .. text)
 end
 -- ESC: Do NOT use SetOverrideBinding* on ESC for this panel. On current clients the API can report
 -- success while the synthetic CLICK never reaches an addon Button — ESC is then swallowed and
@@ -1529,7 +1532,7 @@ local themePresetButtons = {}
 local themeTextRefs = { warningText = nil, aaHintText = nil }
 
 local function FormatFontScaleWarningText()
-    local warnHex = (ns.UI_GetSemanticWarningHex and ns.UI_GetSemanticWarningHex()) or "|cffff8800"
+    local warnHex = (ns.UI_GetSemanticWarningHex and ns.UI_GetSemanticWarningHex()) or HEX.orange
     return warnHex .. ((ns.L and ns.L["FONT_SCALE_WARNING"]) or "Warning: Higher font scale may cause text overflow in some UI elements.") .. "|r"
 end
 

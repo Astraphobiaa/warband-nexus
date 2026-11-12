@@ -56,7 +56,10 @@ end
 function M.GetTypeSections()
     if sectionCache then return sectionCache end
     local out = {}
-    if WQ_INDEX and WQ_INDEX.ZONES then
+    -- Modern-zone world quests and content events (Forever has neither): calendar only.
+    local WN = ns.WarbandNexus
+    local hasWorldQuests = not (WN and WN.SupportsFeature and not WN:SupportsFeature("worldQuests"))
+    if hasWorldQuests and WQ_INDEX and WQ_INDEX.ZONES then
         for zi = 1, #WQ_INDEX.ZONES do
             local z = WQ_INDEX.ZONES[zi]
             if z and z.localeKey ~= "REMINDER_WQ_CAT_QUELTHALAS" then
@@ -70,12 +73,14 @@ function M.GetTypeSections()
             end
         end
     end
-    out[#out + 1] = {
-        trackMode = "contentEvents",
-        sectionKey = "zone_events",
-        labelKey = "REMINDER_QUEST_CAT_CONTENT_EVENTS",
-        fallback = "Content Events",
-    }
+    if hasWorldQuests then
+        out[#out + 1] = {
+            trackMode = "contentEvents",
+            sectionKey = "zone_events",
+            labelKey = "REMINDER_QUEST_CAT_CONTENT_EVENTS",
+            fallback = "Content Events",
+        }
+    end
     out[#out + 1] = {
         trackMode = "worldEvents",
         sectionKey = "calendar",

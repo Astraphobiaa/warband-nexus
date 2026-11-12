@@ -9,6 +9,9 @@ local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(.
 
 local COLORS = ns.UI_COLORS or {}
 local FontManager = ns.FontManager
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local GearFact = ns.UI and ns.UI.Factory
 local format = string.format
 local floor = math.floor
@@ -217,7 +220,7 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
         strip:SetColorTexture(ac[1], ac[2], ac[3], 0.85)
     end
 
-    local name = (charData and charData.name) or ""
+    local name = ns.CharDisplayName(charData, "")
     if issecretvalue and issecretvalue(name) then name = "" end
     local realm = (charData and charData.realm) or ""
     if issecretvalue and issecretvalue(realm) then realm = "" end
@@ -235,7 +238,7 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
             nameFs:SetText("|cff" .. classHex .. name .. "|r")
         else
             -- UI_GetTextRoleHex returns the full "|cff..." escape.
-            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "|cff888888"
+            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or HEX.dim
             nameFs:SetText(dimHex .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
         end
     end
@@ -287,8 +290,8 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
             local ilvlStr = format("%.2f", avgIlvl)
             local ilvlLabel = (ns.L and ns.L["ILVL_SHORT_LABEL"]) or "iLvl"
             -- UI_GetTextRoleHex returns the full "|cff..." escape.
-            local brightHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffffffff"
-            local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+            local brightHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
+            local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.muted
             ilvlFs:SetText(brightHex .. ilvlStr .. "|r " .. mutedHex .. ilvlLabel .. "|r")
         end
         host._wnIlvlPill = pill

@@ -7,6 +7,9 @@ local _, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local M = ns.CollectionsUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M and M.state, "CollectionsUI_Shared.lua must load before this file")
 
 local WarbandNexus = M.WarbandNexus
@@ -52,6 +55,11 @@ local STATUS_ICON_SIZE = M.STATUS_ICON_SIZE
 local SCROLL_CONTENT_TOP_PADDING = M.SCROLL_CONTENT_TOP_PADDING
 local CONTENT_INSET = M.CONTENT_INSET
 local CONTAINER_INSET = M.CONTAINER_INSET
+-- Detail panels inset their viewport equally on all four sides; the lane wire needs them as a table.
+local DETAIL_LANE_INSETS = {
+    left = CONTAINER_INSET, top = CONTAINER_INSET,
+    right = CONTAINER_INSET, bottom = CONTAINER_INSET,
+}
 local TEXT_GAP = M.TEXT_GAP
 local SEARCH_ROW_HEIGHT = M.SEARCH_ROW_HEIGHT
 local COLLECTIONS_TITLE_CARD_HEIGHT = M.COLLECTIONS_TITLE_CARD_HEIGHT
@@ -1391,7 +1399,7 @@ function M.CreateModelViewer(parent, width, height)
         if rawSource == "" or rawSource == "Unknown" then
             rawSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
         end
-        local whiteHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
+        local whiteHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright
         -- Currency icon on Cost/Amount rows (purchases)
         local L = ns.L
         local costKey = (L and L["PARSE_COST"]) or "Cost"
@@ -1588,7 +1596,7 @@ function M.CreateModelViewer(parent, width, height)
         if rawSource == "" or rawSource == "Unknown" then
             rawSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
         end
-        local whiteHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
+        local whiteHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright
         local L = ns.L
         local costKey = (L and L["PARSE_COST"]) or "Cost"
         local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
@@ -1798,18 +1806,18 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
     panel:SetSize(width, height)
 
     local colW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or SCROLLBAR_GAP
-    local sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (colW + 2)
     local sideGap = 2
 
     local scroll = Factory:CreateScrollFrame(panel, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
-    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -sbLane, CONTAINER_INSET)
     M.EnableStandardScrollWheel(scroll)
     panel.scrollFrame = scroll
 
-    panel._scrollBarContainer = M.EnsureDetailScrollBarContainer(panel._scrollBarContainer, panel, scroll, colW, sideGap)
-
     local child = M.CreateStandardScrollChild(scroll, width - (CONTAINER_INSET * 2) - SCROLLBAR_GAP, 1)
+
+    -- Viewport anchors come from the lane wire, so an achievement with two criteria lines uses the
+    -- panel's full width instead of leaving the bar's strip empty beside it.
+    panel._scrollBarContainer = M.EnsureDetailScrollBarContainer(
+        panel._scrollBarContainer, panel, scroll, colW, sideGap, DETAIL_LANE_INSETS)
 
     local content = child
     local lastAnchor = content
@@ -2232,9 +2240,30 @@ local SUB_TABS = {
     { key = "titles", label = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles", iconKey = "title" },
 }
 
+-- Sub-tab -> capability it needs (WoW Forever has no illusions, and no enumerable toy list).
+local SUB_TAB_CAPABILITY = { illusions = "illusions", toys = "toyBoxList" }
+
+local function SubTabAvailable(key)
+    local cap = SUB_TAB_CAPABILITY[key]
+    return not (cap and WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature(cap))
+end
+
+--- Sub-tabs this client has data for.
+function M.GetAvailableSubTabs()
+    local out = {}
+    for i = 1, #SUB_TABS do
+        if SubTabAvailable(SUB_TABS[i].key) then out[#out + 1] = SUB_TABS[i] end
+    end
+    return out
+end
+
 function M.CreateSubTabBar(parent, onTabSelect)
+    if M.state and M.state.currentSubTab and not SubTabAvailable(M.state.currentSubTab) then
+        M.state.currentSubTab = "recent"
+        ns._sessionCollectionsSubTab = "recent"
+    end
     local bar = ns.UI_CreateSubTabBar and ns.UI_CreateSubTabBar(parent, {
-        tabs = SUB_TABS,
+        tabs = M.GetAvailableSubTabs(),
         activeKey = M.state and M.state.currentSubTab,
         accent = COLORS.accent,
         onSelect = onTabSelect,
@@ -2840,7 +2869,7 @@ function M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
     if tabChanged or row._subPlain ~= subPlain or row._subHex ~= subHex then
         row._subPlain = subPlain
         row._subHex = subHex
-        -- Bright role ink at call time (fixed |cffffffff was white on the light header) (2026-10-22).
+        -- Bright role ink at call time (fixed " .. HEX.bright .. " was white on the light header) (2026-10-22).
         row._subtitle:SetText(subPlain ~= "" and (subHex .. subPlain .. "|r") or "")
         row._subtitle:SetShown(subPlain ~= "")
     end
@@ -2920,7 +2949,7 @@ function M.ResetCollectionsListScrollPositions()
 end
 
 M.CONTENT_GAP = CONTENT_GAP
-M.COLLECTED_COLOR = "|cff33e533"
+M.COLLECTED_COLOR = HEX.green
 M.DEFAULT_ICON_MOUNT = "Interface\\Icons\\Ability_Mount_RidingHorse"
 M.DEFAULT_ICON_PET = "Interface\\Icons\\INV_Box_PetCarrier_01"
 M.DEFAULT_ICON_TOY = "Interface\\Icons\\INV_Misc_Toy_07"

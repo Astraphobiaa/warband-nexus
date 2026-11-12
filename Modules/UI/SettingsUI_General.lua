@@ -6,6 +6,9 @@
 
 local ADDON_NAME, ns = ...
 local M = ns.SettingsUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M and M._H, "SettingsUI_General.lua loaded before SettingsUI.lua - check the TOC")
 
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
@@ -115,6 +118,27 @@ function M.AppendGeneralPanel(ctx)
         },
     }
 
+    -- WoW Forever only: nothing else has a surname to hide, so on retail the row would be a dead
+    -- switch. Appended rather than filtered at draw time -- CreateCheckboxGrid has no hidden
+    -- predicate, and adding one would change a shared widget for a single caller.
+    if WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("realmTypeTag") then
+        -- The realm is a tag column here, never a line under the name: its switch would do nothing.
+        for i = #tooltipOptions, 1, -1 do
+            if tooltipOptions[i].key == "showCharacterRealmName" then table.remove(tooltipOptions, i) end
+        end
+        tooltipOptions[#tooltipOptions + 1] = {
+            key = "showCharacterSurname",
+            label = (ns.L and ns.L["CONFIG_SHOW_CHARACTER_SURNAME"]) or "Show Secondary Name",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_CHARACTER_SURNAME_DESC"])
+                or "Show the second half of a character name. Turn off to use the first name alone everywhere.",
+            get = function() return WarbandNexus.db.profile.showCharacterSurname ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.showCharacterSurname = value
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
+            end,
+        }
+    end
+
     local generalContentW = GetSettingsSectionContentWidth(effectiveWidth)
     local generalStackY = 0
     generalStackY = StackSettingsSubPanel(generalSection.content, generalContentW, 0, function(inner, iw)
@@ -179,31 +203,24 @@ function M.AppendGeneralPanel(ctx)
             cy = cy - math.max(18, trFontHint:GetStringHeight()) - GetHeaderToolbarGap()
         end
 
-        -- Keybinding row (fixed label column + controls)
-        local labelColW = GetSettingsLabelColumnWidth(iw)
+        -- Keybinding row: stacked like the Language dropdown above (label line, then a full-width
+        -- control), so both rows share the same left edge; the clear button takes the last cell
+        -- inside the panel instead of hanging past its right edge.
         local keybindTitle = (ns.L and ns.L["KEYBINDING"]) or "Keybinding"
         local keybindLabel = FontManager:CreateFontString(inner, "body", "OVERLAY")
         keybindLabel:SetPoint("TOPLEFT", 0, cy)
-        keybindLabel:SetWidth(labelColW)
+        keybindLabel:SetWidth(iw)
         keybindLabel:SetJustifyH("LEFT")
         keybindLabel:SetWordWrap(false)
-        keybindLabel:SetText(keybindTitle .. ":")
+        keybindLabel:SetText(keybindTitle)
         ns.UI_SetTextColorRole(keybindLabel, "Bright")
+        local keybindLabelH = math.max(18, keybindLabel:GetStringHeight() or 0)
 
-        -- Same control column as the dropdown rows above, so both edges line up.
-        local keybindBtnW = math.max(136, GetSettingsControlColumnWidth(iw))
+        local keybindBtnW = math.max(136, iw - SETTINGS_BTN_H - hdrGap)
         local keybindBtn = ns.UI.Factory:CreateButton(inner, keybindBtnW, SETTINGS_BTN_H, false)
         settingsKeybindButton = keybindBtn
-        -- Top-anchor the button at the row baseline (cy) so it doesn't ride ~19px above the row
-        -- (it was LEFT->label RIGHT, centering the tall button on the short label). Then vertically
-        -- centre the label text on the button so label + box + X sit on one symmetric line.
-        keybindBtn:SetPoint("TOPLEFT", inner, "TOPLEFT", labelColW + hdrGap, cy)
-        keybindLabel:ClearAllPoints()
-        keybindLabel:SetPoint("LEFT", inner, "LEFT", 0, 0)
-        keybindLabel:SetPoint("RIGHT", keybindBtn, "LEFT", -hdrGap, 0)
-        keybindLabel:SetPoint("TOP", keybindBtn, "TOP", 0, 0)
-        keybindLabel:SetPoint("BOTTOM", keybindBtn, "BOTTOM", 0, 0)
-        keybindLabel:SetJustifyV("MIDDLE")
+        keybindBtn:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, cy - keybindLabelH - hdrGap)
+        cy = cy - keybindLabelH - hdrGap
     if ApplySettingsChrome then
         ApplySettingsAccentChromeIdle(keybindBtn)
     end
@@ -294,7 +311,7 @@ function M.AppendGeneralPanel(ctx)
 
         if InCombatLockdown() then
             if WarbandNexus and WarbandNexus.Print then
-                WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["KEYBINDING_COMBAT"]) or "Cannot change keybindings in combat.") .. "|r")
+                WarbandNexus:Print(HEX.orange .. ((ns.L and ns.L["KEYBINDING_COMBAT"]) or "Cannot change keybindings in combat.") .. "|r")
             end
             StopListening()
             return
@@ -347,7 +364,7 @@ function M.AppendGeneralPanel(ctx)
         end)
 
         if WarbandNexus and WarbandNexus.Print then
-            WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["KEYBINDING_SAVED"]) or "Keybinding saved.") .. "|r")
+            WarbandNexus:Print(HEX.green .. ((ns.L and ns.L["KEYBINDING_SAVED"]) or "Keybinding saved.") .. "|r")
         end
 
         StopListening()

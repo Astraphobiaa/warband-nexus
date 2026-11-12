@@ -5,6 +5,9 @@
 
 local _, ns = ...
 local M = ns.CollectionsUI
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(M and M.state, "CollectionsUI_Shared.lua must load before this file")
 
 local WarbandNexus = M.WarbandNexus
@@ -312,6 +315,22 @@ function M.RecentRowNavigateToEntry(ctype, id)
     WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "collections", skipCooldown = true })
 end
 
+--- Pin the Recent empty / search-empty card to the panel's bounds. The shared card sizes itself from the
+--- OUTER scroll viewport height, but the panel sits below BODY_TOP, so the card overhung the viewport and
+--- gave the fill-the-viewport page a scroll range. Two-corner anchors make it exactly the panel.
+function M.FitRecentEmptyCardToPanel(panel)
+    if not panel then return end
+    local keys = { "emptyStateCard_collections_recent", "emptyStateCard_" .. (ns.UI_SEARCH_EMPTY_TAB_KEY or "search") }
+    for i = 1, #keys do
+        local card = panel[keys[i]]
+        if card and card:IsShown() and card:GetParent() == panel then
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+            card:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 0)
+        end
+    end
+end
+
 function M.DrawRecentContent(contentFrame)
     if not contentFrame then return end
     M.HideAllCollectionsResultFrames()
@@ -379,15 +398,16 @@ function M.DrawRecentContent(contentFrame)
         end
         if not anyMatch then
             local inner_viewport = math.max(1, viewCap - headerBlockH)
-            local emptyExtent = 40
             if ns.UI_RenderStandardSearchEmptyState then
-                emptyExtent = ns.UI_RenderStandardSearchEmptyState(WarbandNexus, panel, qraw, "collections_recent", emptyExtent) or emptyExtent
+                ns.UI_RenderStandardSearchEmptyState(WarbandNexus, panel, qraw, "collections_recent", 0)
             end
-            local finalContentH = math.max(viewCap, headerBlockH + emptyExtent + inset)
+            -- Empty page fills the viewport exactly; any extra height is outer scroll range.
+            local finalContentH = viewCap
             contentFrame:SetHeight(finalContentH)
             if panel.SetHeight then
                 panel:SetHeight(math.max(1, inner_viewport))
             end
+            M.FitRecentEmptyCardToPanel(panel)
             M.ApplyCollectionsContentHeader(contentFrame, "recent", finalContentH)
             SyncRecentMainHorizontalScroll()
             return
@@ -407,11 +427,13 @@ function M.DrawRecentContent(contentFrame)
             if ns.UI_ShowTabEmptyStateCard then
                 ns.UI_ShowTabEmptyStateCard(panel, "collections_recent", 0, { fillParent = true })
             end
-            local finalContentH = math.max(viewCap, headerBlockH + math.max(200, inner_viewport) + inset)
+            -- Empty page fills the viewport exactly; any extra height is outer scroll range.
+            local finalContentH = viewCap
             contentFrame:SetHeight(finalContentH)
             if panel.SetHeight then
                 panel:SetHeight(math.max(1, inner_viewport))
             end
+            M.FitRecentEmptyCardToPanel(panel)
             M.ApplyCollectionsContentHeader(contentFrame, "recent", finalContentH)
             SyncRecentMainHorizontalScroll()
             return
@@ -557,7 +579,7 @@ function M.DrawRecentContent(contentFrame)
         titleFs:SetJustifyH("LEFT")
         titleFs:SetJustifyV("MIDDLE")
         titleFs:SetText(cat)
-        titleFs:SetTextColor(1, 0.85, 0.45, 1)
+        titleFs:SetTextColor(ns.UI_GetSemanticGoldColor())
 
         local listWInner = math.max(1, cardW - RECENT_CARD_HEADER_PAD * 2)
         local listHost = Factory:CreateContainer(card, listWInner, 1, false)
@@ -591,9 +613,9 @@ function M.DrawRecentContent(contentFrame)
         end
 
         if qlower and #picked == 0 then
-            addRow(defaultEmptyIcon, (M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee") .. searchEmptyTxt .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
+            addRow(defaultEmptyIcon, (M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright) .. searchEmptyTxt .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         elseif #picked == 0 then
-            addRow(defaultEmptyIcon, (M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee") .. noneLine .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
+            addRow(defaultEmptyIcon, (M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright) .. noneLine .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         else
             for j = 1, #picked do
                 local e = picked[j]
@@ -612,7 +634,7 @@ function M.DrawRecentContent(contentFrame)
                 if ob and ob ~= "" then
                     local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(ob))
                         or (M.CollectionsBrightHex and M.CollectionsBrightHex())
-                        or "|cffeeeeee"
+                        or HEX.bright
                     subLine = format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
                     rowH = RECENT_ROW_H_SUB
                 end
@@ -630,7 +652,7 @@ function M.DrawRecentContent(contentFrame)
                     })
                 end
 
-                addRow(iconPath, nameRich, (M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee") .. rel .. "|r", true, function()
+                addRow(iconPath, nameRich, (M.CollectionsBrightHex and M.CollectionsBrightHex() or HEX.bright) .. rel .. "|r", true, function()
                     M.RecentRowNavigateToEntry(typCopy, idCopy)
                 end, buildTooltip, subLine, rowH)
             end

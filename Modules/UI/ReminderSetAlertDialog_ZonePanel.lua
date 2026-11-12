@@ -4,6 +4,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local H = ns.ReminderSetAlertDialogHelpers
 
 local ZP = {}
@@ -15,10 +18,10 @@ function ZP.Install(ctx)
     local L = ctx.L
     local COLORS = ctx.COLORS
     local function PickerBrightHex()
-        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
     end
     local function PickerMutedHex()
-        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.dim
     end
     local function PickerLabelHex()
         return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff9eb0ca"
@@ -288,14 +291,14 @@ function ZP.Install(ctx)
                         local okI, mapInf = pcall(C_Map.GetMapInfo, id)
                         if okI and mapInf and UIMT then
                             if mapInf.mapType == UIMT.Dungeon then
-                                row.tagFs:SetText("|cffc8b68e" .. tStr .. "|r")
+                                row.tagFs:SetText(HEX.gold .. tStr .. "|r")
                             elseif mapInf.mapType == UIMT.Orphan then
-                                row.tagFs:SetText("|cff8eb0ca" .. tStr .. "|r")
+                                row.tagFs:SetText(HEX.muted .. tStr .. "|r")
                             else
-                                row.tagFs:SetText("|cff9ecfae" .. tStr .. "|r")
+                                row.tagFs:SetText(HEX.green .. tStr .. "|r")
                             end
                         else
-                            row.tagFs:SetText("|cff9ecfae" .. tStr .. "|r")
+                            row.tagFs:SetText(HEX.green .. tStr .. "|r")
                         end
                         local nm = SafeUIMapDisplayName(id)
                         row.labelFs:SetText(string.format(

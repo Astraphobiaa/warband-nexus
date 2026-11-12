@@ -9,6 +9,9 @@ local _, ns = ...
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local issecretvalue = issecretvalue
 local FontManager = ns.FontManager
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local UI_SPACING = ns.UI_SPACING or {}
 local UI_LAYOUT = ns.UI_LAYOUT or UI_SPACING
 
@@ -69,7 +72,7 @@ local function DrawSectionEmptyState(parent, message, yOffset, height, width)
     end
     FontManager:ApplyFont(emptyText, "body")
     emptyText:SetPoint("TOP", parent, "TOP", 0, -yOffset)
-    emptyText:SetText(ResolveEmptyStateHex("Dim", "|cff999999") .. message .. "|r")
+    emptyText:SetText(ResolveEmptyStateHex("Dim", HEX.dim) .. message .. "|r")
     emptyText:SetWidth(width or 300)
     emptyText:SetJustifyH("CENTER")
     
@@ -273,6 +276,12 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "No characters match the level filter",
         descFallback = "Turn off Hide or lower the level threshold using the Hide button above to show characters again.",
     },
+    legacy = {
+        titleKey = "LEGACY_EMPTY_TITLE",
+        descKey = "LEGACY_EMPTY_DESC",
+        titleFallback = "No Legacy data yet",
+        descFallback = "Legacy progress is read a few seconds after login.\nLog in on WoW Forever to load your Legacy points and challenges.",
+    },
     professions = {
         titleFallback = "No profession data",
         descKey = "NO_PROFESSIONS_DATA",
@@ -298,6 +307,7 @@ local EMPTY_STATE_ICON_KEYS = {
     collections_illusions = "illusion", collections_titles = "title",
     gear = "cuirass", gear_filter = "cuirass",
     professions = "anvil",
+    legacy = "trophy",
 }
 
 local SEARCH_EMPTY_TAB_KEY = "search"
@@ -422,6 +432,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
             return BuildSearchEmptyDescription(opts.searchText)
         end
         if opts.descText then return opts.descText end
+        if config.descKey and ns.L_GameType then return ns.L_GameType(config.descKey, config.descFallback) end
         return (ns.L and config.descKey and ns.L[config.descKey]) or config.descFallback
     end
 
@@ -454,10 +465,10 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
             ApplyEmptyStateIcon(card._emptyIcon)
         end
         if card._emptyTitle then
-            card._emptyTitle:SetText(ResolveEmptyStateHex("Dim", "|cff888888") .. ResolveEmptyTitle() .. "|r")
+            card._emptyTitle:SetText(ResolveEmptyStateHex("Dim", HEX.dim) .. ResolveEmptyTitle() .. "|r")
         end
         if card._emptyDesc and descText then
-            card._emptyDesc:SetText(ResolveEmptyStateHex("Muted", "|cff666666") .. descText .. "|r")
+            card._emptyDesc:SetText(ResolveEmptyStateHex("Muted", HEX.dim) .. descText .. "|r")
         end
         card:Show()
         return card, cardHeight + bottomPad
@@ -502,7 +513,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     -- Title
     local title = FontManager:CreateFontString(contentContainer, UIFontRole("emptyCardTitle"), "OVERLAY")
     title:SetPoint("TOP", iconContainer, "BOTTOM", 0, -20)
-    title:SetText(ResolveEmptyStateHex("Dim", "|cff888888") .. ResolveEmptyTitle() .. "|r")
+    title:SetText(ResolveEmptyStateHex("Dim", HEX.dim) .. ResolveEmptyTitle() .. "|r")
     card._emptyTitle = title
 
     -- Description
@@ -513,7 +524,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     if not descText then
         descText = ResolveEmptyDesc()
     end
-    desc:SetText(ResolveEmptyStateHex("Muted", "|cff666666") .. (descText or "") .. "|r")
+    desc:SetText(ResolveEmptyStateHex("Muted", HEX.dim) .. (descText or "") .. "|r")
     card._emptyDesc = desc
 
     card:Show()

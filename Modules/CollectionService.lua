@@ -307,6 +307,9 @@ local collectionStore = {
     title = {},
     illusion = {},
     scanCompleted = {},
+    -- Rows a COMPLETE achievement scan stored (walked the client's whole category list). The
+    -- store is trusted once it holds that many, whatever the absolute size; see below.
+    achievementScanTotal = 0,
 }
 
 -- collectionData = collectionStore alias (GetAllMountsData etc. use collectionData)
@@ -319,6 +322,22 @@ local function IsCategoryScanMarkedComplete(category)
     local sc = collectionStore.scanCompleted
     local tbl = collectionStore[category]
     return sc and sc[category] ~= nil and type(tbl) == "table" and next(tbl) ~= nil
+end
+
+--- The toy list carries every journal toy (retail), not just owned ones (Forever).
+local function ToyListIsJournalSized()
+    return not (WarbandNexus.SupportsFeature and not WarbandNexus:SupportsFeature("toyBoxUncollected"))
+end
+
+--- Owned-only toy list and the account owns none: an empty toy store is the answer, not a
+--- missing scan (otherwise every ensure pass rebuilt mounts + pets + toys from scratch).
+local function ToyStoreEmptyIsAnswer()
+    if ToyListIsJournalSized() then return false end
+    if C_ToyBoxInfo and C_ToyBoxInfo.HasAnyToy then
+        local ok, any = pcall(C_ToyBoxInfo.HasAnyToy)
+        if ok and not (issecretvalue and issecretvalue(any)) then return any == false end
+    end
+    return false
 end
 
 local function MarkCategoryScanComplete(category)
@@ -352,8 +371,26 @@ local function CountAchievementStoreEntries()
     return n
 end
 
+--[[
+    A partial / failed scan leaves a small store, so a fixed floor (ACHIEVEMENT_STORE_MIN_TRUST)
+    used to decide "trust or rescan". That floor is a retail number: WoW Forever's whole achievement
+    journal is the Legacy tree (~111 entries), so its store could never pass it -- every paint of
+    To-Do > Achievements re-queued the scan and showed "Scanning Achievements" forever.
+
+    The real signal is completion: a scan that walked every category records how many rows it
+    stored (achievementScanTotal). A store holding at least that many is trusted at any size; the
+    fixed floor only applies before any complete scan has been recorded.
+]]
 local function IsAchievementStoreInadequate()
-    return CountAchievementStoreEntries() < ACHIEVEMENT_STORE_MIN_TRUST
+    local n = CountAchievementStoreEntries()
+    if n >= ACHIEVEMENT_STORE_MIN_TRUST then return false end
+    local total = tonumber(collectionStore.achievementScanTotal) or 0
+    return not (total > 0 and n >= total)
+end
+
+--- Record a scan that reached the end of the category list (called from ScanAchievementsAsync).
+local function RecordCompleteAchievementScan()
+    collectionStore.achievementScanTotal = CountAchievementStoreEntries()
 end
 
 local function SumAchievementJournalPointsMax()
@@ -401,7 +438,10 @@ local function IsCollectionEnsureDataComplete(self)
     local versionOk = dbStore and dbStore.version == CACHE_VERSION
     local hasMounts = collectionStore.mount and next(collectionStore.mount) ~= nil
     local hasPets = collectionStore.pet and next(collectionStore.pet) ~= nil
-    local hasToys = collectionStore.toy and next(collectionStore.toy) ~= nil
+    -- No enumerable toy list on this client (WoW Forever): an empty toy store is the answer, not a
+    -- missing scan -- otherwise every ensure pass rebuilt mounts + pets + toys from scratch.
+    local hasToys = (collectionStore.toy and next(collectionStore.toy) ~= nil)
+        or ToyStoreEmptyIsAnswer() or false
     local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
     local hasTitles = (collectionStore.title and next(collectionStore.title) ~= nil)
         or IsCategoryScanMarkedComplete("title")
@@ -414,7 +454,7 @@ local function IsCollectionEnsureDataComplete(self)
     if hasAchievements and IsAchievementStoreInadequate() then
         return false
     end
-    if hasToys and C_ToyBox and C_ToyBox.GetNumToys then
+    if hasToys and ToyListIsJournalSized() and C_ToyBox and C_ToyBox.GetNumToys then
         local apiTotal = C_ToyBox.GetNumToys() or 0
         if apiTotal and apiTotal > 0 then
             local storeCount = 0
@@ -746,6 +786,7 @@ function WarbandNexus:InitializeCollectionCache()
         collectionStore.title = dbStore.title or {}
         collectionStore.illusion = dbStore.illusion or {}
         collectionStore.scanCompleted = dbStore.scanCompleted or {}
+        collectionStore.achievementScanTotal = tonumber(dbStore.achievementScanTotal) or 0
         collectionStore.lastBuilt = dbStore.lastBuilt or 0
         -- SV rows are slim (CollectionService_Store.lua): attach the lazy display-field resolver.
         local slimRows = ns.CollectionServiceRT and ns.CollectionServiceRT.SlimCollectionStoreRows
@@ -1069,14 +1110,17 @@ function WarbandNexus:EnsureCollectionData(onComplete)
 
     local hasMounts = collectionStore.mount and next(collectionStore.mount) ~= nil
     local hasPets = collectionStore.pet and next(collectionStore.pet) ~= nil
-    local hasToys = collectionStore.toy and next(collectionStore.toy) ~= nil
+    -- No enumerable toy list on this client (WoW Forever): an empty toy store is the answer, not a
+    -- missing scan -- otherwise every ensure pass rebuilt mounts + pets + toys from scratch.
+    local hasToys = (collectionStore.toy and next(collectionStore.toy) ~= nil)
+        or ToyStoreEmptyIsAnswer() or false
     local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
     local hasTitles = collectionStore.title and next(collectionStore.title) ~= nil
     local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
     local needAchievementIncludeAllRescan = self.db.global and not self.db.global.wnAchievementDirectScanV2
 
     -- Sanity check: if toy store count is far below ToyBox total, force a rebuild
-    if hasToys and C_ToyBox and C_ToyBox.GetNumToys then
+    if hasToys and ToyListIsJournalSized() and C_ToyBox and C_ToyBox.GetNumToys then
         local apiTotal = C_ToyBox.GetNumToys() or 0
         if apiTotal and apiTotal > 0 then
             local storeCount = 0
@@ -1133,7 +1177,8 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     if CategoryNeedsInitialScan("title") then
         queue[#queue + 1] = "title"
     end
-    if CategoryNeedsInitialScan("illusion") then
+    if CategoryNeedsInitialScan("illusion")
+        and not (self.SupportsFeature and not self:SupportsFeature("illusions")) then
         queue[#queue + 1] = "illusion"
     end
 
@@ -1399,7 +1444,7 @@ function WarbandNexus:GetToysGroupedBySourceType()
     end
     pcall(function()
         C_ToyBox.SetCollectedShown(true)
-        C_ToyBox.SetUncollectedShown(true)
+        pcall(C_ToyBox.SetUncollectedShown, true)
         C_ToyBox.SetFilterString("")
         for sourceIndex = 1, count do
             C_ToyBox.SetAllSourceTypeFilters(false)
@@ -1421,7 +1466,7 @@ function WarbandNexus:GetToysGroupedBySourceType()
         end
         C_ToyBox.SetAllSourceTypeFilters(true)
         if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
-        if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
+        if origUncollected ~= nil then pcall(C_ToyBox.SetUncollectedShown, origUncollected) end
         if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
         for i, checked in pairs(origSourceFilters) do
             if C_ToyBox.SetSourceTypeFilter then C_ToyBox.SetSourceTypeFilter(i, checked) end
@@ -1871,7 +1916,7 @@ local function OpenAllToyBoxFilters()
     end
     pcall(function()
         C_ToyBox.SetCollectedShown(true)
-        C_ToyBox.SetUncollectedShown(true)
+        pcall(C_ToyBox.SetUncollectedShown, true)
         if C_ToyBox.SetUnusableShown then C_ToyBox.SetUnusableShown(true) end
         if C_ToyBox.SetAllSourceTypeFilters then C_ToyBox.SetAllSourceTypeFilters(true) end
         if C_ToyBox.SetAllExpansionTypeFilters then C_ToyBox.SetAllExpansionTypeFilters(true) end
@@ -1885,7 +1930,7 @@ local function RestoreToyBoxFilters(saved)
     if not saved then return end
     pcall(function()
         if saved.collected ~= nil and C_ToyBox.SetCollectedShown then C_ToyBox.SetCollectedShown(saved.collected) end
-        if saved.uncollected ~= nil and C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(saved.uncollected) end
+        if saved.uncollected ~= nil and C_ToyBox.SetUncollectedShown then pcall(C_ToyBox.SetUncollectedShown, saved.uncollected) end
         if saved.unusable ~= nil and C_ToyBox.SetUnusableShown then C_ToyBox.SetUnusableShown(saved.unusable) end
     end)
     if C_ToyBox.SetSourceTypeFilter then
@@ -2918,6 +2963,10 @@ do
     RT.ClearCategoryScanComplete = ClearCategoryScanComplete
     RT.CountAchievementStoreEntries = CountAchievementStoreEntries
     RT.IsAchievementStoreInadequate = IsAchievementStoreInadequate
+    RT.RecordCompleteAchievementScan = RecordCompleteAchievementScan
+    -- One "show every toy" filter set for every toy enumeration (journal scan, counts, /wn api).
+    RT.OpenAllToyBoxFilters = OpenAllToyBoxFilters
+    RT.RestoreToyBoxFilters = RestoreToyBoxFilters
     RT.SignalAchievementScanPipelineDone = SignalAchievementScanPipelineDone
     RT.RESULTS_CACHE_TTL = RESULTS_CACHE_TTL
     RT.uncollectedResultsCache = uncollectedResultsCache

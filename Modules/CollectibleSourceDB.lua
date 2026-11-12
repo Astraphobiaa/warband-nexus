@@ -709,6 +709,15 @@ ns.CollectibleSourceDB = {
           drops = { { type = "mount", itemID = 13335, name = "Deathcharger's Reins" } },
           statisticIds = { 1097 },
         },
+        -- Original (vanilla) Zul'Gurub, as WoW Forever runs it. Retail ZG is the Cataclysm rebuild
+        -- (rows below: Mandokir 52151, Kilnara 52059), so these only load on Forever.
+        -- warcraft.wiki.gg: item 19872 <- Bloodlord Mandokir 11382, item 19902 <- High Priest Thekal 14509.
+        { sourceType = "instance_boss", npcID = 11382, foreverOnly = true,  -- Bloodlord Mandokir (ZG, vanilla)
+          drops = { { type = "mount", itemID = 19872, name = "Swift Razzashi Raptor" } },
+        },
+        { sourceType = "instance_boss", npcID = 14509, foreverOnly = true,  -- High Priest Thekal (ZG, vanilla)
+          drops = { { type = "mount", itemID = 19902, name = "Swift Zulian Tiger" } },
+        },
         -- AQ40 Trash Mobs
         { sourceType = "npc", npcID = 15246,  -- Qiraji Mindslayer (AQ40)
           drops = {
@@ -2499,6 +2508,81 @@ do
         ns.CollectibleSourceDB_BackfillSources = nil
     end
 end
+
+--[[
+    Game-type scope of the drop list.
+      Retail   every source except `foreverOnly` rows (vanilla Zul'Gurub, which retail rebuilt).
+      Forever  only sources that can drop a vanilla-era collectible (FOREVER_DROP_ITEMS); their
+               statisticIds are dropped so misses count on loot / kill (the retail Statistics ids
+               are not shown to exist here), and the retail-only legacy npc table and slot-outcome
+               rules (Midnight / War Within raids) are cleared. A Forever-era drop to add later:
+               put its item id in FOREVER_DROP_ITEMS (and its source row in sources[]).
+]]
+local FOREVER_DROP_ITEMS = {
+    [13335] = true,                                             -- Deathcharger's Reins (Rivendare)
+    [19872] = true, [19902] = true,                             -- ZG raptor, ZG tiger
+    [21218] = true, [21219] = true, [21220] = true, [21321] = true, -- Qiraji Resonating Crystals (AQ40)
+    -- Vanilla world / dungeon pets (CollectibleSourceDB_Backfill Pets/Classic)
+    [8491] = true, [8492] = true, [8494] = true, [8498] = true, [8499] = true,
+    [10822] = true, [11474] = true, [20769] = true,
+}
+
+--[[
+    Forever answers C_Map.GetBestMapForUnit with the Classic uiMapID range (1453 measured in-game,
+    2026-11-12), not retail's. Zone rows written with retail ids are re-pointed at the Classic zone
+    (warcraft.wiki.gg UiMapID, Classic + Retail tables). Retail splits Stranglethorn in three;
+    Classic has the one zone.
+]]
+local RETAIL_TO_CLASSIC_MAP = {
+    [25] = 1424,                                -- Hillsbrad Foothills
+    [56] = 1437,                                -- Wetlands
+    [69] = 1444,                                -- Feralas
+    [50] = 1434, [210] = 1434, [224] = 1434,    -- Northern / Cape of / Stranglethorn Vale
+}
+
+local function ToClassicMapIDs(source)
+    local ids = source.mapIDs or (source.mapID and { source.mapID })
+    if type(ids) ~= "table" then return end
+    local out, seen = {}, {}
+    for i = 1, #ids do
+        local id = RETAIL_TO_CLASSIC_MAP[ids[i]] or ids[i]
+        if not seen[id] then seen[id] = true; out[#out + 1] = id end
+    end
+    source.mapIDs, source.mapID = out, nil
+end
+
+local function ScopeSourcesToGameType(db)
+    local caps = ns.Capabilities
+    local forever = caps and caps.Supports and not caps:Supports("tryCounterRetailSources")
+    local kept = {}
+    for i = 1, #db.sources do
+        local source = db.sources[i]
+        if type(source) == "table" then
+            if forever then
+                local drops = source.drops
+                local any = false
+                for d = 1, (type(drops) == "table" and #drops or 0) do
+                    if drops[d] and FOREVER_DROP_ITEMS[tonumber(drops[d].itemID) or 0] then any = true break end
+                end
+                if any then
+                    source.statisticIds = nil
+                    if source.sourceType == "zone_drop" or source.sourceType == "fishing" then
+                        ToClassicMapIDs(source)
+                    end
+                    kept[#kept + 1] = source
+                end
+            elseif not source.foreverOnly then
+                kept[#kept + 1] = source
+            end
+        end
+    end
+    db.sources = kept
+    if forever then
+        db.legacyNpcs = nil
+        db.instanceBossSlotOutcomeRules = {}
+    end
+end
+ScopeSourcesToGameType(ns.CollectibleSourceDB)
 
 ApplyTypedSources(ns.CollectibleSourceDB)
 

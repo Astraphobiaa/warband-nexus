@@ -399,7 +399,7 @@ function M.GetExpiringMailSummary(addon)
                             count = count + 1
                             if not soonestLeft or left < soonestLeft then
                                 soonestLeft = left
-                                soonestName = char.name
+                                soonestName = ns.CharDisplayName(char, char.name)
                             end
                         end
                     end

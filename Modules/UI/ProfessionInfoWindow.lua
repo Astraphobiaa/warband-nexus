@@ -14,6 +14,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local ProfessionInfoEvents = {} -- Unique AceEvent identity for this module
@@ -160,7 +163,7 @@ end
 
 local function ColorText(text, color)
     if not color then
-    local hex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    local hex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
         return hex .. tostring(text) .. "|r"
     end
     return format("|cff%02x%02x%02x%s|r", color[1]*255, color[2]*255, color[3]*255, tostring(text))
@@ -1108,7 +1111,14 @@ local function CreateInfoFrame()
         local scrollBarColumn = factory.CreateBareScrollBarColumn and factory:CreateBareScrollBarColumn(frame, PROF_SB_COL_W)
             or factory:CreateScrollBarColumn(frame, PROF_SB_COL_W, 0, 0)
         frame.scrollBarColumn = scrollBarColumn
-        if scrollBarColumn and factory.EnsureScrollBarColumnSync then
+        -- Dynamic lane: the column only keeps its space while the content overflows, so a
+        -- window whose text fits uses its full width instead of leaving an empty right strip.
+        if scrollBarColumn and factory.WireScrollLaneWithInsets then
+            factory:WireScrollLaneWithInsets(scrollFrame, frame, scrollBarColumn, {
+                left = PROF_EDGE_PAD, top = HEADER_HEIGHT + PROF_EDGE_PAD,
+                right = PROF_EDGE_PAD, bottom = PROF_EDGE_PAD, gap = 2,
+            })
+        elseif scrollBarColumn and factory.EnsureScrollBarColumnSync then
             factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = PROF_SB_COL_W, gap = 2 })
         elseif scrollBarColumn and factory.SyncScrollBarColumnToViewport then
             factory:SyncScrollBarColumnToViewport(scrollFrame, scrollBarColumn, { width = PROF_SB_COL_W, gap = 2 })
@@ -1178,7 +1188,7 @@ function WarbandNexus:ShowProfessionInfo(charKey, profName, profSlot)
     if not frame then return end
 
     -- Update header
-    local charName = charData.name or charKey
+    local charName = ns.CharDisplayName(charData, charKey)
     local classColor = RAID_CLASS_COLORS[charData.classFile] or { r = 1, g = 1, b = 1 }
     local coloredName = format("|cff%02x%02x%02x%s|r", classColor.r*255, classColor.g*255, classColor.b*255, charName)
     frame.titleText:SetText(coloredName .. " - " .. profName)

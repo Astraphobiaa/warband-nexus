@@ -4,6 +4,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local H = ns.ReminderSetAlertDialogHelpers
 
 local Q = {}
@@ -15,10 +18,10 @@ function Q.Install(ctx)
     local L = ctx.L
     local COLORS = ctx.COLORS
     local function PickerBrightHex()
-        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
     end
     local function PickerMutedHex()
-        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.dim
     end
     local Factory = ctx.Factory
     local FontManager = ctx.FontManager
@@ -752,22 +755,22 @@ function Q.Install(ctx)
             end
 
             local function TagText(entry)
-                if not entry or not entry.typeTagKey then return "|cff888888?|r" end
+                if not entry or not entry.typeTagKey then return HEX.dim .. "?|r" end
                 if entry.trackMode == "worldEvents" then
                     if entry.isActive then
-                        return "|cff9ecfae" .. activeLbl .. "|r"
+                        return HEX.green .. activeLbl .. "|r"
                     end
-                    return "|cff888888" .. inactiveLbl .. "|r"
+                    return HEX.dim .. inactiveLbl .. "|r"
                 end
                 local tk = entry.typeTagKey
                 local raw = LocaleRow(tk, tk)
                 if tk == "REMINDER_QUEST_TAG_WQ" then
-                    return "|cff9ecfae" .. raw .. "|r"
+                    return HEX.green .. raw .. "|r"
                 end
                 if tk == "REMINDER_QUEST_TAG_CONTENT_EVENT" or tk == "REMINDER_QUEST_TAG_ZONE_EVENT" then
-                    return "|cffc8b68e" .. raw .. "|r"
+                    return HEX.gold .. raw .. "|r"
                 end
-                return "|cff8eb0ca" .. raw .. "|r"
+                return HEX.muted .. raw .. "|r"
             end
 
             local pool = self._questListRows or {}

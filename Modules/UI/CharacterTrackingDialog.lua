@@ -5,6 +5,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local issecretvalue = issecretvalue
 
 ns.CharacterTrackingDialog = ns.CharacterTrackingDialog or {}
@@ -28,15 +31,15 @@ local function AccentHex()
     if ns.UI_GetAccentHexColor then
         return "|cff" .. ns.UI_GetAccentHexColor()
     end
-    return "|cff9370DB"
+    return HEX.accent
 end
 
 local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 --- `|cffrrggbb` from a theme RGB getter (light-mode aware); `fallback` when the getter is missing.
@@ -53,7 +56,7 @@ local function SemanticGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
     end
-    return "|cffffcc00"
+    return HEX.gold
 end
 
 local function GetDialogShellBg()
@@ -151,7 +154,7 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     local charName, charRealmRaw = nil, nil
     local row = addon.db.global.characters and charKey and addon.db.global.characters[charKey]
     if type(row) == "table" then
-        local n = row.name
+        local n = ns.CharDisplayName and ns.CharDisplayName(row, row.name) or row.name
         local r = row.realm
         if type(n) == "string" and not (issecretvalue and issecretvalue(n)) and n ~= "" then
             charName = n
@@ -167,7 +170,8 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
         charRealmRaw = charRealmRaw or charKey:match("%-(.+)")
     end
     if not charName then
-        local un = UnitName("player")
+        local un = (ns.Utilities and ns.Utilities.GetLivePlayerDisplayName and ns.Utilities:GetLivePlayerDisplayName())
+            or UnitName("player")
         if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then
             charName = un
         end
@@ -190,10 +194,10 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
         charRealm = ""
     end
 
-    local classColor = "|cffffcc00"
+    local classColor = HEX.gold
     if not (issecretvalue and issecretvalue(charName)) and charName and ns.UI_GetClassColorHexForWarbandCharacter then
         local hex = ns.UI_GetClassColorHexForWarbandCharacter(charName)
-        if hex and hex ~= "|cffaaaaaa" then
+        if hex and hex ~= HEX.muted then
             classColor = hex
         end
     end
@@ -226,13 +230,13 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
 
     local trackedTitle = ns.FontManager:CreateFontString(trackedFrame, "header", "OVERLAY")
     trackedTitle:SetPoint("TOP", 0, -12)
-    trackedTitle:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, "|cff00ff00") .. ((ns.L and ns.L["TRACKED_LABEL"]) or "Tracked") .. "|r")
+    trackedTitle:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, HEX.green) .. ((ns.L and ns.L["TRACKED_LABEL"]) or "Tracked") .. "|r")
 
     local trackedDesc = ns.FontManager:CreateFontString(trackedFrame, "body", "OVERLAY")
     trackedDesc:SetPoint("TOP", trackedTitle, "BOTTOM", 0, -5)
     trackedDesc:SetWidth(185)
     trackedDesc:SetJustifyH("CENTER")
-    trackedDesc:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, "|cff88ff88") .. ((ns.L and ns.L["TRACKED_DETAILED_LINE1"]) or "Full detailed data") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["TRACKED_DETAILED_LINE2"]) or "All features enabled") .. "|r")
+    trackedDesc:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, HEX.green) .. ((ns.L and ns.L["TRACKED_DETAILED_LINE1"]) or "Full detailed data") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["TRACKED_DETAILED_LINE2"]) or "All features enabled") .. "|r")
 
     local untrackedFrame = ShellButton(dialog, 200, 75, false)
     untrackedFrame:SetPoint("TOP", charNameText, "BOTTOM", 110, optionsY)
@@ -256,13 +260,13 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
 
     local untrackedTitle = ns.FontManager:CreateFontString(untrackedFrame, "header", "OVERLAY")
     untrackedTitle:SetPoint("TOP", 0, -12)
-    untrackedTitle:SetText(SemanticHex(ns.UI_GetSemanticRedColor, "|cffff4444") .. ((ns.L and ns.L["UNTRACKED_LABEL"]) or "Untracked") .. "|r")
+    untrackedTitle:SetText(SemanticHex(ns.UI_GetSemanticRedColor, HEX.red) .. ((ns.L and ns.L["UNTRACKED_LABEL"]) or "Untracked") .. "|r")
 
     local untrackedDesc = ns.FontManager:CreateFontString(untrackedFrame, "body", "OVERLAY")
     untrackedDesc:SetPoint("TOP", untrackedTitle, "BOTTOM", 0, -5)
     untrackedDesc:SetWidth(185)
     untrackedDesc:SetJustifyH("CENTER")
-    untrackedDesc:SetText(SemanticHex(ns.UI_GetSemanticRedColor, "|cffff8888") .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
+    untrackedDesc:SetText(SemanticHex(ns.UI_GetSemanticRedColor, HEX.red) .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
 
     if not InCombatLockdown() then
         dialog:EnableKeyboard(true)
@@ -407,7 +411,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     end)
     local yesText = ns.FontManager:CreateFontString(yesCard, "body", "OVERLAY")
     yesText:SetPoint("CENTER")
-    yesText:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, "|cff90ff90") .. ((ns.L and ns.L["CONFIRM"]) or "Confirm") .. "|r")
+    yesText:SetText(SemanticHex(ns.UI_GetSemanticGreenColor, HEX.green) .. ((ns.L and ns.L["CONFIRM"]) or "Confirm") .. "|r")
 
     local noCard = ShellButton(dialog, btnW, btnH, false)
     noCard:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", (gap / 2), btnMarginBottom)
@@ -419,7 +423,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     end)
     local noText = ns.FontManager:CreateFontString(noCard, "body", "OVERLAY")
     noText:SetPoint("CENTER")
-    noText:SetText(SemanticHex(ns.UI_GetSemanticRedColor, "|cffff8080") .. (CANCEL or "Cancel") .. "|r")
+    noText:SetText(SemanticHex(ns.UI_GetSemanticRedColor, HEX.red) .. (CANCEL or "Cancel") .. "|r")
 
     if not isExternal then
         if not InCombatLockdown() then

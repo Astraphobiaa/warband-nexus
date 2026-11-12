@@ -5,6 +5,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
@@ -23,16 +26,16 @@ local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    if role == "Muted" then return "|cffaaaaaa" end
-    return "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    if role == "Muted" then return HEX.muted end
+    return HEX.bright
 end
 
 local function SemanticGoldHex()
     if ns.UI_GetSemanticGoldHex then
         return ns.UI_GetSemanticGoldHex()
     end
-    return "|cffffd700"
+    return HEX.gold
 end
 
 local function ControlChromeBg()
@@ -54,7 +57,7 @@ local function SemanticGreenHex()
         local r, g, b = ns.UI_GetSemanticGreenColor()
         return string.format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
     end
-    return "|cff44ff44"
+    return HEX.green
 end
 
 -- RUNTIME DEPENDENCY VALIDATION
@@ -84,7 +87,7 @@ end
 local function CreateExternalWindow(config)
     -- Runtime dependency check (deferred to first use)
     if not COLORS or not ApplyVisuals or not FontManager or not CreateIcon or not CreateButton or not Factory then
-        DebugPrint("|cffff0000[WN WindowFactory ERROR]|r Missing dependencies - SharedWidgets not loaded")
+        DebugPrint(HEX.red .. "[WN WindowFactory ERROR]|r Missing dependencies - SharedWidgets not loaded")
         return nil
     end
     
@@ -621,7 +624,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     local WarbandNexus = ns.WarbandNexus
     if WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievementID) then
         local plannedWord = (L and L["PLANNED"]) or "Planned"
-        plannedTag = " |cffffcc00(" .. plannedWord .. ")|r"
+        plannedTag = " " .. HEX.gold .. "(" .. plannedWord .. ")|r"
     end
     popup._name:SetText(statusIcon .. " " .. nameColor .. (name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r" .. plannedTag)
     

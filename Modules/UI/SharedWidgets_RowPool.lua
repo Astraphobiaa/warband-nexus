@@ -131,6 +131,9 @@ local CHAR_ID_GRADIENT_PAD = 4
 
 local function CharacterIdentityShowsRealm()
     local addon = ns.WarbandNexus
+    -- Forever: the second line is the surname, governed by its own setting; the realm switch
+    -- (hidden in Settings there) must not blank it.
+    if addon and addon.SupportsFeature and addon:SupportsFeature("realmTypeTag") then return true end
     local p = addon and addon.db and addon.db.profile
     return not p or p.showCharacterRealmName ~= false
 end
@@ -140,6 +143,36 @@ local function CharacterIdentityRealmText(char)
     local realm = (U and U.FormatRealmName and U:FormatRealmName(char.realm)) or char.realm or ""
     if issecretvalue and issecretvalue(realm) then return "" end
     return realm
+end
+
+--- On WoW Forever the realm is a PvE / PvP / RP tag that lives in its own roster column, so the
+--- identity block's second line carries the SURNAME instead -- "Elementalist Vhorzen" does not
+--- fit one line at the name column's width, and truncating a player's own name is the worst of
+--- the options. Everywhere else the second line stays the realm, unchanged.
+local function CharacterIdentitySecondLine(char)
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature and addon:SupportsFeature("realmTypeTag") then
+        local U = ns.Utilities
+        -- Hidden by the player: there is nothing to put on the second line, and the name above
+        -- is already the first half on its own.
+        if U and U.ShowsCharacterSurname and not U:ShowsCharacterSurname() then return "" end
+        local surname = char.surname
+        if type(surname) ~= "string" or surname == "" then return "" end
+        if issecretvalue and issecretvalue(surname) then return "" end
+        return surname
+    end
+    return CharacterIdentityRealmText(char)
+end
+
+--- First line of the identity block: the whole name off-Forever, the given name where the
+--- surname goes on its own line below.
+local function CharacterIdentityFirstLine(char)
+    local U = ns.Utilities
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature and addon:SupportsFeature("realmTypeTag") then
+        return char.name
+    end
+    return (U and U.GetCharacterDisplayName and U:GetCharacterDisplayName(char)) or char.name
 end
 
 local function CharacterIdentityPresent(fs, text)
@@ -201,11 +234,7 @@ function ns.UI_ApplyCharacterRowIdentity(row, char, nameLeft, nameColW, opts)
     nameFs:SetWidth(nameColW)
     realmFs:SetWidth(nameColW)
 
-    -- Forever character names carry a surname ("Elementalist Vhorzen"); char.name holds only the
-    -- first word, so the display name is the one place both halves are joined. Retail has no
-    -- surname and gets char.name back unchanged.
-    local U = ns.Utilities
-    local nm = (U and U.GetCharacterDisplayName and U:GetCharacterDisplayName(char)) or char.name
+    local nm = CharacterIdentityFirstLine(char)
     if not nm or (issecretvalue and issecretvalue(nm)) then
         nm = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
     end
@@ -220,13 +249,13 @@ function ns.UI_ApplyCharacterRowIdentity(row, char, nameLeft, nameColW, opts)
     local shift = (rowH - CHAR_ID_REF_ROW_H) / 2
     nameFs:ClearAllPoints()
     realmFs:ClearAllPoints()
-    if CharacterIdentityShowsRealm() then
+    local second = CharacterIdentityShowsRealm() and CharacterIdentitySecondLine(char) or ""
+    if second ~= "" then
         nameFs:SetPoint("TOPLEFT", row, "TOPLEFT", nameLeft, -(CHAR_ID_NAME_TOP + shift))
         realmFs:SetPoint("TOPLEFT", row, "TOPLEFT", nameLeft, -(CHAR_ID_REALM_TOP + shift))
-        local realm = CharacterIdentityRealmText(char)
         ns.UI_SetTextColorRole(realmFs, "Normal")
-        realmFs:SetText(realm)
-        CharacterIdentityPresent(realmFs, realm)
+        realmFs:SetText(second)
+        CharacterIdentityPresent(realmFs, second)
         realmFs:Show()
     else
         -- Without the realm subline the name centers vertically; empty text keeps the gradient on the name.
@@ -394,6 +423,44 @@ end
 
 --- Results-annex tabs (Currency, Reputation): widen `resultsContainer` on viewport change.
 ---@return boolean handled
+--[[
+    Re-apply the width of every chained section that asked to track its parent.
+
+    `ChainSectionFrameBelow` can only anchor a section's TOPLEFT, so its width is explicit and goes
+    stale the moment the viewport changes width -- the scrollbar lane opening or closing, a window
+    resize. Walking the live tree here puts it right without redrawing the tab: positions are real
+    by the time a viewport pass runs, so a section's indent is just the gap between its left edge
+    and its parent's.
+
+    The walk descends through unmarked frames (a collapsible section's body is one) but only ever
+    sets the width of frames that asked for it, so rows, icons and labels are never touched.
+]]
+local CHAIN_SPAN_MAX_DEPTH = 6
+
+local function RewidthChainedSections(parent, depth)
+    if not parent or (depth or 1) > CHAIN_SPAN_MAX_DEPTH then return end
+    if not parent.GetChildren or not parent.GetWidth or not parent.GetLeft then return end
+    local parentW = parent:GetWidth()
+    local parentLeft = parent:GetLeft()
+    if not parentW or parentW < 1 or not parentLeft then return end
+
+    local children = { parent:GetChildren() }
+    for i = 1, #children do
+        local child = children[i]
+        if child and child.IsShown and child:IsShown() then
+            if child._wnChainSpansParent and child.SetWidth and child.GetLeft then
+                local childLeft = child:GetLeft()
+                if childLeft then
+                    local indent = childLeft - parentLeft
+                    if indent < 0 then indent = 0 end
+                    child:SetWidth(math.max(1, parentW - indent))
+                end
+            end
+            RewidthChainedSections(child, (depth or 1) + 1)
+        end
+    end
+end
+
 function ns.UI_RelayoutResultsViewport(scrollChild, contentWidth, mf, opts)
     opts = opts or {}
     if not scrollChild or not contentWidth or contentWidth < 1 then
@@ -409,6 +476,9 @@ function ns.UI_RelayoutResultsViewport(scrollChild, contentWidth, mf, opts)
     if ns.UI_RelayoutResultsContainer then
         ns.UI_RelayoutResultsContainer(rc, scrollChild, side, opts.bottomInset or 8)
     end
+    -- The container is only the frame around the sections; without this the sections inside keep
+    -- the width of the draw that built them and end short of the edge.
+    RewidthChainedSections(rc, 1)
     return true
 end
 

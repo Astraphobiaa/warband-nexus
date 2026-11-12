@@ -399,7 +399,9 @@ function WarbandNexus:UpdateCharacterCache(dataType, value)
         end
         
     elseif dataType == "itemLevel" then
-        local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
+        -- Utilities answers from GetAverageItemLevel where that describes the gear, and averages
+        -- the equipped pieces itself where it does not (WoW Forever reports a constant 1.75).
+        local avgItemLevelEquipped = ns.Utilities:GetEquippedItemLevel()
         if issecretvalue and issecretvalue(avgItemLevelEquipped) then return end
         -- Raw fractional value (same convention as SaveCurrentCharacterData / OnItemLevelChanged);
         -- integer displays floor at render time.
@@ -599,6 +601,15 @@ end
 
 -- CHARACTER DATA COLLECTION
 
+-- Vanilla secondary skill lines, used to classify GetProfessions returns on WoW Forever where
+-- their order is not stable. Verified against /wn charprobe: First Aid 129, Cooking 185 (Mining
+-- came back as 186, a primary). Fishing 356 is the vanilla id and is still unconfirmed in game.
+local SECONDARY_SKILL_LINES = {
+    [129] = "firstAid",
+    [185] = "cooking",
+    [356] = "fishing",
+}
+
 --- Collect basic profession data.
 function WarbandNexus:CollectProfessionData()
     -- GUARD: Only collect if character is tracked
@@ -609,8 +620,13 @@ function WarbandNexus:CollectProfessionData()
     local success, result = pcall(function()
         local professions = {}
         
-        -- GetProfessions returns indices for the profession UI
-        local prof1, prof2, _arch, fish, cook = GetProfessions()
+        -- GetProfessions returns tab indices, and on WoW Forever its RETURN POSITIONS move: one
+        -- /wn charprobe read First Aid back in the third slot, while the character row saved
+        -- minutes later had it in prof2. So on Forever the returns are classified by the skill
+        -- line each one reports (First Aid 129, Cooking 185, Fishing 356 -- the vanilla ids)
+        -- instead of by where they landed. Retail keeps the documented positional read, because
+        -- there the third return is Archaeology and nothing else collides.
+        local r1, r2, r3, r4, r5 = GetProfessions()
         
         local function getProfData(index)
             if not index then return nil end
@@ -631,11 +647,34 @@ function WarbandNexus:CollectProfessionData()
             }
         end
 
-        if prof1 then professions[1] = getProfData(prof1) end
-        if prof2 then professions[2] = getProfData(prof2) end
-        if cook then professions.cooking = getProfData(cook) end
-        if fish then professions.fishing = getProfData(fish) end
-        -- Archaeology removed: deprecated since Dragonflight, no longer relevant
+        if self.SupportsFeature and self:SupportsFeature("firstAidProfession") then
+            -- Forever: sort by skill line, not by slot. Anything that is not one of the three
+            -- vanilla secondaries is a primary and fills slot 1 then slot 2.
+            -- Walked by index, NOT with ipairs: GetProfessions leaves holes (prof2 is nil with
+            -- one primary learned) and ipairs stops at the first one -- which is how First Aid in
+            -- slot three went missing while Mining in slot one came through.
+            local nextPrimary = 1
+            local returns = { r1, r2, r3, r4, r5 }
+            for i = 1, 5 do
+                local data = getProfData(returns[i])
+                if data then
+                    local secondaryKey = SECONDARY_SKILL_LINES[data.skillLine]
+                    if secondaryKey then
+                        professions[secondaryKey] = data
+                    elseif nextPrimary <= 2 then
+                        professions[nextPrimary] = data
+                        nextPrimary = nextPrimary + 1
+                    end
+                end
+            end
+        else
+            -- Retail: documented order (prof1, prof2, archaeology, fishing, cooking).
+            -- Archaeology is deprecated since Dragonflight and deliberately dropped.
+            if r1 then professions[1] = getProfData(r1) end
+            if r2 then professions[2] = getProfData(r2) end
+            if r5 then professions.cooking = getProfData(r5) end
+            if r4 then professions.fishing = getProfData(r4) end
+        end
         
         if not next(professions) then
             return nil
@@ -691,7 +730,82 @@ local function CollectPlayerStats()
         }
     end
     if not next(primary) and not next(secondary) then return nil end
-    return { primary = primary, secondary = secondary, mainStatCode = mainStatCode }
+    -- WoW Forever's sheet carries resistances / defense / melee / spell stats; persisted for offline view.
+    local extended = WarbandNexus and WarbandNexus.CollectForeverExtendedStats
+        and WarbandNexus:CollectForeverExtendedStats() or nil
+    return { primary = primary, secondary = secondary, mainStatCode = mainStatCode, extended = extended }
+end
+
+--[[
+    WoW Forever paperdoll stats (classic-style sheet). Numbers only; labels resolve at render.
+    Signatures from warcraft.wiki.gg (each page lists the forever game type):
+      UnitArmor(unit) -> base, effectiveArmor, ...      UnitResistance(unit, i) -> base, total, ...
+      UnitAttackPower / UnitRangedAttackPower -> base, posBuff, negBuff
+      GetSpellBonusDamage(school 2..7) / GetSpellCritChance(school 2..7); resistance index 1..6 = Holy..Arcane
+      GetManaRegen() -> base, casting (per second; x5 = the sheet's per-5)
+    UnitDefense is not listed for Forever, so defense skill is not read.
+    @return table|nil ordered { { key, value, kind = "int"|"pct" } }
+]]
+function WarbandNexus:CollectForeverExtendedStats()
+    local caps = ns.Capabilities
+    if not (caps and caps.IsForeverClient and caps.IsForeverClient()) then return nil end
+    local function num(ok, v)
+        if not ok then return nil end
+        if v == nil then return 0 end
+        if (issecretvalue and issecretvalue(v)) or type(v) ~= "number" then return nil end
+        return v
+    end
+    local out = {}
+    local function add(key, v, kind)
+        if v then out[#out + 1] = { key = key, value = v, kind = kind } end
+    end
+    local function bestOverSchools(fn)
+        local best
+        for school = 2, 7 do
+            local ok, v = pcall(fn, school)
+            v = num(ok, v)
+            if v and (not best or v > best) then best = v end
+        end
+        return best
+    end
+    local function attackPower(fn)
+        local ok, base, pos, neg = pcall(fn, "player")
+        base = num(ok, base)
+        if not base then return nil end
+        return base + (num(true, pos) or 0) + (num(true, neg) or 0)
+    end
+
+    local ok, _, effArmor = pcall(UnitArmor, "player")
+    add("ARMOR", num(ok, effArmor), "int")
+    -- Bar share for armor: physical damage reduction vs. an equal-level attacker. FrameXML global
+    -- PaperDollFrame_GetArmorReduction(armor, attackerLevel) -> percent (present in /wn api on Forever).
+    local armorRow = out[#out]
+    if armorRow and armorRow.key == "ARMOR" and armorRow.value > 0 and PaperDollFrame_GetArmorReduction then
+        local okRed, red = pcall(PaperDollFrame_GetArmorReduction, armorRow.value, UnitLevel("player"))
+        red = num(okRed, red)
+        if red and red > 0 then armorRow.frac = math.min(1, red / 100) end
+    end
+    local okV, v = pcall(GetDodgeChance); add("DODGE", num(okV, v), "pct")
+    okV, v = pcall(GetParryChance); add("PARRY", num(okV, v), "pct")
+    okV, v = pcall(GetBlockChance); add("BLOCK", num(okV, v), "pct")
+    add("ATTACK_POWER", attackPower(UnitAttackPower), "int")
+    add("RANGED_ATTACK_POWER", attackPower(UnitRangedAttackPower), "int")
+    okV, v = pcall(GetHitModifier); add("MELEE_HIT", num(okV, v), "pct")
+    okV, v = pcall(GetRangedCritChance); add("RANGED_CRIT", num(okV, v), "pct")
+    okV, v = pcall(GetExpertise); add("EXPERTISE", num(okV, v), "pct")
+    add("SPELL_POWER", bestOverSchools(GetSpellBonusDamage), "int")
+    okV, v = pcall(GetSpellBonusHealing); add("HEALING", num(okV, v), "int")
+    okV, v = pcall(GetSpellHitModifier); add("SPELL_HIT", num(okV, v), "pct")
+    add("SPELL_CRIT", bestOverSchools(GetSpellCritChance), "pct")
+    okV, v = pcall(GetSpellPenetration); add("SPELL_PENETRATION", num(okV, v), "int")
+    okV, v = pcall(GetManaRegen); v = num(okV, v)
+    add("MANA_REGEN", v and v * 5 or nil, "int")
+    local RESIST_KEYS = { "RESIST_HOLY", "RESIST_FIRE", "RESIST_NATURE", "RESIST_FROST", "RESIST_SHADOW", "RESIST_ARCANE" }
+    for i = 1, #RESIST_KEYS do
+        local okR, _, total = pcall(UnitResistance, "player", i)
+        add(RESIST_KEYS[i], num(okR, total), "int")
+    end
+    return (#out > 0) and out or nil
 end
 
 --- Collect rested XP snapshot from API for DB persistence (API > DB > UI).
@@ -1120,13 +1234,23 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     else
         -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
         professionData = existingSnapshot.professions
-        if not (professionData[1] and professionData[2]) then
+        -- A snapshot missing a secondary this client HAS is refreshed too, not just one missing
+        -- a primary: First Aid arrived after these rows were first written, and without this the
+        -- stale set would survive until the character happened to learn a new profession.
+        local missingSecondary = (self.SupportsFeature and self:SupportsFeature("firstAidProfession")
+            and not professionData.firstAid) or false
+        if missingSecondary or not (professionData[1] and professionData[2]) then
             local liveProf = self:CollectProfessionData()
             if liveProf and next(liveProf) then
                 if not professionData[1] and liveProf[1] then professionData[1] = liveProf[1] end
                 if not professionData[2] and liveProf[2] then professionData[2] = liveProf[2] end
                 if not professionData.cooking and liveProf.cooking then professionData.cooking = liveProf.cooking end
                 if not professionData.fishing and liveProf.fishing then professionData.fishing = liveProf.fishing end
+                -- First Aid exists only where the capability says so, and it is filled in the
+                -- same way as the other secondaries rather than needing its own save path.
+                if not professionData.firstAid and liveProf.firstAid then
+                    professionData.firstAid = liveProf.firstAid
+                end
                 ns._professionDataReady = true
             end
         end
@@ -1138,7 +1262,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     -- here froze ilvl permanently whenever OnItemLevelChanged never landed on the row.
     -- Zero/secret readings (gear not streamed in yet at T+2s) keep the previous value.
     local itemLevel = (existingEntry and existingEntry.itemLevel) or 0
-    local _, avgItemLevelEquipped = GetAverageItemLevel()
+    local avgItemLevelEquipped = ns.Utilities:GetEquippedItemLevel()
     if issecretvalue and issecretvalue(avgItemLevelEquipped) then
         avgItemLevelEquipped = nil
     end
@@ -1272,6 +1396,13 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         end
         self.db.global.characters[key] = existingEntry
         RelocateLegacyCharacterSlot(self.db, key, legacyKey)
+        -- The light path is the save many characters ever run, and it returns here -- so the
+        -- systems scan has to happen on this branch too. Leaving it only on the full path meant
+        -- db.global.characters[key].systems kept whatever the first scan wrote, which is exactly
+        -- how a fixed talent-tree grouping kept rendering with the old one.
+        if self.ScanCharacterSystems then
+            pcall(self.ScanCharacterSystems, self)
+        end
         return _saveProfEnd(true)
     end
 
@@ -1389,12 +1520,19 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         end
     end
     
+    -- Talent tree + spellbook for the Skill / Talent columns. Runs after the row exists, because
+    -- the scan writes onto it. Nothing to do on retail: ScanTalentTree returns nil without the
+    -- classicTalentTree capability and the spellbook scan is cheap (one pass over known spells).
+    if self.ScanCharacterSystems then
+        pcall(self.ScanCharacterSystems, self)
+    end
+
     -- Fire event for UI refresh (DB-First pattern)
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
         charKey = key,
         isNew = isNew
     })
-    
+
     return _saveProfEnd(true)
 end
 
@@ -1485,9 +1623,41 @@ end
 --- expansion, discoveredSkillLines, equipment, concentration, knowledge, and recipe stores.
 ---@param charData table character data table
 ---@return boolean true if any slot was healed
+--- Secondary slots as they are keyed on a character row. A profession sitting in one of these
+--- is never a primary, whatever else on the row happens to mention it by name.
+local SECONDARY_PROFESSION_SLOTS = { "firstAid", "fishing", "cooking" }
+
+--- True when `name` belongs to a secondary this character actually has.
+---
+--- The literal list below covers retail, where Cooking / Fishing / Archaeology are the only
+--- secondaries. It did NOT cover First Aid, which exists on WoW Forever -- so the heal found
+--- "First Aid" in professionExpansions and promoted it into the second PRIMARY slot, where the
+--- roster then drew it beside Mining. Rather than add another hardcoded name, the character's own
+--- secondary entries are consulted: a profession already filed as one cannot be a primary.
+local function IsSecondaryProfessionName(charData, name)
+    local professions = charData.professions
+    if type(professions) ~= "table" then return false end
+    for i = 1, #SECONDARY_PROFESSION_SLOTS do
+        local entry = professions[SECONDARY_PROFESSION_SLOTS[i]]
+        if type(entry) == "table" and entry.name == name then return true end
+    end
+    return false
+end
+
 function WarbandNexus:HealCharacterProfessions(charData)
     if not charData or type(charData) ~= "table" then return false end
     if not charData.professions then charData.professions = {} end
+
+    -- Undo an earlier promotion: a numeric slot holding a profession that is also filed as a
+    -- secondary is the bug's own output, and it would otherwise survive forever because the
+    -- early return below sees both primaries as filled.
+    for _, slot in ipairs({ 1, 2 }) do
+        local entry = charData.professions[slot]
+        if type(entry) == "table" and entry.name
+            and IsSecondaryProfessionName(charData, entry.name) then
+            charData.professions[slot] = nil
+        end
+    end
 
     local p1 = charData.professions[1]
     local p2 = charData.professions[2]
@@ -1501,6 +1671,7 @@ function WarbandNexus:HealCharacterProfessions(charData)
         if issecretvalue and issecretvalue(name) then return end
         if not name or type(name) ~= "string" or name == "" then return end
         if name == "Cooking" or name == "Fishing" or name == "Archaeology" or name == "_legacy" then return end
+        if IsSecondaryProfessionName(charData, name) then return end
         if (has1 and p1.name == name) or (has2 and p2.name == name) then return end
         if not foundNames[name] then
             foundNames[name] = true

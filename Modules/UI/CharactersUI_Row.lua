@@ -6,6 +6,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local B = assert(ns.CharactersUI and ns.CharactersUI._bind, "CharactersUI_Row: load Modules/UI/CharactersUI.lua first")
@@ -28,6 +31,61 @@ local GetLayout = B.GetLayout
 local BuildGuildText = B.BuildGuildText
 
 local DebugPrint = ns.DebugPrint
+
+-- Profession strip geometry. Two places lay these icons out -- the first paint and the resize
+-- relayout -- and they MUST agree: the relayout used to hardcode 39 px while the paint shrank to
+-- fit, so four professions were spaced for 39 and drawn at 33, overlapping each other.
+local PROF_ICON_MAX = 39
+local PROF_ICON_MIN = 22
+local PROF_ICON_GAP = 5
+
+--- Largest square that fits `count` icons plus their gaps inside `columnW`.
+-- Fixed slot order where the vanilla secondary set exists: the two primaries, then Cooking,
+-- Fishing and First Aid. Each keeps its place whether or not the character has it, so a roster of
+-- alts lines up column by column instead of shuffling.
+--
+-- The placeholders are the long-standing Classic icon paths for those three trades. They are
+-- referenced by path rather than by file id because a path that no longer resolves simply draws
+-- nothing, while a stale numeric id can draw the WRONG art.
+local PROF_SLOT_ORDER = {
+    { key = 1, empty = true },
+    { key = 2, empty = true },
+    { key = "firstAid", placeholder = "Interface\\Icons\\Spell_Holy_SealOfSacrifice" },
+    { key = "fishing", placeholder = "Interface\\Icons\\Trade_Fishing" },
+    { key = "cooking", placeholder = "Interface\\Icons\\Trade_Cooking" },
+}
+
+--- Art for a slot the character has not filled: the trade's own icon for a secondary, and a
+--- plain cross for a primary, which has no identity of its own until one is chosen.
+local function ProfSlotPlaceholder(slot)
+    if slot.placeholder then return slot.placeholder end
+    if slot.empty and ns.UI_GetIconFile then return ns.UI_GetIconFile("close") end
+    return nil
+end
+
+local function ProfIconSize(columnW, count)
+    if not count or count < 1 then return PROF_ICON_MAX end
+    local fit = math.floor(((columnW or 0) - (count - 1) * PROF_ICON_GAP) / count)
+    if fit >= PROF_ICON_MAX then return PROF_ICON_MAX end
+    return math.max(PROF_ICON_MIN, fit)
+end
+
+-- Same square as the profession icons next to them, so the three columns read as one band
+-- instead of two sizes of glyph on one row.
+local CELL_ICON = 39
+
+--- The name as it should be PRINTED anywhere in this row: Utilities joins the Forever surname
+--- and honours the player's "show secondary name" setting, so no call site decides it alone.
+local function DisplayName(char)
+    local U = ns.Utilities
+    if U and U.GetCharacterDisplayName then
+        local printed = U:GetCharacterDisplayName(char)
+        -- Must be a real string: `if printed then` accepted anything truthy, and a resolver that
+        -- answers a number put "Remove 0 from tracking" in a confirmation dialog.
+        if type(printed) == "string" and printed ~= "" then return printed end
+    end
+    return char and char.name
+end
 
 local function SemanticGoldRGB()
     if ns.UI_GetSemanticGoldColor then
@@ -71,21 +129,13 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         addon._charsListStableGuildColW = guildColW
     end
 
-    local guildOffset = GetColumnOffset("guild")
-    local guildSpacing = (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.spacing) or 15
     local rowH = row:GetHeight() or 46
     local centerY = -rowH / 2
 
-    if row.guildText and guildColW then
-        row.guildText:ClearAllPoints()
-        row.guildText:SetPoint("CENTER", row, "TOPLEFT", guildOffset + (guildColW - 4) / 2, centerY)
-        row.guildText:SetWidth(math.max(1, guildColW - 4))
-    end
-
-    local guildTotal = guildColW + guildSpacing
-    local levelOffset = guildOffset + guildTotal
+    -- Level now leads the text block, and everything before it is fixed width, so it reads its
+    -- own offset straight from the column order.
+    local levelOffset = GetColumnOffset("level")
     local levelColW = (flexCols and flexCols.level) or CHAR_ROW_COLUMNS.level.width
-
     if row.levelText then
         row.levelText:SetWidth(levelColW)
         row.levelText:ClearAllPoints()
@@ -99,8 +149,34 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         row.levelRestedText:SetWidth(levelColW)
     end
 
+    local guildOffset = GetColumnOffset("guild")
+    local guildSpacing = (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.spacing) or 15
+    if row.guildText and guildColW then
+        row.guildText:ClearAllPoints()
+        row.guildText:SetPoint("CENTER", row, "TOPLEFT", guildOffset + (guildColW - 4) / 2, centerY)
+        row.guildText:SetWidth(math.max(1, guildColW - 4))
+    end
+
+    -- Guild is the only measured column, so from here on the offsets are chained off its real
+    -- width instead of the fixed totals the column order carries.
+    local guildTotal = guildColW + guildSpacing
+    local mailOffset = guildOffset + guildTotal
+    local realmTypeOffset = mailOffset + ((CHAR_ROW_COLUMNS.mail and CHAR_ROW_COLUMNS.mail.total) or 46)
+
+    local realmTypeW = (flexCols and flexCols.realmType) or CHAR_ROW_COLUMNS.realmType.width
+    if row.realmTypeText then
+        if realmTypeW > 0 then
+            row.realmTypeText:SetWidth(realmTypeW)
+            row.realmTypeText:ClearAllPoints()
+            row.realmTypeText:SetPoint("LEFT", realmTypeOffset, 0)
+        else
+            row.realmTypeText:Hide()
+        end
+    end
+
     local itemLevelW = (flexCols and flexCols.itemLevel) or CHAR_ROW_COLUMNS.itemLevel.width
-    local itemLevelOffset = levelOffset + levelColW + (CHAR_ROW_COLUMNS.level.spacing or 15)
+    local itemLevelOffset = realmTypeOffset + realmTypeW
+        + ((realmTypeW > 0) and (CHAR_ROW_COLUMNS.realmType.spacing or 0) or 0)
     if row.itemLevelText then
         row.itemLevelText:SetWidth(itemLevelW)
         row.itemLevelText:ClearAllPoints()
@@ -126,29 +202,77 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
                 shown[#shown + 1] = pFrame
             end
         end
+        if WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("firstAidProfession") then
+            -- Fixed slots: each icon keeps ITS index's place. Packing the visible ones together
+            -- here, the way the branch below does, undid the slot layout the paint had just set --
+            -- so every resize slid the icons across and an empty primary slot closed up.
+            local slots = #PROF_SLOT_ORDER
+            local iconSize = ProfIconSize(profW, slots)
+            local totalIconWidth = (slots * iconSize) + ((slots - 1) * PROF_ICON_GAP)
+            local x = profOffset + (profW - totalIconWidth) / 2
+            for i = 1, slots do
+                local pFrame = row.profIcons[i]
+                if pFrame then
+                    pFrame:SetSize(iconSize, iconSize)
+                    pFrame:ClearAllPoints()
+                    pFrame:SetPoint("LEFT", x, 0)
+                end
+                x = x + iconSize + PROF_ICON_GAP
+            end
+        else
         local numProfs = #shown
         if numProfs > 0 then
-            local iconSize = 39
-            local iconSpacing = 5
-            local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)
+            local iconSize = ProfIconSize(profW, numProfs)
+            local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * PROF_ICON_GAP)
             local leftPadding = (profW - totalIconWidth) / 2
             local currentProfX = profOffset + leftPadding
             for i = 1, numProfs do
                 local pFrame = shown[i]
+                -- Resized as well as moved: a frame built at 39 keeps that size otherwise, and
+                -- the row would space them for the smaller square while drawing the larger one.
+                pFrame:SetSize(iconSize, iconSize)
                 pFrame:ClearAllPoints()
                 pFrame:SetPoint("LEFT", currentProfX, 0)
-                currentProfX = currentProfX + iconSize + iconSpacing
+                currentProfX = currentProfX + iconSize + PROF_ICON_GAP
             end
+        end
+        end
+    end
+
+    -- Skills / Talents sit between Professions and Keystone, and all three collapse to zero width
+    -- on a client without their system -- so each one's trailing gap goes with it and the next
+    -- column moves up instead of leaving a hole.
+    local skillsW = (flexCols and flexCols.skills) or CHAR_ROW_COLUMNS.skills.width
+    local skillsOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+    if row.skillsIcon then
+        if skillsW > 0 then
+            row.skillsIcon:ClearAllPoints()
+            row.skillsIcon:SetPoint("LEFT", skillsOffset + (skillsW - CELL_ICON) / 2, 0)
+        else
+            row.skillsIcon:Hide()
+        end
+    end
+
+    local talentsW = (flexCols and flexCols.talents) or CHAR_ROW_COLUMNS.talents.width
+    local talentsOffset = skillsOffset + skillsW
+        + ((skillsW > 0) and (CHAR_ROW_COLUMNS.skills.spacing or 0) or 0)
+    if row.talentsIcon then
+        if talentsW > 0 then
+            row.talentsIcon:ClearAllPoints()
+            row.talentsIcon:SetPoint("LEFT", talentsOffset + (talentsW - CELL_ICON) / 2, 0)
+        else
+            row.talentsIcon:Hide()
         end
     end
 
     local mythicKeyW = (flexCols and flexCols.mythicKey) or CHAR_ROW_COLUMNS.mythicKey.width
-    -- Width 0 = no Mythic+ on this client (see CharRowMythicKeyEnabled): hide, do not just shrink.
+    -- Width 0 = no Mythic+ on this client (see CharRowColumnEnabled): hide, do not just shrink.
     if mythicKeyW == 0 then
         if row.keystoneIcon then row.keystoneIcon:Hide() end
         if row.keystoneText then row.keystoneText:Hide() end
     end
-    local mythicKeyOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+    local mythicKeyOffset = talentsOffset + talentsW
+        + ((talentsW > 0) and (CHAR_ROW_COLUMNS.talents.spacing or 0) or 0)
     if row.keystoneIcon then
         row.keystoneIcon:ClearAllPoints()
         row.keystoneIcon:SetPoint("LEFT", mythicKeyOffset + 5, 0)
@@ -159,7 +283,7 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)
     end
 
-    local mailOffset = GetColumnOffset("mail")
+    -- mailOffset was chained off the measured guild width above.
     if row.mailBtn and row.mailBtn:IsShown() then
         local mailColW = CHAR_ROW_COLUMNS.mail and CHAR_ROW_COLUMNS.mail.width or 36
         local mailBtnSz = row.mailBtn:GetWidth() or 34
@@ -191,7 +315,17 @@ local function StyleCharacterDeleteIcon(icon, highlighted)
     icon:SetAlpha(highlighted and 1 or 0.75)
 end
 
-local SECONDARY_PROF_KEYS = { "cooking" }
+-- Retail shows Cooking alone (Fishing is collected but has never been drawn). On WoW Forever the
+-- vanilla secondary set is First Aid + Fishing + Cooking, and all three are things a player tracks
+-- across alts -- so the list is per client, and retail's single icon is left exactly as it was.
+local SECONDARY_PROF_KEYS_RETAIL = { "cooking" }
+local SECONDARY_PROF_KEYS_CLASSIC = { "firstAid", "fishing", "cooking" }
+local function SecondaryProfKeys()
+    if WarbandNexus.SupportsFeature and WarbandNexus:SupportsFeature("firstAidProfession") then
+        return SECONDARY_PROF_KEYS_CLASSIC
+    end
+    return SECONDARY_PROF_KEYS_RETAIL
+end
 ---Pending-mail badge next to character name: the registry envelope (a Texture; inline |T paths are unreliable).
 local function ApplyPendingMailIconTexture(tex)
     ns.UI_SetIcon(tex, "mail")
@@ -305,7 +439,7 @@ function CharRowCb.RowOnMouseUp(self, button)
     if not (rowIndex and chars and chars[rowIndex] ~= nil) then rowIndex = nil end
     ns.UI_ShowCharacterRowContextMenu(self, charKey, {
         trackingKey = rowIndex,
-        charName = char.name,
+        charName = DisplayName(char),
         isTracked = char.isTracked ~= false,
         isCurrent = isCurrent,
         deleteButton = self.deleteBtn,
@@ -333,7 +467,7 @@ function CharRowCb.FavOnEnter(self)
         title = isFav and ((ns.L and ns.L["REMOVE_FROM_FAVORITES"]) or "Remove from Favorites") or ((ns.L and ns.L["ADD_TO_FAVORITES"]) or "Add to Favorites"),
         description = (ns.L and ns.L["FAVORITES_TOOLTIP"]) or "Favorite characters appear at the top of the list",
         lines = {
-            {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_TOGGLE"]) or "Click to toggle") .. "|r", color = {1, 1, 1}}
+            {text = HEX.green .. ((ns.L and ns.L["CLICK_TO_TOGGLE"]) or "Click to toggle") .. "|r", color = {1, 1, 1}}
         },
     })
 end
@@ -357,8 +491,12 @@ function CharRowCb.SetupProfIcon(row, char, prof, idx, profX, iconSize)
     -- Clear previous position and set new centered position
     pFrame:ClearAllPoints()
     pFrame:SetPoint("LEFT", profX, 0)
+    pFrame:SetSize(iconSize, iconSize)
     pFrame.icon:SetTexture(prof.icon)
     pFrame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Crop default WoW icon border
+    -- Undo the greyed placeholder state: the same pooled frame is reused for both.
+    pFrame.icon:SetDesaturated(false)
+    pFrame.icon:SetAlpha(1)
     pFrame:Show()
     
     -- Unspent knowledge badge (yellow dot)
@@ -395,9 +533,11 @@ function CharRowCb.SetupProfIcon(row, char, prof, idx, profX, iconSize)
         end
     end
     
-    -- Profession detail is now shown automatically when WoW's profession UI opens.
-    -- No click action needed on these icons.
-    pFrame:SetScript("OnMouseUp", nil)
+    -- Clicking opens the recipe list for that profession, the same way Skills and Talents do.
+    -- Nothing happens until that profession's window has been opened once, since the recipe list
+    -- is only readable while it is up.
+    pFrame._wnProfID = prof.skillLine
+    pFrame:SetScript("OnMouseUp", CharRowCb.ProfOnClick)
     
     -- Setup tooltip with detailed information (expansion skills + knowledge + concentration).
     -- Stable shared scripts read the painted profession from the icon (2026-10-22).
@@ -409,42 +549,92 @@ function CharRowCb.SetupProfIcon(row, char, prof, idx, profX, iconSize)
     return true
 end
 
+--- A secondary the character has not taken: its own art, desaturated and dimmed, with no
+--- tooltip or click because there is nothing behind it yet.
+function CharRowCb.SetupProfPlaceholder(row, idx, profX, iconSize, texture)
+    if not texture then
+        if row.profIcons[idx] then row.profIcons[idx]:Hide() end
+        return
+    end
+    local pFrame = row.profIcons[idx]
+    if not pFrame then
+        local iconBorderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
+        pFrame = CreateIcon(row, nil, iconSize, false, iconBorderColor, false)
+        if not pFrame then return end
+        pFrame:EnableMouse(true)
+        pFrame.icon = pFrame.texture
+        row.profIcons[idx] = pFrame
+    end
+    pFrame:SetSize(iconSize, iconSize)
+    pFrame:ClearAllPoints()
+    pFrame:SetPoint("LEFT", profX, 0)
+    pFrame.icon:SetTexture(texture)
+    pFrame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    pFrame.icon:SetDesaturated(true)
+    pFrame.icon:SetAlpha(0.35)
+    if pFrame.knowledgeBadge then pFrame.knowledgeBadge:Hide() end
+    pFrame._wnProf, pFrame._wnProfChar, pFrame._wnProfID = nil, nil, nil
+    pFrame:SetScript("OnEnter", nil)
+    pFrame:SetScript("OnLeave", nil)
+    pFrame:SetScript("OnMouseUp", nil)
+    pFrame:Show()
+end
+
 function CharRowCb.ProfOnEnter(self)
     local prof, char = self._wnProf, self._wnProfChar
     if not prof or not char then return end
     local profName = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession")
     local lines = {}
 
+    -- A row with no name and no cap carries nothing a player can read -- it renders as "? -".
+    -- Forever produces exactly one of those per profession: the expansion list is seeded from
+    -- Midnight child skill lines (Mining picked up 2916) that have no data on a vanilla-plus
+    -- client. Skip them here rather than at the source, so a half-streamed retail row is dropped
+    -- the same way instead of printing a placeholder.
+    local function IsReadableExpansion(exp)
+        if type(exp) ~= "table" then return false end
+        if exp.name and exp.name ~= "" then return true end
+        return (tonumber(exp.maxSkillLevel) or 0) > 0
+    end
+
     local expansions = char.professionExpansions and char.professionExpansions[profName]
-    if expansions and #expansions > 0 then
+    local readable = 0
+    if expansions then
+        for i = 1, #expansions do
+            if IsReadableExpansion(expansions[i]) then readable = readable + 1 end
+        end
+    end
+    if readable > 0 then
         for i = 1, #expansions do
             local exp = expansions[i]
-            local skillColor
-            local maxSkill = exp.maxSkillLevel or 0
-            local curSkill = exp.skillLevel or 0
+            if IsReadableExpansion(exp) then
+                local skillColor
+                local maxSkill = exp.maxSkillLevel or 0
+                local curSkill = exp.skillLevel or 0
 
-            if maxSkill > 0 and curSkill >= maxSkill then
-                skillColor = {0.3, 0.9, 0.3}
-            elseif curSkill > 0 then
-                local gr, gg, gb = SemanticGoldRGB()
-                skillColor = { gr, gg, gb }
-            else
-                skillColor = {0.4, 0.4, 0.4}
+                if maxSkill > 0 and curSkill >= maxSkill then
+                    skillColor = {0.3, 0.9, 0.3}
+                elseif curSkill > 0 then
+                    local gr, gg, gb = SemanticGoldRGB()
+                    skillColor = { gr, gg, gb }
+                else
+                    skillColor = {0.4, 0.4, 0.4}
+                end
+
+                local skillText
+                if maxSkill > 0 then
+                    skillText = string.format("%d / %d", curSkill, maxSkill)
+                else
+                    skillText = "-"
+                end
+
+                lines[#lines + 1] = {
+                    left = exp.name or profName,
+                    right = skillText,
+                    leftColor = {1, 1, 1},
+                    rightColor = skillColor
+                }
             end
-
-            local skillText
-            if maxSkill > 0 then
-                skillText = string.format("%d / %d", curSkill, maxSkill)
-            else
-                skillText = "â€”"
-            end
-
-            lines[#lines + 1] = {
-                left = exp.name or "?",
-                right = skillText,
-                leftColor = {1, 1, 1},
-                rightColor = skillColor
-            }
         end
     else
         -- Fallback: no expansion data yet, show basic skill
@@ -615,6 +805,294 @@ function CharRowCb.ProfOnEnter(self)
     })
 end
 
+--[[
+    Skills / Talents cells (WoW Forever).
+
+    Each column is one icon. The tooltip lists what this character actually HAS -- the talents it
+    took and the spells it knows -- not the catalogue of what exists; the full tree, with its
+    locked tiers and the trainer's list, is a click away in the popup.
+
+    Both columns collapse to zero width on a client without their system, so each painter checks
+    the width it was handed rather than asking the capability again.
+]]
+
+--- Shared: one pooled icon per cell, with the hover / click scripts already attached.
+--- Built through the Factory's CreateIcon so it carries the project's icon-well border -- a bare
+--- texture sat flat beside the bordered profession icons.
+local function AcquireCellIcon(row, field, iconKey, onEnter, onClick)
+    local btn = row[field]
+    if not btn then
+        local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
+        btn = CreateIcon(row, nil, CELL_ICON, false, borderColor, false)
+        if not btn then return nil end
+        btn.icon = btn.texture
+        ns.UI_SetIcon(btn.icon, iconKey)
+        btn:EnableMouse(true)
+        btn:SetScript("OnEnter", onEnter)
+        btn:SetScript("OnLeave", CharRowCb.HideTip)
+        btn:SetScript("OnMouseUp", onClick)
+        row[field] = btn
+    end
+    return btn
+end
+
+--- "There is something waiting here" badge, same glyph and corner the profession icons use for
+--- unspent knowledge: a talent point not spent, or a spell the character is already high enough
+--- to train. Both are things a player would otherwise have to go looking for.
+local function SetCellBadge(btn, show)
+    if not btn then return end
+    if show then
+        if not btn.pendingBadge then
+            local badge = btn:CreateTexture(nil, "OVERLAY")
+            badge:SetSize(16, 16)
+            badge:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 5, 0)
+            ns.UI_SetIcon(badge, "attention")
+            btn.pendingBadge = badge
+        end
+        btn.pendingBadge:Show()
+    elseif btn.pendingBadge then
+        btn.pendingBadge:Hide()
+    end
+end
+
+--- The tree the character actually specced into: the one holding the most points. nil until a
+--- point is spent, which is the honest answer on a character below level 10.
+local function ActiveTalentTab(talents)
+    local best, bestSpent = nil, 0
+    for i = 1, #(talents.tabs or {}) do
+        local tab = talents.tabs[i]
+        if (tab.spent or 0) > bestSpent then
+            best, bestSpent = tab, tab.spent
+        end
+    end
+    return best
+end
+
+function CharRowCb.TalentsOnEnter(self)
+    local char = self._wnTalentsChar
+    if not char then return end
+    local key = GetCharKey(char)
+    local systems = WarbandNexus.GetCharacterSystems and WarbandNexus:GetCharacterSystems(key) or nil
+    local talents = systems and systems.talents
+    local L = ns.L
+    local lines = {}
+
+    local active = talents and ActiveTalentTab(talents)
+    if not active then
+        lines[#lines + 1] = {
+            left = (L and L["TALENTS_NONE_SELECTED"]) or "No talents selected yet",
+            leftColor = { 0.7, 0.7, 0.75 },
+        }
+    else
+        lines[#lines + 1] = {
+            left = active.name
+                or string.format((L and L["TALENTS_TREE"]) or "Tree %d", active.index),
+            right = tostring(active.spent or 0),
+            leftColor = { 1, 1, 1 },
+            rightColor = { 0.3, 0.9, 0.3 },
+        }
+        -- Only the talents that were taken: that is what "selected" means here.
+        for k = 1, #active.tierOrder do
+            local tier = active.tiers[active.tierOrder[k]]
+            for n = 1, #tier.nodes do
+                local node = tier.nodes[n]
+                if (node.rank or 0) > 0 then
+                    lines[#lines + 1] = {
+                        left = "  " .. (node.name or "?"),
+                        right = string.format("%d/%d", node.rank, node.maxRanks or 0),
+                        leftColor = { 0.9, 0.9, 0.95 },
+                        rightColor = { 0.3, 0.9, 0.3 },
+                    }
+                end
+            end
+        end
+    end
+    if talents and (talents.unspent or 0) > 0 then
+        local gr, gg, gb = SemanticGoldRGB()
+        lines[#lines + 1] = { left = " ", leftColor = { 1, 1, 1 } }
+        lines[#lines + 1] = {
+            left = (L and L["TALENTS_UNSPENT"]) or "Unspent points",
+            right = tostring(talents.unspent),
+            leftColor = { 1, 1, 1 },
+            rightColor = { gr, gg, gb },
+        }
+    end
+
+    ShowTooltip(self, {
+        type = "custom",
+        icon = "talents",
+        title = (L and L["CHARS_COL_TALENTS"]) or "Talents",
+        lines = lines,
+    })
+end
+
+function CharRowCb.SkillsOnEnter(self)
+    local char = self._wnSkillsChar
+    if not char then return end
+    local key = GetCharKey(char)
+    local systems = WarbandNexus.GetCharacterSystems and WarbandNexus:GetCharacterSystems(key) or nil
+    local spells = systems and systems.spells
+    local L = ns.L
+    local lines = {}
+
+    -- One line. The list itself is a window: a spellbook does not fit in a tooltip, and the icons
+    -- are the point of it.
+    if spells and spells.known then
+        lines[#lines + 1] = {
+            left = (L and L["SKILLS_KNOWN"]) or "Known",
+            right = tostring(spells.known),
+            leftColor = { 1, 1, 1 },
+            rightColor = { 0.3, 0.9, 0.3 },
+        }
+    end
+    lines[#lines + 1] = {
+        left = HEX.green .. ((L and L["SKILLS_CLICK_TO_OPEN"]) or "Click to open the skill list") .. "|r",
+        leftColor = { 1, 1, 1 },
+    }
+
+    ShowTooltip(self, {
+        type = "custom",
+        icon = "skills",
+        title = (L and L["CHARS_COL_SKILLS"]) or "Skills",
+        lines = lines,
+    })
+end
+
+--- Clicking either cell opens the full view: the tooltip is what you have, the popup is the tree.
+function CharRowCb.SkillsOnClick(self)
+    local char = self._wnSkillsChar
+    if not char or not WarbandNexus.ShowSkillsPopup then return end
+    CharRowCb.HideTip()
+    local key = GetCharKey(char)
+    local name = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+        and ns.Utilities:GetCharacterDisplayName(char)) or char.name
+    WarbandNexus:ShowSkillsPopup(key, name, char.classFile, tonumber(char.level))
+end
+
+function CharRowCb.TalentsOnClick(self)
+    local char = self._wnTalentsChar
+    if not char or not WarbandNexus.ShowTalentTreePopup then return end
+    CharRowCb.HideTip()
+    local key = GetCharKey(char)
+    local name = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+        and ns.Utilities:GetCharacterDisplayName(char)) or char.name
+    WarbandNexus:ShowTalentTreePopup(key, name)
+end
+
+--- Skills cell: one icon, centred in its column.
+function CharRowCb.PaintSkillsCell(row, char, width, offset)
+    if width <= 0 then
+        if row.skillsIcon then row.skillsIcon:Hide() end
+        return
+    end
+    local btn = AcquireCellIcon(row, "skillsIcon", "skills",
+        CharRowCb.SkillsOnEnter, CharRowCb.SkillsOnClick)
+    if not btn then return end
+    btn._wnSkillsChar = char
+    btn:ClearAllPoints()
+    btn:SetPoint("LEFT", offset + (width - CELL_ICON) / 2, 0)
+    -- Only spells the level already allows: a locked one is not something to act on yet.
+    local key, classFile, level = GetCharKey(char), char.classFile, tonumber(char.level)
+    local summary = WarbandNexus.GetSkillSummary
+        and WarbandNexus:GetSkillSummary(key, classFile, level) or nil
+    SetCellBadge(btn, summary and summary.hasTrainerData and #summary.trainable > 0)
+    btn:Show()
+end
+
+--- Talents cell: one icon, centred in its column.
+function CharRowCb.PaintTalentsCell(row, char, width, offset)
+    if width <= 0 then
+        if row.talentsIcon then row.talentsIcon:Hide() end
+        return
+    end
+    local btn = AcquireCellIcon(row, "talentsIcon", "talents",
+        CharRowCb.TalentsOnEnter, CharRowCb.TalentsOnClick)
+    if not btn then return end
+    btn._wnTalentsChar = char
+    btn:ClearAllPoints()
+    btn:SetPoint("LEFT", offset + (width - CELL_ICON) / 2, 0)
+    local systems = WarbandNexus.GetCharacterSystems
+        and WarbandNexus:GetCharacterSystems(GetCharKey(char)) or nil
+    local talents = systems and systems.talents
+    SetCellBadge(btn, talents and (talents.unspent or 0) > 0)
+    btn:Show()
+end
+
+--- Realm type cell (WoW Forever): the PvE / PvP / RP tag that used to sit under the character
+--- name. It moved out so the identity block's second line could carry the surname instead.
+function CharRowCb.PaintRealmTypeCell(row, char, width, offset)
+    if width <= 0 then
+        if row.realmTypeText then row.realmTypeText:Hide() end
+        return
+    end
+    if not row.realmTypeText then
+        row.realmTypeText = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.realmTypeText:SetJustifyH("CENTER")
+    end
+    -- Two lines: the realm / ruleset tag, then the Self-Found mark when that character has it.
+    row.realmTypeText:SetMaxLines(2)
+    row.realmTypeText:SetWidth(width)
+    row.realmTypeText:ClearAllPoints()
+    row.realmTypeText:SetPoint("LEFT", offset, 0)
+    -- The row's OWN persisted ruleset first: the live answer belongs to whoever is logged in, so
+    -- reading it here gave every row that character's ruleset.
+    local rules = type(char.gameRules) == "table" and char.gameRules or nil
+    local U = ns.Utilities
+    local tag = rules and rules.ruleset
+        or (U and U.FormatRealmName and U:FormatRealmName(char.realm)) or char.realm
+    if not tag or (issecretvalue and issecretvalue(tag)) then tag = "" end
+    local text = (tag == "") and (ThemeTextHex("Muted") .. "-|r") or tag
+    if rules and rules.selfFound then
+        local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd100"
+        text = text .. "\n" .. goldHex .. ((ns.L and ns.L["CHAR_SELF_FOUND_TAG"]) or "Self-Found") .. "|r"
+    end
+    row.realmTypeText:SetText(text)
+    ns.UI_SetTextColorRole(row.realmTypeText, "Normal")
+    row.realmTypeText:Show()
+    PresentFS(row.realmTypeText)
+end
+
+--- Clicking either cell opens the full view: the tooltip is the summary, the popup is the tree.
+function CharRowCb.SkillsOnClick(self)
+    local char = self._wnSkillsChar
+    if not char or not WarbandNexus.ShowSkillsPopup then return end
+    CharRowCb.HideTip()
+    local key = GetCharKey(char)
+    local name = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+        and ns.Utilities:GetCharacterDisplayName(char)) or char.name
+    WarbandNexus:ShowSkillsPopup(key, name, char.classFile, tonumber(char.level))
+end
+
+function CharRowCb.TalentsOnClick(self)
+    local char = self._wnTalentsChar
+    if not char or not WarbandNexus.ShowTalentTreePopup then return end
+    CharRowCb.HideTip()
+    local key = GetCharKey(char)
+    local name = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+        and ns.Utilities:GetCharacterDisplayName(char)) or char.name
+    WarbandNexus:ShowTalentTreePopup(key, name)
+end
+
+
+function CharRowCb.ProfOnClick(self)
+    local char, profID = self._wnProfChar, self._wnProfID
+    if not char or not profID or not WarbandNexus.ShowProfessionRecipesPopup then return end
+    -- Recipes only exist once that profession's own window has been opened, so a click before
+    -- that would do nothing at all and read as a broken button. Say what is missing instead.
+    local have = WarbandNexus.GetProfessionRecipes
+        and WarbandNexus:GetProfessionRecipes(GetCharKey(char), profID)
+    if not have then
+        WarbandNexus:Print(HEX.gold .. "[WN]|r "
+            .. ((ns.L and ns.L["RECIPES_OPEN_WINDOW_ONCE"])
+                or "Open this profession's window once to list its recipes."))
+        return
+    end
+    CharRowCb.HideTip()
+    local name = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
+        and ns.Utilities:GetCharacterDisplayName(char)) or char.name
+    WarbandNexus:ShowProfessionRecipesPopup(GetCharKey(char), name, profID)
+end
+
 function CharRowCb.TrackingOnClick(selfBtn)
     local CS = ns.CharacterService
     if not CS or not CS.ShowTrackingChangeConfirmation then return end
@@ -664,7 +1142,7 @@ function CharRowCb.HeaderAssignOnEnter(selfBtn)
     ShowTooltip(selfBtn, {
         type = "custom",
         title = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_TITLE"]) or "Custom header",
-        description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter â†’ New custom header.",
+        description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter -> New custom header.",
     })
 end
 
@@ -708,9 +1186,9 @@ function CharRowCb.DeleteOnClick(self)
         local gr, gg, gb = ns.UI_GetSemanticGoldColor()
         warning:SetTextColor(gr, gg, gb)
     else
-        warning:SetTextColor(1, 0.85, 0.1)
+        warning:SetTextColor(ns.UI_GetSemanticGoldColor())
     end
-    local confirmDeleteFmt = (ns.L and ns.L["CONFIRM_DELETE"]) or "Are you sure you want to delete |cff00ccff%s|r?"
+    local confirmDeleteFmt = (ns.L and ns.L["CONFIRM_DELETE"]) or "Are you sure you want to delete " .. HEX.info .. "%s|r?"
     warning:SetText(string.format(confirmDeleteFmt, charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")))
     
     local subtext = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
@@ -721,7 +1199,7 @@ function CharRowCb.DeleteOnClick(self)
         local rr, rg, rb = ns.UI_GetSemanticRedColor()
         subtext:SetTextColor(rr, rg, rb)
     else
-        subtext:SetTextColor(1, 0.3, 0.3)
+        subtext:SetTextColor(ns.UI_GetSemanticRedColor())
     end
     local cannotUndoText = (ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!"
     subtext:SetText(cannotUndoText)
@@ -787,9 +1265,9 @@ function CharRowCb.DeleteOnEnter(self)
         titleColor = {1, 0.4, 0},
         description = string.format(removeFromTrackingFmt, self.charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")),
         lines = {
-            {text = "|cffff0000" .. ((ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!") .. "|r", color = {1, 0.2, 0.2}},
+            {text = HEX.red .. ((ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!") .. "|r", color = {1, 0.2, 0.2}},
             {type = "spacer"},
-            {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_DELETE"]) or "Click to delete") .. "|r", color = {1, 1, 1}}
+            {text = HEX.green .. ((ns.L and ns.L["CLICK_TO_DELETE"]) or "Click to delete") .. "|r", color = {1, 1, 1}}
         },
     })
 end
@@ -966,12 +1444,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.mailIcon:Hide()
     end
     
-    -- COLUMN: Guild — after mail column; width from max guild name; text centered before Level
-    local guildOffset = GetColumnOffset("guild")
+    -- COLUMN: Guild - width from the widest guild name; text centred in its column.
     -- Flex columns: same resolver as ApplyCharacterRowInteriorLayout so first paint and
     -- resize relayout agree on effective widths (narrow rows shrink toward column minimums).
     local flexCols = ns.UI_ComputeCharRowFlexColumns
         and ns.UI_ComputeCharRowFlexColumns(width, self._charListMaxGuildWidth) or nil
+    local guildOffset = GetColumnOffset("guild")
     local guildColW = (flexCols and flexCols.guild)
         or self._charsListStableGuildColW
         or self._charListMaxGuildWidth
@@ -995,9 +1473,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     PresentFS(row.guildText)
     row.guildText:Show()
 
-    -- Level column: level + rested line (DB-driven).
-    local guildTotal = guildColW + guildSpacing
-    local levelOffset = guildOffset + guildTotal
+    -- Level column: level + rested line (DB-driven). Everything before it is fixed width, so it
+    -- reads its offset from the column order rather than chaining off Guild.
+    local levelOffset = GetColumnOffset("level")
     local levelColW = (flexCols and flexCols.level) or CHAR_ROW_COLUMNS.level.width
     if not row.levelText then
         row.levelText = FontManager:CreateFontString(row, "body", "OVERLAY")
@@ -1037,9 +1515,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.levelRestedText:ClearAllPoints()
         row.levelRestedText:SetPoint("TOP", row.levelText, "BOTTOM", 0, -2)
         if showZzz then
-            row.levelRestedText:SetText(string.format("|cff66c0ffZzz %.2f%%|r", restedPct))
+            row.levelRestedText:SetText(string.format(HEX.info .. "Zzz %.2f%%|r", restedPct))
         else
-            row.levelRestedText:SetText(string.format("|cff66c0ff%.2f%%|r", restedPct))
+            row.levelRestedText:SetText(string.format(HEX.info .. "%.2f%%|r", restedPct))
         end
         PresentFS(row.levelRestedText)
         row.levelRestedText:Show()
@@ -1050,9 +1528,19 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if row.levelRestedIcon then row.levelRestedIcon:Hide() end
     if row.levelRestedHitFrame then row.levelRestedHitFrame:Hide() end
 
-    -- COLUMN: Item Level (dynamic offset, chained from level column)
+    -- Guild is the only measured column, so the rest of the row is chained off its real width.
+    local guildTotal = guildColW + guildSpacing
+    local mailOffset = guildOffset + guildTotal
+    local realmTypeOffset = mailOffset + ((CHAR_ROW_COLUMNS.mail and CHAR_ROW_COLUMNS.mail.total) or 46)
+
+    -- COLUMN: Realm type (WoW Forever) - PvE / PvP / RP; collapses to 0 elsewhere.
+    local realmTypeW = (flexCols and flexCols.realmType) or CHAR_ROW_COLUMNS.realmType.width
+    CharRowCb.PaintRealmTypeCell(row, char, realmTypeW, realmTypeOffset)
+
+    -- COLUMN: Item Level (chained from the realm type tag)
     local itemLevelW = (flexCols and flexCols.itemLevel) or CHAR_ROW_COLUMNS.itemLevel.width
-    local itemLevelOffset = levelOffset + levelColW + (CHAR_ROW_COLUMNS.level.spacing or 15)
+    local itemLevelOffset = realmTypeOffset + realmTypeW
+        + ((realmTypeW > 0) and (CHAR_ROW_COLUMNS.realmType.spacing or 0) or 0)
     if not row.itemLevelText then
         row.itemLevelText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.itemLevelText:SetJustifyH("CENTER")
@@ -1097,52 +1585,95 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     if char.professions then
-        local iconSize = 39  -- Increased 15% (34 â†’ 39)
-        local iconSpacing = 5  -- Icon spacing
+        local iconSpacing = PROF_ICON_GAP
+        local useSlots = WarbandNexus.SupportsFeature
+            and WarbandNexus:SupportsFeature("firstAidProfession")
+
+        if useSlots then
+            -- Five fixed slots, drawn left to right. A secondary the character has not
+            -- taken is still drawn, greyed, so the row says "no fishing" rather than
+            -- saying nothing -- and every alt lines up column by column.
+            local slots = #PROF_SLOT_ORDER
+            local iconSize = ProfIconSize(profW, slots)
+            local totalIconWidth = (slots * iconSize) + ((slots - 1) * iconSpacing)
+            local x = profOffset + (profW - totalIconWidth) / 2
+            for i = 1, slots do
+                local slot = PROF_SLOT_ORDER[i]
+                local data = char.professions[slot.key]
+                if data then
+                    CharRowCb.SetupProfIcon(row, char, data, i, x, iconSize)
+                else
+                    CharRowCb.SetupProfPlaceholder(row, i, x, iconSize, ProfSlotPlaceholder(slot))
+                end
+                x = x + iconSize + iconSpacing
+            end
+            -- Exactly five. Pooled frames from a paint that drew more would otherwise hang on
+            -- past the strip, which is where the sixth icon came from.
+            for i = slots + 1, #row.profIcons do
+                row.profIcons[i]:Hide()
+            end
+        else
+            local secondaryKeys = SecondaryProfKeys()
+
+            -- Count total professions first
+            local numProfs = 0
+            if char.professions[1] then numProfs = numProfs + 1 end
+            if char.professions[2] then numProfs = numProfs + 1 end
+            for i = 1, #secondaryKeys do
+                local sec = secondaryKeys[i]
+                if char.professions[sec] then numProfs = numProfs + 1 end
+            end
+            -- Two primaries plus three secondaries is five icons where the column was sized for
+            -- three, so the square shrinks to fit rather than bleeding into the next column.
+            local iconSize = ProfIconSize(profW, numProfs)
+
+            -- Calculate centered starting position (within column content area, excluding right spacing)
+            local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)
+            -- Center the icons within the effective (flex) column width
+            local leftPadding = (profW - totalIconWidth) / 2
+            local currentProfX = profOffset + leftPadding
         
-        -- Count total professions first
-        local numProfs = 0
-        if char.professions[1] then numProfs = numProfs + 1 end
-        if char.professions[2] then numProfs = numProfs + 1 end
-        for i = 1, #SECONDARY_PROF_KEYS do
-            local sec = SECONDARY_PROF_KEYS[i]
-            if char.professions[sec] then numProfs = numProfs + 1 end
-        end
+            local charKey = GetCharKey(char)
         
-        -- Calculate centered starting position (within column content area, excluding right spacing)
-        local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)
-        -- Center the icons within the effective (flex) column width
-        local leftPadding = (profW - totalIconWidth) / 2
-        local currentProfX = profOffset + leftPadding
-        
-        local charKey = GetCharKey(char)
-        
-        local pIdx = 1
-        -- Primary
-        if char.professions[1] then
-            CharRowCb.SetupProfIcon(row, char, char.professions[1], pIdx, currentProfX, iconSize)
-            pIdx = pIdx + 1
-            currentProfX = currentProfX + iconSize + iconSpacing
-        end
-        if char.professions[2] then
-            CharRowCb.SetupProfIcon(row, char, char.professions[2], pIdx, currentProfX, iconSize)
-            pIdx = pIdx + 1
-            currentProfX = currentProfX + iconSize + iconSpacing
-        end
-        -- Secondary
-        for i = 1, #SECONDARY_PROF_KEYS do
-            local sec = SECONDARY_PROF_KEYS[i]
-            if char.professions[sec] then
-                CharRowCb.SetupProfIcon(row, char, char.professions[sec], pIdx, currentProfX, iconSize)
+            local pIdx = 1
+            -- Primary
+            if char.professions[1] then
+                CharRowCb.SetupProfIcon(row, char, char.professions[1], pIdx, currentProfX, iconSize)
                 pIdx = pIdx + 1
                 currentProfX = currentProfX + iconSize + iconSpacing
+            end
+            if char.professions[2] then
+                CharRowCb.SetupProfIcon(row, char, char.professions[2], pIdx, currentProfX, iconSize)
+                pIdx = pIdx + 1
+                currentProfX = currentProfX + iconSize + iconSpacing
+            end
+            -- Secondary
+            for i = 1, #secondaryKeys do
+                local sec = secondaryKeys[i]
+                if char.professions[sec] then
+                    CharRowCb.SetupProfIcon(row, char, char.professions[sec], pIdx, currentProfX, iconSize)
+                    pIdx = pIdx + 1
+                    currentProfX = currentProfX + iconSize + iconSpacing
+                end
             end
         end
     end
     
-    -- COLUMN 10: Mythic Keystone (dynamic offset, chained from professions column)
+    -- COLUMN: Skills (WoW Forever) - how many abilities are waiting at the class trainer.
+    local skillsW = (flexCols and flexCols.skills) or CHAR_ROW_COLUMNS.skills.width
+    local skillsOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+    CharRowCb.PaintSkillsCell(row, char, skillsW, skillsOffset)
+
+    -- COLUMN: Talents (WoW Forever) - points per tab, read left to right as a vanilla build.
+    local talentsW = (flexCols and flexCols.talents) or CHAR_ROW_COLUMNS.talents.width
+    local talentsOffset = skillsOffset + skillsW
+        + ((skillsW > 0) and (CHAR_ROW_COLUMNS.skills.spacing or 0) or 0)
+    CharRowCb.PaintTalentsCell(row, char, talentsW, talentsOffset)
+
+    -- COLUMN 10: Mythic Keystone (dynamic offset, chained from the talents column)
     local mythicKeyW = (flexCols and flexCols.mythicKey) or CHAR_ROW_COLUMNS.mythicKey.width
-    local mythicKeyOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+    local mythicKeyOffset = talentsOffset + talentsW
+        + ((talentsW > 0) and (CHAR_ROW_COLUMNS.talents.spacing or 0) or 0)
 
     if mythicKeyW == 0 then
         if row.keystoneIcon then row.keystoneIcon:Hide() end
@@ -1152,7 +1683,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Create keystone icon (shared for has-key and no-key)
     if not row.keystoneIcon then
         row.keystoneIcon = row:CreateTexture(nil, "ARTWORK")
-        row.keystoneIcon:SetSize(24, 24)  -- Increased 20% (20 â†’ 24)
+        row.keystoneIcon:SetSize(24, 24)  -- Increased 20% (20 -> 24)
 
         -- Mythic Keystone item icon (IconRegistry "keystone"; ChromieTime-32x32 has no 12.1.5 FrameXML ref)
         ns.UI_SetIcon(row.keystoneIcon, "keystone")
@@ -1174,7 +1705,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Format content based on keystone status
     if char.mythicKey and char.mythicKey.level and char.mythicKey.level > 0 then
-        -- HAS KEY: +Level â€¢ Dungeon (colored, bright icon)
+        -- HAS KEY: +Level * Dungeon (colored, bright icon)
         local dungeonName = (ns.Utilities and ns.Utilities.ResolveKeystoneDungeonName)
             and ns.Utilities:ResolveKeystoneDungeonName(char.mythicKey)
             or (char.mythicKey.dungeonName or "????")
@@ -1189,7 +1720,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.keystoneIcon:SetVertexColor(1, 1, 1)
         row.keystoneIcon:SetAlpha(1.0)
     else
-        -- NO KEY: +0 â€¢ None (dimmed, desaturated icon)
+        -- NO KEY: +0 * None (dimmed, desaturated icon)
         local keystoneText = ThemeTextHex("Muted") .. "+0|r " .. ThemeTextHex("Muted") .. "•|r "
             .. ThemeTextHex("Normal") .. ((ns.L and ns.L["NONE_LABEL"]) or "None") .. "|r"
         
@@ -1207,7 +1738,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     -- COLUMN: Mail (snapshot from last login on this character)
 
-    local mailOffset = GetColumnOffset("mail")
+    -- mailOffset was chained off the measured guild width above.
     SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     
     -- RIGHT RAIL: fixed slot positions (no per-row width reflow flicker on resize)
@@ -1256,7 +1787,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local rowIndex = char._key
         row.trackingBtn.trackingKey = (rowIndex and chars and chars[rowIndex] ~= nil) and rowIndex or nil
     end
-    row.trackingBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    row.trackingBtn.charName = DisplayName(char) or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     if row.trackingBtn.icon then
         if isCharTracked then
             if ns.UI_SetIcon then ns.UI_SetIcon(row.trackingBtn.icon, "status_ok") end
@@ -1352,7 +1883,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             if ns.UI_SetInkColor then
                 ns.UI_SetInkColor(row.onlineText, 0, 1, 0, 1)
             else
-                row.onlineText:SetTextColor(0, 1, 0)
+                row.onlineText:SetTextColor(ns.UI_GetSemanticGreenColor())
             end
         else
             row.onlineText:SetParent(lsHost)
@@ -1450,7 +1981,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(row.deleteBtn) end
         
         row.deleteBtn.charKey = charKey
-        row.deleteBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+        row.deleteBtn.charName = DisplayName(char) or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         
         -- Safely set OnClick
         if row.deleteBtn.HasScript and row.deleteBtn:HasScript("OnClick") then

@@ -140,7 +140,7 @@ function WarbandNexus:OnItemLevelChanged()
             return
         end
         if entry then
-            local _, avgItemLevelEquipped = GetAverageItemLevel()
+            local avgItemLevelEquipped = ns.Utilities:GetEquippedItemLevel()
             if issecretvalue and issecretvalue(avgItemLevelEquipped) then return end
 
             -- Store the raw fractional value — the same convention SaveCurrentCharacterData
@@ -375,7 +375,25 @@ function WarbandNexus:InitializeEventManager()
     -- All profession events are guarded: zero processing when module is disabled
     local IsModuleEnabled = ns.Utilities and ns.Utilities.IsModuleEnabled
     
+    -- Recipes are only readable while a trade skill session is open, and the Character tab needs
+    -- them on WoW Forever whether or not the Professions module is on -- so this sits ahead of
+    -- the module gate on both events that signal an open window. Blizzard's own profession frame
+    -- renders blank on that client (confirmed with every addon disabled), which makes our copy
+    -- the only place the list can be read; all the more reason not to miss the capture.
+    local function ScanProfessionRecipes()
+        Debounce("PROFESSION_RECIPES", 0.5, function()
+            if not WarbandNexus.ScanProfessionRecipes then return end
+            if not (ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)) then
+                return
+            end
+            -- pcall: this runs in a timer alongside Blizzard's own frame, and an error escaping
+            -- here would land on that frame rather than on us.
+            pcall(WarbandNexus.ScanProfessionRecipes, WarbandNexus)
+        end)
+    end
+
     self:RegisterEvent("TRADE_SKILL_SHOW", function()
+        ScanProfessionRecipes()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillShow then
             WarbandNexus:OnTradeSkillShow()
@@ -406,6 +424,10 @@ function WarbandNexus:InitializeEventManager()
     
     -- Recipe list updated (fires after crafting, skill changes — refreshes firstCraft/canSkillUp)
     self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", function()
+        -- Recipes are only readable while this window is open, and the Character tab needs them
+        -- on WoW Forever regardless of whether the Professions module is on -- so this runs
+        -- before the module gate below. Debounced: the event fires repeatedly as the list fills.
+        ScanProfessionRecipes()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillListUpdate then
             WarbandNexus:OnTradeSkillListUpdate()
@@ -507,9 +529,25 @@ function WarbandNexus:InitializeEventManager()
         end)
     end
     
+    -- Character tab Skill / Talent columns. On WoW Forever the talent tree IS the Traits system,
+    -- so it moves on the same TRAIT_* events the profession specs use. AceEvent keeps one handler
+    -- per event, so this rides the existing registrations instead of adding a second pair that
+    -- would silently replace them. Debounced: spending several points fires one event each.
+    -- No-op on retail -- ScanTalentTree returns nil without the classicTalentTree capability.
+    local function RescanCharacterSystems()
+        Debounce("CHARACTER_SYSTEMS", 0.5, function()
+            if not WarbandNexus.ScanCharacterSystems then return end
+            if not (ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)) then
+                return
+            end
+            WarbandNexus:ScanCharacterSystems()
+        end)
+    end
+
     -- Knowledge: TRAIT_NODE_CHANGED fires when profession spec points are spent
     -- TRAIT_CONFIG_UPDATED fires when spec tree is modified
     self:RegisterEvent("TRAIT_NODE_CHANGED", function()
+        RescanCharacterSystems()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnKnowledgeChanged then
             WarbandNexus:OnKnowledgeChanged()
@@ -517,12 +555,33 @@ function WarbandNexus:InitializeEventManager()
     end)
     
     self:RegisterEvent("TRAIT_CONFIG_UPDATED", function()
+        RescanCharacterSystems()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnKnowledgeChanged then
             WarbandNexus:OnKnowledgeChanged()
         end
     end)
-    
+
+    -- Spellbook side: a new rank or a level-up changes what the Skill column counts.
+    for _, evt in ipairs({ "LEARNED_SPELL_IN_TAB", "SPELLS_CHANGED", "PLAYER_LEVEL_UP" }) do
+        self:RegisterEvent(evt, RescanCharacterSystems)
+    end
+
+    -- Class trainer: the only place WoW Forever publishes spells the character has NOT learned.
+    -- TRAINER_UPDATE rather than TRAINER_SHOW alone, because the service list is not populated
+    -- the instant the frame appears. The scan guards its own re-entrancy, since flipping the
+    -- service filters may fire this event again.
+    local function ScanTrainer()
+        Debounce("TRAINER_SCAN", 0.3, function()
+            if not WarbandNexus.ScanTrainerServices then return end
+            WarbandNexus:ScanTrainerServices()
+        end)
+    end
+    for _, evt in ipairs({ "TRAINER_SHOW", "TRAINER_UPDATE" }) do
+        self:RegisterEvent(evt, ScanTrainer)
+    end
+
+
     -- Periodic recharge timer: 60s tick for UI recalculation
     -- Only start if professions module is enabled AND character is tracked
     C_Timer.After(5, function()

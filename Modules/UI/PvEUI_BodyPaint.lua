@@ -3,6 +3,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local C_Timer = C_Timer
 local InCombatLockdown = InCombatLockdown
 local SIDE_MARGIN = (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 12
@@ -1829,7 +1832,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
 
             local mutedC = L.COLORS.textMuted or { 0.53, 0.53, 0.53, 1 }
             local brightC = L.COLORS.textBright or { 1, 1, 1, 1 }
-            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.dim
             local DIM_COLOR = { mutedC[1], mutedC[2], mutedC[3] }
             local NORMAL_COLOR = { brightC[1], brightC[2], brightC[3] }
             local CAP_OPEN_COLOR = {0.5, 1, 0.5}
@@ -2001,9 +2004,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                         local rem = thresh - prog
                         local progressLine
                         if shiftHeld and rem > 0 then
-                            progressLine = L.GetLocalizedText("PVE_VAULT_SLOT_REMAINING_FORMAT", "Slot %d: |cffffcc00%d|r more"):format(i, rem)
+                            progressLine = L.GetLocalizedText("PVE_VAULT_SLOT_REMAINING_FORMAT", "Slot %d: " .. HEX.gold .. "%d|r more"):format(i, rem)
                         else
-                            progressLine = L.GetLocalizedText("PVE_VAULT_SLOT_PROGRESS_FORMAT", "Slot %d: |cffff8888%d/%d|r"):format(i, prog, thresh)
+                            progressLine = L.GetLocalizedText("PVE_VAULT_SLOT_PROGRESS_FORMAT", "Slot %d: " .. HEX.red .. "%d/%d|r"):format(i, prog, thresh)
                         end
                         table.insert(lines, {
                             text = progressLine,
@@ -2106,13 +2109,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 if not vs then
                     statusTxt = EM_DASH_RICH
                 elseif vs.isReady then
-                    statusTxt = "|cff44ff44" .. (GetLocalizedText("VAULT_READY_TO_CLAIM", "Ready to Claim")) .. "|r"
+                    statusTxt = HEX.green .. (GetLocalizedText("VAULT_READY_TO_CLAIM", "Ready to Claim")) .. "|r"
                 elseif vs.claimedThisWeek and not vs.isReady then
-                    statusTxt = "|cffffd700" .. (GetLocalizedText("VAULT_PENDING", "Pending\226\128\166")) .. "|r"
+                    statusTxt = HEX.gold .. (GetLocalizedText("VAULT_PENDING", "Pending\226\128\166")) .. "|r"
                 elseif (vs.readySlots or 0) > 0 then
                     statusTxt = "|cff66ddff" .. L.GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots"):format(tonumber(vs.readySlots) or 0) .. "|r"
                 else
-                    statusTxt = "|cffffd700" .. (GetLocalizedText("VAULT_PENDING", "Pending\226\128\166")) .. "|r"
+                    statusTxt = HEX.gold .. (GetLocalizedText("VAULT_PENDING", "Pending\226\128\166")) .. "|r"
                 end
                 colValuesByKey.vault_status = {
                     text = statusTxt,

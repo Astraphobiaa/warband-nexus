@@ -7,6 +7,9 @@ local _, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local FontManager = ns.FontManager
 local issecretvalue = issecretvalue
 
@@ -27,11 +30,11 @@ local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 local function SearchBrightHex()
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function SearchMutedHex()
-    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.dim
 end
 
 local function GetLockAtlasMarkup(sz)
@@ -69,7 +72,7 @@ local function WnFormatRealmDisplay(raw)
 end
 
 local function WnSafeCharLine(char)
-    local n = char and char.name
+    local n = char and ns.CharDisplayName(char, char.name)
     local rlm = char and char.realm
     if issecretvalue and issecretvalue(n) then n = "?" end
     if issecretvalue and issecretvalue(rlm) then rlm = "" end
@@ -88,7 +91,7 @@ end
 
 --- Plain-text blob for search (name + realm + level). Player names may include non-ASCII; do not strip them.
 local function WnPlainSearchBlob(char)
-    local n = char and char.name
+    local n = char and ns.CharDisplayName(char, char.name)
     local rlm = char and char.realm or ""
     if issecretvalue and issecretvalue(n) then n = "" end
     if issecretvalue and issecretvalue(rlm) then rlm = "" end
@@ -107,7 +110,7 @@ end
 
 --- Class-colored character name only (roster name column).
 local function WnColoredCharacterName(char)
-    local n = char and char.name
+    local n = char and ns.CharDisplayName(char, char.name)
     if issecretvalue and issecretvalue(n) then n = "?" end
     n = n or "?"
     local cc = RAID_CLASS_COLORS and char.classFile and RAID_CLASS_COLORS[char.classFile]
@@ -346,13 +349,13 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
             if gid and gid ~= "" then
                 local gname = (ns.CharacterService and ns.CharacterService.GetCustomSectionName and ns.CharacterService:GetCustomSectionName(addon, gid)) or gid
                 if entry.isLocked then
-                    sf:SetText(GetLockAtlasMarkup(13) .. " |cffffd700" .. gname .. "|r")
+                    sf:SetText(GetLockAtlasMarkup(13) .. " " .. HEX.gold .. gname .. "|r")
                 else
-                    sf:SetText("|cff66ccff" .. gname .. "|r")
+                    sf:SetText(HEX.info .. gname .. "|r")
                 end
             else
                 local noneText = (L and L["CUSTOM_HEADER_SECTION_NONE"]) or (NONE or "None")
-                sf:SetText("|cff777777" .. noneText .. "|r")
+                sf:SetText(HEX.dim .. noneText .. "|r")
             end
 
             local nm = FontManager:CreateFontString(row, "body", "OVERLAY")
@@ -850,7 +853,7 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
         headerFrame._wnCustomHeaderCount = countFs
     end
     countFs:SetJustifyH("RIGHT")
-    countFs:SetText("|cffaaaaaa" .. FormatNumber(opts.memberCount or 0) .. "|r")
+    countFs:SetText(HEX.muted .. FormatNumber(opts.memberCount or 0) .. "|r")
     countFs:Show()
 
     -- [+] manage roster button (left of count). Character tab only.

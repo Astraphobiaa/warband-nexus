@@ -990,7 +990,7 @@ function M.BuildCharList()
             if isReady or isPending or (settings.includeBountyOnly and bounty == true) then
                 table.insert(result, {
                     charKey   = charKey,
-                    name      = charData.name or charKey,
+                    name      = ns.CharDisplayName(charData, charKey),
                     realm     = charData.realm or "",
                     classFile = charData.classFile or "WARRIOR",
                     itemLevel = charData.itemLevel or 0,

@@ -43,6 +43,9 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Import dependencies
 local UI_LAYOUT = ns.UI_LAYOUT
 local FontManager = ns.FontManager
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local TK = ns.UI_TableKit
 assert(TK and UI_LAYOUT and UI_LAYOUT.TABLE, "SharedWidgets_TableKit.lua must load before FramePoolFactory.lua")
 
@@ -800,7 +803,7 @@ local function ReleaseAllPooledChildren(parent)
                     local success = pcall(function() child:SetScript("OnClick", nil) end)
                     if not success and IsDebugModeEnabled and IsDebugModeEnabled() then
                         local childType = child:GetObjectType()
-                        DebugPrint("|cffff0000WN DEBUG: Failed to clear OnClick on", childType, "at index", i, "|r")
+                        DebugPrint(HEX.red .. "WN DEBUG: Failed to clear OnClick on", childType, "at index", i, "|r")
                     end
                 end
                 if child:HasScript("OnEnter") then

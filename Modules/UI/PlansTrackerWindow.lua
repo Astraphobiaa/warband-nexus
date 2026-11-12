@@ -16,6 +16,9 @@ local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
@@ -188,6 +191,34 @@ local MIN_WIDTH = 300
 local MIN_HEIGHT = 240
 local MAX_WIDTH = 600
 local MAX_HEIGHT = 800
+
+--[[
+    Size / label helpers used by CreatePlansTrackerWindow. They live out here because that function
+    sits at the Lua 5.1 ceiling of 60 upvalues (the WoW client refuses to load the whole file past
+    it: "function at line N has more than 60 upvalues"); each helper stands in for several of them.
+]]
+local function ApplyTrackerResizeBounds(frame)
+    frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+end
+
+--- Expand from collapsed: resizable again, back to the saved size (defaults when below the floor).
+local function RestoreTrackerExpandedSize(frame, tdb)
+    frame:SetResizable(true)
+    ApplyTrackerResizeBounds(frame)
+    local savedW = tdb and tdb.width or 380
+    if savedW < MIN_WIDTH then savedW = 380 end
+    frame:SetWidth(savedW)
+    local savedH = tdb and tdb.height or 420
+    if savedH < MIN_HEIGHT then savedH = 420 end
+    frame:SetHeight(savedH)
+end
+
+--- Opacity popup: label markup and the "NN%" value markup.
+local function TrackerOpacityMarkup(labelText, v)
+    local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or HEX.muted
+    local brightHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
+    return mutedHex .. labelText .. "|r", brightHex .. format("%d%%|r", math.floor(v * 100 + 0.5))
+end
 -- Bump when scroll/shell layout changes so stale floating windows rebuild on /reload or reopen.
 -- PLAN_TRACKER_LAYOUT_VERSION + TRACKER_HEADER_* live above header helpers (Lua 5.1 forward-ref).
 
@@ -210,7 +241,8 @@ local PLAN_TYPE_FALLBACK_ICON_KEYS = {
 -- Display order and labels for categories (localized at runtime)
 local function GetCategoryKeys()
     local L = ns.L
-    return {
+    local caps = ns.PlansUI_CATEGORY_CAPABILITY or {}
+    local keys = {
         { key = nil,             label = (L and L["CATEGORY_ALL"]) or "All" },
         { key = "mount",         label = (L and L["CATEGORY_MOUNTS"]) or "Mounts" },
         { key = "pet",           label = (L and L["CATEGORY_PETS"]) or "Pets" },
@@ -220,6 +252,15 @@ local function GetCategoryKeys()
         { key = "achievement",   label = (L and L["CATEGORY_ACHIEVEMENTS"]) or "Achievements" },
         { key = "custom",        label = (L and L["CUSTOM"]) or "Custom" },
     }
+    -- Categories this client has no data for (Forever: illusions, missing toys) are left out.
+    local WN = ns.WarbandNexus
+    for i = #keys, 1, -1 do
+        local cap = keys[i].key and caps[keys[i].key]
+        if cap and WN and WN.SupportsFeature and not WN:SupportsFeature(cap) then
+            table.remove(keys, i)
+        end
+    end
+    return keys
 end
 local CATEGORY_KEYS = GetCategoryKeys()
 
@@ -365,7 +406,7 @@ local function GetAchievementRequirementsText(achievementID)
     local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievementID)
     if not summary or (summary.rawNumCriteria or 0) == 0 then
         local noReqs = (ns.L and ns.L["NO_REQUIREMENTS"]) or "No requirements (instant completion)"
-        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee" .. noReqs .. "|r"
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright .. noReqs .. "|r"
     end
     local parts = {}
     local formatRowSuffix = ns.UI_FormatCriterionRowSuffix
@@ -374,14 +415,14 @@ local function GetAchievementRequirementsText(achievementID)
             local row = summary.criteria[i]
             if row.hasName and row.name then
                 local icon = row.completed and ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) or ns.UI_GetIconMarkup("status_fail", 12, 12, 0, 0)
-                local color = row.completed and (PLAN_COLORS.completed or "|cff44ff44") or PCol("incomplete")
+                local color = row.completed and (PLAN_COLORS.completed or HEX.green) or PCol("incomplete")
                 local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
                 parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(row.name) .. "|r" .. progress
             end
         end
     end
     local headerLine = ns.UI_FormatAchievementProgressHeader and ns.UI_FormatAchievementProgressHeader(summary) or ""
-    local header = headerLine ~= "" and ("|cff00ff00" .. headerLine .. "|r\n") or ""
+    local header = headerLine ~= "" and (HEX.green .. headerLine .. "|r\n") or ""
     return header .. table.concat(parts, "\n")
 end
 
@@ -657,12 +698,12 @@ end
 local function GetPlanDescriptionFormatted(plan)
     local raw = GetPlanDescription(plan)
     if issecretvalue and issecretvalue(raw) then
-        return PCol("descDim", "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
+        return PCol("descDim", HEX.dim) .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
     end
-    if not raw or raw == "" then return PCol("descDim", "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
+    if not raw or raw == "" then return PCol("descDim", HEX.dim) .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
     local srcLabel = PCol("label")
     local body = PCol("body")
-    local dim = PCol("descDim", "|cff888888")
+    local dim = PCol("descDim", HEX.dim)
     local prefix = raw:match("^([^:]+:%s*)(.*)$")
     if prefix then
         local sourceType, sourceDetail = raw:match("^([^:]+:%s*)(.*)$")
@@ -816,7 +857,7 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
     local P = PLAN_COLORS or {}
     local labCol = PCol("label")
     local body = PCol("body")
-    local dim = PCol("descDim", "|cff888888")
+    local dim = PCol("descDim", HEX.dim)
 
     local rows = {}
     local szLg = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
@@ -998,7 +1039,7 @@ function ns.UI_BuildPlanTodoSummaryLine(plan, opts)
     local P = PLAN_COLORS or {}
     local labCol = PCol("label")
     local body = PCol("body")
-    local dim = PCol("descDim", "|cff888888")
+    local dim = PCol("descDim", HEX.dim)
 
     if plan.type == "achievement" and plan.achievementID then
         local achLines = ns.UI_BuildAchievementTodoSummaryLines
@@ -1080,7 +1121,7 @@ function ns.UI_BuildPlanTodoSummaryLines(plan, opts)
     end
     if #items > maxLines and #lines > 0 then
         local L = ns.L
-        local dim = PCol("descDim", "|cff888888")
+        local dim = PCol("descDim", HEX.dim)
         local moreFmt = "+%d more"
         local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
         if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
@@ -1130,7 +1171,7 @@ function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
             local displayText = classMk14 .. " " .. factionLabel .. src.faction
             if src.renown then
                 local repType = src.isFriendship and ((L and L["FRIENDSHIP_LABEL"]) or "Friendship") or ((L and L["RENOWN_TYPE_LABEL"]) or "Renown")
-                displayText = displayText .. " |cffffcc00(" .. repType .. " " .. src.renown .. ")|r"
+                displayText = displayText .. " " .. HEX.gold .. "(" .. repType .. " " .. src.renown .. ")|r"
             end
             items[#items + 1] = { text = displayText }
         end
@@ -1155,7 +1196,7 @@ function ns.UI_BuildBrowseTodoSummaryLine(item, category, sources, opts)
     opts = type(opts) == "table" and opts or {}
     local L = ns.L
     local P = PLAN_COLORS or {}
-    local dim = PCol("descDim", "|cff888888")
+    local dim = PCol("descDim", HEX.dim)
     local labCol = PCol("label")
     local body = PCol("body")
 
@@ -1202,7 +1243,7 @@ function ns.UI_BuildBrowseTodoSummaryLines(item, category, sources, opts)
     end
     if #criteriaItems > maxLines and #lines > 0 then
         local L = ns.L
-        local dim = PCol("descDim", "|cff888888")
+        local dim = PCol("descDim", HEX.dim)
         local moreFmt = "+%d more"
         local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
         if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
@@ -1604,7 +1645,7 @@ local function RefreshTrackerContentImmediate(reuseFullWidth)
         end
         empty:SetWidth(math.max(1, width))
         local noPlansText = (ns.L and ns.L["NO_PLANS_IN_CATEGORY"]) or "No plans in this category.\nAdd plans from the Plans tab."
-        empty:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff666666") .. noPlansText .. "|r")
+        empty:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or HEX.dim) .. noPlansText .. "|r")
         emptyFrame:Show()
         trackerRowOrder[#trackerRowOrder + 1] = emptyFrame
     else
@@ -1638,11 +1679,11 @@ local function RefreshTrackerContentImmediate(reuseFullWidth)
                 if ns.UI_FormatPlanTryCountSuffix then
                     trySuffix = ns.UI_FormatPlanTryCountSuffix(count)
                 else
-                    trySuffix = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff")
+                    trySuffix = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or HEX.info)
                         .. ((ns.L and ns.L["TRIES"]) or "Tries") .. ":|r "
                         .. ((ns.UI_GetBrightHex and ns.UI_GetBrightHex())
                             or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright"))
-                            or "|cffeeeeee")
+                            or HEX.bright)
                         .. tostring(count) .. "|r"
                 end
             end
@@ -1901,7 +1942,7 @@ local function RefreshTrackerContentImmediate(reuseFullWidth)
         if suffix ~= "" then suffix = " " .. suffix end
         local countLabel = frame.categoryBar and frame.categoryBar.countLabel
         if countLabel then
-            countLabel:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888")
+            countLabel:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or HEX.dim)
                 .. #filtered .. "/" .. trackerEligibleTotal .. suffix .. "|r")
         end
     end
@@ -2230,7 +2271,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     frame:EnableMouse(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
-    frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+    ApplyTrackerResizeBounds(frame)
     frame:SetClampedToScreen(true)
 
     -- WindowManager: standardized strata/level + ESC + combat hide
@@ -2442,14 +2483,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
             SetCollapseChevron(false)
             frame.contentArea:Show()
             if frame.categoryBar then frame.categoryBar:Show() end
-            frame:SetResizable(true)
-            frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
-            local savedW = tdb and tdb.width or 380
-            if savedW < MIN_WIDTH then savedW = 380 end
-            frame:SetWidth(savedW)
-            local savedH = tdb and tdb.height or 420
-            if savedH < MIN_HEIGHT then savedH = 420 end
-            frame:SetHeight(savedH)
+            RestoreTrackerExpandedSize(frame, tdb)
             if frame.resizeGrip then frame.resizeGrip:Show() end
             RefreshTrackerContent()
         end
@@ -2519,10 +2553,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
         local current = (GetDB() and GetDB().opacity) or 1.0
         local function FormatLabel(v)
-            local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffcccccc"
-            local brightHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
-            label:SetText(mutedHex .. opacityLabel .. "|r")
-            valueText:SetText(brightHex .. format("%d%%|r", math.floor(v * 100 + 0.5)))
+            local labelMarkup, valueMarkup = TrackerOpacityMarkup(opacityLabel, v)
+            label:SetText(labelMarkup)
+            valueText:SetText(valueMarkup)
         end
 
         local slider = Factory:CreateThemedSlider(popup, {
@@ -2615,7 +2648,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
             padLeft = 0,
             padRight = 0,
             bottom = 0,
-            keepScrollLane = true,
+            -- keepScrollLane is deliberately NOT set: the tracker now gives the scrollbar lane
+            -- back when its rows fit, like every other window. Set it to true again if the lane
+            -- flicking in and out while rows stream in turns out to read worse than the strip.
         })
     end
     if not scrollFrame then
@@ -2868,7 +2903,7 @@ function WarbandNexus:TogglePlansTrackerWindow()
     end
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         local L = ns.L or {}
-        self:Print("|cffff8800" .. (L["TRACKING_TAB_LOCKED_TITLE"] or "Character is not tracked") .. ". " .. (L["OPEN_CHARACTERS_TAB"] or "Open Characters") .. ".|r")
+        self:Print(HEX.orange .. (L["TRACKING_TAB_LOCKED_TITLE"] or "Character is not tracked") .. ". " .. (L["OPEN_CHARACTERS_TAB"] or "Open Characters") .. ".|r")
         return
     end
     self:ShowPlansTrackerWindow()

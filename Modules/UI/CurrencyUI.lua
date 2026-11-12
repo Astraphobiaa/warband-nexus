@@ -10,6 +10,9 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -157,9 +160,9 @@ local function ThemeTextHex(role)
     if ns.UI_GetTextRoleHex then
         return ns.UI_GetTextRoleHex(role)
     end
-    if role == "Dim" then return "|cff888888" end
-    if role == "Muted" then return "|cffaaaaaa" end
-    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    if role == "Dim" then return HEX.dim end
+    if role == "Muted" then return HEX.muted end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or HEX.bright
 end
 
 local function SemanticColorHex(color)
@@ -701,7 +704,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
             end
         end
     else
-        DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
+        DebugPrint(HEX.red .. "[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
     end
 
     -- Capture any unmapped / orphaned currencies that exist in globalCurrencies (e.g. from alt sync)
@@ -1033,14 +1036,21 @@ function WarbandNexus:DrawCurrencyList(container, width)
         if not (mf and scrollChild and mf.scroll and scrollChild == mf.scrollChild) then
             return
         end
-        local targetTabBodyH = 8 + totalH
-        local targetScrollChildH = math.max(targetTabBodyH + 8, mf.scroll:GetHeight())
-        scrollChild:SetHeight(targetScrollChildH)
-        if Factory and Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(mf.scroll)
-        end
-        if Factory and Factory.UpdateHorizontalScrollBarVisibility then
-            Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+        -- The canonical path (SharedWidgets: UI_SyncMainTabScrollChrome). It owns the viewport
+        -- floor, the bar columns and both visibility passes; this function used to carry its own
+        -- copy of all of that, which is how the tabs drifted apart from each other in the first
+        -- place. It adds the content start offset itself, so it gets the bare content height.
+        if ns.UI_SyncMainTabScrollChrome then
+            -- Content bottom from the scroll child's top: the results block starts at BODY_TOP.
+            ns.UI_SyncMainTabScrollChrome(mf, scrollChild, 8 + totalH)
+        else
+            scrollChild:SetHeight(math.max(8 + totalH + 8, mf.scroll:GetHeight()))
+            if Factory and Factory.UpdateScrollBarVisibility then
+                Factory:UpdateScrollBarVisibility(mf.scroll)
+            end
+            if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+                Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+            end
         end
         if mf._virtualScrollUpdate then
             mf._virtualScrollUpdate()
@@ -1082,7 +1092,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
 
     local function ChainTopFrame(frame, gap)
         if not frame then return end
-        ChainSectionFrameBelow(parent, frame, topChainTail, 0, gap, topChainTail and nil or 0)
+        ChainSectionFrameBelow(parent, frame, topChainTail, 0, gap, topChainTail and nil or 0, true)
         topChainTail = frame
     end
 
@@ -1138,7 +1148,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     local headerKey = keyPrefix .. (headerData.name or tostring(i))
                     local wrap = CreateWrap(renderBody, innerW, headerKey)
                     if wrap then
-                        ChainSectionFrameBelow(renderBody, wrap, localTail, BASE_INDENT, localTail and SECTION_SPACING or nil, localTail and nil or SECTION_SPACING)
+                        ChainSectionFrameBelow(renderBody, wrap, localTail, BASE_INDENT, localTail and SECTION_SPACING or nil, localTail and nil or SECTION_SPACING, true)
                         localTail = wrap
 
                         local expandedNow = IsExpanded(headerKey, defaultExpanded)
@@ -1216,6 +1226,33 @@ function WarbandNexus:DrawCurrencyList(container, width)
             end
         end
 
+        --[[
+            One category under a section says nothing the section header has not already said.
+            "Character-Specific Currencies" > "Other (1)" > one row is three bands of chrome around
+            a single currency, and the middle one carries no information: its count repeats the
+            section's, its name is the fallback bucket.
+
+            So a lone leaf category is dropped and its rows go straight into the section body. A
+            lone category that has children of its own keeps its header -- there the name is
+            structure the player navigates by, not decoration. With two or more categories the
+            names distinguish them and the tree stands as it is.
+        ]]
+        local lone = nil
+        for i = 1, #(headerDataList or {}) do
+            local headerData = headerDataList[i]
+            if headerData and (headerData.count or 0) > 0 then
+                if lone then
+                    lone = nil
+                    break
+                end
+                lone = headerData
+            end
+        end
+        if lone and #(lone.children or {}) == 0 then
+            AppendRows(bodyFrame, lone.currencies or {}, contentW)
+            return
+        end
+
         RenderTree(headerDataList, bodyFrame, contentW, nil, rootCtx)
     end
 
@@ -1289,7 +1326,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         and ns.Utilities:FormatRealmName(sessionChar.realm) or (sessionChar.realm or "")
                     local charName = format("|c%s%s  -  %s|r",
                         format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
-                        sessionChar.name or "",
+                        ns.CharDisplayName(sessionChar, ""),
                         sessionRealm)
                     displayData.characterName = FormatParenBadge(charName)
                     displayData.quantity = curr.sessionAmount or curr.quantity or 0
@@ -1381,7 +1418,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     local bestRealm = ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(bestCharacter.realm) or (bestCharacter.realm or "")
                     local charName = format("|c%s%s  -  %s|r",
                         format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
-                        bestCharacter.name or "",
+                        ns.CharDisplayName(bestCharacter, ""),
                         bestRealm)
                     displayData.characterName = FormatParenBadge(charName)
                     displayData.quantity = curr.quantity
@@ -1425,15 +1462,21 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
     end
     
-    local noticeFrame = CreateNoticeFrame(
-        parent,
-        (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_TITLE"]) or "Currency Transfer Limitation",
-        (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_DESC"]) or "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.",
-        "alert",
-        width - 20,
-        60
-    )
-    ChainTopFrame(noticeFrame, PAGE_STACK.SECTION_GAP or SECTION_SPACING)
+    -- Only where there is something to transfer. The notice is about Warband currencies; with none
+    -- listed -- a character-specific-only roster, or a game type that has no Warband bank at all --
+    -- it was explaining a limitation of a feature the player cannot see, and on a short page that
+    -- single card was most of what the tab showed.
+    if #aggregated.warbandTransferable > 0 then
+        local noticeFrame = CreateNoticeFrame(
+            parent,
+            (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_TITLE"]) or "Currency Transfer Limitation",
+            (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_DESC"]) or "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.",
+            "alert",
+            width - 20,
+            60
+        )
+        ChainTopFrame(noticeFrame, PAGE_STACK.SECTION_GAP or SECTION_SPACING)
+    end
     
     -- Update SearchStateManager with result count (leaf rows in rendered header tree).
     local totalCurrencies = CountAggregatedCurrencyLeaves(aggregated.warbandTransferable)
@@ -1507,7 +1550,7 @@ end
 
 function WarbandNexus:DrawCurrencyTab(parent)
     if not parent then
-        self:Print("|cffff0000ERROR: No parent container provided to DrawCurrencyTab|r")
+        self:Print(HEX.red .. "ERROR: No parent container provided to DrawCurrencyTab|r")
         return
     end
     

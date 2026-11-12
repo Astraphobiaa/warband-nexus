@@ -5,6 +5,9 @@
 ]]
 
 local _, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 assert(ns.UI and ns.UI_ApplyVisuals and ns.UI_CreateCard, "SharedWidgets_StateCards: load after SharedWidgets.lua")
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
@@ -210,7 +213,7 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     local title = FontManager:CreateFontString(contentContainer, UIFontRole("moduleDisabledTitle"), "OVERLAY")
     title:SetPoint("TOP", icon, "BOTTOM", 0, -24)
     -- Light: Bright role (fixed #cccccc was near invisible on the light card); dark keeps #cccccc (2026-10-22).
-    title:SetText(ns.UI_GetThemedGreyHex("|cffcccccc", "Bright") .. ((ns.L and ns.L["MODULE_DISABLED"]) or "Module Disabled") .. "|r")
+    title:SetText(ns.UI_GetThemedGreyHex(HEX.muted, "Bright") .. ((ns.L and ns.L["MODULE_DISABLED"]) or "Module Disabled") .. "|r")
     
     -- Description with colored module name
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -335,11 +338,11 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
     text:SetWidth(200)
     
     -- Color based on source type
-    local color = ns.UI_GetThemedGreyHex("|cff999999", "Muted") -- Gray for unknown (Muted role in light, 2026-10-22)
+    local color = ns.UI_GetThemedGreyHex(HEX.dim, "Muted") -- Gray for unknown (Muted role in light, 2026-10-22)
     if dataSource:find("Cache") then
-        color = "|cff00ff00" -- Green for cache services (modern)
+        color = HEX.green -- Green for cache services (modern)
     elseif dataSource:find("LEGACY") or dataSource:find("db%.global") then
-        color = "|cffffaa00" -- Orange for direct DB access (legacy)
+        color = HEX.orange -- Orange for direct DB access (legacy)
     end
     
     text:SetText(color .. ((ns.L and ns.L["DB_LABEL"]) or "DB:") .. " " .. dataSource .. "|r")
@@ -361,7 +364,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
             if dataSource:find("Cache") then
                 GameTooltip:AddLine(ns.UI_GetIconMarkup("status_ok", 12, 12, 0, 0) .. " " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
             elseif dataSource:find("LEGACY") then
-                GameTooltip:AddLine("|cffffaa00⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
+                GameTooltip:AddLine(HEX.orange .. "⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
                 GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_NEEDS_MIGRATION"]) or "Needs migration to cache service", 0.7, 0.7, 0.7)
             end
         
@@ -437,7 +440,7 @@ local function ApplyLoadingCardProgress(card)
         card._wnLastStage = currentStage
         card._wnLastProgress = progress
         -- Light: Muted role instead of fixed #888888 (2026-10-22).
-        card._wnProgressText:SetText(ns.UI_GetThemedGreyHex("|cff888888", "Muted") .. string.format("%s - %d%%|r", currentStage, progress))
+        card._wnProgressText:SetText(ns.UI_GetThemedGreyHex(HEX.dim, "Muted") .. string.format("%s - %d%%|r", currentStage, progress))
     end
     local bw = card._wnBarBg:GetWidth()
     if bw and bw > 0 then
@@ -507,7 +510,7 @@ local function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
         local FontManager = ns.FontManager
         local loadingText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardTitle"), "OVERLAY")
         loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
-        loadingText:SetText("|cff00ccff" .. titleStr .. "|r")
+        loadingText:SetText(HEX.info .. titleStr .. "|r")
         loadingCard._wnTitleText = loadingText
         
         -- Progress indicator
@@ -664,7 +667,7 @@ local function UI_CreateLoadingStatePanel(parent)
 
     function panel:ShowLoading(title, progress, stage)
         local t = title or ((ns.L and ns.L["LOADING"]) or "Loading...")
-        self._titleText:SetText("|cff00ccff" .. t .. "|r")
+        self._titleText:SetText(HEX.info .. t .. "|r")
         local pct = math.min(100, math.max(0, progress or 0))
         local s = stage or ""
         if s ~= "" then

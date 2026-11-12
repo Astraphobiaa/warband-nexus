@@ -7,6 +7,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+--- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
+--- so this reference stays current -- never copy a role out of it into another local.
+local HEX = ns.UI_HEX
 
 local wipe = wipe
 local tinsert = table.insert

@@ -404,6 +404,7 @@ local defaults = {
             showToyNotifications = true,       -- Show toy notifications
             showTitleNotifications = true,     -- Show title notifications
             showIllusionNotifications = true,  -- Show illusion notifications
+            showTrainerSkillNotifications = true, -- WoW Forever: level-up toast when trainer spells / ranks unlock
             showAchievementNotifications = true, -- Show achievement notifications
             showCriteriaProgressNotifications = true, -- Small toast when achievement criteria complete (Progress X/Y + criteria name)
             hideBlizzardAchievementAlert = true, -- Warband achievement popups ON (WN themed); false = Blizzard native alerts only
