@@ -14,6 +14,15 @@
     8. Recurring counters still drop to 0 once the stored value predates the weekly reset
 ]]
 
+-- Helpers shipped modules call at load / paint time (Utilities, SharedWidgets_Theme) that a
+-- hand-built ns does not carry. Real definitions win when a test loads those files.
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+    ns.L_GameType = ns.L_GameType or function(key, fallback) local L = ns.L; return (L and L[key]) or fallback end
+    ns.UI_GetSemanticGreenColor = ns.UI_GetSemanticGreenColor or function() return 0.3, 0.9, 0.3, 1 end
+end
+
 local passed = 0
 local failed = 0
 
@@ -39,6 +48,7 @@ local stub = dofile(SCRIPT_DIR .. "/wow_stub.lua")
 table.wipe = _G.wipe or function(t) for k in pairs(t) do t[k] = nil end return t end
 
 local ns = {}
+StubSharedNs(ns)
 local WarbandNexus = {}
 ns.WarbandNexus = WarbandNexus
 

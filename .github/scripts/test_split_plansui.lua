@@ -31,7 +31,9 @@ end
 
 local MAIN = "Modules/UI/PlansUI.lua"
 local SATELLITES = {
-    { file = "Modules/UI/PlansUI_WeeklyProgress.lua", var = "WeeklyProgress", ns = "PlansUI_WeeklyProgress" },
+    -- optional: not in WarbandNexus_Forever.toc (Midnight weekly quests are gated off there), so
+    -- PlansUI.lua binds it only when present instead of asserting it.
+    { file = "Modules/UI/PlansUI_WeeklyProgress.lua", var = "WeeklyProgress", ns = "PlansUI_WeeklyProgress", optional = true },
     { file = "Modules/UI/PlansUI_Dialogs.lua", var = "Dialogs", ns = "PlansUI_Dialogs" },
 }
 
@@ -73,9 +75,15 @@ for s = 1, #SATELLITES do
     local satSrc = ReadFile(sat.file) or ""
     check(satSrc:find("ns." .. sat.ns .. " = ", 1, true) ~= nil, sat.file .. " publishes ns." .. sat.ns)
     local name = sat.file:match("([^/]+)$")
-    check(main:find("local " .. sat.var .. " = ns." .. sat.ns .. "\nassert(" .. sat.var .. " and " .. sat.var
-        .. ".Install, \"load " .. name .. " before PlansUI.lua\")", 1, true) ~= nil,
-        "PlansUI.lua asserts ns." .. sat.ns .. " before binding it")
+    if sat.optional then
+        check(main:find("local " .. sat.var .. " = ns." .. sat.ns .. "\nif " .. sat.var .. " and " .. sat.var
+            .. ".Install then " .. sat.var .. ".Install(", 1, true) ~= nil,
+            "PlansUI.lua binds optional ns." .. sat.ns .. " only when it is loaded")
+    else
+        check(main:find("local " .. sat.var .. " = ns." .. sat.ns .. "\nassert(" .. sat.var .. " and " .. sat.var
+            .. ".Install, \"load " .. name .. " before PlansUI.lua\")", 1, true) ~= nil,
+            "PlansUI.lua asserts ns." .. sat.ns .. " before binding it")
+    end
 end
 
 -- ---------- runtime: load satellites + main under the stub ----------

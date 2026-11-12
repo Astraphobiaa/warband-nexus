@@ -181,8 +181,8 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     -- read as a surname only where surnames exist.
     local foreverNames = ns.Capabilities and ns.Capabilities.IsForeverClient
         and ns.Capabilities.IsForeverClient()
-    if foreverNames and type(uSecond) == "string" and uSecond ~= ""
-        and not (issecretvalue and issecretvalue(uSecond)) then
+    if foreverNames and not (issecretvalue and issecretvalue(uSecond))
+        and type(uSecond) == "string" and uSecond ~= "" then
         entry.surname = uSecond
     end
     -- WoW Forever game rules are per character (realm ruleset, Self-Found), but the client only

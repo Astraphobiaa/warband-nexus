@@ -17,6 +17,15 @@
     Loads the shipped files under wow_stub.lua with permissive fake frames.
 ]]
 
+-- Helpers shipped modules call at load / paint time (Utilities, SharedWidgets_Theme) that a
+-- hand-built ns does not carry. Real definitions win when a test loads those files.
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+    ns.L_GameType = ns.L_GameType or function(key, fallback) local L = ns.L; return (L and L[key]) or fallback end
+    ns.UI_GetSemanticGreenColor = ns.UI_GetSemanticGreenColor or function() return 0.3, 0.9, 0.3, 1 end
+end
+
 local passed, failed = 0, 0
 local function assert_eq(actual, expected, msg)
     if actual == expected then
@@ -158,6 +167,7 @@ do
         })
     end
     local ns = { DebugPrint = function() end, UI_LAYOUT = {} }
+    StubSharedNs(ns)
     LoadFile("Modules/UI/VirtualListModule.lua", ns)
     local VLM = ns.VirtualListModule
 
@@ -237,6 +247,7 @@ do
         UI_ResolveSurfaceTierColor = function(tier) return tier == "rowEven" and srcEven or srcOdd end,
         UI_IsClassicMode = function() return true end,
     }
+    StubSharedNs(ns)
     ns.WarbandNexus = {}
     LoadFile("Modules/UI/SharedWidgets_RowPool.lua", ns)
     local row = Frame.new(nil)
@@ -269,6 +280,7 @@ do
         UI_SetTextColorRole = function() end,
         Utilities = { FormatRealmName = function(_, r) return r end },
     }
+    StubSharedNs(ns)
     ns.WarbandNexus = { db = { profile = {} } }
     LoadFile("Modules/UI/SharedWidgets_RowPool.lua", ns)
     local apply = ns.UI_ApplyCharacterRowIdentity
@@ -294,6 +306,7 @@ end
 print("Phase 3: Caged pet display names resolve once, misses retry later")
 do
     local ns = {}
+    StubSharedNs(ns)
     ns.L = {}
     LoadFile("Modules/Utilities.lua", ns)
     local U = ns.Utilities
@@ -328,6 +341,7 @@ end
 print("Phase 4: Items rows keep stable scripts that act on the latest painted item")
 do
     local ns = { UI = { Factory = {} } }
+    StubSharedNs(ns)
     local tips, links = {}, {}
     ns.UI_ShowTooltip = function(_, data) tips[#tips + 1] = data end
     ns.UI_HideTooltip = function() end
@@ -410,6 +424,7 @@ local function TabNS()
     -- Factory: any widget constructor returns a permissive frame.
     local Factory = setmetatable({}, { __index = function() return function(_, parent) return Frame.new(parent) end end })
     local ns = { UI = { Factory = Factory } }
+    StubSharedNs(ns)
     ns.FontManager = Factory
     ns.WarbandNexus = { db = { profile = {}, global = {} }, RegisterMessage = function() end }
     ns.UI_LIST_ROW_COLUMNS = { currency = { nameLeft = 10, amountRightPad = 8 }, textGap = 6 }
@@ -499,6 +514,7 @@ do
     local cols = setmetatable({}, { __index = function() return col end })
     local flex = { guild = 60, itemLevel = 40, gold = 60, professions = 120, mythicKey = 60 }
     local ns = { UI = { Factory = Factory } }
+    StubSharedNs(ns)
     local WN = { db = { profile = {}, global = { characters = {} } } }
     function WN:ReorderCharacter(char, list, listKey, dir) calls[#calls + 1] = "reorder:" .. char.name .. ":" .. dir end
     function WN:SendMessage() end

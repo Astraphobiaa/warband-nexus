@@ -2588,7 +2588,7 @@ function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
                 end
                 -- Printed labels carry the Forever surname ("Elementalist Vhorzen"); index that too.
                 local surname = charData.surname
-                if type(surname) == "string" and surname ~= "" and not (issecretvalue and issecretvalue(surname)) then
+                if not (issecretvalue and issecretvalue(surname)) and type(surname) == "string" and surname ~= "" then
                     local full = lower .. " " .. surname:lower()
                     if map[full] == nil then
                         map[full] = ResolveClassFileTokenFromCharData(charData) or false
