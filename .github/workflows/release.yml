@@ -46,5 +46,9 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_RELEASE_CHANNEL_ID: ${{ secrets.DISCORD_RELEASE_CHANNEL_ID }}
+          # "announcements" channel: changelog + store links + @everyone heads-up. Webhook of that
+          # channel preferred; bot token + channel id also work.
+          DISCORD_ANNOUNCEMENTS_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
+          DISCORD_ANNOUNCEMENTS_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCEMENTS_CHANNEL_ID }}
           DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
         run: python .github/scripts/post_discord_release.py
