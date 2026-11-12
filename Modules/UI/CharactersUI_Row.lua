@@ -1043,7 +1043,7 @@ function CharRowCb.PaintRealmTypeCell(row, char, width, offset)
     if not tag or (issecretvalue and issecretvalue(tag)) then tag = "" end
     local text = (tag == "") and (ThemeTextHex("Muted") .. "-|r") or tag
     if rules and rules.selfFound then
-        local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd100"
+        local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or HEX.gold
         text = text .. "\n" .. goldHex .. ((ns.L and ns.L["CHAR_SELF_FOUND_TAG"]) or "Self-Found") .. "|r"
     end
     row.realmTypeText:SetText(text)
