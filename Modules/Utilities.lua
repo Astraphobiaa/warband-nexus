@@ -301,10 +301,10 @@ end
 ---@return string|nil
 function Utilities:GetLivePlayerDisplayName()
     local name, second = UnitName("player")
-    if type(name) ~= "string" or name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    if (issecretvalue and issecretvalue(name)) or type(name) ~= "string" or name == "" then return nil end
     local forever = ns.Capabilities and ns.Capabilities.IsForeverClient and ns.Capabilities.IsForeverClient()
-    if forever and self:ShowsCharacterSurname() and type(second) == "string" and second ~= ""
-        and not (issecretvalue and issecretvalue(second)) then
+    if forever and self:ShowsCharacterSurname() and not (issecretvalue and issecretvalue(second))
+        and type(second) == "string" and second ~= "" then
         return name .. " " .. second
     end
     return name
@@ -332,8 +332,8 @@ function Utilities:GetRealmTypeLabel(realm)
     local ruleset = ns.Capabilities and ns.Capabilities.GetRulesetLabel
         and ns.Capabilities:GetRulesetLabel()
     if ruleset then return ruleset end
-    if type(realm) ~= "string" or realm == "" then return nil end
     if issecretvalue and issecretvalue(realm) then return nil end
+    if type(realm) ~= "string" or realm == "" then return nil end
     local upper = realm:upper()
     -- PvP first: a combined name like "PvPRP" is still a PvP realm.
     if upper:find("PVP", 1, true) then return "PvP" end

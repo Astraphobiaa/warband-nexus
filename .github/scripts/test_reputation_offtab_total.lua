@@ -12,6 +12,15 @@
     shipped Modules/UI/ReputationUI.lua and Modules/UI/VirtualListModule.lua under wow_stub.lua.
 ]]
 
+-- Helpers shipped modules call at load / paint time (Utilities, SharedWidgets_Theme) that a
+-- hand-built ns does not carry. Real definitions win when a test loads those files.
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+    ns.L_GameType = ns.L_GameType or function(key, fallback) local L = ns.L; return (L and L[key]) or fallback end
+    ns.UI_GetSemanticGreenColor = ns.UI_GetSemanticGreenColor or function() return 0.3, 0.9, 0.3, 1 end
+end
+
 local passed, failed = 0, 0
 local function assert_eq(actual, expected, msg)
     if actual == expected then
@@ -83,6 +92,7 @@ local ui = {}
 do
     local Factory = setmetatable({}, { __index = function() return function(_, parent) return Frame.new(parent) end end })
     local ns = { UI = { Factory = Factory } }
+    StubSharedNs(ns)
     ns.FontManager = Factory
     ns.DebugPrint = function() end
     local rgba = { 0.5, 0.5, 0.5, 1 }
@@ -193,7 +203,8 @@ local function Paint(n)
     ui.listDraws, ui.tabDraws = 0, 0
 end
 
-local function Body() return ui.bodies["rep:body:filtered-cb-header-Midnight"] end
+-- One category ("Midnight") in the section: its rows paint straight into the section body.
+local function Body() return ui.bodies["rep:body:filtered-section-characterbased"] end
 
 local function VisibleRowFor(fid)
     local body = Body()

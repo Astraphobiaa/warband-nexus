@@ -23,6 +23,15 @@
 
 if jit and jit.off then jit.off() end
 
+-- Helpers shipped modules call at load / paint time (Utilities, SharedWidgets_Theme) that a
+-- hand-built ns does not carry. Real definitions win when a test loads those files.
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+    ns.L_GameType = ns.L_GameType or function(key, fallback) local L = ns.L; return (L and L[key]) or fallback end
+    ns.UI_GetSemanticGreenColor = ns.UI_GetSemanticGreenColor or function() return 0.3, 0.9, 0.3, 1 end
+end
+
 local passed, failed = 0, 0
 local function check(cond, msg, detail)
     if cond then
@@ -140,6 +149,7 @@ print("Phase A: FormatHelpers Shift watcher skips hidden cells")
 -- ======================================================================
 do
     local ns = { UI = {} }
+    StubSharedNs(ns)
     ns.UI_GetIconMarkup = function(name) return "<" .. name .. ">" end
     LoadFile("Modules/UI/FormatHelpers.lua", ns)
 
@@ -185,6 +195,7 @@ print("Phase B: vault Shift watcher skips hidden cells and reuses one options ta
 -- ======================================================================
 do
     local ns = { UI = {} }
+    StubSharedNs(ns)
     local state = { vaultSlotProgressBindings = {}, vaultColumnBindings = {}, vaultColumnCellBindings = {} }
     local M = { state = state }
     ns.VaultButton = M
@@ -245,6 +256,7 @@ print("Phase C: achievement browse earned meta, scroll coalescing, class colour 
 -- ======================================================================
 do
     local ns = { UI = { Factory = {} }, UI_LAYOUT = { PAGE_STACK = {} }, UI_SPACING = {} }
+    StubSharedNs(ns)
     local WN = {
         db = { global = { collectionsRecentObtained = {}, characters = {} }, profile = {} },
         RegisterMessage = function() end,
@@ -338,6 +350,7 @@ do
     local fnEnd = select(2, src:find("\nend\n", fnStart, true))
     local block = src:sub(startAt, fnEnd)
     local prelude = "local ns, WarbandNexus, E, issecretvalue, ResolveClassFileTokenFromCharData, GetClassColorHexForSurface = ...\n"
+        .. "local HEX = ns.UI_HEX\n"  -- file-level upvalue in SharedWidgets.lua
     local chunk = assert(loadstring(prelude .. block, "@SharedWidgets.lua:class-colour"))
 
     local listeners = {}
@@ -347,7 +360,8 @@ do
     for i = 1, 30 do
         chars["Player-1-" .. i] = { name = "Char" .. i, classFile = (i % 2 == 0) and "MAGE" or "PRIEST" }
     end
-    local ns = {}
+    local ns = { UI_HEX = { muted = "|cffb3b3b8" } }  -- distinct token, so the fallback branch is observable
+    StubSharedNs(ns)
     chunk(ns, WN, { CHARACTER_UPDATED = "WN_CHARACTER_UPDATED", CHARACTER_TRACKING_CHANGED = "WN_CHARACTER_TRACKING_CHANGED" },
         function() return false end,
         function(cd) return cd.classFile end,
@@ -364,7 +378,7 @@ do
     local missing = ns.UI_GetClassColorHexForWarbandCharacter("Nobody")
     string.lower = realLower
     check(okAll, "class colour resolves case-insensitively")
-    check(missing == "|cffaaaaaa", "unknown name -> default grey")
+    check(missing == ns.UI_HEX.muted, "unknown name -> Muted role token")
     check(lowerCalls <= 30 + 21, "21 lookups over 30 characters lowercase each name once", lowerCalls)
 
     -- Roster change: a renamed character is picked up after the roster message.

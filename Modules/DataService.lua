@@ -751,8 +751,9 @@ function WarbandNexus:CollectForeverExtendedStats()
     if not (caps and caps.IsForeverClient and caps.IsForeverClient()) then return nil end
     local function num(ok, v)
         if not ok then return nil end
+        if (issecretvalue and issecretvalue(v)) then return nil end
         if v == nil then return 0 end
-        if (issecretvalue and issecretvalue(v)) or type(v) ~= "number" then return nil end
+        if type(v) ~= "number" then return nil end
         return v
     end
     local out = {}
@@ -1091,8 +1092,8 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     -- retail puts the realm there, so only read it as a surname where surnames exist.
     local surname
     if ns.Capabilities and ns.Capabilities.IsForeverClient and ns.Capabilities.IsForeverClient()
-        and type(nameSecond) == "string" and nameSecond ~= ""
-        and not (issecretvalue and issecretvalue(nameSecond)) then
+        and not (issecretvalue and issecretvalue(nameSecond))
+        and type(nameSecond) == "string" and nameSecond ~= "" then
         surname = nameSecond
     end
     local realm = GetNormalizedRealmName()  -- Get realm name
