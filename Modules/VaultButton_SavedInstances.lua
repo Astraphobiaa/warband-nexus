@@ -172,6 +172,7 @@ function M.ScheduleSavedInstancesLiveRefresh(triggerPvEUpdate)
     -- Only when asked: the UPDATE_INSTANCE_INFO path passes false, otherwise every
     -- answer requested the next one while the window stayed open (2026-10-22).
     if triggerPvEUpdate and RequestRaidInfo then
+        if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/RequestRaidInfo") end
         pcall(RequestRaidInfo)
     end
     if savedLiveRefreshPending then return end

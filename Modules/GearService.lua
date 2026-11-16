@@ -2261,6 +2261,7 @@ end
 ---@param triggerSlotID number|nil PLAYER_EQUIPMENT_CHANGED slot (1-17); forwarded to UI for single-slot refresh.
 ---@param opts table|nil `{ silent = boolean }` — silent skips GEAR_UPDATED message.
 function WarbandNexus:ScanEquippedGear(triggerSlotID, opts)
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("CNT/Gear_ScanEquippedGear") end
     opts = opts or {}
     local silent = opts.silent == true
 

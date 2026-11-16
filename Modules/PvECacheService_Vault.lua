@@ -489,16 +489,41 @@ end
 -- same call ourselves on the events that can change vault state. Throttled: it is a server
 -- round-trip and several of those events burst (UPDATE_INSTANCE_INFO repeats while zoning).
 local lastWeeklyVaultPoke = 0
+local lastWeeklyVaultAnswer = 0
 local WEEKLY_VAULT_POKE_THROTTLE = 2.0
+-- How long a sent poke counts as "answer still on its way" (the reply lands ~1-4 s later).
+local WEEKLY_VAULT_POKE_IN_FLIGHT = 6.0
 
-local function PokeWeeklyVaultServer()
+--- The one door every Great Vault server request goes through. While a poke is still unanswered a
+--- second one only asks for the same data again: at login the scanner's poke, the
+--- UPDATE_INSTANCE_INFO poke and the M+ affix-reply pokes each went out (4 per login), and every
+--- answer runs three full vault handlers. `force` (claim, run completed, login owner) always sends,
+--- and still stamps the time so the routine pokes right behind it are dropped.
+---@param force boolean|nil
+local function PokeWeeklyVaultServer(force)
     if not (C_WeeklyRewards and C_WeeklyRewards.OnUIInteract) then return end
     local now = (GetTime and GetTime()) or 0
-    if lastWeeklyVaultPoke > 0 and (now - lastWeeklyVaultPoke) < WEEKLY_VAULT_POKE_THROTTLE then
-        return
+    if not force and lastWeeklyVaultPoke > 0 then
+        local since = now - lastWeeklyVaultPoke
+        local unanswered = lastWeeklyVaultAnswer < lastWeeklyVaultPoke
+        if since < WEEKLY_VAULT_POKE_THROTTLE or (unanswered and since < WEEKLY_VAULT_POKE_IN_FLIGHT) then
+            return
+        end
     end
     lastWeeklyVaultPoke = now
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/OnUIInteract") end
     pcall(C_WeeklyRewards.OnUIInteract)
+end
+
+---Send a Great Vault server request through the shared door (see PokeWeeklyVaultServer).
+---@param force boolean|nil
+function WarbandNexus:PokeWeeklyVaultServer(force)
+    PokeWeeklyVaultServer(force)
+end
+
+---WEEKLY_REWARDS_UPDATE arrived: the request in flight is answered.
+function WarbandNexus:NoteWeeklyVaultAnswered()
+    lastWeeklyVaultAnswer = (GetTime and GetTime()) or 0
 end
 
 ---Ask the server to resend Great Vault data so the badge can update without the player having to
@@ -720,16 +745,16 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     keystoneLastSeen[charKey] = nil
     keystoneRetryCount[charKey] = nil
     if C_MythicPlus then
-        if C_MythicPlus.RequestMapInfo then
-            pcall(C_MythicPlus.RequestMapInfo)
+        if C_MythicPlus.RequestMapInfo and self.RequestMythicPlusMapInfo then
+            self:RequestMythicPlusMapInfo(true)   -- a claim: always ask
         end
         if C_MythicPlus.RequestRewards then
             pcall(C_MythicPlus.RequestRewards)
         end
     end
-    if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
-        pcall(C_WeeklyRewards.OnUIInteract)
-    end
+    -- A claim changes vault state: always ask, through the shared door so the routine pokes behind
+    -- it are dropped.
+    PokeWeeklyVaultServer(true)
 
     local beforeSig = BuildPvESignature(self.db.global.pveCache, charKey)
     if self.RequestKeystoneRefresh then

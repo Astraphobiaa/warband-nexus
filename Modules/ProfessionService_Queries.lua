@@ -792,7 +792,7 @@ function WarbandNexus:PrintProfessionVerify()
     local eqByProf = charData.professionEquipment
     local eqKey = profName:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", "")
     local eqData = eqByProf and (eqByProf[profName] or eqByProf[expansionName] or eqByProf[eqKey]) or nil
-    if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
+    if type(eqData) == "table" and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
         local parts = {}
         if eqData.tool and eqData.tool.name then parts[#parts + 1] = "Tool: " .. eqData.tool.name end
         if eqData.accessory1 and eqData.accessory1.name then parts[#parts + 1] = "Acc1: " .. eqData.accessory1.name end

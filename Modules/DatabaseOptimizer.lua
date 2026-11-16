@@ -281,12 +281,34 @@ function WarbandNexus:DeleteCharacter(characterKey)
     local charData = self.db.global.characters[characterKey]
     local charName = charData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     
+    -- The roster shows a GUID row and its legacy Name-Realm duplicate as ONE character, so deleting
+    -- only the row behind that entry let the duplicate (and its currency / gear buckets) surface in
+    -- its place. Delete every row that merges into the same entry -- never the logged-in character's.
+    local rowKeys = { characterKey }
+    local Roster = ns.DataServiceRoster
+    if Roster and Roster.ComputeCharacterMergeKey and Roster.BuildGuidByNameRealmIndex then
+        local chars = self.db.global.characters
+        local index = Roster.BuildGuidByNameRealmIndex(chars)
+        local targetMerge = Roster.ComputeCharacterMergeKey(charData, characterKey, index)
+        local liveKey = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(self)
+        if targetMerge then
+            for key, row in pairs(chars) do
+                if key ~= characterKey and key ~= liveKey and type(row) == "table"
+                    and Roster.ComputeCharacterMergeKey(row, key, index) == targetMerge then
+                    rowKeys[#rowKeys + 1] = key
+                end
+            end
+        end
+    end
+
     -- Aliases, subsidiary tables, character-bound plans, row, then the guild bank cache.
     local CS = ns.CharacterService
-    if CS and CS.PurgeCharacterRow then
-        CS:PurgeCharacterRow(self, characterKey)
-    else
-        self.db.global.characters[characterKey] = nil
+    for i = 1, #rowKeys do
+        if CS and CS.PurgeCharacterRow then
+            CS:PurgeCharacterRow(self, rowKeys[i])
+        else
+            self.db.global.characters[rowKeys[i]] = nil
+        end
     end
     
     -- Fire event for UI refresh (DB-First pattern)
@@ -437,7 +459,11 @@ local MAX_CHARACTERS = 70  -- Maximum characters per account (configurable limit
 ]]
 function WarbandNexus:EnforceCharacterLimit(limit)
     limit = limit or MAX_CHARACTERS
-    
+
+    -- Count characters, not rows: a GUID row and its legacy Name-Realm copy counted twice, so the
+    -- limit was hit early and real untracked characters were pruned to make room.
+    if self.CollapseCharacterRosterDuplicates then self:CollapseCharacterRosterDuplicates() end
+
     local characters = self.db.global.characters or {}
     local CS = ns.CharacterService
     local favoriteKeySet = (CS and CS.BuildFavoriteKeySet) and CS:BuildFavoriteKeySet(self) or {}

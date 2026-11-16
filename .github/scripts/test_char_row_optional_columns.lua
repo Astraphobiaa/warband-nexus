@@ -73,7 +73,7 @@ end
 local RETAIL = { mythicPlus = true, trainedSpells = false, classicTalentTree = false,
     averageItemLevel = true, realmTypeTag = false }
 local FOREVER = { mythicPlus = false, trainedSpells = true, classicTalentTree = true,
-    averageItemLevel = false, realmTypeTag = true }
+    averageItemLevel = false, realmTypeTag = true, specializations = false }
 
 print("Phase 1: retail keeps every column it had")
 do
@@ -89,6 +89,11 @@ do
         eq(flex.skills, 0, "retail: skills column collapses")
         eq(flex.talents, 0, "retail: talents column collapses")
         eq(flex.realmType, 0, "retail: realm type column collapses")
+        -- Spec sits right after Class and pushes Level along by its own total.
+        eq(ns.UI_GetColumnOffset("spec"), ns.UI_GetColumnOffset("class") + cols.class.total,
+            "retail: spec column follows class")
+        eq(ns.UI_GetColumnOffset("level"), ns.UI_GetColumnOffset("spec") + cols.spec.total,
+            "retail: level follows the spec column")
         -- realmType sits BEFORE guild in the order, so a collapsed one must not push the
         -- columns after it to the right.
         eq(ns.UI_CharRowGetColumnOffset and ns.UI_CharRowGetColumnOffset("guild") or nil,
@@ -117,6 +122,9 @@ do
         -- the average from the equipped pieces instead, so the column stays.
         eq(flex.itemLevel, cols.itemLevel.width, "forever: item level column stays")
         eq(flex.realmType, cols.realmType.width, "forever: realm type column present")
+        -- No specs on Forever: the column takes no space, so Level sits where it always did.
+        eq(ns.UI_GetColumnOffset("level"), ns.UI_GetColumnOffset("class") + cols.class.total,
+            "forever: spec column collapses")
     end
 end
 

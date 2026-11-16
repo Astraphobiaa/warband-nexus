@@ -212,6 +212,36 @@ function WarbandNexus:TouchCharacterLastSeen(tableKey)
     return true
 end
 
+-- specID -> { name, icon, role }: static game data, the same for every character on that spec.
+local specDisplayCache = {}
+
+--- Spec name, icon and role ("TANK" / "HEALER" / "DAMAGER") for a roster row, offline included.
+--- The role is not persisted: it follows from the stored specID, so rows saved before it existed
+--- answer too. nil when the row has no spec yet (never logged in since, or below spec level).
+---@param char table db.global.characters row
+---@return string|nil name, number|string|nil icon, string|nil role
+function WarbandNexus:GetCharacterSpecDisplay(char)
+    if type(char) ~= "table" then return nil end
+    local specID = tonumber(char.specID)
+    -- Legacy rows stored the spec index (1-4); no spec ID is that small, so it resolves nothing.
+    if not specID or specID <= 4 then return nil end
+    local info = specDisplayCache[specID]
+    if info == nil then
+        info = false
+        if GetSpecializationInfoByID then
+            local ok, id, name, _, icon, role = pcall(GetSpecializationInfoByID, specID)
+            if ok and id and not (issecretvalue and (issecretvalue(name) or issecretvalue(role))) then
+                info = { name = name, icon = icon, role = role }
+            end
+        end
+        specDisplayCache[specID] = info
+    end
+    if not info then
+        return char.specName, char.specIcon, nil
+    end
+    return char.specName or info.name, char.specIcon or info.icon, info.role
+end
+
 --- Trustworthy age since last roster row update; nil when lastSeen is missing or invalid (never treat as infinitely stale).
 function WarbandNexus:GetCharacterLastSeenAge(char, currentTime)
     if type(char) ~= "table" then return nil end
@@ -1333,7 +1363,10 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     local specID, specName, specIcon = nil, nil, nil
     if GetSpecialization and GetSpecializationInfo then
         local idx = GetSpecialization()
-        if idx then specID, specName, _, specIcon = GetSpecializationInfo(idx) end
+        if idx then
+            local _
+            specID, specName, _, specIcon = GetSpecializationInfo(idx)
+        end
     end
     -- Spec index is nil while talents load; a spec is never un-chosen, so keep the stored one.
     if not specID and existingEntry then
@@ -1715,6 +1748,15 @@ function WarbandNexus:HealCharacterProfessions(charData)
             and IsSecondaryProfessionName(charData, entry.name) then
             charData.professions[slot] = nil
         end
+        -- Same for an earlier bad recovery: a slot named after a scalar bookkeeping key of the
+        -- equipment store (e.g. "lastUpdate") never was a profession.
+        local eq = charData.professionEquipment
+        entry = charData.professions[slot]
+        if type(entry) == "table" and type(entry.name) == "string" and type(eq) == "table"
+            and not (issecretvalue and issecretvalue(entry.name))
+            and eq[entry.name] ~= nil and type(eq[entry.name]) ~= "table" then
+            charData.professions[slot] = nil
+        end
     end
 
     local p1 = charData.professions[1]
@@ -1743,17 +1785,16 @@ function WarbandNexus:HealCharacterProfessions(charData)
     if charData.discoveredSkillLines then
         for name in pairs(charData.discoveredSkillLines) do addCandidate(name) end
     end
-    if charData.professionEquipment then
-        for name in pairs(charData.professionEquipment) do addCandidate(name) end
-    end
-    if charData.concentration then
-        for k in pairs(charData.concentration) do
-            if type(k) == "string" then addCandidate(k) end
-        end
-    end
-    if charData.knowledgeData then
-        for k in pairs(charData.knowledgeData) do
-            if type(k) == "string" then addCandidate(k) end
+    -- These stores keep one TABLE per profession beside scalar bookkeeping ("lastUpdate" = number,
+    -- "_last" / "_legacy" meta rows); only a table under a plain name is a profession. Reading every
+    -- key promoted "lastUpdate" into a primary slot, whose hover then indexed the number.
+    local tableStores = { charData.professionEquipment, charData.concentration, charData.knowledgeData }
+    for s = 1, 3 do
+        local store = tableStores[s]
+        if type(store) == "table" then
+            for k, v in pairs(store) do
+                if type(k) == "string" and type(v) == "table" and k:sub(1, 1) ~= "_" then addCandidate(k) end
+            end
         end
     end
     if type(charData.recipes) == "table" then
@@ -2067,6 +2108,32 @@ function WarbandNexus:FlushDataServiceOnLogout()
     end
 end
 
+--- Collapse duplicate roster rows (GUID row + legacy Name-Realm row of one character) in the DB now.
+--- Same pass as the login cleanup, which only runs hourly. Returns how many rows were folded.
+---@return number duplicates
+function WarbandNexus:CollapseCharacterRosterDuplicates()
+    local MS = ns.MigrationService
+    if not (self.db and MS and MS.DeduplicateCharacterRoster) then return 0 end
+    local n = MS:DeduplicateCharacterRoster(self.db) or 0
+    if n > 0 and ns.Utilities and ns.Utilities.InvalidateCharacterKeyIndex then
+        ns.Utilities:InvalidateCharacterKeyIndex()
+    end
+    return n
+end
+
+--- Run CollapseCharacterRosterDuplicates on the next frame (never inside a roster build), once.
+function WarbandNexus:ScheduleCharacterRosterDedup()
+    if self._wnRosterDedupPending or not (C_Timer and C_Timer.After) then return end
+    self._wnRosterDedupPending = true
+    C_Timer.After(0, function()
+        self._wnRosterDedupPending = nil
+        local removed = self:CollapseCharacterRosterDuplicates()
+        if removed > 0 and ns.Constants and ns.Constants.EVENTS then
+            self:SendMessage(ns.Constants.EVENTS.CHARACTER_UPDATED, { dataType = "rosterPrune", removed = removed })
+        end
+    end)
+end
+
 --- Get all characters (tracked and untracked), sorted by level then name.
 function WarbandNexus:GetAllCharacters()
     local characters = {}
@@ -2092,7 +2159,16 @@ function WarbandNexus:GetAllCharacters()
     end
     
     -- Deduplicate characters for display (shared merge helper).
-    local seen = BuildMergedCharacterRosterView and BuildMergedCharacterRosterView(charsTbl) or {}
+    local seen, duplicates = {}, 0
+    if BuildMergedCharacterRosterView then
+        seen, duplicates = BuildMergedCharacterRosterView(charsTbl)
+    end
+    -- The display merge is not stored: anything reading raw rows (minimap / vault gold totals,
+    -- profession lists, the character limit) still sees both copies, and a per-row action (delete,
+    -- untrack) touched one while the other stayed. Persist the merge as soon as one is seen.
+    if (duplicates or 0) > 0 then
+        self:ScheduleCharacterRosterDedup()
+    end
 
     -- Convert seen map to array
     for _, data in pairs(seen) do
@@ -2848,6 +2924,10 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
         return 0
     end
     
+    -- One row per character first: judging a GUID row and its Name-Realm copy apart pruned one and
+    -- left the other to resurface (now with no lastSeen, so never stale again).
+    if self.CollapseCharacterRosterDuplicates then self:CollapseCharacterRosterDuplicates() end
+
     -- Collect first: PurgeCharacterRow walks the roster for aliases while removing a row.
     local stale = {}
     for key, char in pairs(self.db.global.characters) do

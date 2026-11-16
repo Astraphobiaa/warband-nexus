@@ -124,12 +124,20 @@ end
 local function RequestVaultData()
     if not C_WeeklyRewards then return end
     
-    -- This "pokes" the server to send us the data
+    -- This "pokes" the server to send us the data. Through PvECache's shared door (forced: this is
+    -- the login owner) so the routine pokes fired right behind it wait for this answer.
+    local WN = ns.WarbandNexus
+    if WN and WN.PokeWeeklyVaultServer then
+        WN:PokeWeeklyVaultServer(true)
+        return
+    end
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/OnUIInteract") end
     C_WeeklyRewards.OnUIInteract()
 end
 
 ---Process vault data when server responds
 local function UpdateVaultData()
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("CNT/Vault_ScannerUpdate") end
     if not C_WeeklyRewards then
         return
     end

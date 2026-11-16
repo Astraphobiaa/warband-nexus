@@ -1208,6 +1208,7 @@ end
 ---Scan all inventory bags for current character
 ---INCREMENTAL UPDATE: Update only specific bag (single bag scan)
 function WarbandNexus:UpdateSingleBag(charKey, bagID, cacheOnly)
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("CNT/Items_UpdateSingleBag") end
     -- GUARD: Only update bags if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return

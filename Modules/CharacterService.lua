@@ -125,6 +125,11 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
 
     local chars = addon.db.global.characters
 
+    -- One row per character before flipping a flag: with a GUID row and its Name-Realm copy both
+    -- present, only one was flipped and the roster merge ("tracked wins") put the other's back --
+    -- untracking looked like it did nothing.
+    if addon.CollapseCharacterRosterDuplicates then addon:CollapseCharacterRosterDuplicates() end
+
     -- Another character's row (the Characters-tab toggle and right-click menu work on every row):
     -- flip that row's flags only. GetCharactersTablePersistKey below always resolves to the LOGGED-IN
     -- player, so an alt key routed through it merged the alt row into the current one, deleted the
@@ -1942,6 +1947,37 @@ function CharacterService:SortCharacterRosterList(list, profile, orderKey, opts)
             local char = list[i]
             local ck = getCharKey(char)
             if ck then charMap[ck] = char end
+        end
+        -- Order entries are stored under whatever key the row had when it was ordered (an older
+        -- Name-Realm), while the UI key is now the GUID row key: those entries never matched, so
+        -- the character fell to the unordered tail and a reorder appended a second entry. Rewrite
+        -- each entry to the key the roster uses now, dropping repeats, so ReorderCharacter's exact
+        -- match holds too.
+        -- Matched by canonical identity onto THIS caller's key form: tabs key rows differently (PvE
+        -- uses the canonical key, Characters the row key), and both read the same list.
+        local U = ns.Utilities
+        local seenKey = {}
+        if U and U.GetCanonicalCharacterKey then
+            local byCanon = {}
+            for ck in pairs(charMap) do
+                if type(ck) == "string" and not (issecretvalue and issecretvalue(ck)) then
+                    byCanon[U:GetCanonicalCharacterKey(ck) or ck] = ck
+                end
+            end
+            for i = 1, #customOrder do
+                local entry = customOrder[i]
+                if not charMap[entry] and type(entry) == "string" and not (issecretvalue and issecretvalue(entry)) then
+                    local hit = byCanon[U:GetCanonicalCharacterKey(entry) or entry]
+                    if hit then customOrder[i] = hit end
+                end
+            end
+        end
+        for i = 1, #customOrder do
+            local k = customOrder[i]
+            if seenKey[k] then customOrder[i] = false else seenKey[k] = true end
+        end
+        for i = #customOrder, 1, -1 do
+            if customOrder[i] == false then table.remove(customOrder, i) end
         end
         for i = 1, #customOrder do
             local charKey = customOrder[i]

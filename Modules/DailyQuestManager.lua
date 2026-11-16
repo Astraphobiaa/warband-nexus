@@ -1426,10 +1426,70 @@ function WarbandNexus:InitializeDailyQuestManager()
     end
 end
 
+-- Categories whose rows are discovered from the map APIs and vanish on turn-in / expiry.
+local DYNAMIC_QUEST_CATEGORIES = { "worldQuests", "assignments", "dailyQuests" }
+
+--- Weekly Progress plans of characters that are NOT logged in. Only the logged-in character's plan
+--- is ever rescanned, so an alt's plan kept last week's weeklies (and yesterday's dailies) ticked,
+--- and could read as fully complete, until that alt logged in. Expire by the plan's own stamp:
+--- weekly reset -> nothing is done any more (vanished dynamic rows go, fixed rows reopen, the
+--- recorded warband weeklies are wiped); daily reset -> the dailies only. Idempotent: lastUpdate is
+--- left alone so the alt's own next scan still sees the reset.
+---@return boolean changed
+local function ExpireStaleAltPlanCompletion(addon)
+    local plans = addon and addon.db and addon.db.global and addon.db.global.plans
+    if type(plans) ~= "table" then return false end
+    local changed = false
+    for _, plan in pairs(plans) do
+        if type(plan) == "table" and plan.type == "daily_quests" and type(plan.quests) == "table"
+            and not IsPlanForLoggedInCharacter(plan) then
+            local since = tonumber(plan.lastUpdate) or 0
+            local weekly = addon.HasWeeklyResetOccurredSince and addon:HasWeeklyResetOccurredSince(since)
+            local daily = weekly or (addon.HasDailyResetOccurredSince and addon:HasDailyResetOccurredSince(since))
+            if daily then
+                for ci = 1, #QUEST_CATEGORIES do
+                    local catKey = QUEST_CATEGORIES[ci].key
+                    local list = plan.quests[catKey]
+                    if type(list) == "table" then
+                        local dynamic = false
+                        for di = 1, #DYNAMIC_QUEST_CATEGORIES do
+                            if DYNAMIC_QUEST_CATEGORIES[di] == catKey then dynamic = true break end
+                        end
+                        for i = #list, 1, -1 do
+                            local q = list[i]
+                            local expires = type(q) == "table" and q.isComplete
+                                and (weekly or q.isDaily or catKey == "dailyQuests")
+                            if expires then
+                                if dynamic then
+                                    table.remove(list, i)
+                                else
+                                    q.isComplete = false
+                                end
+                                changed = true
+                            end
+                        end
+                    end
+                end
+                if weekly then
+                    local bucket = plan.charWeeklyProgress
+                    local had = type(bucket) == "table" and type(bucket.questIDs) == "table"
+                        and next(bucket.questIDs) ~= nil
+                    EnsurePlanCharWeeklyProgress(plan)   -- wipes a bucket from an older week
+                    if had and next(plan.charWeeklyProgress.questIDs) == nil then changed = true end
+                end
+            end
+        end
+    end
+    return changed
+end
+-- Method form: reset handlers call it through self (tests lift those bodies out of the file).
+WarbandNexus.ExpireStaleAltPlanCompletion = ExpireStaleAltPlanCompletion
+
 function WarbandNexus:UpdateDailyQuestWeeklyReset()
     self.dailyQuestWeeklyCheckTime = time()
     -- Plans module off: no plan rows / PLANS_UPDATED (2026-10-22); re-enable runs OnDailyQuestLogin.
     if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
+    if self.ExpireStaleAltPlanCompletion then self:ExpireStaleAltPlanCompletion() end
     local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not currentKey then return end
     local dailyList = GetDailyQuestPlansForCharKey(currentKey)
@@ -1445,6 +1505,7 @@ end
 
 function WarbandNexus:RefreshDailyQuestsOnDailyReset()
     if not (ns.Utilities and ns.Utilities:IsModuleEnabled("plans")) then return end
+    if self.ExpireStaleAltPlanCompletion then self:ExpireStaleAltPlanCompletion() end
     local currentKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not currentKey then return end
     local dailyList = GetDailyQuestPlansForCharKey(currentKey)
@@ -1474,6 +1535,10 @@ function WarbandNexus:OnDailyQuestLogin()
     end
     dailyQuestLoginRescanTimer = C_Timer.NewTimer(3, function()
         dailyQuestLoginRescanTimer = nil
+        -- A reset that happened while logged out never fired the reset handlers above.
+        if self.ExpireStaleAltPlanCompletion and self:ExpireStaleAltPlanCompletion() and self.SendMessage and E and E.PLANS_UPDATED then
+            self:SendMessage(E.PLANS_UPDATED, { action = "weekly_reset", planType = "daily_quests" })
+        end
         local currentKey = ns.Utilities:GetCharacterKey()
         local dailyList = GetDailyQuestPlansForCharKey(currentKey)
         if dailyList then

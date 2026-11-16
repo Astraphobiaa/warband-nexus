@@ -281,6 +281,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
                     local scannerReady = ns.VaultScanner and ns.VaultScanner.IsInitialized and ns.VaultScanner.IsInitialized()
                     if not scannerReady then
+                        if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/OnUIInteract") end
                         C_WeeklyRewards.OnUIInteract()
                     end
                 end

@@ -116,6 +116,33 @@ local function ScheduleKeystoneRetry(charKey, reason)
     end)
 end
 
+local lastMapInfoRequestAt = 0
+local MAPINFO_REQUEST_MIN_INTERVAL = 5.0
+
+---The one door for C_MythicPlus.RequestMapInfo. Its answer (CHALLENGE_MODE_MAPS_UPDATE /
+---MYTHIC_PLUS_CURRENT_AFFIX_UPDATE) carries everything the keystone read needs, so asking again
+---within a few seconds only produced a second answer and a second round of handlers (3 requests
+---per login). `force` (run completed, vault claim) always asks.
+---@param force boolean|nil
+---@return boolean sent
+function WarbandNexus:RequestMythicPlusMapInfo(force)
+    if not (C_MythicPlus and C_MythicPlus.RequestMapInfo) then return false end
+    local now = GetTime()
+    if not force and lastMapInfoRequestAt > 0 and (now - lastMapInfoRequestAt) < MAPINFO_REQUEST_MIN_INTERVAL then
+        return false
+    end
+    lastMapInfoRequestAt = now
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/RequestMapInfo") end
+    pcall(C_MythicPlus.RequestMapInfo)
+    return true
+end
+
+-- Events the server fires in reply to C_MythicPlus.RequestMapInfo.
+local KEYSTONE_MAPINFO_ANSWER_EVENTS = {
+    CHALLENGE_MODE_MAPS_UPDATE = true,
+    MYTHIC_PLUS_CURRENT_AFFIX_UPDATE = true,
+}
+
 ---Central keystone refresh: C_MythicPlus read, roster cache invalidation, WN_* fan-out.
 ---@param reason string|nil diagnostic tag (debug only)
 ---@param forceClearSeen boolean|nil when true, clears keystoneLastSeen and schedules API warmup retries
@@ -154,8 +181,12 @@ function WarbandNexus:RequestKeystoneRefresh(reason, forceClearSeen)
         keystoneLastSeen[charKey] = nil
     end
 
-    if C_MythicPlus and C_MythicPlus.RequestMapInfo then
-        pcall(C_MythicPlus.RequestMapInfo)
+    -- CHALLENGE_MODE_MAPS_UPDATE / MYTHIC_PLUS_CURRENT_AFFIX_UPDATE ARE the answers to
+    -- RequestMapInfo: asking again from their own handlers made the server answer again, a refresh
+    -- loop for as long as the session ran (high priority, or no cached key, skips the throttle above).
+    -- Every other caller still asks.
+    if not KEYSTONE_MAPINFO_ANSWER_EVENTS[reason] then
+        self:RequestMythicPlusMapInfo(false)
     end
 
     local didChange = self:UpdateCharacterKeystone(charKey)
@@ -312,7 +343,7 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
                 if (warmupNow - warmupLast) >= KEYSTONE_WARMUP_COOLDOWN then
                     keystoneWarmupLastAt[charKey] = warmupNow
                     if C_MythicPlus.RequestMapInfo then
-                        pcall(C_MythicPlus.RequestMapInfo)
+                        self:RequestMythicPlusMapInfo(false)
                     end
                     ScheduleKeystoneRetry(charKey)
                     if ShouldLogPvECacheDiag("keystone_warmup:" .. tostring(charKey), 30) then

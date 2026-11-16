@@ -602,9 +602,9 @@ local function PruneExpiredKeystonesForWeeklyReset()
     end
     local mp = WarbandNexus.db.global.pveCache.mythicPlus
     if not mp then return 0 end
+    -- No early return on an empty cache: the roster rows below are pruned either way.
     if not mp.keystones then
         mp.keystones = {}
-        return 0
     end
 
     local resetStart = GetCurrentWeeklyResetStartTime()
@@ -620,6 +620,41 @@ local function PruneExpiredKeystonesForWeeklyReset()
         if stale then
             mp.keystones[key] = nil
             removed = removed + 1
+        end
+    end
+
+    -- The Characters tab, tooltips and /wn read the roster row's mirror, not the cache above, and
+    -- nothing cleared it: with no key the API returns nothing at all (MayReturnNothing), which the
+    -- keystone reader keeps as "not ready yet". Every alt -- and the logged-in character -- kept
+    -- showing last week's key. A keystone does not outlive the weekly reset, so the stamp decides.
+    local chars = WarbandNexus.db.global.characters
+    local rowsCleared = 0
+    if type(chars) == "table" then
+        for key, row in pairs(chars) do
+            local mk = type(row) == "table" and row.mythicKey or nil
+            if mk ~= nil then
+                local stamp = type(mk) == "table" and tonumber(mk.scanTime) or nil
+                local stale = false
+                if resetStart and resetStart > 0 then
+                    stale = not stamp or stamp < resetStart
+                elseif WarbandNexus.HasWeeklyResetOccurred then
+                    stale = not stamp or WarbandNexus:HasWeeklyResetOccurred(stamp)
+                end
+                if stale then
+                    row.mythicKey = nil
+                    rowsCleared = rowsCleared + 1
+                end
+            end
+        end
+    end
+    if rowsCleared > 0 then
+        removed = removed + rowsCleared
+        if WarbandNexus.InvalidateGetAllCharactersCache then
+            WarbandNexus:InvalidateGetAllCharactersCache()
+        end
+        local E = ns.Constants and ns.Constants.EVENTS
+        if E and E.CHARACTER_UPDATED and WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage(E.CHARACTER_UPDATED, { dataType = "mythicKey" })
         end
     end
 
@@ -725,9 +760,39 @@ local function PruneExpiredRunHistoryForWeeklyReset()
     return removed
 end
 
+---Mark every character's Great Vault snapshot from a previous week as post-reset.
+---Only the logged-in character's scan ever set isPostReset, so an alt's last-week slot progress
+---kept showing as this week's on the PvE tab and the vault button until that alt logged in.
+---The rows are kept, not deleted: the unclaimed-chest detection still reads them, and every
+---progress reader already treats isPostReset as "no progress this week".
+local function MarkExpiredVaultProgressForWeeklyReset()
+    local gv = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+        and WarbandNexus.db.global.pveCache and WarbandNexus.db.global.pveCache.greatVault
+    local acts = gv and gv.activities
+    if type(acts) ~= "table" then return 0 end
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    if not resetStart or resetStart <= 0 then return 0 end
+    local marked = 0
+    for _, bucket in pairs(acts) do
+        if type(bucket) == "table" and not bucket.isPostReset then
+            -- weeklyResetTime = the NEXT reset as of the snapshot: at or before this week's start
+            -- means the snapshot belongs to an earlier week (same rule as VaultScanner's "crossed").
+            local snapNext = NormalizeResetEpoch(bucket.weeklyResetTime)
+            if type(snapNext) == "number" and snapNext > 0 and snapNext <= resetStart then
+                bucket.isPostReset = true
+                bucket.dungeonRunCounts = nil
+                bucket.worldTierProgress = nil
+                marked = marked + 1
+            end
+        end
+    end
+    return marked
+end
+
 local function PruneAllPvEWeeklyData()
     local count = 0
     count = count + (PruneExpiredKeystonesForWeeklyReset() or 0)
+    count = count + (MarkExpiredVaultProgressForWeeklyReset() or 0)
     count = count + (PruneExpiredWorldBossesForWeeklyReset() or 0)
     count = count + (PruneExpiredDelvesForWeeklyReset() or 0)
     count = count + (PruneExpiredRunHistoryForWeeklyReset() or 0)
@@ -1479,6 +1544,7 @@ end
 
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("CNT/PvE_UpdatePvEData") end
     DebugPrint("|cff9370DB[PvECache]|r [PvE Action] UpdatePvEData triggered")
     -- Module gate: PvE tab, Plans (vault plans) and VaultButton all consume this data.
     if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then
@@ -2235,7 +2301,11 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Prime C_MythicPlus API cache on login (deferred to ensure API readiness)
     C_Timer.After(3, function()
         if C_MythicPlus then
-            C_MythicPlus.RequestMapInfo()
+            if WarbandNexus.RequestMythicPlusMapInfo then
+                WarbandNexus:RequestMythicPlusMapInfo(false)
+            else
+                C_MythicPlus.RequestMapInfo()
+            end
             C_MythicPlus.RequestCurrentAffixes()
         end
     end)
@@ -2304,13 +2374,18 @@ function WarbandNexus:RegisterPvECacheEvents()
         
         -- Request fresh data from Blizzard APIs
         if C_MythicPlus then
-            C_MythicPlus.RequestMapInfo()
+            if WarbandNexus.RequestMythicPlusMapInfo then
+                WarbandNexus:RequestMythicPlusMapInfo(true)   -- a finished run: always ask
+            else
+                C_MythicPlus.RequestMapInfo()
+            end
             if vaultOn then
                 C_MythicPlus.RequestRewards()
             end
         end
-        if vaultOn and C_WeeklyRewards then
-            C_WeeklyRewards.OnUIInteract()
+        if vaultOn and C_WeeklyRewards and WarbandNexus.PokeWeeklyVaultServer then
+            -- A finished run fills a vault slot: always ask (forced), through the shared door.
+            WarbandNexus:PokeWeeklyVaultServer(true)
         end
         
         if WarbandNexus.RequestKeystoneRefresh then
@@ -2341,29 +2416,25 @@ function WarbandNexus:RegisterPvECacheEvents()
     end)
     
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
-        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_CURRENT_AFFIX_UPDATE triggered (weekly reset)")
-        
-        -- Affix refresh: clear affix IDs, then prune stale keystones for the new weekly cycle.
-        if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
-            if WarbandNexus.db.global.pveCache.mythicPlus then
-                WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
-                PruneAllPvEWeeklyData()
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_CURRENT_AFFIX_UPDATE triggered")
+
+        -- This is the server's answer to RequestMapInfo / RequestCurrentAffixes, which fire at login,
+        -- after runs and on keystone checks -- not a weekly reset. Handling every answer as one
+        -- (prune + save + full PvE update + vault poke) ran that whole chain twice per login. The
+        -- real rollover is WN_WEEKLY_RESET_OCCURRED (ResetService, below). Here: the affix list and
+        -- the keystone only.
+        local mp = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache
+            and WarbandNexus.db.global.pveCache.mythicPlus
+        if mp and WarbandNexus.UpdateMythicPlusAffixes then
+            local before = table.concat(mp.currentAffixes or {}, ",")
+            WarbandNexus:UpdateMythicPlusAffixes()
+            if table.concat(mp.currentAffixes or {}, ",") ~= before then
+                WarbandNexus:SavePvECache()
+                WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED)
             end
-            
-            WarbandNexus:SavePvECache()
-        end
-        
-        -- Module gate: weekly prune above and keystone refresh below stay always-on.
-        if (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then
-            -- Then update with new data
-            ThrottledPvEUpdate()
-
-            -- Weekly reset just rolled over: last week's vault is now claimable, so pull fresh vault
-            -- data instead of waiting for the player to open the Great Vault.
-            if WarbandNexus.RequestWeeklyVaultRefresh then WarbandNexus:RequestWeeklyVaultRefresh() end
         end
 
-        -- Also refresh keystone detection (new weekly key may be in bags)
+        -- A new weekly key may be in the bags.
         if WarbandNexus.RequestKeystoneRefresh then
             WarbandNexus:RequestKeystoneRefresh("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", true)
         end
@@ -2399,6 +2470,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_UPDATE triggered")
         vaultState.vaultDataFreshThisSession = true  -- Server has responded; HasAvailableRewards() is now reliable
+        if WarbandNexus.NoteWeeklyVaultAnswered then WarbandNexus:NoteWeeklyVaultAnswered() end
         if not (ns.Utilities and ns.Utilities:IsPvEVaultConsumerEnabled()) then return end
         WarbandNexus:EnsureWeeklyRewardsFrameHooks()
         WarbandNexus:OnVaultDataReceived()
@@ -2438,6 +2510,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     end)
     -- Ask for the saved-instance list once per session so UPDATE_INSTANCE_INFO arrives even when no
     -- other module requests it (the empty-lockout write above waits for it).
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/RequestRaidInfo") end
     if RequestRaidInfo then pcall(RequestRaidInfo) end
     
     -- Delves events (Midnight 12.0+)

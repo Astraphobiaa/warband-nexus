@@ -972,6 +972,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
             if WeeklyRewardsFrame then
                 ShowUIPanel(WeeklyRewardsFrame)
                 if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
+                    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/OnUIInteract") end
                     C_WeeklyRewards.OnUIInteract()
                 end
                 if WarbandNexus and WarbandNexus.EnsureWeeklyRewardsFrameHooks then

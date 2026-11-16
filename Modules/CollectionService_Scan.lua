@@ -231,6 +231,7 @@ local function DiffBagSlotsFromItemsCache(bagID)
 end
 
 local function ScanBagsForNewCollectibles(specificBagIDs)
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("CNT/Collections_BagScan") end
     local previousBagContents = Scan.previousBagContents
     local previousBagNums = Scan.previousBagNums
     local pendingRetryItems = Scan.pendingRetryItems

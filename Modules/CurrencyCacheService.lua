@@ -1398,6 +1398,7 @@ end
 ---Perform full scan of all currencies (Direct DB architecture).
 ---Builds a proper header tree from Blizzard's API hierarchy (supports Midnight+).
 function CurrencyCache:PerformFullScan(bypassThrottle)
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("CNT/Currency_PerformFullScan") end
     -- Set when the header tree missed listed currencies: write without wiping so the
     -- missed rows keep their last good quantity until the retry scan completes.
     local hierarchyIncomplete = false

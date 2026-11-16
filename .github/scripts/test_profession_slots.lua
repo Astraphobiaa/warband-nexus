@@ -150,6 +150,29 @@ do
         "the real entry keeps its own skill line")
 end
 
+print("Phase 5: bookkeeping keys of the per-profession stores are not professions")
+do
+    -- professionEquipment keeps a scalar "lastUpdate" beside the per-profession tables. The heal
+    -- read every key, promoted "lastUpdate" into a primary slot, and hovering that icon indexed
+    -- the number (CharactersUI_Row ProfOnEnter: attempt to index local 'eqData').
+    local charData = {
+        professions = {},
+        professionEquipment = { lastUpdate = 1772060967, _last = { lastUpdate = 1 }, Alchemy = { tool = {} } },
+        concentration = { lastUpdate = 5 },
+    }
+    WarbandNexus:HealCharacterProfessions(charData)
+    eq(charData.professions[1] and charData.professions[1].name, "Alchemy", "the real profession is recovered")
+    eq(charData.professions[2], nil, "no slot is filled from lastUpdate / _last")
+
+    local healed = {
+        professions = { [1] = { name = "Mining", skillLine = 186 }, [2] = { name = "lastUpdate", skillLine = 0 } },
+        professionEquipment = { lastUpdate = 1772060967 },
+    }
+    WarbandNexus:HealCharacterProfessions(healed)
+    eq(healed.professions[2], nil, "a slot the bug already wrote is cleared")
+    eq(healed.professions[1] and healed.professions[1].name, "Mining", "the real primary is untouched")
+end
+
 
 print(string.format("\nTotal: %d checks, %d failed", passed + failed, failed))
 if failed > 0 then

@@ -1576,6 +1576,90 @@ function Profiler:DisableDiagnosticsSuite(addon, silent)
     end
 end
 
+--- Count one occurrence of something that has no duration worth timing (a server request, a
+--- handler entry): recorded as a 0 ms call, so the summary and the snapshot show how often it ran.
+---@param label string
+function Profiler:Count(label)
+    if not self.enabled then return end
+    self:_Record(label, 0)
+end
+
+local SNAPSHOT_TRACE_ROWS = 400
+
+--- Copy this session's measurements into SavedVariables (db.global.profilerSnapshot, replaced each
+--- session) so they can be read outside the game after /reload or logout. Measuring sessions only.
+function Profiler:WriteSnapshot()
+    local addon = ns.WarbandNexus
+    local g = addon and addon.db and addon.db.global
+    if not g or not self.enabled or not next(self.entries) then return end
+    local function r2(v) return math.floor((tonumber(v) or 0) * 100 + 0.5) / 100 end
+    local snap = {
+        savedAt = time(),
+        sessionSec = r2(GetTime() - (self._snapshotSessionStart or 0)),
+        entries = {},
+        trace = {},
+    }
+    for label, e in pairs(self.entries) do
+        snap.entries[label] = { calls = e.calls, totalMs = r2(e.totalMs), maxMs = r2(e.maxMs) }
+    end
+    local rows = self._traceRows or {}
+    for i = math.max(1, #rows - SNAPSHOT_TRACE_ROWS + 1), #rows do
+        local e = rows[i]
+        snap.trace[#snap.trace + 1] = string.format("%s|%s|%s|%s|%s|x%d",
+            date("%H:%M:%S", e.t or 0), e.op or "-", e.where or "-", e.detail or "",
+            e.ms and string.format("%.2f", e.ms) or "", e.count or 1)
+    end
+    g.profilerSnapshot = snap
+end
+
+-- Blizzard events whose fire count tells duplicate / storm problems apart (EVT/<name> in the summary).
+local COUNTED_EVENTS = {
+    "WEEKLY_REWARDS_UPDATE", "UPDATE_INSTANCE_INFO", "CHALLENGE_MODE_MAPS_UPDATE",
+    "MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", "CURRENCY_DISPLAY_UPDATE", "ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED",
+    "BAG_UPDATE", "BAG_UPDATE_DELAYED", "UPDATE_FACTION", "PLAYER_MONEY", "QUEST_LOG_UPDATE",
+    "SPELLS_CHANGED", "SKILL_LINES_CHANGED", "TOKEN_MARKET_PRICE_UPDATED", "GET_ITEM_INFO_RECEIVED",
+    "PET_JOURNAL_LIST_UPDATE", "PLAYER_EQUIPMENT_CHANGED", "TRAINER_UPDATE",
+}
+
+do
+    -- PLAYER_LOGOUT fires on /reload too; SavedVariables are written after every handler ran.
+    Profiler._snapshotSessionStart = GetTime and GetTime() or 0
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGOUT")
+    f:RegisterEvent("PLAYER_LOGIN")
+    for i = 1, #COUNTED_EVENTS do
+        -- pcall: an event name this client does not know raises on RegisterEvent.
+        pcall(f.RegisterEvent, f, COUNTED_EVENTS[i])
+    end
+    f:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_LOGOUT" then
+            pcall(Profiler.WriteSnapshot, Profiler)
+        elseif event == "PLAYER_LOGIN" then
+            -- Count every WN_* message sent (MSG/<name>): one change fanning out into several sends
+            -- shows up as a count far above the change count. Wraps the addon's own method only.
+            local addon = ns.WarbandNexus
+            if addon and type(addon.SendMessage) == "function" and not addon._wnProfilerMsgWrapped then
+                addon._wnProfilerMsgWrapped = true
+                local send = addon.SendMessage
+                addon.SendMessage = function(self, msg, payload, ...)
+                    if Profiler.enabled then
+                        -- The reason travels in the label (dataType / target tab / instant), so a repaint
+                        -- can be traced to what asked for it: MSG/WN_CHARACTER_UPDATED:gold.
+                        local why = type(payload) == "table" and (payload.dataType or payload.tab) or nil
+                        if type(payload) == "table" and (payload.instantPopulate or payload.skipCooldown) then
+                            why = tostring(why or "-") .. (payload.instantPopulate and "!instant" or "!now")
+                        end
+                        Profiler:_Record("MSG/" .. tostring(msg) .. (why and (":" .. tostring(why)) or ""), 0)
+                    end
+                    return send(self, msg, payload, ...)
+                end
+            end
+        elseif Profiler.enabled then
+            Profiler:_Record("EVT/" .. event, 0)
+        end
+    end)
+end
+
 function Profiler:Reset()
     wipe(self.entries)
     wipe(self.activeTimers)

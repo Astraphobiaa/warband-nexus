@@ -544,6 +544,7 @@ local ToggleSavedInstances = function()
         S.savedFrame:ClearAllPoints()
         S.savedFrame:SetPoint("TOPLEFT", S.button, "BOTTOMLEFT", 0, -6)
     end
+    if ns.Profiler and ns.Profiler.Count then ns.Profiler:Count("REQ/RequestRaidInfo") end
     if RequestRaidInfo then pcall(RequestRaidInfo) end
     -- Fresh open: explicitly start at the top before RefreshSavedInstances clamps the new content.
     if S.savedScroll and S.savedScroll.SetVerticalScroll then

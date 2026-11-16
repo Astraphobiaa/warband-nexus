@@ -29,6 +29,12 @@ local CHAR_ROW_COLUMNS = {
         spacing = 5,
         total = 38,
     },
+    -- Retail only (see CHAR_ROW_OPTIONAL_COLUMNS): the active spec's icon, same square as Class.
+    spec = {
+        width = 33,
+        spacing = 5,
+        total = 38,
+    },
     name = {
         width = 100,
         spacing = 10,
@@ -136,7 +142,7 @@ local CHAR_ROW_COLUMN_ORDER = {
     -- Level leads the text block, then the identity (name, guild) and the mail badge beside it.
     -- Only Guild has a measured width, so everything after it is chained off that rather than
     -- read from this order; see ApplyCharacterRowInteriorLayout.
-    "favorite", "faction", "race", "class", "level", "name", "guild", "mail", "realmType",
+    "favorite", "faction", "race", "class", "spec", "level", "name", "guild", "mail", "realmType",
     "itemLevel", "gold", "professions", "skills", "talents", "mythicKey",
     "reorder", "lastSeen", "headerAssign", "tracking", "delete",
 }
@@ -151,6 +157,7 @@ local CHAR_ROW_OPTIONAL_COLUMNS = {
     skills = "trainedSpells",
     talents = "classicTalentTree",
     realmType = "realmTypeTag",
+    spec = "specializations",
 }
 -- The profession strip is a fixed five slots where the vanilla secondary set exists: two
 -- primaries, then Cooking, Fishing and First Aid, each keeping its place whether or not the

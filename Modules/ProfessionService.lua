@@ -2209,6 +2209,9 @@ function WarbandNexus:OnTradeSkillClose()
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
 
+    -- The client fires TRADE_SKILL_CLOSE more than once per close (3 against 1 open in a measured
+    -- session); only the first one closes a window we saw open. The repeats re-sent CLOSED.
+    local wasOpen = professionWindowOpenAt > 0
     lastTradeSkillListSkillLineID = nil
     professionWindowOpenAt = 0
     professionWindowInitialSyncComplete = false
@@ -2219,7 +2222,7 @@ function WarbandNexus:OnTradeSkillClose()
         professionWindowSyncTimer = nil
     end
     
-    if self.SendMessage then
+    if wasOpen and self.SendMessage then
         self:SendMessage(E.PROFESSION_WINDOW_CLOSED)
     end
 end
@@ -2448,10 +2451,16 @@ function WarbandNexus:OnProfessionChanged()
                 end
             end
         end
-        if charData.professionEquipment then
-            for profName in pairs(charData.professionEquipment) do
-                if not currentProfs[profName] then
-                    charData.professionEquipment[profName] = nil
+        -- Only per-profession rows (a table under a plain name) are judged here. The store also keeps
+        -- bookkeeping beside them -- "_legacy" (the flat-format equipment the UI still falls back
+        -- to), "_last" (DataFreshness's warm stamp), a scalar lastUpdate -- none of which is a
+        -- profession, so "not a current profession" deleted them on every successful read.
+        local eqStore = charData.professionEquipment
+        if type(eqStore) == "table" then
+            for profName, row in pairs(eqStore) do
+                if type(profName) == "string" and type(row) == "table" and profName:sub(1, 1) ~= "_"
+                    and not currentProfs[profName] then
+                    eqStore[profName] = nil
                 end
             end
         end

@@ -57,6 +57,7 @@ local FEATURES = {
     "midnightWeeklyQuests", -- To-Do "Weekly Progress": Midnight zones' weekly quests, hunts, events
     "tryCounterRetailSources", -- Try Counter drop sources from every expansion + boss-kill statistics
     "worldQuests",         -- Set Alert quest picker: world quests + content events of the modern zones
+    "specializations",     -- class specs (Havoc, Holy, ...) with a role: the Characters Spec column
 }
 
 local caps = {}
@@ -212,6 +213,10 @@ local FOREVER_SUPPORT = {
     -- but Forever's world is Kalimdor + Eastern Kingdoms: none of those zones or events exist.
     -- The calendar "World Events" section stays.
     worldQuests         = false,
+    -- Vanilla-plus talents are three point-spent trees (classicTalentTree), not a chosen spec:
+    -- GetSpecializationInfo is retail-only and no spec ID is ever stored here, so the Characters
+    -- Spec column would be an empty strip.
+    specializations     = false,
     -- renown is deliberately absent: GetMajorFactionIDs returned table(2) on Forever. Until it
     -- is known whether those are real factions or leftover Mainline client data, renown stays
     -- on -- hiding a working panel is worse than showing an empty one.

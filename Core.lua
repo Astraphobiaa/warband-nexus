@@ -630,6 +630,9 @@ local defaults = {
 function WarbandNexus:OnTokenMarketPriceUpdated()
     local mf = self.UI and self.UI.mainFrame
     if mf and mf:IsShown() and mf.currentTab == "chars" and self.SendMessage then
+        -- Only the token card's value line depends on the price: rewrite it in place.
+        local CUI = ns.CharactersUI
+        if CUI and CUI.RefreshTokenValueInPlace and CUI.RefreshTokenValueInPlace() then return end
         self:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
     end
 end

@@ -61,6 +61,7 @@ LoadFile("Locales/enUS.lua")
 ns.L = ns.LOCALES and ns.LOCALES.enUS
 LoadFile("Modules/Constants.lua")
 LoadFile("Modules/Utilities.lua")
+LoadFile("Modules/DataService_RosterHelpers.lua")
 LoadFile("Modules/DatabaseOptimizer.lua")
 
 local function roster()
@@ -100,6 +101,22 @@ do
     local staleUiKey = ns.Utilities:ResolveCharacterRowKey(chars[GUID_OLD])
     WarbandNexus:DeleteCharacter(staleUiKey or "Alpha-Kazzak")
     assert_eq(chars[GUID_LIVE] and chars[GUID_LIVE].gold, 777, "live character row kept on an ambiguous key")
+end
+
+print("Phase 4: Deleting a character takes its legacy Name-Realm duplicate with it")
+do
+    local chars = roster()
+    chars[GUID_OLD] = nil
+    -- One alt stored twice: the GUID row and a legacy Name-Realm row. The roster shows them as one
+    -- entry, so deleting that entry left the other row (and its currency bucket) on screen.
+    local GUID_ALT = "Player-3674-000000B1"
+    chars[GUID_ALT] = { name = "Renzak", realm = "Kazzak", guid = GUID_ALT, isTracked = true, lastSeen = 200 }
+    chars["Renzak-Kazzak"] = { name = "Renzak", realm = "Kazzak", isTracked = true, lastSeen = 100 }
+    if ns.Utilities.InvalidateCharacterKeyIndex then ns.Utilities:InvalidateCharacterKeyIndex() end
+    WarbandNexus:DeleteCharacter(GUID_ALT)
+    assert_eq(chars[GUID_ALT], nil, "GUID row deleted")
+    assert_eq(chars["Renzak-Kazzak"], nil, "legacy Name-Realm duplicate deleted too")
+    assert_eq(chars[GUID_LIVE] and chars[GUID_LIVE].gold, 777, "live character row kept")
 end
 
 print(string.format("\nTotal Checks: %d | Failures: %d", passed + failed, failed))

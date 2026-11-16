@@ -165,9 +165,11 @@ end
 
 --- Display roster: mergeKey -> char row (mutates winner rows in-place for gold merge).
 ---@return table mergeKey -> charData
+---@return number duplicates rows folded into another row's entry (still separate in the DB)
 local function BuildMergedCharacterRosterView(charsTbl)
     local seen = {}
-    if type(charsTbl) ~= "table" then return seen end
+    local duplicates = 0
+    if type(charsTbl) ~= "table" then return seen, duplicates end
     local guidByNameRealm = BuildGuidByNameRealmIndex(charsTbl)
     local MS = ns.MigrationService
 
@@ -176,6 +178,7 @@ local function BuildMergedCharacterRosterView(charsTbl)
             local mergeKey = ComputeCharacterMergeKey(data, key, guidByNameRealm)
             if mergeKey then
                 if seen[mergeKey] then
+                    duplicates = duplicates + 1
                     local existingData = seen[mergeKey]
                     local existingTime = existingData.lastSeen or 0
                     local newTime = data.lastSeen or 0
@@ -204,7 +207,7 @@ local function BuildMergedCharacterRosterView(charsTbl)
             WN:HealCharacterProfessions(charData)
         end
     end
-    return seen
+    return seen, duplicates
 end
 
 --- DB cleanup: find duplicate roster indices and produce rename/remove maps.

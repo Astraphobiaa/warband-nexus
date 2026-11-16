@@ -74,6 +74,13 @@ end
 -- instead of two sizes of glyph on one row.
 local CELL_ICON = 39
 
+--- Skills / Talents square: the size the row's profession icons got (they shrink with the column,
+--- 39 -> 22, five slots on WoW Forever); a fixed 39 stood out on narrower windows.
+local function RowCellIconSize(row)
+    local s = row and row._wnProfIconSize
+    return (type(s) == "number" and s > 0) and math.min(s, CELL_ICON) or CELL_ICON
+end
+
 --- The name as it should be PRINTED anywhere in this row: Utilities joins the Forever surname
 --- and honours the player's "show secondary name" setting, so no call site decides it alone.
 local function DisplayName(char)
@@ -208,6 +215,7 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
             -- so every resize slid the icons across and an empty primary slot closed up.
             local slots = #PROF_SLOT_ORDER
             local iconSize = ProfIconSize(profW, slots)
+            row._wnProfIconSize = iconSize
             local totalIconWidth = (slots * iconSize) + ((slots - 1) * PROF_ICON_GAP)
             local x = profOffset + (profW - totalIconWidth) / 2
             for i = 1, slots do
@@ -223,6 +231,7 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         local numProfs = #shown
         if numProfs > 0 then
             local iconSize = ProfIconSize(profW, numProfs)
+            row._wnProfIconSize = iconSize
             local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * PROF_ICON_GAP)
             local leftPadding = (profW - totalIconWidth) / 2
             local currentProfX = profOffset + leftPadding
@@ -246,8 +255,10 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
     local skillsOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
     if row.skillsIcon then
         if skillsW > 0 then
+            local cs = RowCellIconSize(row)
+            row.skillsIcon:SetSize(cs, cs)
             row.skillsIcon:ClearAllPoints()
-            row.skillsIcon:SetPoint("LEFT", skillsOffset + (skillsW - CELL_ICON) / 2, 0)
+            row.skillsIcon:SetPoint("LEFT", skillsOffset + (skillsW - cs) / 2, 0)
         else
             row.skillsIcon:Hide()
         end
@@ -258,8 +269,10 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         + ((skillsW > 0) and (CHAR_ROW_COLUMNS.skills.spacing or 0) or 0)
     if row.talentsIcon then
         if talentsW > 0 then
+            local cs = RowCellIconSize(row)
+            row.talentsIcon:SetSize(cs, cs)
             row.talentsIcon:ClearAllPoints()
-            row.talentsIcon:SetPoint("LEFT", talentsOffset + (talentsW - CELL_ICON) / 2, 0)
+            row.talentsIcon:SetPoint("LEFT", talentsOffset + (talentsW - cs) / 2, 0)
         else
             row.talentsIcon:Hide()
         end
@@ -737,7 +750,7 @@ function CharRowCb.ProfOnEnter(self)
 
     local eqByProf = char.professionEquipment
     local eqData = eqByProf and eqByProf[profName] or nil
-    if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
+    if type(eqData) == "table" and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
         lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
         local slotKeys = { "tool", "accessory1", "accessory2" }
         local tooltipSvc = ns.TooltipService
@@ -926,6 +939,139 @@ function CharRowCb.TalentsOnEnter(self)
     })
 end
 
+-- Blizzard's own small role glyphs (PlayerFrame / PartyMemberFrame use the same atlases).
+-- The single swap point for role art: when WN ships its own role icons, change ApplyRoleArt only.
+CharRowCb.ROLE_ATLAS = {
+    TANK = "roleicon-tiny-tank",
+    HEALER = "roleicon-tiny-healer",
+    DAMAGER = "roleicon-tiny-dps",
+}
+
+--- Paint the role glyph for role ("TANK" / "HEALER" / "DAMAGER") onto tex; false when unknown.
+function CharRowCb.ApplyRoleArt(tex, role)
+    local atlas = role and CharRowCb.ROLE_ATLAS[role]
+    if not tex or not atlas then return false end
+    tex:SetAtlas(atlas, false)
+    return true
+end
+
+--- Spec cell hover: class, then spec and role.
+function CharRowCb.SpecOnEnter(self)
+    local char = self._wnSpecChar
+    if not char then return end
+    local specName, specIcon, role
+    if WarbandNexus.GetCharacterSpecDisplay then
+        specName, specIcon, role = WarbandNexus:GetCharacterSpecDisplay(char)
+    end
+    local lr, lg, lb = 0.7, 0.7, 0.75
+    if ns.UI_GetTooltipLabelColor then lr, lg, lb = ns.UI_GetTooltipLabelColor() end
+    local br, bg, bb = 1, 1, 1
+    if ns.UI_GetTooltipBodyColor then br, bg, bb = ns.UI_GetTooltipBodyColor() end
+    local lines = {}
+    if specName then
+        lines[#lines + 1] = {
+            left = SPECIALIZATION or "Specialization",
+            right = specName,
+            leftColor = { lr, lg, lb },
+            rightColor = { br, bg, bb },
+        }
+    end
+    local atlas = role and CharRowCb.ROLE_ATLAS[role]
+    if atlas then
+        local roleLabel = _G[role] or role
+        lines[#lines + 1] = {
+            left = ROLE or "Role",
+            right = (CreateAtlasMarkup and (CreateAtlasMarkup(atlas, 14, 14) .. " ") or "") .. roleLabel,
+            leftColor = { lr, lg, lb },
+            rightColor = { br, bg, bb },
+        }
+    end
+    local cr, cg, cb = 1, 1, 1
+    if ns.UI_GetClassColorRaw then cr, cg, cb = ns.UI_GetClassColorRaw(char.classFile) end
+    ShowTooltip(self, {
+        type = "custom",
+        icon = specIcon or false,
+        title = char.class or char.classFile,
+        titleColor = { cr, cg, cb },
+        lines = lines,
+    })
+end
+
+--- Spec column: the active spec's icon at the Class crest's size (role glyph when only the role
+--- is known), with a transparent Factory button over it for SpecOnEnter. Empty until the
+--- character has a spec on record.
+function CharRowCb.PaintSpecCell(row, char, offset)
+    local col = CHAR_ROW_COLUMNS.spec
+    local _, specIcon, role
+    if WarbandNexus.GetCharacterSpecDisplay then
+        _, specIcon, role = WarbandNexus:GetCharacterSpecDisplay(char)
+    end
+    local atlas = role and CharRowCb.ROLE_ATLAS[role]
+    if not (specIcon or atlas) then
+        if row.specIcon then row.specIcon:Hide() end
+        if row.specRoleBadge then row.specRoleBadge:Hide() end
+        if row.specHit then row.specHit:Hide() end
+        return
+    end
+    local icon = row.specIcon
+    if not icon then
+        icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(col.width, col.width)
+        icon:SetPoint("LEFT", offset + (col.spacing / 2), 0)
+        -- Round like the Race / Class glyphs beside it (same mask CreateRaceIcon uses).
+        local mask = row:CreateMaskTexture()
+        mask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+        mask:SetAllPoints(icon)
+        icon:AddMaskTexture(mask)
+        icon._mask = mask
+        icon:SetSnapToPixelGrid(false)
+        icon:SetTexelSnappingBias(0)
+        row.specIcon = icon
+    end
+    if specIcon then
+        icon:SetTexture(specIcon)
+        -- Blizzard spell icons carry a baked-in border: crop it like every other WN icon.
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    else
+        CharRowCb.ApplyRoleArt(icon, role)
+    end
+    icon:Show()
+
+    -- Role glyph on the spec icon's bottom-right corner, outside the round mask so it stays whole.
+    -- Skipped when the cell already IS the role glyph (no spec icon on record).
+    local badge = row.specRoleBadge
+    if specIcon and atlas then
+        if not badge then
+            local s = math.floor(col.width * 0.45)
+            badge = row:CreateTexture(nil, "OVERLAY")
+            badge:SetSize(s, s)
+            badge:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -2)
+            badge:SetSnapToPixelGrid(false)
+            badge:SetTexelSnappingBias(0)
+            row.specRoleBadge = badge
+        end
+        CharRowCb.ApplyRoleArt(badge, role)
+        badge:Show()
+    elseif badge then
+        badge:Hide()
+    end
+
+    local hit = row.specHit
+    if not hit then
+        local Fact = ns.UI and ns.UI.Factory
+        hit = Fact and Fact.CreateButton and Fact:CreateButton(row, col.width, col.width, true)
+        if not hit then return end
+        hit:SetAllPoints(icon)
+        hit:SetFrameLevel(row:GetFrameLevel() + 3)
+        hit:EnableMouse(true)
+        hit:SetScript("OnEnter", CharRowCb.SpecOnEnter)
+        hit:SetScript("OnLeave", CharRowCb.HideTip)
+        row.specHit = hit
+    end
+    hit._wnSpecChar = char
+    hit:Show()
+end
+
 function CharRowCb.SkillsOnEnter(self)
     local char = self._wnSkillsChar
     if not char then return end
@@ -989,8 +1135,10 @@ function CharRowCb.PaintSkillsCell(row, char, width, offset)
         CharRowCb.SkillsOnEnter, CharRowCb.SkillsOnClick)
     if not btn then return end
     btn._wnSkillsChar = char
+    local cs = RowCellIconSize(row)
+    btn:SetSize(cs, cs)
     btn:ClearAllPoints()
-    btn:SetPoint("LEFT", offset + (width - CELL_ICON) / 2, 0)
+    btn:SetPoint("LEFT", offset + (width - cs) / 2, 0)
     -- Only spells the level already allows: a locked one is not something to act on yet.
     local key, classFile, level = GetCharKey(char), char.classFile, tonumber(char.level)
     local summary = WarbandNexus.GetSkillSummary
@@ -1009,8 +1157,10 @@ function CharRowCb.PaintTalentsCell(row, char, width, offset)
         CharRowCb.TalentsOnEnter, CharRowCb.TalentsOnClick)
     if not btn then return end
     btn._wnTalentsChar = char
+    local cs = RowCellIconSize(row)
+    btn:SetSize(cs, cs)
     btn:ClearAllPoints()
-    btn:SetPoint("LEFT", offset + (width - CELL_ICON) / 2, 0)
+    btn:SetPoint("LEFT", offset + (width - cs) / 2, 0)
     local systems = WarbandNexus.GetCharacterSystems
         and WarbandNexus:GetCharacterSystems(GetCharKey(char)) or nil
     local talents = systems and systems.talents
@@ -1433,6 +1583,15 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     elseif row.classIcon then
         row.classIcon:Hide()
     end
+
+    -- COLUMN 4b: Spec icon (retail; the column collapses where specs do not exist)
+    if ns.UI_CharRowColumnEnabled and ns.UI_CharRowColumnEnabled("spec") then
+        CharRowCb.PaintSpecCell(row, char, GetColumnOffset("spec"))
+    elseif row.specIcon then
+        row.specIcon:Hide()
+        if row.specRoleBadge then row.specRoleBadge:Hide() end
+        if row.specHit then row.specHit:Hide() end
+    end
     
     -- COLUMN 5: Name
     local nameOffset = GetColumnOffset("name")
@@ -1595,6 +1754,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             -- saying nothing -- and every alt lines up column by column.
             local slots = #PROF_SLOT_ORDER
             local iconSize = ProfIconSize(profW, slots)
+            row._wnProfIconSize = iconSize
             local totalIconWidth = (slots * iconSize) + ((slots - 1) * iconSpacing)
             local x = profOffset + (profW - totalIconWidth) / 2
             for i = 1, slots do
@@ -1626,6 +1786,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             -- Two primaries plus three secondaries is five icons where the column was sized for
             -- three, so the square shrinks to fit rather than bleeding into the next column.
             local iconSize = ProfIconSize(profW, numProfs)
+            row._wnProfIconSize = iconSize
 
             -- Calculate centered starting position (within column content area, excluding right spacing)
             local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)

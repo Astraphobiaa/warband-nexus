@@ -297,6 +297,41 @@ local function RepositionCharactersFixedHeader(mf, hdrCache, headerParent, chrom
     return headerYOffset + (titleCard:GetHeight() or 64) + 8
 end
 
+--- WoW Token card value line: market price and how many the warband's gold buys.
+---@param bundle table gold-card bundle (tkValue, _wnTokenTotalCopper)
+function ns.CharactersUI.PaintTokenValue(bundle)
+    local tkValueRef = bundle and bundle.tkValue
+    if not tkValueRef then return end
+    local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice
+        and select(1, C_WowTokenPublic.GetCurrentMarketPrice())
+    if tokenPrice and tokenPrice > 0 then
+        local affordableCount = math.floor((bundle._wnTokenTotalCopper or 0) / tokenPrice)
+        tkValueRef:SetText(
+            FormatMoney(tokenPrice, 12)
+                .. "  " .. HEX.info .. "("
+                .. affordableCount
+                .. " "
+                .. (((ns.L and ns.L["WOW_TOKEN_COUNT_LABEL"]) or "Tokens"))
+                .. ")|r"
+        )
+    else
+        tkValueRef:SetText(ThemeTextHex("Dim") .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
+    end
+    PresentFS(tkValueRef)
+end
+
+--- TOKEN_MARKET_PRICE_UPDATED: the price is one line on one card, so rewrite that line instead of
+--- repainting the whole roster (the event arrives right after DrawCharacterList asks for the price,
+--- so it cost a second full Characters paint on most first visits).
+---@return boolean painted false when the card is not on screen (caller falls back to a repaint)
+function ns.CharactersUI.RefreshTokenValueInPlace()
+    local bundle = ns.CharactersUI._liveGoldBundle
+    local fs = bundle and bundle.tkValue
+    if not (fs and fs.IsVisible and fs:IsVisible()) then return false end
+    ns.CharactersUI.PaintTokenValue(bundle)
+    return true
+end
+
 function WarbandNexus:DrawCharacterList(parent)
     -- Request updated WoW Token market price (async) â€” heavily throttled; not tied to tab redraw frequency.
     if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
@@ -819,27 +854,11 @@ function WarbandNexus:DrawCharacterList(parent)
 
     ns.CharactersUI.ApplyTotalGoldCardInterior(bundle, stackGoldTokenInCard3)
 
-    -- GetCurrentMarketPrice updates asynchronously after UpdateMarketPrice();
-    -- TOKEN_MARKET_PRICE_UPDATED refreshes the tab (Core.lua).
-    local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice and select(1, C_WowTokenPublic.GetCurrentMarketPrice())
-    local tkValueRef = bundle.tkValue
-    if tokenPrice and tokenPrice > 0 then
-        local affordableCount = math.floor(totalWithWarband / tokenPrice)
-        tkValueRef:SetText(
-            FormatMoney(tokenPrice, 12)
-                .. "  " .. HEX.info .. "("
-                .. affordableCount
-                .. " "
-                .. (((ns.L and ns.L["WOW_TOKEN_COUNT_LABEL"]) or "Tokens"))
-                .. ")|r"
-        )
-        PresentFS(tkValueRef)
-    else
-        tkValueRef:SetText(ThemeTextHex("Dim") .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
-        PresentFS(tkValueRef)
-        -- No retry timer: TOKEN_MARKET_PRICE_UPDATED (Core.lua) repaints when the price arrives; a timed
-        -- retry repainted the whole roster a second time right after that event.
-    end
+    -- GetCurrentMarketPrice updates asynchronously after UpdateMarketPrice(); when it lands,
+    -- TOKEN_MARKET_PRICE_UPDATED (Core.lua) rewrites this one line in place via PaintTokenValue.
+    bundle._wnTokenTotalCopper = totalWithWarband
+    ns.CharactersUI._liveGoldBundle = bundle
+    ns.CharactersUI.PaintTokenValue(bundle)
 
     charGoldCard:Show()
     wbGoldCard:Show()
