@@ -569,17 +569,28 @@ function WarbandNexus:InitializeEventManager()
 
     -- Class trainer: the only place WoW Forever publishes spells the character has NOT learned.
     -- TRAINER_UPDATE rather than TRAINER_SHOW alone, because the service list is not populated
-    -- the instant the frame appears. The scan guards its own re-entrancy, since flipping the
-    -- service filters may fire this event again.
+    -- the instant the frame appears. The scan itself flips the service filters, which fires
+    -- TRAINER_UPDATE again; OnTrainerUpdate skips an update that left the visible list unchanged,
+    -- so the scan's own filter round-trip cannot re-arm it.
     local function ScanTrainer()
         Debounce("TRAINER_SCAN", 0.3, function()
-            if not WarbandNexus.ScanTrainerServices then return end
-            WarbandNexus:ScanTrainerServices()
+            if not WarbandNexus.OnTrainerUpdate then return end
+            WarbandNexus:OnTrainerUpdate()
         end)
     end
-    for _, evt in ipairs({ "TRAINER_SHOW", "TRAINER_UPDATE" }) do
-        self:RegisterEvent(evt, ScanTrainer)
-    end
+    self:RegisterEvent("TRAINER_SHOW", function()
+        if WarbandNexus.OnTrainerVisitChanged then WarbandNexus:OnTrainerVisitChanged() end
+        ScanTrainer()
+    end)
+    self:RegisterEvent("TRAINER_UPDATE", ScanTrainer)
+    self:RegisterEvent("TRAINER_CLOSED", function()
+        -- A pending scan would read the closed trainer's stale count.
+        if activeTimers["TRAINER_SCAN"] then
+            activeTimers["TRAINER_SCAN"]:Cancel()
+            activeTimers["TRAINER_SCAN"] = nil
+        end
+        if WarbandNexus.OnTrainerVisitChanged then WarbandNexus:OnTrainerVisitChanged() end
+    end)
 
 
     -- Periodic recharge timer: 60s tick for UI recalculation
