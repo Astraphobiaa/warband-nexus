@@ -222,6 +222,37 @@ local function CollectServices()
     return out
 end
 
+--[[
+    Signature of the list as the trainer window currently shows it, under whatever filters are set.
+    Why: ScanTrainerServices has to switch the "used" filter on (Blizzard's default leaves it off)
+    and back, and a filter change makes the client fire TRAINER_UPDATE. Rescanning on that update
+    flipped the filters again, which fired another update -- a loop that ran for as long as the
+    trainer stayed open, each turn redrawing the Blizzard trainer list twice and walking every
+    service with seven API calls. Only names and categories are read, never the filters.
+]]
+local visibleSignature      -- nil: this visit not scanned yet; false: scanned, signature unreadable
+local signatureParts = {}
+
+local function ReadVisibleSignature()
+    if type(_G.GetNumTrainerServices) ~= "function" or type(_G.GetTrainerServiceInfo) ~= "function" then
+        return nil
+    end
+    local okN, count = pcall(_G.GetNumTrainerServices)
+    if not okN or type(count) ~= "number" or IsSecret(count) then return nil end
+    wipe(signatureParts)
+    signatureParts[1] = tostring(count)
+    for i = 1, math.min(count, MAX_SERVICES) do
+        local ok, name, r2, r3 = pcall(_G.GetTrainerServiceInfo, i)
+        if not ok or name == nil then break end
+        if IsSecret(name) or IsSecret(r2) or IsSecret(r3) then return nil end
+        local n = #signatureParts
+        signatureParts[n + 1] = tostring(name)
+        signatureParts[n + 2] = tostring(r2)
+        signatureParts[n + 3] = tostring(r3)
+    end
+    return table.concat(signatureParts, "\031")
+end
+
 --- One rank of one spell: the trainer lists every rank as its own row under the same name, and
 --- the level requirement is what tells them apart.
 local function ServiceKey(row)
@@ -248,6 +279,7 @@ local function MergeIntoCache(store, services, charKey, charLevel)
         if charKey and fresh.category == "used" then
             local target = existing or fresh
             target.usedBy = target.usedBy or {}
+            if existing and not target.usedBy[charKey] then updated = updated + 1 end
             target.usedBy[charKey] = true
         end
         -- The trainer's own verdict for THIS character at THIS level: "available" (can buy now),
@@ -256,7 +288,11 @@ local function MergeIntoCache(store, services, charKey, charLevel)
         if charKey and fresh.category then
             local target = existing or fresh
             target.categoryBy = target.categoryBy or {}
-            target.categoryBy[charKey] = { c = fresh.category, lvl = charLevel }
+            local snap = target.categoryBy[charKey]
+            if not snap or snap.c ~= fresh.category or snap.lvl ~= charLevel then
+                if existing then updated = updated + 1 end
+                target.categoryBy[charKey] = { c = fresh.category, lvl = charLevel }
+            end
         end
         if not existing then
             store.services[#store.services + 1] = fresh
@@ -312,6 +348,9 @@ function WarbandNexus:ScanTrainerServices()
     scanning = false
 
     if not ok or type(services) ~= "table" or #services == 0 then return nil end
+    -- Taken after the restore, so it describes what the trainer window shows -- the same view the
+    -- TRAINER_UPDATE our own filter round-trip fires will see. false = read but not comparable.
+    visibleSignature = ReadVisibleSignature() or false
 
     self.db.global.trainerSkills = self.db.global.trainerSkills or {}
     local store = UpgradeStore(self.db.global.trainerSkills[classFile])
@@ -327,8 +366,10 @@ function WarbandNexus:ScanTrainerServices()
     local scanLevel = UnitLevel and UnitLevel("player") or nil
     if IsSecret(scanLevel) then scanLevel = nil end
     local added, updated = MergeIntoCache(store, services, charKey, tonumber(scanLevel))
-    store.scannedAt = time()
     store.lastSeen = #services
+    -- Persist-then-emit only on a real change: scannedAt is the stamp GetSkillSummary memoises on.
+    if added + updated == 0 then return store, 0, 0 end
+    store.scannedAt = time()
 
     self:SendMessage(MSG_TRAINER_UPDATED, {
         classFile = classFile,
@@ -337,6 +378,24 @@ function WarbandNexus:ScanTrainerServices()
         total = #store.services,
     })
     return store, added, updated
+end
+
+--- TRAINER_SHOW / TRAINER_CLOSED: a new visit always gets one full scan.
+function WarbandNexus:OnTrainerVisitChanged()
+    visibleSignature = nil
+end
+
+--- Debounced TRAINER_UPDATE. Rescans only when the list the window shows actually moved (a spell
+--- bought, the player's own filter change). The scan's filter round-trip ends where it started, so
+--- the update it fires reads the same signature and stops here -- this is what keeps an open
+--- trainer from rescanning itself forever.
+function WarbandNexus:OnTrainerUpdate()
+    if visibleSignature ~= nil then
+        local now = ReadVisibleSignature()
+        -- nil: unreadable (secret / API gone) -- this visit was already captured, so do not guess.
+        if now == nil or now == visibleSignature then return nil end
+    end
+    return self:ScanTrainerServices()
 end
 
 --- Everything this class can be taught, as captured so far. nil when no trainer was ever visited.
