@@ -14,16 +14,16 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.10.0",
+    ADDON_VERSION = "3.11.0",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-11-12",
+    ADDON_RELEASE_DATE = "2026-11-16",
 
     -- WoW Forever release line: its own version, tag (forever-vX.Y.Z), CHANGELOG_FOREVER.md and
     -- CHANGELOG_FOREVER_V<x><y><z> locale key. Written into WarbandNexus_Forever.toc by
     -- scripts/build_flavor_tocs.py. On a Forever client ADDON_VERSION / ADDON_RELEASE_DATE
     -- below are switched to these at load, so every reader shows the running build's version.
-    FOREVER_ADDON_VERSION = "1.0.1",
-    FOREVER_ADDON_RELEASE_DATE = "2026-11-12",
+    FOREVER_ADDON_VERSION = "1.0.2",
+    FOREVER_ADDON_RELEASE_DATE = "2026-11-16",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.

@@ -1,15 +1,11 @@
-## v1.0.1 (2026-11-12)
+## v1.0.2 (2026-11-16)
 
-Every character now keeps its own data on WoW Forever, and the Bank tab shows all of your characters again.
-
-### Added
-
-- An All Characters tab under Bank lists every character's bags and bank, including characters that are offline.
+Training at a class trainer no longer drops your frame rate.
 
 ### Fixed
 
-- Characters that share a first name (for example two Elementalists on one realm) no longer overwrite each other's gold, bags, currencies and stats.
-- Gear shows the full stat sheet for every character, and stats update when your gear, buffs or level change.
-- Switching between the Bank sub-tabs works correctly, and the last character header in All Characters is no longer cut off.
-- Sections you open in All Characters stay open after closing the window or reloading.
-- Empty screens no longer show raw text keys instead of a description.
+- Training at a class trainer no longer drops the frame rate to 1-2 fps while the trainer window is open.
+- A deleted character no longer comes back in lists when it was saved twice.
+- Untracking a character now sticks, and the minimap gold total no longer counts a character twice.
+- Your manual character order is kept for characters saved under an older name.
+- Hovering a profession icon no longer causes a Lua error on some characters.

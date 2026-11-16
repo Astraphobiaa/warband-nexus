@@ -1208,39 +1208,36 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "총 플레이 시간·이 레벨 플�
 
 
 
-L["CHANGELOG_V3100"] = [=[v3.10.0 (2026-11-12)
+L["CHANGELOG_V3110"] = [=[v3.11.0 (2026-11-16)
 
-Warband Nexus now runs on WoW Forever, with its own build that loads only what that game has.
+The Characters tab now shows every character's specialization and role, and last week's data no longer lingers after the weekly reset.
 
 Added:
-- WoW Forever support: characters, gold, bags and bank, currencies, reputations, gear, collections, To-Do and PvP work on WoW Forever. Retail-only features stay out of that build.
-- Legacy tab on WoW Forever: account-wide Legacy points, reward tiers with their rewards, and challenges in collapsible groups.
-- Skills and Talents windows: trainer skills laid out by talent tree, rank strips under each skill and talent, and full rank tooltips.
-- A "skills ready to train" alert when a WoW Forever character levels up.
-- WoW Forever details on the Characters tab: two-word names, honor rank, and Hardcore and Self-Found tags.
-- Try Counter on WoW Forever tracks the drops that exist there: the Zul'Gurub raptor and tiger, Deathcharger's Reins, the Qiraji crystals and classic pets.
+- Spec column on the Characters tab: each character's specialization icon with a tank, healer or damage badge. Hover it for class, spec and role.
 
 Updated:
-- Gear stats are grouped, show bars beside every value, include resistances, and use larger icons. Empty slots have their own art.
-- Pages keep a fixed scrollbar gutter, so content no longer shifts when a scrollbar appears or hides.
+- Less work and fewer server requests at login for Great Vault and Mythic+ data.
 
 Fixed:
-- Settings rows no longer drift out of line, and the empty Collections Recent page no longer scrolls.
+- Last week's Mythic+ keystones no longer stay on the Characters tab after the weekly reset.
+- Alts' Great Vault progress and Weekly Progress plans no longer show last week's progress after the reset.
+- A deleted character no longer comes back in the Currencies list when it was saved twice.
+- Untracking a character now sticks, and the minimap and Great Vault gold totals no longer count a character twice.
+- Your manual character order is kept for characters saved under an older name.
+- Hovering a profession icon no longer causes a Lua error on some characters.
+- Bank: the last character header is no longer cut off, and sections you open stay open after a reload.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_FOREVER_V101"] = [=[v1.0.1 (2026-11-12)
+L["CHANGELOG_FOREVER_V102"] = [=[v1.0.2 (2026-11-16)
 
-Every character now keeps its own data on WoW Forever, and the Bank tab shows all of your characters again.
-
-Added:
-- An All Characters tab under Bank lists every character's bags and bank, including characters that are offline.
+Training at a class trainer no longer drops your frame rate.
 
 Fixed:
-- Characters that share a first name (for example two Elementalists on one realm) no longer overwrite each other's gold, bags, currencies and stats.
-- Gear shows the full stat sheet for every character, and stats update when your gear, buffs or level change.
-- Switching between the Bank sub-tabs works correctly, and the last character header in All Characters is no longer cut off.
-- Sections you open in All Characters stay open after closing the window or reloading.
-- Empty screens no longer show raw text keys instead of a description.
+- Training at a class trainer no longer drops the frame rate to 1-2 fps while the trainer window is open.
+- A deleted character no longer comes back in lists when it was saved twice.
+- Untracking a character now sticks, and the minimap gold total no longer counts a character twice.
+- Your manual character order is kept for characters saved under an older name.
+- Hovering a profession icon no longer causes a Lua error on some characters.
 
 CurseForge: Warband Nexus]=]
 
