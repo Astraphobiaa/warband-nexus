@@ -157,8 +157,8 @@ local function CharacterIdentitySecondLine(char)
         -- is already the first half on its own.
         if U and U.ShowsCharacterSurname and not U:ShowsCharacterSurname() then return "" end
         local surname = char.surname
-        if type(surname) ~= "string" or surname == "" then return "" end
         if issecretvalue and issecretvalue(surname) then return "" end
+        if type(surname) ~= "string" or surname == "" then return "" end
         return surname
     end
     return CharacterIdentityRealmText(char)

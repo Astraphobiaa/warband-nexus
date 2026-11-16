@@ -14,6 +14,15 @@
     checked statically.
 ]]
 
+-- Helpers shipped modules call at load / paint time (Utilities, SharedWidgets_Theme) that a
+-- hand-built ns does not carry. Real definitions win when a test loads those files.
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+    ns.L_GameType = ns.L_GameType or function(key, fallback) local L = ns.L; return (L and L[key]) or fallback end
+    ns.UI_GetSemanticGreenColor = ns.UI_GetSemanticGreenColor or function() return 0.3, 0.9, 0.3, 1 end
+end
+
 local passed, failed = 0, 0
 local function check(cond, msg)
     if cond then
@@ -53,6 +62,7 @@ local ns = {
     UI_LAYOUT = { PAGE_STACK = { SEARCH_HEIGHT = 32 } },
     UI = { Factory = {} },
 }
+StubSharedNs(ns)
 
 local function LoadFile(rel)
     local chunk, err = loadstring(ReadFile(rel), "@" .. rel)
@@ -220,7 +230,7 @@ check(fs.r == 1 and fs.g == 1 and fs.b == 1 and fs.a == 1, "dark: Bright role ==
 
 -- ---------- L4: loading card percent (SharedWidgets_StateCards.lua) ----------
 print("\n[L4 loading card progress]")
-local scEnv = { ns = ns }
+local scEnv = { ns = ns, HEX = ns.UI_HEX }  -- file-level upvalue in StateCards
 scEnv.ReadLoadingPercent = Extract("Modules/UI/SharedWidgets_StateCards.lua", "local function ReadLoadingPercent(",
     "ReadLoadingPercent", {})
 local ApplyProgress = Extract("Modules/UI/SharedWidgets_StateCards.lua", "local function ApplyLoadingCardProgress(",
@@ -235,7 +245,7 @@ end
 SetTheme("dark")
 local card = NewCard()
 ApplyProgress(card)
-check_eq(card._wnProgressText.text, "|cff888888Scanning - 50%|r", "dark: loading percent text unchanged")
+check_eq(card._wnProgressText.text, ns.UI_HEX.dim .. "Scanning - 50%|r", "dark: loading percent uses the Dim token")
 SetTheme("light")
 card = NewCard()
 ApplyProgress(card)
@@ -278,8 +288,8 @@ check(has("Modules/UI/SearchBoxComponent.lua", 'UI_SetTextColorRole%(placeholder
 
 local SC = "Modules/UI/SharedWidgets_StateCards.lua"
 check_eq(count(SC, '"|cffcccccc" ..'), 0, "StateCards: Module Disabled title not fixed #cccccc")
-check(has(SC, 'UI_GetThemedGreyHex%("|cffcccccc", "Bright"%)'), "StateCards: Module Disabled title Bright in light")
-check(has(SC, 'UI_GetThemedGreyHex%("|cff999999", "Muted"%)'), "StateCards: DB badge grey is Muted in light")
+check(has(SC, 'UI_GetThemedGreyHex%(HEX%.muted, "Bright"%)'), "StateCards: Module Disabled title Bright in light")
+check(has(SC, 'UI_GetThemedGreyHex%(HEX%.dim, "Muted"%)'), "StateCards: DB badge grey is Muted in light")
 
 local WP = "Modules/UI/PlansUI_WeeklyProgress.lua"
 check_eq(count(WP, '"|cffaaaaaa" ..'), 0, "WeeklyProgress: sub-quest title not fixed #aaaaaa")

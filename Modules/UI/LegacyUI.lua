@@ -53,7 +53,7 @@ local function L_(key, fallback)
 end
 
 local function SafeText(s)
-    if s == nil or (issecretvalue and issecretvalue(s)) then return "" end
+    if (issecretvalue and issecretvalue(s)) or s == nil then return "" end
     return tostring(s)
 end
 

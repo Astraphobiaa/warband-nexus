@@ -19,6 +19,15 @@
     TooltipService_GameTooltip.lua with loadstring.
 ]]
 
+-- Helpers shipped modules call at load / paint time (Utilities, SharedWidgets_Theme) that a
+-- hand-built ns does not carry. Real definitions win when a test loads those files.
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+    ns.L_GameType = ns.L_GameType or function(key, fallback) local L = ns.L; return (L and L[key]) or fallback end
+    ns.UI_GetSemanticGreenColor = ns.UI_GetSemanticGreenColor or function() return 0.3, 0.9, 0.3, 1 end
+end
+
 local passed, failed = 0, 0
 local function assert_eq(actual, expected, msg)
     if actual == expected then
@@ -48,6 +57,7 @@ local GUID, NAME = "Player-1-0000000A", "Alpha-Realm"
 local resolves = 0
 local guidOnly = false
 local ns = {}
+StubSharedNs(ns)
 local WarbandNexus = {
     db = { global = { characters = {}, pveCache = {
         mythicPlus = { keystones = {}, bestRuns = {}, dungeonScores = {}, runHistory = {} },

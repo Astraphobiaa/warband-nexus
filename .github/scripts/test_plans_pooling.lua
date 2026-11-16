@@ -16,6 +16,15 @@
     with fake frames that count every CreateFrame / CreateTexture / CreateFontString.
 ]]
 
+-- Helpers shipped modules call at load / paint time (Utilities, SharedWidgets_Theme) that a
+-- hand-built ns does not carry. Real definitions win when a test loads those files.
+local function StubSharedNs(ns)
+    ns.UI_HEX = ns.UI_HEX or setmetatable({}, { __index = function() return "|cffffffff" end })
+    ns.CharDisplayName = ns.CharDisplayName or function(c, fallback) return (c and c.name) or fallback end
+    ns.L_GameType = ns.L_GameType or function(key, fallback) local L = ns.L; return (L and L[key]) or fallback end
+    ns.UI_GetSemanticGreenColor = ns.UI_GetSemanticGreenColor or function() return 0.3, 0.9, 0.3, 1 end
+end
+
 local passed, failed = 0, 0
 local function assert_eq(actual, expected, msg)
     if actual == expected then
@@ -137,6 +146,7 @@ end
 
 -- ---------- ns ----------
 local ns = {}
+StubSharedNs(ns)
 local WN = { db = { profile = { modulesEnabled = {} }, global = { plans = {} } }, RegisterMessage = function() end }
 ns.WarbandNexus = WN
 ns.UI_RecycleBin = NewObj("frame", nil)
