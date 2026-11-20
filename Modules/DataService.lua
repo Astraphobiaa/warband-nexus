@@ -817,7 +817,11 @@ CollectPlayerStats = function()
             pct = pVal,
         }
     end
-    if not next(primary) and not next(secondary) then return nil end
+    -- primary is already nil when no stat was readable (set above); never next(nil).
+    -- Inside M+ / restricted content UnitStat and the ratings come back as secret values, so primary is nil
+    -- and every secondary falls to 0. A live character always has primary stats, so nil means "sheet
+    -- unreadable right now": keep the stored snapshot instead of overwriting it with zeros (2026-11-20).
+    if not primary then return nil end
     -- WoW Forever's sheet carries resistances / defense / melee / spell stats; persisted for offline view.
     local extended = WarbandNexus and WarbandNexus.CollectForeverExtendedStats
         and WarbandNexus:CollectForeverExtendedStats() or nil
