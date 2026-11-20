@@ -1208,24 +1208,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Скрывает системные с
 
 
 
-L["CHANGELOG_V3110"] = [=[v3.11.0 (2026-11-16)
+L["CHANGELOG_V3111"] = [=[v3.11.1 (2026-11-20)
 
-The Characters tab now shows every character's specialization and role, and last week's data no longer lingers after the weekly reset.
-
-Added:
-- Spec column on the Characters tab: each character's specialization icon with a tank, healer or damage badge. Hover it for class, spec and role.
-
-Updated:
-- Less work and fewer server requests at login for Great Vault and Mythic+ data.
+Hotfix for a Lua error that kept repeating during Mythic+ keystones.
 
 Fixed:
-- Last week's Mythic+ keystones no longer stay on the Characters tab after the weekly reset.
-- Alts' Great Vault progress and Weekly Progress plans no longer show last week's progress after the reset.
-- A deleted character no longer comes back in the Currencies list when it was saved twice.
-- Untracking a character now sticks, and the minimap and Great Vault gold totals no longer count a character twice.
-- Your manual character order is kept for characters saved under an older name.
-- Hovering a profession icon no longer causes a Lua error on some characters.
-- Bank: the last character header is no longer cut off, and sections you open stay open after a reload.
+- Fixed a Lua error that repeated during Mythic+ keystones until the addon was turned off.
+- The Gear tab keeps each character's last saved stats instead of losing them when they cannot be read inside a Mythic+ dungeon.
 
 CurseForge: Warband Nexus]=]
 L["CHANGELOG_FOREVER_V102"] = [=[v1.0.2 (2026-11-16)
