@@ -1430,7 +1430,8 @@ function WarbandNexus:SaveCurrentCharacterData(options)
 
     local statsData = preserveStats
     if not lightOnly then
-        statsData = CollectPlayerStats()
+        -- nil = sheet unreadable (secret values in M+); keep the stored snapshot (2026-11-20).
+        statsData = CollectPlayerStats() or preserveStats
     end
 
     -- Login-light: patch existing row in place — avoids full table alloc + PopulateContent storm.

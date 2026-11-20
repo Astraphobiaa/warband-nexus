@@ -181,6 +181,10 @@ def parent_ns_defined(text: str, export_ns: str) -> set[str]:
         defined.add(m.group(1))
     for m in re.finditer(re.escape(prefix) + r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*function", text):
         defined.add(m.group(1))
+    # Parent-owned state fields (e.g. `ns.CharactersUI._liveGoldBundle = bundle`) are defined
+    # by the parent itself, not expected from a satellite. `==` comparisons are not assignments.
+    for m in re.finditer(r"(?m)^\s*" + re.escape(prefix) + r"([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)", text):
+        defined.add(m.group(1))
     return defined
 
 

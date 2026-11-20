@@ -588,7 +588,7 @@ function CharacterService:ResolveCharactersTableKey(addon)
     local function OwnedByLivePlayer(row)
         if type(row) ~= "table" then return false end
         local g = row.guid
-        if not liveGuid or type(g) ~= "string" or g == "" or (issecretvalue and issecretvalue(g)) then
+        if not liveGuid or (issecretvalue and issecretvalue(g)) or type(g) ~= "string" or g == "" then
             return true
         end
         return g == liveGuid
