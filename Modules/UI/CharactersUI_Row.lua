@@ -252,7 +252,8 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
     -- on a client without their system -- so each one's trailing gap goes with it and the next
     -- column moves up instead of leaving a hole.
     local skillsW = (flexCols and flexCols.skills) or CHAR_ROW_COLUMNS.skills.width
-    local skillsOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+    local skillsOffset = profOffset + profW + ((ns.UI_CharRowProfessionColumnSpacing
+        and ns.UI_CharRowProfessionColumnSpacing()) or CHAR_ROW_COLUMNS.professions.spacing or 0)
     if row.skillsIcon then
         if skillsW > 0 then
             local cs = RowCellIconSize(row)
@@ -1188,8 +1189,10 @@ function CharRowCb.PaintRealmTypeCell(row, char, width, offset)
     -- reading it here gave every row that character's ruleset.
     local rules = type(char.gameRules) == "table" and char.gameRules or nil
     local U = ns.Utilities
+    -- Fallback reads the stored realm NAME only: FormatRealmName asks the live ruleset first,
+    -- which is the logged-in character's, not this row's.
     local tag = rules and rules.ruleset
-        or (U and U.FormatRealmName and U:FormatRealmName(char.realm)) or char.realm
+        or (U and U.GetRealmTypeLabelFromName and U:GetRealmTypeLabelFromName(char.realm)) or ""
     if not tag or (issecretvalue and issecretvalue(tag)) then tag = "" end
     local text = (tag == "") and (ThemeTextHex("Muted") .. "-|r") or tag
     if rules and rules.selfFound then
@@ -1822,7 +1825,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- COLUMN: Skills (WoW Forever) - how many abilities are waiting at the class trainer.
     local skillsW = (flexCols and flexCols.skills) or CHAR_ROW_COLUMNS.skills.width
-    local skillsOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+    local skillsOffset = profOffset + profW + ((ns.UI_CharRowProfessionColumnSpacing
+        and ns.UI_CharRowProfessionColumnSpacing()) or CHAR_ROW_COLUMNS.professions.spacing or 0)
     CharRowCb.PaintSkillsCell(row, char, skillsW, skillsOffset)
 
     -- COLUMN: Talents (WoW Forever) - points per tab, read left to right as a vanilla build.

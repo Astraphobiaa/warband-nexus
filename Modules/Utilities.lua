@@ -34,9 +34,70 @@ ns.Utilities = Utilities
 function Utilities:SplitCharacterKey(charKey)
     if issecretvalue and issecretvalue(charKey) then return nil, nil end
     if charKey == nil or charKey == "" then return nil, nil end
+    -- WoW Forever: a GUID row key ("Player-6796-047E8C81") is not Name-Realm. Splitting it stored
+    -- name "Player" / realm "6796-047E8C81" on a new character whose full save had not run yet,
+    -- and the stub/tracking paths never overwrote that "present" name (2026-11-23).
+    if ns.Constants and ns.Constants.IS_FOREVER_BUILD and tostring(charKey):sub(1, 7) == "Player-" then
+        return nil, nil
+    end
     local name, realm = tostring(charKey):match("^([^-]+)%-(.+)$")
     if not name or not realm then return nil, nil end
     return name:gsub("%s+", ""), realm:gsub("%s+", "")
+end
+
+--- WoW Forever: true when a row's name/realm are the two halves of its own GUID key -- the values
+--- SplitCharacterKey wrote before it refused GUID keys. Write paths treat such a row as nameless.
+---@param charKey string|nil characters-table key
+---@param row table|nil characters row
+---@return boolean
+function Utilities:IsGuidKeySplitArtifact(charKey, row)
+    if type(row) ~= "table" or type(charKey) ~= "string" then return false end
+    if issecretvalue and issecretvalue(charKey) then return false end
+    local name, realm = row.name, row.realm
+    if type(name) ~= "string" or type(realm) ~= "string" then return false end
+    if issecretvalue and (issecretvalue(name) or issecretvalue(realm)) then return false end
+    -- Exact halves only: a real character named "Player" keeps its row.
+    return name == "Player" and ("Player-" .. realm) == charKey
+end
+
+--[[
+    Live realm for identity rows. WoW Forever has realms whose name APIs answer "" for the whole
+    session: GetRealmName() == "" and GetNormalizedRealmName() == "" (canli dogrulandi 2026-11-23,
+    /wn caps api on Player-6939-*, Interface 16001), while older characters on
+    CAMWOWEU4Realm5PvE answer normally. "" is the true answer there and is stored as-is: no realm
+    is invented. Rows on such a realm are identified by GUID only (GetCharacterKey returns nil).
+    Returns nil when the realm is not readable (secret, API missing, or "" outside Forever).
+]]
+---@return string|nil
+function Utilities:GetLiveRealmName()
+    local norm = GetNormalizedRealmName and GetNormalizedRealmName()
+    if type(norm) == "string" and not (issecretvalue and issecretvalue(norm)) and norm ~= "" then
+        return norm
+    end
+    local raw = GetRealmName and GetRealmName()
+    if type(raw) ~= "string" or (issecretvalue and issecretvalue(raw)) then return nil end
+    if raw ~= "" then return (raw:gsub("%s+", "")) end
+    if ns.Constants and ns.Constants.IS_FOREVER_BUILD then return "" end
+    return nil
+end
+
+--- Realm to persist on a save. When the live answer is "" (WoW Forever nameless realm), keep the
+--- realm the client DID name on an earlier session instead of erasing it: Player-6939-00649B7A
+--- stored "CAMWOWEU4Realm5PvE" on 2026-11-11 and the same server answers "" on 2026-11-23. A row
+--- that never had a real realm (or holds the GUID-split artifact) stays "".
+---@param liveRealm string|nil GetLiveRealmName() result
+---@param charKey string|nil characters-table key of the row
+---@param row table|nil existing characters row
+---@return string|nil
+function Utilities:ResolvePersistedRealm(liveRealm, charKey, row)
+    if liveRealm ~= "" then return liveRealm end
+    if type(row) ~= "table" then return liveRealm end
+    local stored = row.realm
+    if type(stored) ~= "string" or (issecretvalue and issecretvalue(stored)) or stored == "" then
+        return liveRealm
+    end
+    if self:IsGuidKeySplitArtifact(charKey, row) then return liveRealm end
+    return stored
 end
 
 --- Name-Realm key (normalized, no spaces). **Display and legacy migration only** — not subsidiary storage.
@@ -62,14 +123,11 @@ function Utilities:GetCharacterKey(name, realm, surname)
         name = name .. surname
     end
     if not realm then
-        local norm = GetNormalizedRealmName and GetNormalizedRealmName()
-        if type(norm) == "string" and not (issecretvalue and issecretvalue(norm)) and norm ~= "" then
-            realm = norm
-        else
-            realm = GetRealmName and GetRealmName() or ""
-        end
+        realm = self:GetLiveRealmName() or ""
     end
     if not realm or (issecretvalue and issecretvalue(realm)) then return nil end
+    -- WoW Forever nameless realm (GetLiveRealmName): no Name-Realm identity exists; GUID only.
+    if realm == "" and isForever then return nil end
     
     -- Normalize key to prevent duplicates
     -- Remove spaces for consistent matching (e.g. "Twisting Nether" -> "TwistingNether")
@@ -362,6 +420,13 @@ function Utilities:GetRealmTypeLabel(realm)
     local ruleset = ns.Capabilities and ns.Capabilities.GetRulesetLabel
         and ns.Capabilities:GetRulesetLabel()
     if ruleset then return ruleset end
+    return self:GetRealmTypeLabelFromName(realm)
+end
+
+--- Realm type read from a stored realm NAME only ("CAMWOWEU4Realm5PvE" -> "PvE"), never from the
+--- live client. For rows of characters that are not logged in: the live ruleset belongs to
+--- whoever is online, and printing it on every row gave alts the wrong tag.
+function Utilities:GetRealmTypeLabelFromName(realm)
     if issecretvalue and issecretvalue(realm) then return nil end
     if type(realm) ~= "string" or realm == "" then return nil end
     local upper = realm:upper()

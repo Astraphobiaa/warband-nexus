@@ -262,6 +262,10 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                     addon.db.global.characters[persistKey] = {}
                 end
                 local stub = addon.db.global.characters[persistKey]
+                local U = ns.Utilities
+                if U and U.IsGuidKeySplitArtifact and U:IsGuidKeySplitArtifact(persistKey, stub) then
+                    stub.name, stub.realm = nil, nil
+                end
                 if not stub.name or not stub.realm then
                     local un = UnitName("player")
                     if un and type(un) == "string" and not (issecretvalue and issecretvalue(un)) then

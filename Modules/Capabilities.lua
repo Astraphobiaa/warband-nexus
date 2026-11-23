@@ -94,15 +94,10 @@ M.IsForeverClient = IsForeverClient
     C_GameRules.IsGameRuleActive answers about RULESETS, not feature flags: the documented
     Enum.GameRule values for it are HardcoreRuleset, PvPRuleset and RPRuleset, and those are the
     only three this client carries with "Ruleset" in the name. Asking it about other rules
-    returned true for 41 of them and raised for 128, never false -- which is not an answer, and
-    an earlier version of this file wrongly drove three capabilities off it.
+    returned true for 41 of them and false for the rest (the snapshot printed those as "error"
+    through an and/or trap until 2026-11-23); an earlier version of this file wrongly drove three
+    capabilities off it.
 ]]
-local RULESET_LABELS = {
-    { "HardcoreRuleset", "Hardcore" },
-    { "PvPRuleset", "PvP" },
-    { "RPRuleset", "RP" },
-}
-
 local function RulesetActive(ruleName)
     if type(C_GameRules) ~= "table" or type(C_GameRules.IsGameRuleActive) ~= "function" then
         return nil
@@ -115,10 +110,19 @@ local function RulesetActive(ruleName)
     return active and true or false
 end
 
---- "PvP" / "RP" / "Hardcore", or nil when none applies (a normal realm, or retail).
+--- "Hardcore" / "RP-PvP" / "PvP" / "RP" / "PvE", or nil when the client cannot say (retail, API
+--- missing or raising). WoW Forever is realmless (GetRealmName == ""), so the ruleset is the only
+--- realm-type answer left: the Normal ruleset is the one where the client ANSWERS false for all
+--- three rules (canli dogrulandi 2026-11-23, Player-6939-*: PvP/RP/Hardcore = false).
 function M:GetRulesetLabel()
-    for i = 1, #RULESET_LABELS do
-        if RulesetActive(RULESET_LABELS[i][1]) then return RULESET_LABELS[i][2] end
+    local hardcore = RulesetActive("HardcoreRuleset")
+    if hardcore then return "Hardcore" end
+    local pvp, rp = RulesetActive("PvPRuleset"), RulesetActive("RPRuleset")
+    if pvp and rp then return "RP-PvP" end
+    if pvp then return "PvP" end
+    if rp then return "RP" end
+    if IsForeverClient() and hardcore == false and pvp == false and rp == false then
+        return "PvE"
     end
     return nil
 end

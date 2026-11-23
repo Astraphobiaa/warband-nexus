@@ -176,8 +176,19 @@ local function CharRowProfessionColumnWidth()
 end
 ns.UI_CharRowProfessionColumnWidth = CharRowProfessionColumnWidth
 
+--- Gap after the profession strip. On the fixed-slot layout it is the strip's own icon gap, so
+--- Skills / Talents continue the same band instead of touching the last profession icon.
+local function CharRowProfessionColumnSpacing()
+    local addon = ns.WarbandNexus
+    if addon and addon.SupportsFeature and addon:SupportsFeature("firstAidProfession") then
+        return PROF_SLOT_GAP
+    end
+    return CHAR_ROW_COLUMNS.professions.spacing or 0
+end
+ns.UI_CharRowProfessionColumnSpacing = CharRowProfessionColumnSpacing
+
 local function CharRowProfessionColumnTotal()
-    return CharRowProfessionColumnWidth() + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+    return CharRowProfessionColumnWidth() + CharRowProfessionColumnSpacing()
 end
 
 local function CharRowColumnEnabled(key)
@@ -314,10 +325,14 @@ local function ComputeCharRowFlexColumns(rowW, measuredGuildW)
     -- A collapsed column has no width to give and must not be handed any back: writing
     -- out[key] unconditionally below would resurrect a hidden column as soon as the row got
     -- narrow enough to have a deficit.
+    -- Fixed-slot professions (WoW Forever, five slots) keep their width: flexing them from the
+    -- retail 150/128 numbers shrank the icons to 22-33 px depending on window width while the
+    -- Skills / Talents squares and gaps moved with them (2026-11-23).
+    local fixedProf = CharRowProfessionColumnWidth() ~= c.professions.width
     local slack = 0
     for i = 1, #CHAR_ROW_FLEX_ORDER do
         local key = CHAR_ROW_FLEX_ORDER[i]
-        if CharRowColumnEnabled(key) then
+        if CharRowColumnEnabled(key) and not (fixedProf and key == "professions") then
             local col = c[key]
             slack = slack + math.max(0, col.width - (col.min or col.width))
         end
@@ -326,7 +341,7 @@ local function ComputeCharRowFlexColumns(rowW, measuredGuildW)
     local ratio = math.min(1, deficit / slack)
     for i = 1, #CHAR_ROW_FLEX_ORDER do
         local key = CHAR_ROW_FLEX_ORDER[i]
-        if CharRowColumnEnabled(key) then
+        if CharRowColumnEnabled(key) and not (fixedProf and key == "professions") then
             local col = c[key]
             local give = math.max(0, col.width - (col.min or col.width)) * ratio
             out[key] = math.floor(col.width - give + 0.5)

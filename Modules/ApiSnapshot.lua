@@ -193,7 +193,14 @@ local function SnapshotGameRules()
     local out = {}
     local function try(label, fn)
         local ok, v = pcall(fn)
-        out[label] = ok and (v == nil and "nil" or v) or "error"
+        -- Explicit branches: the old and/or form recorded a `false` answer as "error".
+        if not ok then
+            out[label] = "error: " .. tostring(v)
+        elseif v == nil then
+            out[label] = "nil"
+        else
+            out[label] = v
+        end
     end
     if type(C_GameRules) ~= "table" then return out end
     try("activeGameMode", function() return C_GameRules.GetActiveGameMode() end)
@@ -210,7 +217,13 @@ local function SnapshotGameRules()
         for name, value in pairs(Enum.GameRule) do
             if type(name) == "string" and type(value) == "number" then
                 local ok, active = pcall(C_GameRules.IsGameRuleActive, value)
-                rules[name] = ok and (active and true or false) or "error"
+                -- Explicit branches: `ok and (active and true or false) or "error"` turned every
+                -- false answer into "error" (and/or trap), which read as "the client refuses".
+                if ok then
+                    rules[name] = active and true or false
+                else
+                    rules[name] = "error: " .. tostring(active)
+                end
             end
         end
         out.activeRules = rules
@@ -313,7 +326,7 @@ local function SnapshotPlayerName()
     local out = {}
     local function try(label, fn)
         local ok, a, b = pcall(fn)
-        if not ok then out[label] = "error"
+        if not ok then out[label] = "error: " .. tostring(a)
         elseif a == nil then out[label] = "nil"
         else out[label] = tostring(a) .. (b ~= nil and (" | " .. tostring(b)) or "") end
     end
@@ -326,6 +339,24 @@ local function SnapshotPlayerName()
     try("GetRealmName", function() return GetRealmName() end)
     try("normalizedRealm", function() return GetNormalizedRealmName() end)
     try("playerGUID", function() return UnitGUID("player") end)
+    -- Forever is realmless (Blizzard: "there won't be any realms"; Camelot CharacterSelectList.lua
+    -- "we are realmless") and GetRealmName answers "" there (canli dogrulandi 2026-11-23). Measure
+    -- what is left to identify the realm / ruleset instead of assuming it.
+    try("GetRealmID", function() return GetRealmID() end)
+    try("GetNativeRealmID", function() return GetNativeRealmID() end)
+    try("GetCurrentRegion", function() return GetCurrentRegion() end)
+    try("ShouldDisplaySurname", function() return C_PlayerInfo.ShouldDisplaySurname() end)
+    try("IsHardcoreActive", function() return C_GameRules.IsHardcoreActive() end)
+    try("IsSelfFoundActive", function() return C_PlayerInfo.IsSelfFoundActive() end)
+    try("GameModeRecordID", function() return C_GameRules.GetCurrentGameModeRecordID() end)
+    try("GameModeDisplayInfo", function()
+        local info = C_GameRules.GetCurrentGameModeDisplayInfo()
+        if type(info) ~= "table" then return info end
+        local parts = {}
+        for k, v in pairs(info) do parts[#parts + 1] = tostring(k) .. "=" .. tostring(v) end
+        table.sort(parts)
+        return table.concat(parts, ", ")
+    end)
     return out
 end
 

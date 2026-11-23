@@ -940,10 +940,14 @@ end
 function WarbandNexus:SaveMinimalCharacterData()
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()
+    -- WoW Forever: nameless realms answer "" (true value, kept); see Utilities:GetLiveRealmName.
+    if ns.Constants and ns.Constants.IS_FOREVER_BUILD and ns.Utilities and ns.Utilities.GetLiveRealmName then
+        realm = ns.Utilities:GetLiveRealmName()
+    end
     if issecretvalue and issecretvalue(name) then return false end
     if issecretvalue and issecretvalue(realm) then return false end
     
-    if not name or name == "" or not realm or realm == "" then
+    if not name or name == "" or not realm or (realm == "" and not (ns.Constants and ns.Constants.IS_FOREVER_BUILD)) then
         return false
     end
     
@@ -967,6 +971,9 @@ function WarbandNexus:SaveMinimalCharacterData()
         key = resolvedKey
     end
     local existingEntry = (chars[key] or (legacyKey and chars[legacyKey])) or nil
+    if ns.Utilities and ns.Utilities.ResolvePersistedRealm then
+        realm = ns.Utilities:ResolvePersistedRealm(realm, key, existingEntry)
+    end
     
     -- Get basic character info
     local className, classFile, classID = UnitClass("player")
@@ -1189,6 +1196,10 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         surname = nameSecond
     end
     local realm = GetNormalizedRealmName()  -- Get realm name
+    -- WoW Forever: nameless realms answer "" (true value, kept); see Utilities:GetLiveRealmName.
+    if ns.Constants and ns.Constants.IS_FOREVER_BUILD and ns.Utilities and ns.Utilities.GetLiveRealmName then
+        realm = ns.Utilities:GetLiveRealmName()
+    end
     if issecretvalue and issecretvalue(name) then return _saveProfEnd(false) end
     if issecretvalue and issecretvalue(realm) then return _saveProfEnd(false) end
     
@@ -1196,7 +1207,7 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     if not name or name == "" or name == "Unknown" then
         return _saveProfEnd(false)
     end
-    if not realm or realm == "" then
+    if not realm or (realm == "" and not (ns.Constants and ns.Constants.IS_FOREVER_BUILD)) then
         return _saveProfEnd(false)
     end
     
@@ -1240,6 +1251,9 @@ function WarbandNexus:SaveCurrentCharacterData(options)
     local chars = self.db.global.characters
     local existingSnapshot = (chars[key] or (legacyKey and chars[legacyKey])) or nil
     local totalCopper = SafeGetMoneyCopperFromEntry(existingSnapshot)
+    if ns.Utilities and ns.Utilities.ResolvePersistedRealm then
+        realm = ns.Utilities:ResolvePersistedRealm(realm, key, existingSnapshot)
+    end
 
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")  -- race = localized name, raceFile = English ID
@@ -1492,6 +1506,9 @@ function WarbandNexus:SaveCurrentCharacterData(options)
             self:HealCharacterProfessions(existingEntry)
         end
         self.db.global.characters[key] = existingEntry
+        if ns.CharacterService and ns.CharacterService.CaptureGameRules then
+            ns.CharacterService:CaptureGameRules(existingEntry)
+        end
         RelocateLegacyCharacterSlot(self.db, key, legacyKey)
         -- The light path is the save many characters ever run, and it returns here -- so the
         -- systems scan has to happen on this branch too. Leaving it only on the full path meant
@@ -1596,6 +1613,9 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         end
     end
     self.db.global.characters[key] = newRow
+    if ns.CharacterService and ns.CharacterService.CaptureGameRules then
+        ns.CharacterService:CaptureGameRules(newRow)
+    end
 
     if self.HealCharacterProfessions then
         self:HealCharacterProfessions(self.db.global.characters[key])
@@ -2018,9 +2038,13 @@ function WarbandNexus:UpdateCharacterGold()
 
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()
+    -- WoW Forever: nameless realms answer "" (true value, kept); see Utilities:GetLiveRealmName.
+    if ns.Constants and ns.Constants.IS_FOREVER_BUILD and U.GetLiveRealmName then
+        realm = U:GetLiveRealmName()
+    end
     -- Secret check first: no `not` / `==` on a value that may be secret.
     if (issecretvalue and issecretvalue(name)) or (issecretvalue and issecretvalue(realm)) then return false end
-    if not name or name == "" or not realm or realm == "" then return false end
+    if not name or name == "" or not realm or (realm == "" and not (ns.Constants and ns.Constants.IS_FOREVER_BUILD)) then return false end
 
     local legacyKey = U.GetCharacterKey and U:GetCharacterKey(nil, realm)  -- live: Forever adds the surname
     local storageKey = U.GetCharacterStorageKey and U:GetCharacterStorageKey(self)
