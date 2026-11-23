@@ -439,14 +439,27 @@ end
     Only readable while the window is open, so this runs from TRADE_SKILL_LIST_UPDATE and merges
     into whatever previous professions were captured.
 ]]
-local MAX_RECIPES = 600
+local MAX_RECIPES = 3000
+-- Recipes read per frame. A retail profession lists well over a thousand recipes, each a dozen
+-- api calls; read in one frame that froze the client for seconds.
+local RECIPE_SCAN_CHUNK = 40
 local MAX_CATEGORY_DEPTH = 4
-local MAX_REAGENT_SLOTS = 8
+local MAX_REAGENT_SLOTS = 12
+-- Retail reagents come in up to three quality tiers per slot; modifying slots list many options.
+local MAX_SLOT_ITEMS = 8
+local MAX_OUTPUT_QUALITIES = 5
 
 --- Plain string from an api field, or nil when it is missing or secret.
 local function SafeString(v)
     if issecretvalue and issecretvalue(v) then return nil end
     if type(v) ~= "string" or v == "" then return nil end
+    return v
+end
+
+--- Plain number from an api field, or nil when it is missing or secret.
+local function SafeNumber(v)
+    if issecretvalue and issecretvalue(v) then return nil end
+    if type(v) ~= "number" then return nil end
     return v
 end
 
@@ -504,27 +517,163 @@ local function ReadRecipeCategories(categoryIDs)
     return out
 end
 
---- Reagents and product of one recipe: { itemID, count } per required slot. nil when the schematic
---- is not readable (gathering recipes carry none).
+--- CraftingQualityInfo atlas for inline text. iconChat is the one Blizzard drops into strings
+--- (Professions.GetChatIconMarkupForQuality); iconSmall carries padding and reads tiny inline.
+local function QualityAtlas(qi)
+    return SafeString(qi.iconChat) or SafeString(qi.iconSmall) or SafeString(qi.icon)
+end
+
+--- Reagent quality tier of one item (retail 1-3) and its inline atlas, as the schematic slots draw it.
+local function ReadReagentTier(itemID)
+    local TS = C_TradeSkillUI
+    local tier, atlas
+    if type(TS.GetItemReagentQualityByItemInfo) == "function" then
+        local ok, q = pcall(TS.GetItemReagentQualityByItemInfo, itemID)
+        tier = ok and SafeNumber(q) or nil
+    end
+    if tier and type(TS.GetItemReagentQualityInfo) == "function" then
+        local ok, qi = pcall(TS.GetItemReagentQualityInfo, itemID)
+        if ok and type(qi) == "table" then atlas = QualityAtlas(qi) end
+    end
+    return tier, atlas
+end
+
+--- Item ids a slot accepts, in api order (lowest quality tier first for basic slots).
+local function SlotItemIDs(slot)
+    local list = type(slot.reagents) == "table" and slot.reagents or nil
+    if not list then return nil end
+    local ids
+    for i = 1, math.min(#list, MAX_SLOT_ITEMS) do
+        local id = type(list[i]) == "table" and tonumber(list[i].itemID)
+        if id then
+            ids = ids or {}
+            ids[#ids + 1] = id
+        end
+    end
+    return ids
+end
+
+--[[
+    Reagents and product of one recipe, grouped the way Blizzard_ProfessionsRecipeSchematicForm
+    groups slots: Enum.CraftingReagentType Basic -> "Reagents", Modifying -> "Optional Reagents",
+    Finishing -> "Finishing Reagents"; Automatic slots are never drawn there and are skipped, as
+    are slots flagged hiddenInCraftingForm. A basic slot keeps every quality tier it accepts so the
+    have-count covers all of them. nil when the schematic is not readable (gathering recipes).
+]]
 local function ReadRecipeSchematic(recipeID)
     if type(C_TradeSkillUI.GetRecipeSchematic) ~= "function" then return nil end
     local okS, sc = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
     if not okS or type(sc) ~= "table" then return nil end
-    local reagents
+    local RT = Enum and Enum.CraftingReagentType
+    local BASIC = RT and RT.Basic or 1
+    local MODIFYING = RT and RT.Modifying or 0
+    local FINISHING = RT and RT.Finishing or 2
+    local out = {
+        outputItemID = tonumber(sc.outputItemID),
+        quantityMin = tonumber(sc.quantityMin),
+        quantityMax = tonumber(sc.quantityMax),
+        productQuality = SafeNumber(sc.productQuality),
+        isRecraft = sc.isRecraft and true or nil,
+        hasOperation = sc.hasCraftingOperationInfo and true or nil,
+    }
     local slots = sc.reagentSlotSchematics
-    if type(slots) == "table" then
-        for i = 1, math.min(#slots, MAX_REAGENT_SLOTS) do
-            local slot = slots[i]
-            local first = type(slot) == "table" and type(slot.reagents) == "table" and slot.reagents[1]
-            local itemID = type(first) == "table" and tonumber(first.itemID)
-            -- Optional / finishing slots carry required = false; they are not part of the recipe.
-            if itemID and slot.required ~= false then
-                reagents = reagents or {}
-                reagents[#reagents + 1] = { itemID = itemID, count = tonumber(slot.quantityRequired) or 1 }
+    if type(slots) ~= "table" then return out end
+    for i = 1, math.min(#slots, MAX_REAGENT_SLOTS) do
+        local slot = slots[i]
+        local ids = type(slot) == "table" and not slot.hiddenInCraftingForm and SlotItemIDs(slot)
+        if ids then
+            local rtype = tonumber(slot.reagentType)
+            local count = tonumber(slot.quantityRequired) or 1
+            -- A client without reagentType falls back to `required`, as the old capture did.
+            local isBasic = (rtype == BASIC) or (rtype == nil and slot.required ~= false)
+            if isBasic then
+                local rg = { itemID = ids[1], count = count }
+                if #ids > 1 then
+                    rg.tiers = {}
+                    for t = 1, #ids do
+                        local tier, atlas = ReadReagentTier(ids[t])
+                        rg.tiers[t] = { itemID = ids[t], tier = tier, atlas = atlas }
+                    end
+                end
+                out.reagents = out.reagents or {}
+                out.reagents[#out.reagents + 1] = rg
+            elseif rtype == MODIFYING or rtype == FINISHING then
+                local info = type(slot.slotInfo) == "table" and slot.slotInfo or nil
+                local rank = info and tonumber(info.requiredSkillRank)
+                out.optional = out.optional or {}
+                out.optional[#out.optional + 1] = {
+                    kind = rtype == FINISHING and "finishing" or "modifying",
+                    label = info and SafeString(info.slotText) or nil,
+                    itemIDs = ids,
+                    count = count,
+                    required = slot.required and true or nil,
+                    rank = (rank and rank > 0) and rank or nil,
+                }
             end
         end
     end
-    return reagents, tonumber(sc.outputItemID), tonumber(sc.quantityMin), tonumber(sc.quantityMax)
+    return out
+end
+
+--[[
+    The product's quality ladder, read the way Blizzard_ProfessionsRecipeCrafterDetails builds its
+    "quality bonuses" tooltip: per quality index, GetRecipeItemQualityInfo gives the tier atlas and
+    GetRecipeOutputItemData(recipeID, {}, nil, qualityIDs[i]) the item at that quality.
+    qualityItemIDs (one item per tier) and qualityIlvlBonuses (one ilvl step per tier) are kept
+    as the api gives them.
+]]
+local function ReadRecipeQualities(recipeID, info)
+    local qIDs = type(info.qualityIDs) == "table" and info.qualityIDs or nil
+    local itemIDs = type(info.qualityItemIDs) == "table" and info.qualityItemIDs or nil
+    local bonuses = type(info.qualityIlvlBonuses) == "table" and info.qualityIlvlBonuses or nil
+    local n = math.max(qIDs and #qIDs or 0, itemIDs and #itemIDs or 0, bonuses and #bonuses or 0)
+    if n == 0 then return nil end
+    local TS = C_TradeSkillUI
+    local list = {}
+    for idx = 1, math.min(n, MAX_OUTPUT_QUALITIES) do
+        local q = {
+            qualityID = qIDs and tonumber(qIDs[idx]) or nil,
+            itemID = itemIDs and tonumber(itemIDs[idx]) or nil,
+            ilvlBonus = bonuses and tonumber(bonuses[idx]) or nil,
+        }
+        if type(TS.GetRecipeItemQualityInfo) == "function" then
+            local ok, qi = pcall(TS.GetRecipeItemQualityInfo, recipeID, idx)
+            if ok and type(qi) == "table" then q.atlas = QualityAtlas(qi) end
+        end
+        if q.qualityID and type(TS.GetRecipeOutputItemData) == "function" then
+            local ok, o = pcall(TS.GetRecipeOutputItemData, recipeID, {}, nil, q.qualityID)
+            if ok and type(o) == "table" then
+                q.link = SafeString(o.hyperlink)
+                q.itemID = q.itemID or tonumber(o.itemID)
+            end
+        end
+        list[idx] = q
+    end
+    return list
+end
+
+--[[
+    Skill vs difficulty, the expected quality and the concentration cost with no optional
+    reagents slotted -- the numbers the retail details panel opens with. Only asked for recipes
+    whose schematic says it has operation info (quality crafts).
+]]
+local function ReadRecipeOperation(recipeID)
+    local TS = C_TradeSkillUI
+    if type(TS.GetCraftingOperationInfo) ~= "function" then return nil end
+    local ok, op = pcall(TS.GetCraftingOperationInfo, recipeID, {}, nil, false)
+    if not ok or type(op) ~= "table" then return nil end
+    local skill = (SafeNumber(op.baseSkill) or 0) + (SafeNumber(op.bonusSkill) or 0)
+    local difficulty = (SafeNumber(op.baseDifficulty) or 0) + (SafeNumber(op.bonusDifficulty) or 0)
+    if skill <= 0 and difficulty <= 0 then return nil end
+    local conc = SafeNumber(op.concentrationCost)
+    return {
+        skill = skill,
+        difficulty = difficulty,
+        quality = SafeNumber(op.craftingQuality),
+        concentration = (conc and conc > 0) and conc or nil,
+        concentrationCurrencyID = SafeNumber(op.concentrationCurrencyID),
+        isQualityCraft = op.isQualityCraft and true or nil,
+    }
 end
 
 --[[
@@ -626,6 +775,25 @@ local function ReadProfessionTiers()
     return #tiers > 0 and tiers or nil
 end
 
+--- The expansion tier the window is showing (retail header: "Midnight Alchemy 100 (+40) / 100").
+--- GetBaseProfessionInfo answers for the base skill line, whose rank is not what the header draws.
+local function ReadActiveTier(baseID)
+    local TS = C_TradeSkillUI
+    if type(TS.GetChildProfessionInfo) ~= "function" then return nil end
+    local ok, t = pcall(TS.GetChildProfessionInfo)
+    if not ok or type(t) ~= "table" then return nil end
+    local id = tonumber(t.professionID)
+    if not id or id <= 0 or id == baseID then return nil end
+    local mod = tonumber(t.skillModifier)
+    return {
+        professionID = id,
+        name = SafeString(t.professionName) or SafeString(t.expansionName),
+        skillLevel = tonumber(t.skillLevel) or 0,
+        maxSkillLevel = tonumber(t.maxSkillLevel) or 0,
+        skillModifier = (mod and mod > 0) and mod or nil,
+    }
+end
+
 --- true -> true, anything else -> nil: flags are stored only when set, to keep the row small.
 local function Flag(v)
     if issecretvalue and issecretvalue(v) then return nil end
@@ -645,6 +813,7 @@ local MERGE_CARRY = {
     quantityMin = true, quantityMax = true, description = true, requires = true, source = true,
     link = true, recipeLink = true, icon = true, order = true, difficulty = true, skillUps = true,
     itemLevel = true, maxQuality = true, supportsQualities = true,
+    optional = true, qualities = true, operation = true, productQuality = true,
 }
 
 local function MergeRecipeRows(fresh, previous)
@@ -682,8 +851,99 @@ local function MergeRecipeRows(fresh, previous)
     return fresh
 end
 
---- Returns entry, or nil plus a reason ("dead", "foreign", "notReady", "empty", "noRow").
-function WarbandNexus:ScanProfessionRecipes()
+--- One recipe's full row, or nil when the api has no name for it yet.
+local function ReadRecipeRow(recipeID, i, hits, now)
+    local okR, info = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
+    local name = okR and type(info) == "table" and SafeString(info.name)
+    if not name then return nil end
+    local categoryID = tonumber(info.categoryID)
+    if not (categoryID and categoryID > 0) then categoryID = nil end
+    local sc = ReadRecipeSchematic(recipeID) or {}
+    local reagents, outputItemID = sc.reagents, sc.outputItemID
+    local qualities = ReadRecipeQualities(recipeID, info)
+    local operation = sc.hasOperation and ReadRecipeOperation(recipeID) or nil
+    local learned = info.learned and true or false
+    local description, source, requires = ReadRecipeExtras(recipeID, learned)
+    local nextRecipeID = tonumber(info.nextRecipeID)
+    local live = ReadRecipeLive(recipeID, learned, nextRecipeID, now)
+    if categoryID then hits.category = hits.category + 1 end
+    if reagents then hits.reagents = hits.reagents + 1 end
+    if reagents and reagents[1] and reagents[1].tiers then hits.tiers = hits.tiers + 1 end
+    if sc.optional then hits.optional = hits.optional + 1 end
+    if qualities then hits.qualities = hits.qualities + 1 end
+    if operation then hits.operation = hits.operation + 1 end
+    if description then hits.description = hits.description + 1 end
+    if source then hits.source = hits.source + 1 end
+    if requires then hits.requires = hits.requires + 1 end
+    if live.outputItemID or outputItemID then hits.output = hits.output + 1 end
+    if live.cooldownEndsAt or live.maxCharges then hits.cooldown = hits.cooldown + 1 end
+    if live.recipeLink or SafeString(info.hyperlink) then hits.link = hits.link + 1 end
+    if not learned then hits.unlearned = hits.unlearned + 1 end
+    return {
+        id = recipeID,
+        -- The api's own list order is the order the profession window draws them in.
+        order = i,
+        name = name,
+        icon = info.icon,
+        learned = learned,
+        categoryID = categoryID,
+        -- Enum.TradeskillRelativeDifficulty: 0 optimal, 1 medium, 2 easy, 3 trivial.
+        difficulty = tonumber(info.relativeDifficulty),
+        skillUps = tonumber(info.numSkillUps),
+        canSkillUp = info.canSkillUp and true or false,
+        link = SafeString(info.hyperlink) or live.recipeLink,
+        reagents = reagents,
+        outputItemID = live.outputItemID or outputItemID,
+        outputLink = live.outputLink,
+        outputIcon = live.outputIcon,
+        quantityMin = sc.quantityMin,
+        quantityMax = sc.quantityMax,
+        optional = sc.optional,
+        productQuality = sc.productQuality,
+        isRecraft = sc.isRecraft,
+        qualities = qualities,
+        operation = operation,
+        alwaysLowestQuality = Flag(info.alwaysUsesLowestQuality),
+        description = description,
+        source = source,
+        requires = requires,
+        nextSource = live.nextSource,
+        cooldownEndsAt = live.cooldownEndsAt,
+        cooldownIsDay = live.cooldownIsDay,
+        charges = live.charges,
+        maxCharges = live.maxCharges,
+        -- TradeSkillRecipeInfo fields the retail list / schematic form draw.
+        itemLevel = (tonumber(info.itemLevel) or 0) > 0 and tonumber(info.itemLevel) or nil,
+        maxTrivialLevel = tonumber(info.maxTrivialLevel),
+        firstCraft = Flag(info.firstCraft),
+        favorite = Flag(info.favorite),
+        disabled = Flag(info.disabled),
+        disabledReason = SafeString(info.disabledReason),
+        nextRecipeID = nextRecipeID,
+        previousRecipeID = tonumber(info.previousRecipeID),
+        unlockedRecipeLevel = tonumber(info.unlockedRecipeLevel),
+        currentRecipeExperience = tonumber(info.currentRecipeExperience),
+        nextLevelRecipeExperience = tonumber(info.nextLevelRecipeExperience),
+        supportsQualities = Flag(info.supportsQualities),
+        maxQuality = tonumber(info.maxQuality),
+        isGathering = Flag(info.isGatheringRecipe),
+        isEnchanting = Flag(info.isEnchantingRecipe),
+        isSalvage = Flag(info.isSalvageRecipe),
+        sourceType = tonumber(info.sourceType),
+    }
+end
+
+local FinishRecipeScan  -- forward declare: the chunk driver ends there
+
+local recipeScanGen = 0
+
+--[[
+    Returns entry, or nil plus a reason ("dead", "foreign", "notReady", "empty", "noRow").
+    With onDone and C_Timer, the read is spread over frames (RECIPE_SCAN_CHUNK recipes each),
+    the call returns nil, "pending", and onDone(entry, reason) runs when it settles. A newer scan,
+    a closed window or another profession taking the window abandons the one in flight.
+]]
+function WarbandNexus:ScanProfessionRecipes(onDone)
     if type(C_TradeSkillUI) ~= "table" then return nil, "noApi" end
     if type(C_TradeSkillUI.GetBaseProfessionInfo) ~= "function" then return nil, "noApi" end
     local blocker = RecipeScanBlocker()
@@ -711,6 +971,7 @@ function WarbandNexus:ScanProfessionRecipes()
         skillModifier = (tonumber(base.skillModifier) or 0) > 0 and tonumber(base.skillModifier) or nil,
         expansionName = SafeString(base.expansionName),
         tiers = ReadProfessionTiers(),
+        activeTier = ReadActiveTier(professionID),
         scannedAt = now,
         recipes = {},
     }
@@ -718,79 +979,53 @@ function WarbandNexus:ScanProfessionRecipes()
     -- which is the difference between "nothing to show" and "we never asked".
     local hits = {
         category = 0, reagents = 0, description = 0, source = 0, requires = 0, output = 0,
-        cooldown = 0, link = 0, unlearned = 0,
+        cooldown = 0, link = 0, unlearned = 0, tiers = 0, optional = 0, qualities = 0, operation = 0,
     }
     entry.apiHits = hits
     local categoryIDs = {}
-    for i = 1, math.min(#ids, MAX_RECIPES) do
-        local recipeID = ids[i]
-        local okR, info = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
-        local name = okR and type(info) == "table" and SafeString(info.name)
-        if name then
-            local categoryID = tonumber(info.categoryID)
-            if categoryID and categoryID > 0 then categoryIDs[categoryID] = true else categoryID = nil end
-            local reagents, outputItemID, qMin, qMax = ReadRecipeSchematic(recipeID)
-            local learned = info.learned and true or false
-            local description, source, requires = ReadRecipeExtras(recipeID, learned)
-            local nextRecipeID = tonumber(info.nextRecipeID)
-            local live = ReadRecipeLive(recipeID, learned, nextRecipeID, now)
-            if categoryID then hits.category = hits.category + 1 end
-            if reagents then hits.reagents = hits.reagents + 1 end
-            if description then hits.description = hits.description + 1 end
-            if source then hits.source = hits.source + 1 end
-            if requires then hits.requires = hits.requires + 1 end
-            if live.outputItemID or outputItemID then hits.output = hits.output + 1 end
-            if live.cooldownEndsAt or live.maxCharges then hits.cooldown = hits.cooldown + 1 end
-            if live.recipeLink or SafeString(info.hyperlink) then hits.link = hits.link + 1 end
-            if not learned then hits.unlearned = hits.unlearned + 1 end
-            entry.recipes[#entry.recipes + 1] = {
-                id = recipeID,
-                -- The api's own list order is the order the profession window draws them in.
-                order = i,
-                name = name,
-                icon = info.icon,
-                learned = learned,
-                categoryID = categoryID,
-                -- Enum.TradeskillRelativeDifficulty: 0 optimal, 1 medium, 2 easy, 3 trivial.
-                difficulty = tonumber(info.relativeDifficulty),
-                skillUps = tonumber(info.numSkillUps),
-                canSkillUp = info.canSkillUp and true or false,
-                link = SafeString(info.hyperlink) or live.recipeLink,
-                reagents = reagents,
-                outputItemID = live.outputItemID or outputItemID,
-                outputLink = live.outputLink,
-                outputIcon = live.outputIcon,
-                quantityMin = qMin,
-                quantityMax = qMax,
-                description = description,
-                source = source,
-                requires = requires,
-                nextSource = live.nextSource,
-                cooldownEndsAt = live.cooldownEndsAt,
-                cooldownIsDay = live.cooldownIsDay,
-                charges = live.charges,
-                maxCharges = live.maxCharges,
-                -- TradeSkillRecipeInfo fields the retail list / schematic form draw.
-                itemLevel = (tonumber(info.itemLevel) or 0) > 0 and tonumber(info.itemLevel) or nil,
-                maxTrivialLevel = tonumber(info.maxTrivialLevel),
-                firstCraft = Flag(info.firstCraft),
-                favorite = Flag(info.favorite),
-                disabled = Flag(info.disabled),
-                disabledReason = SafeString(info.disabledReason),
-                nextRecipeID = nextRecipeID,
-                previousRecipeID = tonumber(info.previousRecipeID),
-                unlockedRecipeLevel = tonumber(info.unlockedRecipeLevel),
-                currentRecipeExperience = tonumber(info.currentRecipeExperience),
-                nextLevelRecipeExperience = tonumber(info.nextLevelRecipeExperience),
-                supportsQualities = Flag(info.supportsQualities),
-                maxQuality = tonumber(info.maxQuality),
-                isGathering = Flag(info.isGatheringRecipe),
-                isEnchanting = Flag(info.isEnchantingRecipe),
-                isSalvage = Flag(info.isSalvageRecipe),
-                sourceType = tonumber(info.sourceType),
-            }
+    local categoryIDs = {}
+    local total = math.min(#ids, MAX_RECIPES)
+    local async = type(onDone) == "function" and C_Timer and C_Timer.After
+    recipeScanGen = recipeScanGen + 1
+    local gen = recipeScanGen
+    local addon = self
+    local nextIndex = 1
+    local function step()
+        if gen ~= recipeScanGen then return end
+        if async and nextIndex > 1 then
+            -- Between frames the window can close or switch profession; stop rather than mix lists.
+            local blocker = RecipeScanBlocker()
+            if blocker then return onDone(nil, blocker) end
+            local okB, nowBase = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+            if not okB or type(nowBase) ~= "table" or tonumber(nowBase.professionID) ~= professionID then
+                return onDone(nil, "notReady")
+            end
         end
+        local last = async and math.min(total, nextIndex + RECIPE_SCAN_CHUNK - 1) or total
+        for i = nextIndex, last do
+            local r = ReadRecipeRow(ids[i], i, hits, now)
+            if r then
+                if r.categoryID then categoryIDs[r.categoryID] = true end
+                entry.recipes[#entry.recipes + 1] = r
+            end
+        end
+        nextIndex = last + 1
+        if nextIndex <= total then
+            C_Timer.After(0, step)
+            return
+        end
+        local e, reason = FinishRecipeScan(addon, entry, categoryIDs, professionID)
+        if async then return onDone(e, reason) end
+        return e, reason
     end
+    if async then
+        step()
+        return nil, "pending"
+    end
+    return step()
+end
+
+function FinishRecipeScan(self, entry, categoryIDs, professionID)
     if #entry.recipes == 0 then return nil, "empty" end
     entry.categories = ReadRecipeCategories(categoryIDs)
 

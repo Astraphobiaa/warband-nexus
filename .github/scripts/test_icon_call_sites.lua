@@ -23,8 +23,6 @@ local SITES = {
   { "CurrencyUI.lua", "warbands-icon", 'ns.UI_SetIcon(warbandIcon, "warband")' },
   { "PlanCardFactory.lua", "MiniMap-QuestArrow", 'ns.UI_SetIcon(checkArrow, "marker_up")' },
   { "PlanCardFactory.lua", "common-icon-checkmark", 'ns.UI_SetIcon(addedIcon.texture, "status_ok")' },
-  { "RecipeCompanionWindow.lua", "PetJournal-FavoritesIcon", 'ns.UI_SetIcon(star, "favorite_on")' },
-  { "RecipeCompanionWindow.lua", "warbands-icon", 'CreateStorageIcon(wbRow, "warband"' },
   { "PlansUI_Dialogs.lua", "PetJournal-FavoritesIcon", '"favorite_on" or "favorite_off"' },
   { "PlansUI_Dialogs.lua", "SetVertexColor(0.32, 0.32, 0.34)", nil },  -- GRAY BAN: no grey off star
   { "ProfessionsUI.lua", "transmog-icon-favorite", 'ns.UI_SetIcon(row.favIcon, "favorite_on")' },
@@ -57,22 +55,6 @@ do
     "CollectionsUI_Recent.lua: reset OnLeave restores the registry idle state")
   local hv = enter and enter:match("resetTex:SetVertexColor%(([^)]*)%)")
   check(enter and (not hv or hv:match("^1, 1, 1")), "CollectionsUI_Recent.lua: reset hover keeps a neutral vertex")
-end
--- Dynamic: RecipeCompanionWindow CreateStorageIcon routes keys through the registry, atlases otherwise.
-do
-  local t = src("RecipeCompanionWindow.lua")
-  local body = t:match("local function CreateStorageIcon%(parent, atlas, w, h%)(.-)\nend")
-  check(body ~= nil, "CreateStorageIcon found")
-  if body then
-    local calls = {}
-    local ns = { UI_SetIcon = function(tex, key) if key == "warband" then calls[#calls + 1] = "icon:" .. key; return true end return false end }
-    local fn = assert(loadstring("local ns, PADDING, STORAGE_ICON = ...; return function(parent, atlas, w, h)" .. body .. "\nend"))(ns, 4, 16)
-    local tex = { SetAtlas = function(_, a) calls[#calls + 1] = "atlas:" .. a end, SetSize = function() end, SetPoint = function() end }
-    local parent = { CreateTexture = function() return tex end }
-    fn(parent, "warband", 16, 16); fn(parent, "Banker")
-    check(calls[1] == "icon:warband" and calls[2] == "atlas:Banker" and #calls == 2,
-      "CreateStorageIcon: registry key -> UI_SetIcon, plain atlas -> SetAtlas (" .. table.concat(calls, ",") .. ")")
-  end
 end
 print(string.format("Total: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

@@ -386,41 +386,75 @@ function WarbandNexus:InitializeEventManager()
     -- recipes at all, so every other character saw "open this window" for it.
     local RECIPE_SCAN_RETRY_SEC = 1.0
     local RECIPE_SCAN_MAX_TRIES = 6
+    -- busy: a chunked capture is in flight (it spans frames). dirty: the list changed meanwhile,
+    -- so one more capture runs once it lands.
     local recipeScanTries, recipeScanDone = 0, false
-    local function ScanProfessionRecipes(delay)
+    local recipeScanBusy, recipeScanDirty = false, false
+    local ScanProfessionRecipes  -- forward declare: the completion handler re-arms it
+
+    local function OnRecipeScanDone(entry, reason)
+        recipeScanBusy = false
+        if entry then
+            recipeScanDone = true
+            -- Per-api answer counts: shows at a glance which apis are empty on this client.
+            local h = entry.apiHits
+            if ns.DebugPrint and type(h) == "table" then
+                ns.DebugPrint(string.format("|cff9370DB[Recipes]|r %s: %d recipes, category %d, reagents %d,"
+                    .. " description %d, source %d/%d unlearned, requires %d, output %d, cooldown %d, link %d,"
+                    .. " tiers %d, optional %d, qualities %d, operation %d",
+                    tostring(entry.name), #entry.recipes, h.category, h.reagents, h.description,
+                    h.source, h.unlearned, h.requires, h.output, h.cooldown, h.link,
+                    h.tiers or 0, h.optional or 0, h.qualities or 0, h.operation or 0))
+            end
+            if recipeScanDirty then
+                recipeScanDirty, recipeScanDone = false, false
+                ScanProfessionRecipes(RECIPE_SCAN_RETRY_SEC)
+            end
+            return
+        end
+        -- Someone else's list (linked, guild, NPC crafter): never this character's recipes,
+        -- and waiting will not change that.
+        if reason == "foreign" then
+            recipeScanDone = true
+            return
+        end
+        recipeScanTries = recipeScanTries + 1
+        if recipeScanTries < RECIPE_SCAN_MAX_TRIES then
+            ScanProfessionRecipes(RECIPE_SCAN_RETRY_SEC)
+        elseif ns.DebugPrint then
+            ns.DebugPrint("|cff9370DB[Recipes]|r capture failed after " .. recipeScanTries
+                .. " tries: " .. tostring(reason))
+        end
+    end
+
+    -- Wraps the handler so an error inside it (it runs from a timer, beside Blizzard's own frame)
+    -- clears the busy flag instead of wedging every later capture.
+    local function SafeRecipeScanDone(entry, reason)
+        local ok, err = pcall(OnRecipeScanDone, entry, reason)
+        if not ok then
+            recipeScanBusy = false
+            if ns.DebugPrint then ns.DebugPrint("|cff9370DB[Recipes]|r " .. tostring(err)) end
+        end
+    end
+
+    function ScanProfessionRecipes(delay)
         Debounce("PROFESSION_RECIPES", delay or 0.5, function()
             if recipeScanDone or not WarbandNexus.ScanProfessionRecipes then return end
+            if recipeScanBusy then
+                recipeScanDirty = true
+                return
+            end
             if not (ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)) then
                 return
             end
+            recipeScanBusy = true
             -- pcall: this runs in a timer alongside Blizzard's own frame, and an error escaping
             -- here would land on that frame rather than on us.
-            local ok, entry, reason = pcall(WarbandNexus.ScanProfessionRecipes, WarbandNexus)
-            if ok and entry then
-                recipeScanDone = true
-                -- Per-api answer counts: shows at a glance which apis are empty on this client.
-                local h = entry.apiHits
-                if ns.DebugPrint and type(h) == "table" then
-                    ns.DebugPrint(string.format("|cff9370DB[Recipes]|r %s: %d recipes, category %d, reagents %d,"
-                        .. " description %d, source %d/%d unlearned, requires %d, output %d, cooldown %d, link %d",
-                        tostring(entry.name), #entry.recipes, h.category, h.reagents, h.description,
-                        h.source, h.unlearned, h.requires, h.output, h.cooldown, h.link))
-                end
-                return
-            end
-            if not ok then reason = entry end
-            -- Someone else's list (linked, guild, NPC crafter): never this character's recipes,
-            -- and waiting will not change that.
-            if reason == "foreign" then
-                recipeScanDone = true
-                return
-            end
-            recipeScanTries = recipeScanTries + 1
-            if recipeScanTries < RECIPE_SCAN_MAX_TRIES then
-                ScanProfessionRecipes(RECIPE_SCAN_RETRY_SEC)
-            elseif ns.DebugPrint then
-                ns.DebugPrint("|cff9370DB[Recipes]|r capture failed after " .. recipeScanTries
-                    .. " tries: " .. tostring(reason))
+            local ok, entry, reason = pcall(WarbandNexus.ScanProfessionRecipes, WarbandNexus, SafeRecipeScanDone)
+            if not ok then
+                SafeRecipeScanDone(nil, entry)
+            elseif reason ~= "pending" then
+                SafeRecipeScanDone(entry, reason)
             end
         end)
     end
@@ -469,7 +503,9 @@ function WarbandNexus:InitializeEventManager()
         -- A list update means the content changed (recipe learned, another profession shown),
         -- so a capture already taken for this window is stale.
         recipeScanDone = false
-        ScanProfessionRecipes()
+        -- Retail fires this in bursts while the list fills; a longer debounce keeps that to one
+        -- capture, and a capture already in flight just marks itself dirty.
+        ScanProfessionRecipes(1.5)
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillListUpdate then
             WarbandNexus:OnTradeSkillListUpdate()

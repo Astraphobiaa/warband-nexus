@@ -1,40 +1,29 @@
 --[[
     Warband Nexus - Recipe Companion Window
-    Floating, movable, resizable panel (like Plans Tracker). Shows reagent
-    availability per character with quality tier breakdown (Q1/Q2/Q3).
-    Position and size saved in db.global.recipeCompanion — no anchor to
-    ProfessionsFrame, so no overlap with K window or craft result.
-    
-    Data flow:
-    WN_RECIPE_SELECTED (from ProfessionService hook) → FetchReagentData() → Render rows
-    WN_PROFESSION_WINDOW_OPENED  → RestorePosition + Show
-    WN_PROFESSION_WINDOW_CLOSED  → Hide (SavePosition in OnHide)
-    BAG_UPDATE_DELAYED           → Refresh current recipe display (inventory changed)
-    
-    Frame hierarchy:
-    UIParent
-      └─ WarbandNexus_RecipeCompanion (HIGH strata, free-floating)
-           └─ Header (draggable)
-           └─ contentArea → scrollFrame → scrollChild → reagent rows
-           └─ Resize grip (bottom-right)
+    Floating, movable, resizable panel beside Blizzard's profession frame. It draws the same recipe
+    detail pane as the saved-recipe window (ns.RecipeDetailUI, CharacterSystemsPopup) for the
+    recipe selected in the profession frame: schematic, reagents with their per-character
+    holdings and who knows the recipe -- one recipe view, two entry points.
+    Position and size saved in db.global.recipeCompanion -- no anchor to ProfessionsFrame, so no
+    overlap with the K window or the craft result.
+
+    Data flow (read-only, saved data):
+    WN_RECIPE_SELECTED            -> paint the selected recipe from the character's saved recipes
+    WN_CHARACTER_SYSTEMS_UPDATED  -> repaint (the recipe scan that runs while the frame is open)
+    BAG_UPDATE_DELAYED            -> repaint (have-counts changed)
+    WN_PROFESSION_WINDOW_OPENED   -> RestorePosition + Show
+    WN_PROFESSION_WINDOW_CLOSED   -> Hide (SavePosition in OnHide)
 ]]
 
 local ADDON_NAME, ns = ...
 -- Pixel-perfect frames (SharedWidgets_Pixel: SetPoint/SetSize snap to whole physical pixels).
 local CreateFrame = function(...) return (ns.UI_CreateFrame or _G.CreateFrame)(...) end
 
--- 12.1.5 removed the global item/coin fallbacks; bind the namespaced APIs.
-local GetItemInfo = C_Item.GetItemInfo
 local WarbandNexus = ns.WarbandNexus
---- Live markup role table (`SharedWidgets_Theme.lua`). Mutated in place on theme change,
---- so this reference stays current -- never copy a role out of it into another local.
-local HEX = ns.UI_HEX
 local E = ns.Constants.EVENTS
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
-local CreateIcon = ns.UI_CreateIcon
-local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(math.floor(tonumber(n) or 0)) end
 local function ChromeBackdrop()
     return (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
         or COLORS.bgCard or COLORS.bgLight or COLORS.bg
@@ -54,27 +43,6 @@ local function TextRoleHex(role)
     return "ffffff"
 end
 
-local function SemanticGoldHexRaw()
-    if ns.UI_GetSemanticGoldHex then
-        return (ns.UI_GetSemanticGoldHex():gsub("|cff", ""))
-    end
-    return (ns.UI_IsLightMode and ns.UI_IsLightMode()) and "854e0a" or "ffcc00"
-end
-
-local function SemanticGreenHex()
-    if ns.UI_GetSemanticGreenHex then
-        return (ns.UI_GetSemanticGreenHex():gsub("|cff", ""))
-    end
-    if ns.UI_IsLightMode and ns.UI_IsLightMode() then return "385c38" end
-    return "44ff44"
-end
-
-local function SemanticYellowHex()
-    return SemanticGoldHexRaw()
-end
-local function GetAccentHexColor()
-    return (ns.UI_GetAccentHexColor and ns.UI_GetAccentHexColor()) or "9966cc"
-end
 local function GetFactory()
     return ns.UI and ns.UI.Factory
 end
@@ -84,10 +52,6 @@ local RecipeCompanionEvents = {}
 
 -- ── Layout constants ──
 local PADDING = 8
-local RC_SB_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-local RC_SCROLL_RIGHT_RESERVE = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
-    or (RC_SB_COL_W + 2)
-
 local function RCGetFrameContentInset()
     local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
     return ms.FRAME_CONTENT_INSET or 2
@@ -97,30 +61,22 @@ local function RCGetCompanionHeaderHeight()
     local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
     return ms.RECIPE_COMPANION_HEADER_HEIGHT or 32
 end
-local WINDOW_WIDTH = 350
-local ICON_SIZE = 20
-local ROW_HEIGHT = 22
-local SECTION_SPACING = 6
-local REAGENT_HEADER_HEIGHT = 22
-local MIN_FRAME_HEIGHT = 120
-local MAX_FRAME_HEIGHT = 600
-local DEFAULT_WIDTH = 350
-local DEFAULT_HEIGHT = 420
-
--- Midnight crafting-quality atlases: SharedWidgets (ns.UI_ApplyProfessionCraftingQualityAtlasToTexture).
+-- The detail pane needs room for reagent names plus the bags / bank columns.
+local WINDOW_WIDTH = 380
+local MAX_FRAME_WIDTH = 720
+local MIN_FRAME_HEIGHT = 200
+local MAX_FRAME_HEIGHT = 900
+local DEFAULT_WIDTH = 440
+local DEFAULT_HEIGHT = 560
 
 -- ── State ──
 local companionFrame = nil
 local toggleTrackerBtn = nil       -- Button on ProfessionsFrame to toggle Recipe Companion
 local currentRecipeID = nil
 local currentRecipeName = nil
-local currentReagentData = nil     -- Cached reagent data for current recipe
-local pendingRefresh = false
 local companionRefreshTimer = nil
 local COMPANION_REFRESH_DEBOUNCE = 0.12
 local bagUpdateRegistered = false
-local collapsedSlots = {}          -- { [slotIndex] = true } for collapsed reagent sections
-local craftersSectionCollapsed = false  -- Collapse state for "Crafters" section
 
 -- FLOATING WINDOW POSITION (db.global.recipeCompanion)
 
@@ -161,589 +117,6 @@ local function RestorePosition(frame)
     frame:SetSize(w, h)
 end
 
--- REAGENT DATA EXTRACTION
-
---[[
-    Create atlas markup for quality tier icon.
-    @param tierIdx number - 1, 2, or 3
-    @return string - Atlas markup string
-]]
--- Inline icon sizes for quality tier markup in font strings (pixels)
-local ICON_INLINE = 16
--- Recipe Companion rank column textures: fixed square size so R1/R2 atlases match visually
-local QUALITY_RANK_ICON_SIZE = 18
-
--- Storage type icon sizes (real Texture frames — independent of font size)
-local STORAGE_ICON = 16
-local WARBAND_ICON_W = 16
-local WARBAND_ICON_H = 16
-
--- Green checkmark texture for fulfilled reagents
-local CHECK_ICON = ns.UI_GetIconMarkup("status_ok", 14, 14, 0, 0)
-
--- ── Row index counter (reset per render pass) ──
-local rowCounter = 0
-
-local function ApplyRankAtlasToTexture(tex, rank)
-    local apply = ns.UI_ApplyProfessionCraftingQualityAtlasToTexture
-    if apply then
-        return apply(tex, rank, QUALITY_RANK_ICON_SIZE)
-    end
-    return false
-end
-
-local function QualityTag(tierIdx)
-    local atlasFn = ns.UI_GetProfessionCraftingQualityAtlasNameForTier
-    local atlas = atlasFn and atlasFn(tierIdx)
-    if not atlas then return "" end
-    if CreateAtlasMarkup then
-        return CreateAtlasMarkup(atlas, ICON_INLINE, ICON_INLINE)
-    end
-    return "|A:" .. atlas .. ":" .. ICON_INLINE .. ":" .. ICON_INLINE .. "|a"
-end
-
---[[
-    Create a storage-type icon as a real Texture frame (bag, bank, warband).
-    @param parent Frame - The row frame to attach the icon to
-    @param atlas string - Icon registry key (e.g. "warband") or atlas name (e.g. "bag-main")
-    @param w number|nil - Width (defaults to STORAGE_ICON)
-    @param h number|nil - Height (defaults to STORAGE_ICON)
-    @return Texture
-]]
-local function CreateStorageIcon(parent, atlas, w, h)
-    local icon = parent:CreateTexture(nil, "ARTWORK")
-    if not ns.UI_SetIcon(icon, atlas) then icon:SetAtlas(atlas) end
-    icon:SetSize(w or STORAGE_ICON, h or STORAGE_ICON)
-    icon:SetPoint("LEFT", PADDING + 10, 0)
-    return icon
-end
-
---[[
-    Fetch reagent data for a recipe including per-character counts per quality tier.
-    
-    @param recipeID number
-    @return table|nil - Array of reagent slot data:
-    {
-        {
-            slotIndex     = number,
-            reagentType   = number,      -- 0=Basic, 1=Optional, 2=Finishing
-            required      = boolean,
-            quantityRequired = number,
-            reagents = {                 -- Array of tier items
-                { itemID = number, name = string, tierIdx = number },
-            },
-            hasQuality    = boolean,     -- true if 2+ tiers exist
-            counts = {
-                total = { [tierIdx] = number },
-                warband = { [tierIdx] = number },
-                characters = {
-                    { charName = string, classFile = string, counts = { [tierIdx] = number } },
-                }
-            }
-        },
-    }
-]]
-local function FetchReagentData(recipeID)
-    if not recipeID then return nil end
-    if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipeSchematic then return nil end
-
-    local ok, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
-    if not ok or not schematic or not schematic.reagentSlotSchematics then return nil end
-
-    local slots = schematic.reagentSlotSchematics
-    local result = {}
-
-    for si = 1, #slots do
-        local slot = slots[si]
-        if not slot or not slot.reagents or #slot.reagents == 0 then
-            -- skip empty slots
-        else
-            -- Quality tiers: only basic (0) and optional (1) with 2-3 variants
-            -- Finishing reagents (2) with many alternatives are NOT quality tiers
-            local isQualitySlot = (#slot.reagents >= 2 and #slot.reagents <= 3)
-
-            local slotData = {
-                slotIndex        = si,
-                reagentType      = slot.reagentType or 0,
-                required         = slot.required ~= false,
-                quantityRequired = slot.quantityRequired or 0,
-                reagents         = {},
-                hasQuality       = isQualitySlot,
-                isAlternatives   = (#slot.reagents > 3), -- finishing reagent alternatives
-                counts           = {
-                    total      = {},
-                    warband    = {},
-                    characters = {},
-                },
-            }
-
-            -- Build tier item list
-            for ti = 1, #slot.reagents do
-                local reagent = slot.reagents[ti]
-                if reagent and reagent.itemID then
-                    local itemName = C_Item.GetItemNameByID(reagent.itemID)
-                                  or (GetItemInfo and GetItemInfo(reagent.itemID))
-                    if not itemName then
-                        -- Not cached yet: ask the client so the next rebuild has the name (2026-10-22).
-                        if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, reagent.itemID) end
-                        itemName = "Item " .. reagent.itemID
-                    end
-                    slotData.reagents[#slotData.reagents + 1] = {
-                        itemID  = reagent.itemID,
-                        name    = itemName,
-                        tierIdx = ti,
-                    }
-                end
-            end
-
-            -- Fetch per-character counts for each tier (bag and bank separate)
-            local charMap = {}   -- [charName] = { classFile, bagCounts={}, bankCounts={} }
-            local charOrder = {}
-
-            for ti = 1, #slotData.reagents do
-                local itemID = slotData.reagents[ti].itemID
-                local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
-
-                local tierTotal = 0
-                local wbCount = 0
-
-                if details then
-                    wbCount = details.warbandBank or 0
-                    tierTotal = tierTotal + wbCount
-
-                    for ci = 1, #details.characters do
-                        local ch = details.characters[ci]
-                        local bagCount  = ch.bagCount or 0
-                        local bankCount = ch.bankCount or 0
-                        tierTotal = tierTotal + bagCount + bankCount
-
-                        if bagCount > 0 or bankCount > 0 then
-                            local key = ch.charName or "?"
-                            if not charMap[key] then
-                                charMap[key] = { classFile = ch.classFile, bagCounts = {}, bankCounts = {} }
-                                charOrder[#charOrder + 1] = key
-                            end
-                            charMap[key].bagCounts[ti]  = (charMap[key].bagCounts[ti] or 0) + bagCount
-                            charMap[key].bankCounts[ti] = (charMap[key].bankCounts[ti] or 0) + bankCount
-                        end
-                    end
-                end
-
-                slotData.counts.total[ti] = tierTotal
-                slotData.counts.warband[ti] = wbCount
-            end
-
-            -- Build character array with separate bag/bank counts
-            for ci = 1, #charOrder do
-                local name = charOrder[ci]
-                local info = charMap[name]
-                slotData.counts.characters[#slotData.counts.characters + 1] = {
-                    charName   = name,
-                    classFile  = info.classFile,
-                    bagCounts  = info.bagCounts,
-                    bankCounts = info.bankCounts,
-                }
-            end
-
-            result[#result + 1] = slotData
-        end
-    end
-
-    return result
-end
-
--- RENDERING
-
---[[
-    Sum all values in a numeric-keyed table.
-    @param t table - { [key] = number }
-    @return number
-]]
-local function SumCounts(t)
-    local total = 0
-    for _, v in pairs(t) do
-        total = total + v
-    end
-    return total
-end
-
---[[
-    Create a 1px horizontal separator line.
-    @param parent Frame
-    @param yOffset number
-    @param width number
-    @return number - new yOffset after separator
-]]
-local function CreateSeparator(parent, yOffset, width)
-    local line = parent:CreateTexture(nil, "ARTWORK")
-    if ns.UI_SetRuleThickness then ns.UI_SetRuleThickness(line, "horizontal", 1) else line:SetHeight(1) end
-    line:SetPoint("TOPLEFT", PADDING, -yOffset)
-    line:SetPoint("RIGHT", parent, "RIGHT", -PADDING, 0)
-    line:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4)
-    return yOffset + 1 + SECTION_SPACING
-end
-
--- Per-tier column: icon + gap + "(99.999)"-style formatted count (left-anchored, grows right)
-local TIER_COL_WIDTH = 96
-local TIER_ICON_TO_TEXT_GAP = 2
-
---[[
-    Render quality tier counts as fixed-position columns on a row frame.
-    Each tier gets an icon (Texture) + count (FontString) at a fixed offset
-    from the row's RIGHT edge, ensuring perfect vertical alignment across rows.
-    
-    Columns render right-to-left: tier N is rightmost, tier 1 is leftmost.
-    @param parent Frame - The row frame
-    @param counts table - { [tierIdx] = number }
-    @param numTiers number - Total number of tiers (2 or 3)
-]]
-local function RenderQualityColumns(parent, counts, numTiers)
-    for ti = numTiers, 1, -1 do
-        local colOffset = -PADDING - (numTiers - ti) * TIER_COL_WIDTH
-        local count = counts[ti] or 0
-
-        -- Fixed-width column frame
-        local col = CreateFrame("Frame", nil, parent)
-        col:SetSize(TIER_COL_WIDTH, parent:GetHeight() or ROW_HEIGHT)
-        col:SetPoint("RIGHT", parent, "RIGHT", colOffset, 0)
-        col:Show()
-
-        -- Icon: same 1 / 2 rank atlases as Artisan Nexus (ProfessionQualityAtlas)
-        local icon = col:CreateTexture(nil, "ARTWORK")
-        ApplyRankAtlasToTexture(icon, ti)
-        icon:SetPoint("LEFT", col, "LEFT", 0, 0)
-
-        -- Count: parentheses + formatted number; tight to icon, grows right within column max width
-        local countText = FontManager:CreateFontString(col, "body", "OVERLAY")
-        countText:SetPoint("LEFT", icon, "RIGHT", TIER_ICON_TO_TEXT_GAP, 0)
-        countText:SetJustifyH("LEFT")
-        local maxW = TIER_COL_WIDTH - QUALITY_RANK_ICON_SIZE - TIER_ICON_TO_TEXT_GAP - 2
-        if countText.SetMaxWidth then
-            countText:SetMaxWidth(maxW)
-        else
-            countText:SetWidth(maxW)
-        end
-
-        if count > 0 then
-            countText:SetText("|cff" .. TextRoleHex("Bright") .. "(" .. FormatNumber(count) .. ")|r")
-        else
-            countText:SetText("|cff" .. TextRoleHex("Dim") .. "(-)|r")
-        end
-    end
-end
-
---[[
-    Render all reagent rows into the scrollChild.
-    Headers are collapsible (click to toggle), with green checkmark when fulfilled.
-    @param scrollChild Frame - The scroll content frame
-]]
-local function RenderContent(scrollChild)
-    if not scrollChild then return end
-
-    local Factory = GetFactory()
-    if not Factory then return end
-
-    -- Clear existing children (hide, don't destroy for reuse)
-    local children = { scrollChild:GetChildren() }
-    for i = 1, #children do
-        children[i]:Hide()
-        children[i]:ClearAllPoints()
-    end
-    -- Also hide loose font strings / textures from previous render
-    local regions = { scrollChild:GetRegions() }
-    for i = 1, #regions do
-        regions[i]:Hide()
-    end
-
-    if not currentReagentData or #currentReagentData == 0 then
-        local noData = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-        noData:SetPoint("TOPLEFT", PADDING, -PADDING)
-        local emptyMsg = (ns.L and ns.L["RECIPE_COMPANION_EMPTY"]) or (ns.L and ns.L["SELECT_RECIPE"]) or "Select a recipe"
-        noData:SetText("|cff" .. TextRoleHex("Muted") .. emptyMsg .. "|r")
-        noData:Show()
-        scrollChild:SetHeight(40)
-        return
-    end
-
-    local contentWidth = scrollChild:GetWidth()
-    local yOffset = 4
-    rowCounter = 0  -- Reset alternating row counter each render
-
-    -- CRAFTERS SECTION — "Who Can Craft This?" (top of window)
-    if currentRecipeID then
-        local crafters = WarbandNexus:GetCraftersForRecipe(currentRecipeID)
-        if crafters and #crafters > 0 then
-            local function ToggleCrafters()
-                craftersSectionCollapsed = not craftersSectionCollapsed
-                RenderContent(scrollChild)
-            end
-
-            yOffset = Factory:CreateSectionHeader(
-                scrollChild, yOffset, craftersSectionCollapsed,
-                "|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["CRAFTERS_SECTION"]) or "Crafters") .. "|r |cff"
-                    .. TextRoleHex("Bright") .. "(" .. #crafters .. ")|r",
-                nil, ToggleCrafters, REAGENT_HEADER_HEIGHT
-            )
-
-            -- Crafter rows (only when expanded)
-            if not craftersSectionCollapsed then
-                local bestIdx = 1
-
-                for ci = 1, #crafters do
-                    local crafter = crafters[ci]
-                    local cc = RAID_CLASS_COLORS[crafter.classFile] or { r = 1, g = 1, b = 1 }
-                    local classColor = string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255)
-
-                    rowCounter = rowCounter + 1
-                    local crafterRow
-                    crafterRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
-
-                    -- Best crafter highlight overlay (on top of alternating bg)
-                    if ci == bestIdx then
-                        local highlightBg = crafterRow:CreateTexture(nil, "ARTWORK", nil, -8)
-                        highlightBg:SetAllPoints()
-                        -- Semantic green wash (light-mode aware) instead of a fixed dark green.
-                        local hr, hg, hb = 0.15, 0.25, 0.10
-                        if ns.UI_GetSemanticGreenColor then hr, hg, hb = ns.UI_GetSemanticGreenColor() end
-                        highlightBg:SetColorTexture(hr, hg, hb, 0.15)
-                    end
-
-                    local nameOffset = PADDING + 10
-                    if ci == bestIdx then
-                        local star = crafterRow:CreateTexture(nil, "ARTWORK")
-                        ns.UI_SetIcon(star, "favorite_on")
-                        star:SetSize(12, 12)
-                        star:SetPoint("LEFT", PADDING + 2, 0)
-                        nameOffset = PADDING + 16
-                    end
-
-                    local concText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
-                    concText:SetPoint("RIGHT", crafterRow, "RIGHT", -PADDING, 0)
-                    concText:SetJustifyH("RIGHT")
-
-                    if crafter.concentration then
-                        local estConc = WarbandNexus:GetEstimatedConcentration(crafter.concentration)
-                        local maxConc = crafter.concentration.max or 0
-                        local concColor
-                        if maxConc > 0 and estConc >= maxConc * 0.8 then
-                            concColor = "|cff" .. SemanticGreenHex()
-                        elseif maxConc > 0 and estConc >= maxConc * 0.3 then
-                            concColor = "|cff" .. SemanticYellowHex()
-                        else
-                            concColor = "|cff" .. TextRoleHex("Bright")
-                        end
-                        concText:SetText(concColor .. "(" .. estConc .. "/" .. maxConc .. ")|r")
-                    else
-                        concText:SetText("|cff" .. TextRoleHex("Dim") .. "(-)|r")
-                    end
-
-                    local skillText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
-                    skillText:SetPoint("RIGHT", concText, "LEFT", -8, 0)
-                    skillText:SetJustifyH("RIGHT")
-
-                    local skillColor = crafter.skillLevel >= crafter.maxSkillLevel
-                        and "|cff" .. SemanticGreenHex() or "|cff" .. SemanticYellowHex()
-                    skillText:SetText(skillColor .. "(" .. crafter.skillLevel .. "/" .. crafter.maxSkillLevel .. ")|r")
-
-                    -- Name: LEFT only + max width — do not anchor RIGHT to skillText (creates an anchor
-                    -- cycle with skillText→concText and can overflow the Lua stack in layout).
-                    local nameText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
-                    nameText:SetPoint("LEFT", nameOffset, 0)
-                    nameText:SetJustifyH("LEFT")
-                    nameText:SetWordWrap(false)
-                    local nameMaxW = math.max(50, (contentWidth or 300) - nameOffset - PADDING - 140)
-                    -- SetMaxWidth is not available on all FontString builds; SetWidth constrains the line.
-                    if nameText.SetMaxWidth then
-                        nameText:SetMaxWidth(nameMaxW)
-                    elseif nameText.SetWidth then
-                        nameText:SetWidth(nameMaxW)
-                    end
-                    nameText:SetText(classColor .. crafter.charName .. "|r")
-                end
-            end
-
-            -- Separator after crafters section
-            yOffset = CreateSeparator(scrollChild, yOffset + 2, contentWidth)
-        end
-    end
-
-    for si = 1, #currentReagentData do
-        local slot = currentReagentData[si]
-        local numTiers = #slot.reagents
-
-        -- Skip finishing reagent alternatives (many options, not quality tiers)
-        if slot.isAlternatives then
-            -- skip this slot entirely — finishing reagent with many alternatives
-        else
-            local totalHave = SumCounts(slot.counts.total)
-            local needed = slot.quantityRequired
-            local isSufficient = totalHave >= needed
-            local isCollapsed = collapsedSlots[si]
-
-            -- ── Reagent section header (collapsible, with border) ──
-            local primaryName = slot.reagents[1] and slot.reagents[1].name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-            local namePrefix = isSufficient and (CHECK_ICON .. " ") or ""
-            local nameColor = isSufficient and "|cff" .. SemanticGreenHex() or (totalHave > 0 and "|cff" .. SemanticYellowHex() or "|cff" .. TextRoleHex("Bright"))
-
-            local function ToggleCollapse()
-                collapsedSlots[si] = not collapsedSlots[si]
-                RenderContent(scrollChild)
-            end
-
-            yOffset = Factory:CreateSectionHeader(
-                scrollChild, yOffset, isCollapsed,
-                namePrefix .. nameColor .. primaryName .. "|r",
-                "|cff" .. TextRoleHex("Bright") .. "x" .. needed .. "|r",
-                ToggleCollapse, REAGENT_HEADER_HEIGHT
-            )
-
-            -- ── Child rows (only when expanded) ──
-            if not isCollapsed then
-
-                -- ── Per-character rows (separate bag / bank with atlas icons) ──
-                for ci = 1, #slot.counts.characters do
-                    local charInfo = slot.counts.characters[ci]
-                    local bagTotal  = SumCounts(charInfo.bagCounts)
-                    local bankTotal = SumCounts(charInfo.bankCounts)
-
-                    if bagTotal > 0 or bankTotal > 0 then
-                        local cc = RAID_CLASS_COLORS[charInfo.classFile] or { r = 1, g = 1, b = 1 }
-                        local classColor = string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255)
-
-                        -- Bag row (inventory)
-                        if bagTotal > 0 then
-                            rowCounter = rowCounter + 1
-                            local bagRow
-                            bagRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
-
-                            local bagIcon = CreateStorageIcon(bagRow, "bag")
-                            local bagNameText = FontManager:CreateFontString(bagRow, "body", "OVERLAY")
-                            bagNameText:SetPoint("LEFT", bagIcon, "RIGHT", 4, 0)
-                            bagNameText:SetText(classColor .. charInfo.charName .. "|r")
-
-                            if slot.hasQuality then
-                                RenderQualityColumns(bagRow, charInfo.bagCounts, numTiers)
-                            else
-                                local bagRightText = FontManager:CreateFontString(bagRow, "body", "OVERLAY")
-                                bagRightText:SetPoint("RIGHT", bagRow, "RIGHT", -PADDING, 0)
-                                bagRightText:SetJustifyH("RIGHT")
-                                bagRightText:SetText("|cff" .. TextRoleHex("Bright") .. bagTotal .. "|r")
-                            end
-                        end
-
-                        -- Bank row
-                        if bankTotal > 0 then
-                            rowCounter = rowCounter + 1
-                            local bankRow
-                            bankRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
-
-                            local bankIconTex = CreateStorageIcon(bankRow, "vault")
-                            local bankNameText = FontManager:CreateFontString(bankRow, "body", "OVERLAY")
-                            bankNameText:SetPoint("LEFT", bankIconTex, "RIGHT", 4, 0)
-                            bankNameText:SetText(classColor .. charInfo.charName .. "|r")
-
-                            if slot.hasQuality then
-                                RenderQualityColumns(bankRow, charInfo.bankCounts, numTiers)
-                            else
-                                local bankRightText = FontManager:CreateFontString(bankRow, "body", "OVERLAY")
-                                bankRightText:SetPoint("RIGHT", bankRow, "RIGHT", -PADDING, 0)
-                                bankRightText:SetJustifyH("RIGHT")
-                                bankRightText:SetText("|cff" .. TextRoleHex("Bright") .. bankTotal .. "|r")
-                            end
-                        end
-                    end
-                end
-
-                -- ── Warband Bank row (only if > 0) ──
-                local wbTotal = SumCounts(slot.counts.warband)
-                if wbTotal > 0 then
-                    rowCounter = rowCounter + 1
-                    local wbRow
-                    wbRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
-
-                    local wbIconTex = CreateStorageIcon(wbRow, "warband", WARBAND_ICON_W, WARBAND_ICON_H)
-                    local wbNameText = FontManager:CreateFontString(wbRow, "body", "OVERLAY")
-                    wbNameText:SetPoint("LEFT", wbIconTex, "RIGHT", 4, 0)
-                    wbNameText:SetText("|cff" .. (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex():gsub("|cff", "") or "ddaa44")
-                        .. ((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank") .. "|r")
-
-                    if slot.hasQuality then
-                        RenderQualityColumns(wbRow, slot.counts.warband, numTiers)
-                    else
-                        local wbRightText = FontManager:CreateFontString(wbRow, "body", "OVERLAY")
-                        wbRightText:SetPoint("RIGHT", wbRow, "RIGHT", -PADDING, 0)
-                        wbRightText:SetJustifyH("RIGHT")
-                        wbRightText:SetText("|cff" .. TextRoleHex("Bright") .. wbTotal .. "|r")
-                    end
-                end
-
-                yOffset = yOffset + 4
-
-                -- ── Total row ──
-                rowCounter = rowCounter + 1
-                local totalRow
-                totalRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
-
-                local totalColor = isSufficient and "|cff" .. SemanticGreenHex()
-                    or (totalHave > 0 and "|cff" .. SemanticYellowHex() or "|cff" .. TextRoleHex("Bright"))
-                local totalLabel = FontManager:CreateFontString(totalRow, "body", "OVERLAY")
-                totalLabel:SetPoint("LEFT", PADDING + 10, 0)
-                totalLabel:SetText(totalColor .. ((ns.L and ns.L["TOTAL_REAGENTS"]) or "Total Reagents") .. "|r")
-
-                if slot.hasQuality then
-                    RenderQualityColumns(totalRow, slot.counts.total, numTiers)
-                else
-                    local totalRightText = FontManager:CreateFontString(totalRow, "body", "OVERLAY")
-                    totalRightText:SetPoint("RIGHT", totalRow, "RIGHT", -PADDING, 0)
-                    totalRightText:SetJustifyH("RIGHT")
-                    totalRightText:SetText(totalColor .. totalHave .. "|r")
-                end
-
-            end
-
-            -- Spacing between reagent sections
-            yOffset = yOffset + SECTION_SPACING
-        end
-    end
-
-    -- Set scrollChild height; frame height is user-controlled (saved/restored), content scrolls
-    local frame = companionFrame
-    local scrollFrame = frame and frame.contentScrollFrame
-
-    local totalContentHeight = yOffset + PADDING
-    scrollChild:SetHeight(totalContentHeight)
-
-    if frame and scrollFrame then
-        local frameHeight = frame:GetHeight()
-        local inset = RCGetFrameContentInset()
-        local bandH = RCGetCompanionHeaderHeight()
-        local viewportHeight = frameHeight - bandH - (2 * inset) - PADDING - PADDING
-        local needsScroll = totalContentHeight > viewportHeight
-
-        local scrollBar = scrollFrame.ScrollBar
-        if needsScroll then
-            if scrollBar then
-                scrollBar:Show()
-                if scrollBar.ScrollUpBtn  then scrollBar.ScrollUpBtn:Show() end
-                if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Show() end
-            end
-            scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -RC_SCROLL_RIGHT_RESERVE, -PADDING)
-        else
-            if scrollBar then
-                scrollBar:Hide()
-                if scrollBar.ScrollUpBtn  then scrollBar.ScrollUpBtn:Hide() end
-                if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Hide() end
-            end
-            scrollFrame:SetVerticalScroll(0)
-            scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -PADDING, -PADDING)
-        end
-
-        if scrollFrame.UpdateScrollChildRect then
-            scrollFrame:UpdateScrollChildRect()
-        end
-    end
-end
-
 -- REFRESH
 
 --[[
@@ -760,6 +133,47 @@ local function FormatCompanionTitle(recipeID, recipeName)
     return "|cff" .. TextRoleHex("Bright") .. name .. "|r"
 end
 
+--- The selected recipe from the logged-in character's saved recipes, and its profession entry.
+local function FindLiveRecipe(recipeID)
+    local U = ns.Utilities
+    local charKey = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
+    local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    local row = charKey and chars and chars[charKey]
+    local all = row and type(row.systems) == "table" and row.systems.recipes
+    if not recipeID or type(all) ~= "table" or not WarbandNexus.GetProfessionRecipes then return nil, nil, charKey end
+    for professionID in pairs(all) do
+        local entry = WarbandNexus:GetProfessionRecipes(charKey, professionID)
+        local list = entry and entry.recipes
+        if list then
+            for i = 1, #list do
+                if list[i].id == recipeID then return list[i], entry, charKey end
+            end
+        end
+    end
+    return nil, nil, charKey
+end
+
+--- Paint the current recipe into the shared detail pane. Before the first recipe scan of this
+--- profession has been saved the pane shows its select hint; the scan's message repaints it.
+local function PaintCompanion()
+    local frame = companionFrame
+    if not frame or not frame.detail or not ns.RecipeDetailUI then return end
+    local recipe, entry, charKey = FindLiveRecipe(currentRecipeID)
+    ns.RecipeDetailUI.Paint(frame.detail, recipe, entry, charKey)
+    -- Height follows the recipe (up to the cap and the screen), so a short recipe has no empty
+    -- tail and a long one scrolls only past the cap; width stays the player's choice.
+    if recipe and not InCombatLockdown() then
+        local chrome = RCGetCompanionHeaderHeight() + RCGetFrameContentInset() * 2 + 2
+        local screenH = (UIParent:GetHeight() or MAX_FRAME_HEIGHT) * 0.85
+        local want = ns.RecipeDetailUI.ContentHeight(frame.detail) + chrome
+        local h = math.max(MIN_FRAME_HEIGHT, math.min(want, MAX_FRAME_HEIGHT, screenH))
+        if math.abs((frame:GetHeight() or 0) - h) > 1 then
+            frame:SetHeight(h)
+            ns.RecipeDetailUI.Relayout(frame.detail)
+        end
+    end
+end
+
 --[[
     Refresh companion window content (debounced).
 ]]
@@ -767,23 +181,13 @@ local function RefreshCompanion()
     if companionRefreshTimer and companionRefreshTimer.Cancel then
         companionRefreshTimer:Cancel()
     end
-    pendingRefresh = true
     companionRefreshTimer = C_Timer.NewTimer(COMPANION_REFRESH_DEBOUNCE, function()
         companionRefreshTimer = nil
-        pendingRefresh = false
         if not companionFrame or not companionFrame:IsShown() then return end
-        if currentRecipeID then
-            local ok, data = pcall(FetchReagentData, currentRecipeID)
-            if ok then
-                currentReagentData = data
-            end
-        end
         if companionFrame.titleText and currentRecipeID and currentRecipeName then
             companionFrame.titleText:SetText(FormatCompanionTitle(currentRecipeID, currentRecipeName))
         end
-        if companionFrame.contentScrollChild then
-            RenderContent(companionFrame.contentScrollChild)
-        end
+        PaintCompanion()
     end)
 end
 
@@ -800,8 +204,6 @@ local function OnRecipeSelected(recipeInfo)
 
     currentRecipeID = recipeInfo.recipeID
     currentRecipeName = recipeInfo.name or "Recipe"
-    collapsedSlots = {} -- Reset collapse state for new recipe
-    craftersSectionCollapsed = false
 
     if companionFrame and companionFrame.titleText then
         companionFrame.titleText:SetText(FormatCompanionTitle(recipeInfo.recipeID, currentRecipeName))
@@ -868,7 +270,6 @@ local function OnProfessionWindowClosed()
         companionFrame:Hide()
     end
     currentRecipeID = nil
-    currentReagentData = nil
 end
 
 -- WINDOW CREATION
@@ -900,7 +301,7 @@ local function CreateCompanionWindow()
         frame:SetFrameStrata("HIGH")
         frame:SetFrameLevel(120)
     end
-    frame:SetResizeBounds(WINDOW_WIDTH, MIN_FRAME_HEIGHT, 500, MAX_FRAME_HEIGHT)
+    frame:SetResizeBounds(WINDOW_WIDTH, MIN_FRAME_HEIGHT, MAX_FRAME_WIDTH, MAX_FRAME_HEIGHT)
     frame:SetClampedToScreen(true)
     frame:Hide()
 
@@ -953,70 +354,11 @@ local function CreateCompanionWindow()
     hIcon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
     frame.headerIcon = hIcon
 
-    -- Shopping List button (top-right of header)
-    local shopBtn = Factory:CreateButton(header, 92, 20, false)
-    shopBtn:SetPoint("RIGHT", header, "RIGHT", -PADDING, 0)
-    if ApplyVisuals then
-        ApplyVisuals(shopBtn, ChromeBackdrop(), ChromeBorder(0.6))
-    end
-    local shopLabel = FontManager:CreateFontString(shopBtn, "small", "OVERLAY")
-    shopLabel:SetPoint("CENTER", 0, 0)
-    shopLabel:SetText((ns.L and ns.L["SHOPPING_LIST_BUTTON"]) or "Shopping List")
-    ns.UI_SetTextColorRole(shopLabel, "Bright")
-    frame.shoppingListBtn = shopBtn
-
-    shopBtn:SetScript("OnClick", function()
-        if not currentRecipeID then return end
-        local missingData = WarbandNexus.GetRecipeMissingReagents and WarbandNexus:GetRecipeMissingReagents(currentRecipeID, 1, false)
-        if not missingData then return end
-
-        if missingData.allOwned or #missingData.missingReagents == 0 then
-            local allOwnedFmt = (ns.L and ns.L["SHOPPING_LIST_ALL_OWNED"]) or "All reagents for %s are available in your Warband!"
-            local msg = string.format(allOwnedFmt, currentRecipeName or "this recipe")
-            if WarbandNexus.Print then
-                WarbandNexus:Print(HEX.green .. msg .. "|r")
-            end
-            return
-        end
-
-        local formattedText = WarbandNexus.FormatShoppingList and WarbandNexus:FormatShoppingList(missingData) or ""
-
-        -- Copy to system clipboard
-        if C_Clipboard and C_Clipboard.SetClipboardText then
-            pcall(C_Clipboard.SetClipboardText, formattedText)
-        elseif CopyToClipboard then
-            pcall(CopyToClipboard, formattedText)
-        end
-
-        -- If AuctionHouseFrame is open, set search bar text to first missing reagent
-        if AuctionHouseFrame and AuctionHouseFrame:IsShown() then
-            local searchBox = (AuctionHouseFrame.SearchBar and AuctionHouseFrame.SearchBar.SearchBox)
-                or (AuctionHouseFrame.SearchBox)
-            if searchBox and searchBox.SetText and missingData.missingReagents[1] then
-                searchBox:SetText(missingData.missingReagents[1].name or "")
-            end
-        end
-
-        -- Show Copy dialog for visual confirmation and Ctrl+C
-        local titleFmt = (ns.L and ns.L["SHOPPING_LIST_TITLE"]) or "Shopping List: %s"
-        local dialogTitle = string.format(titleFmt, currentRecipeName or "")
-        if Factory and Factory.ShowCopyURL then
-            Factory:ShowCopyURL(formattedText, dialogTitle, shopBtn)
-        end
-
-        -- Feedback message
-        local copyFmt = (ns.L and ns.L["SHOPPING_LIST_COPIED"]) or "Copied shopping list for %s (%d items) to clipboard."
-        local copyMsg = string.format(copyFmt, currentRecipeName or "recipe", #missingData.missingReagents)
-        if WarbandNexus.Print then
-            WarbandNexus:Print(HEX.info .. copyMsg .. "|r")
-        end
-    end)
-
     -- Title
     local titleFontRole = (FontManager.GetFontRole and FontManager:GetFontRole("windowChromeTitle")) or "body"
     local titleText = FontManager:CreateFontString(header, titleFontRole, "OVERLAY")
     titleText:SetPoint("LEFT", hIcon, "RIGHT", 6, 0)
-    titleText:SetPoint("RIGHT", shopBtn, "LEFT", -6, 0)
+    titleText:SetPoint("RIGHT", header, "RIGHT", -PADDING, 0)
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
     titleText:SetMaxLines(1)
@@ -1030,61 +372,10 @@ local function CreateCompanionWindow()
     contentArea:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -frameInset, frameInset)
     frame.contentArea = contentArea
 
-    -- ── Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) ──
-    local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
-    scrollFrame:SetPoint("TOPLEFT", contentArea, "TOPLEFT", PADDING, -PADDING)
-    scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -RC_SCROLL_RIGHT_RESERVE, -PADDING)
-    scrollFrame:SetPoint("BOTTOM", contentArea, "BOTTOM", 0, PADDING)
-    scrollFrame:EnableMouseWheel(true)
-    frame.contentScrollFrame = scrollFrame
-
-    local scrollBarColumn = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(contentArea, RC_SB_COL_W)
-        or Factory:CreateScrollBarColumn(contentArea, RC_SB_COL_W, 0, 0)
-    frame.contentScrollBarColumn = scrollBarColumn
-    -- Dynamic lane: the column only keeps its space while the recipe content overflows.
-    if Factory.WireScrollLaneWithInsets then
-        Factory:WireScrollLaneWithInsets(scrollFrame, contentArea, scrollBarColumn, {
-            left = PADDING, top = PADDING, right = PADDING, bottom = PADDING, gap = 2,
-        })
-    elseif Factory.EnsureScrollBarColumnSync then
-        Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = RC_SB_COL_W, gap = 2 })
-    elseif Factory.SyncScrollBarColumnToViewport then
-        Factory:SyncScrollBarColumnToViewport(scrollFrame, scrollBarColumn, { width = RC_SB_COL_W, gap = 2 })
-    elseif scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
-        Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+    -- ── Recipe detail: the shared pane (it owns its scroll frame and scrollbar lane) ──
+    if ns.RecipeDetailUI then
+        frame.detail = ns.RecipeDetailUI.Create(contentArea, DEFAULT_WIDTH - frameInset * 2, frame)
     end
-    if Factory.UpdateScrollBarVisibility then
-        Factory:UpdateScrollBarVisibility(scrollFrame)
-    end
-
-    -- Override Blizzard's OnScrollRangeChanged to prevent automatic scrollbar show.
-    -- We control scrollbar visibility ourselves in RenderContent().
-    scrollFrame:SetScript("OnScrollRangeChanged", function(self, xRange, yRange)
-        if yRange and yRange > 0 then
-            local currentScroll = self:GetVerticalScroll()
-            if currentScroll > yRange then
-                self:SetVerticalScroll(yRange)
-            end
-        else
-            self:SetVerticalScroll(0)
-        end
-    end)
-
-    -- Scroll child
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(1) -- Updated dynamically
-    scrollChild:SetHeight(1)
-    scrollFrame:SetScrollChild(scrollChild)
-    frame.contentScrollChild = scrollChild
-
-    -- Mouse wheel scrolling
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 16
-        local current = self:GetVerticalScroll()
-        local maxScroll = self:GetVerticalScrollRange()
-        local newScroll = math.max(0, math.min(current - (delta * step), maxScroll))
-        self:SetVerticalScroll(newScroll)
-    end)
 
     -- ── Resize grip (bottom-right) ──
     local resizer = CreateFrame("Button", nil, frame)
@@ -1098,11 +389,8 @@ local function CreateCompanionWindow()
             frame:StartSizing("BOTTOMRIGHT")
         end
     end)
-    local function CompanionSatelliteLiveLayout(fr)
-        local sw = scrollFrame and scrollFrame:GetWidth() or nil
-        if sw and sw > 0 and scrollChild then
-            scrollChild:SetWidth(sw)
-        end
+    local function CompanionSatelliteLiveLayout()
+        if frame.detail and ns.RecipeDetailUI then ns.RecipeDetailUI.Relayout(frame.detail) end
     end
 
     resizer:SetScript("OnMouseUp", function()
@@ -1112,8 +400,8 @@ local function CreateCompanionWindow()
         local LC = ns.UI_LayoutCoordinator
         if LC and LC.OnSatelliteMetricsChanged then
             LC:OnSatelliteMetricsChanged(frame, frame:GetWidth(), frame:GetHeight(), true)
-        elseif companionFrame and companionFrame:IsShown() and companionFrame.contentScrollChild then
-            RenderContent(companionFrame.contentScrollChild)
+        else
+            CompanionSatelliteLiveLayout()
         end
     end)
 
@@ -1121,11 +409,7 @@ local function CreateCompanionWindow()
     if LC and LC.RegisterSatelliteFrame then
         LC:RegisterSatelliteFrame(frame, {
             onLive = CompanionSatelliteLiveLayout,
-            onCommit = function()
-                if companionFrame and companionFrame:IsShown() and companionFrame.contentScrollChild then
-                    RenderContent(companionFrame.contentScrollChild)
-                end
-            end,
+            onCommit = CompanionSatelliteLiveLayout,
         })
     else
         frame:SetScript("OnSizeChanged", function()
@@ -1165,12 +449,8 @@ local function CreateCompanionWindow()
         end)
     end
 
-    -- ── OnShow: sync scroll width + render (empty hint or recipe data) so first open is not a blank panel ──
-    frame:SetScript("OnShow", function(self)
-        local sw = scrollFrame:GetWidth()
-        if sw and sw > 0 then
-            scrollChild:SetWidth(sw)
-        end
+    -- ── OnShow: paint (select hint or the recipe) so first open is not a blank panel ──
+    frame:SetScript("OnShow", function()
         RefreshCompanion()
     end)
 
@@ -1223,6 +503,14 @@ function WarbandNexus:InitializeRecipeCompanion()
             end
         end)
     end
+
+    -- The recipe scan saved new rows for this character: repaint from them.
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, E.CHARACTER_SYSTEMS_UPDATED, function()
+        if not ns.Utilities:IsModuleEnabled("professions") then return end
+        if companionFrame and companionFrame:IsShown() and currentRecipeID then
+            RefreshCompanion()
+        end
+    end)
 
     -- WN_RECIPE_DATA_UPDATED: refresh when recipe scan completes (guard with module check)
     WarbandNexus.RegisterMessage(RecipeCompanionEvents, E.RECIPE_DATA_UPDATED, function()
@@ -1282,9 +570,6 @@ ns.RecipeCompanionWindow = {
         end
         if toggleTrackerBtn and ApplyVisuals then
             ApplyVisuals(toggleTrackerBtn, ChromeBackdrop(), ChromeBorder(0.6))
-        end
-        if frame.shoppingListBtn and ApplyVisuals then
-            ApplyVisuals(frame.shoppingListBtn, ChromeBackdrop(), ChromeBorder(0.6))
         end
         if frame:IsShown() then
             RefreshCompanion()

@@ -287,6 +287,8 @@ Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
 Modules\UI\WarbandBankDepositPopup.lua
 Modules\UI\CharacterBankMoneyLogPopup.lua
+# ProfessionRecipeHoldings: recipe detail holdings table, known-by line, shopping summary.
+Modules\UI\ProfessionRecipeHoldings.lua
 # CharacterSystemsPopup: Forever talent tree grid + skill list, with real spell tooltips.
 Modules\UI\CharacterSystemsPopup.lua
 Modules\UI\TryCounterTestResultsWindow.lua

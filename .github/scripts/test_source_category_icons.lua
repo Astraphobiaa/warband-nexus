@@ -97,9 +97,6 @@ do
     check(other.texture == "Interface\\Icons\\INV_Inscription_Tradeskill01", "file-path columns unchanged")
     local prof = read("Modules/UI/ProfessionsUI.lua")
     check(prof:find('"QuestTurnin"', 1, true) == nil and prof:find('ns.UI_SetIcon(iicon, "scroll")', 1, true) ~= nil, "info button uses registry scroll")
-    local rc = read("Modules/UI/RecipeCompanionWindow.lua")
-    check(rc:find('CreateStorageIcon(bagRow, "bag")', 1, true) ~= nil and rc:find('CreateStorageIcon(bankRow, "vault")', 1, true) ~= nil,
-        "recipe companion bag/bank rows use registry bag/vault")
 end
 
 print(string.format("Total: %d checks, %d failed", checks, failures))
