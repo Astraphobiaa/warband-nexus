@@ -183,8 +183,9 @@ function ns.ResolveCollectibleSound()
         local kit = SOUNDKIT and (SOUNDKIT.UI_AUTO_QUEST_COMPLETE or SOUNDKIT.AUTO_QUEST_COMPLETE)
         return "kit", kit or AUTO_QUEST_COMPLETE_KIT
     end
-    -- default: the loot-won toast kit, the celebratory cue players already associate with a drop
-    return "kit", (Constants and Constants.NOTIFICATION_SOUND_CELEBRATION) or 31578
+    -- default ("Achievement"): the achievement-earned file. This used to return the loot-won toast
+    -- kit, so the option labelled Achievement never played the achievement sound.
+    return "file", (Constants and Constants.NOTIFICATION_SOUND_ACHIEVEMENT_FILE) or 569143
 end
 
 ---Play a cue file, falling back to the full-volume rendering of the same cue.
@@ -232,6 +233,9 @@ function ns.PreviewCollectibleSoundKey(key)
             local ok, path = pcall(LSM.Fetch, LSM, "sound", key:sub(5), true)
             if ok and IsPlayableMedia(path) then file = path end
         end
+    end
+    if not file and (key == "celebration" or key == nil) then
+        file = (Constants and Constants.NOTIFICATION_SOUND_ACHIEVEMENT_FILE) or 569143
     end
     if file and PlayCueFile(file) then return end
     local kit

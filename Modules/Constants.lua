@@ -411,6 +411,11 @@ local Constants = {
     -- loot-won toast. The previous value (8565) resolved to an Ahn'Qiraj room ambience loop
     -- (SoundKit.db2 SoundType 50), so this lane was effectively silent.
     NOTIFICATION_SOUND_CELEBRATION = 31578,
+    -- "Achievement" collectible cue: the file the client plays when an achievement is earned.
+    -- AchievementAlertFrame_SetUp calls no PlaySound and SOUNDKIT has no constant for it, so it
+    -- plays by fileDataID. Verified 2026-11-23 on wago.tools: 569143 = sound/spells/achievmentsound1.ogg
+    -- (sole entry of SoundKit 12891).
+    NOTIFICATION_SOUND_ACHIEVEMENT_FILE = 569143,
 }
 
 --[[
