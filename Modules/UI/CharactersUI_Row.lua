@@ -57,8 +57,21 @@ local PROF_SLOT_ORDER = {
 
 --- Art for a slot the character has not filled: the trade's own icon for a secondary, and a
 --- plain cross for a primary, which has no identity of its own until one is chosen.
+--- A secondary prefers the icon the client itself reported for that trade on any saved
+--- character (Trade_Cooking does not resolve on WoW Forever -- its Cooking icon is 133971), and
+--- only falls back to the path when no character has the trade yet.
 local function ProfSlotPlaceholder(slot)
-    if slot.placeholder then return slot.placeholder end
+    if slot.placeholder then
+        local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+        if type(chars) == "table" then
+            for _, c in pairs(chars) do
+                local p = type(c) == "table" and type(c.professions) == "table" and c.professions[slot.key]
+                local icon = type(p) == "table" and p.icon
+                if icon and (type(icon) == "number" or type(icon) == "string") then return icon end
+            end
+        end
+        return slot.placeholder
+    end
     if slot.empty and ns.UI_GetIconFile then return ns.UI_GetIconFile("close") end
     return nil
 end

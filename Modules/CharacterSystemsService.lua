@@ -1059,6 +1059,57 @@ function FinishRecipeScan(self, entry, categoryIDs, professionID)
     return entry
 end
 
+--[[
+    Every saved character that has learned recipeID, read from the recipe captures above (all
+    expansion tiers, both clients). The older ProfessionService summary (GetCraftersForRecipe) only
+    keeps Midnight tiers, so it is merged in as a fallback for characters with no capture yet.
+    @return { { charKey, charName, classFile } } sorted by name
+]]
+function WarbandNexus:GetRecipeKnownBy(recipeID)
+    local out = {}
+    local chars = recipeID and self.db and self.db.global and self.db.global.characters
+    if type(chars) ~= "table" then return out end
+    local seen = {}
+    for charKey, row in pairs(chars) do
+        local all = type(row) == "table" and type(row.systems) == "table" and row.systems.recipes
+        if type(all) == "table" then
+            for _, entry in pairs(all) do
+                local list = type(entry) == "table" and entry.recipes
+                if type(list) == "table" then
+                    for i = 1, #list do
+                        local r = list[i]
+                        if r.id == recipeID then
+                            if r.learned and not seen[charKey] then
+                                seen[charKey] = true
+                                out[#out + 1] = {
+                                    charKey = charKey,
+                                    charName = ns.CharDisplayName and ns.CharDisplayName(row, charKey) or charKey,
+                                    classFile = row.classFile or row.class,
+                                }
+                            end
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if self.GetCraftersForRecipe then
+        local ok, legacy = pcall(self.GetCraftersForRecipe, self, recipeID)
+        if ok and type(legacy) == "table" then
+            for i = 1, #legacy do
+                local c = legacy[i]
+                if c.charKey and not seen[c.charKey] then
+                    seen[c.charKey] = true
+                    out[#out + 1] = { charKey = c.charKey, charName = c.charName, classFile = c.classFile }
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return tostring(a.charName) < tostring(b.charName) end)
+    return out
+end
+
 --- Recipes captured for one profession of one character; nil until its window has been opened.
 function WarbandNexus:GetProfessionRecipes(charKey, professionID)
     -- Read past the version gate on purpose: recipes have one shape and survive a scan-version
