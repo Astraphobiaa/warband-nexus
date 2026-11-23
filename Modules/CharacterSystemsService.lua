@@ -440,45 +440,377 @@ end
     into whatever previous professions were captured.
 ]]
 local MAX_RECIPES = 600
+local MAX_CATEGORY_DEPTH = 4
+local MAX_REAGENT_SLOTS = 8
+
+--- Plain string from an api field, or nil when it is missing or secret.
+local function SafeString(v)
+    if issecretvalue and issecretvalue(v) then return nil end
+    if type(v) ~= "string" or v == "" then return nil end
+    return v
+end
+
+--- Why a scan cannot run right now. "foreign" means the open window is not this character's own
+--- profession (a linked or guild list, or an NPC crafter) -- retrying cannot fix that. Everything
+--- else ("dead", "notReady") is transient.
+local function RecipeScanBlocker()
+    if type(UnitIsDeadOrGhost) == "function" then
+        local okD, dead = pcall(UnitIsDeadOrGhost, "player")
+        if okD and dead == true then return "dead" end
+    end
+    local TS = C_TradeSkillUI
+    local function Ask(fn)
+        if type(fn) ~= "function" then return false end
+        local ok, v = pcall(fn)
+        return ok and v == true
+    end
+    if Ask(TS.IsTradeSkillLinked) or Ask(TS.IsTradeSkillGuild) or Ask(TS.IsNPCCrafting) then
+        return "foreign"
+    end
+    if type(TS.IsTradeSkillReady) == "function" then
+        local okR, ready = pcall(TS.IsTradeSkillReady)
+        if okR and ready == false then return "notReady" end
+    end
+    return nil
+end
+
+--- Category id -> { name, parent }, walking up to the profession's top header. Names come from the
+--- open window only, so they are stored with the recipes for the offline view.
+local function ReadRecipeCategories(categoryIDs)
+    local out = {}
+    if type(C_TradeSkillUI.GetCategoryInfo) ~= "function" then return out end
+    for id in pairs(categoryIDs) do
+        local cur, depth = id, 0
+        while cur and cur > 0 and not out[cur] and depth < MAX_CATEGORY_DEPTH do
+            local okC, info = pcall(C_TradeSkillUI.GetCategoryInfo, cur)
+            if not okC or type(info) ~= "table" then break end
+            local name = SafeString(info.name)
+            if not name then break end
+            local parent = tonumber(info.parentCategoryID)
+            if parent and parent <= 0 then parent = nil end
+            local cat = { name = name, parent = parent }
+            -- Retail draws a rank bar on expansion headers (Blizzard_ProfessionsRecipeList.lua);
+            -- the same fields drive ours, and stay nil where a client has none.
+            if info.hasProgressBar then
+                cat.rank = tonumber(info.skillLineCurrentLevel)
+                cat.rankMax = tonumber(info.skillLineMaxLevel)
+                cat.rankStart = tonumber(info.skillLineStartingRank)
+            end
+            out[cur] = cat
+            cur = parent
+            depth = depth + 1
+        end
+    end
+    return out
+end
+
+--- Reagents and product of one recipe: { itemID, count } per required slot. nil when the schematic
+--- is not readable (gathering recipes carry none).
+local function ReadRecipeSchematic(recipeID)
+    if type(C_TradeSkillUI.GetRecipeSchematic) ~= "function" then return nil end
+    local okS, sc = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
+    if not okS or type(sc) ~= "table" then return nil end
+    local reagents
+    local slots = sc.reagentSlotSchematics
+    if type(slots) == "table" then
+        for i = 1, math.min(#slots, MAX_REAGENT_SLOTS) do
+            local slot = slots[i]
+            local first = type(slot) == "table" and type(slot.reagents) == "table" and slot.reagents[1]
+            local itemID = type(first) == "table" and tonumber(first.itemID)
+            -- Optional / finishing slots carry required = false; they are not part of the recipe.
+            if itemID and slot.required ~= false then
+                reagents = reagents or {}
+                reagents[#reagents + 1] = { itemID = itemID, count = tonumber(slot.quantityRequired) or 1 }
+            end
+        end
+    end
+    return reagents, tonumber(sc.outputItemID), tonumber(sc.quantityMin), tonumber(sc.quantityMax)
+end
+
+--[[
+    The text the retail schematic form shows around the reagents (Blizzard_ProfessionsRecipe
+    SchematicForm.lua): the recipe description, the required tools / spell focus ("Requires:
+    Anvil"), and for an unlearned recipe where it is taught. All three are only answerable while
+    the window is open, so they are captured with the recipe for the offline view. `met` on a
+    requirement is live state (am I standing at an anvil) and is deliberately not stored.
+]]
+local function ReadRecipeExtras(recipeID, learned)
+    local TS = C_TradeSkillUI
+    local description, source, requires
+    if type(TS.GetRecipeDescription) == "function" then
+        local ok, d = pcall(TS.GetRecipeDescription, recipeID, {})
+        description = ok and SafeString(d) or nil
+    end
+    if not learned and type(TS.GetRecipeSourceText) == "function" then
+        local ok, t = pcall(TS.GetRecipeSourceText, recipeID)
+        source = ok and SafeString(t) or nil
+    end
+    if type(TS.GetRecipeRequirements) == "function" then
+        local ok, reqs = pcall(TS.GetRecipeRequirements, recipeID)
+        if ok and type(reqs) == "table" then
+            for i = 1, math.min(#reqs, 4) do
+                local name = type(reqs[i]) == "table" and SafeString(reqs[i].name)
+                if name then
+                    requires = requires or {}
+                    requires[#requires + 1] = name
+                end
+            end
+        end
+    end
+    return description, source, requires
+end
+
+--[[
+    Everything else the retail schematic form reads live: the cooldown / charges line
+    (GetRecipeCooldown -> cooldown, isDayCooldown, charges, maxCharges), the real product
+    (GetRecipeOutputItemData -> CraftingRecipeOutputInfo { icon, hyperlink, itemID }, which also
+    covers enchants whose schematic has no outputItemID), the recipe link the list uses for
+    shift-click (GetRecipeLink), and for a learned recipe with a higher rank, where that rank is
+    taught. A cooldown is stored as an end time so the offline view can count it down.
+]]
+local function ReadRecipeLive(recipeID, learned, nextRecipeID, now)
+    local TS = C_TradeSkillUI
+    local out = {}
+    if type(TS.GetRecipeCooldown) == "function" then
+        local ok, cd, isDay, charges, maxCharges = pcall(TS.GetRecipeCooldown, recipeID)
+        if ok then
+            cd, charges, maxCharges = tonumber(cd), tonumber(charges), tonumber(maxCharges)
+            if cd and cd > 0 then
+                out.cooldownEndsAt = now + cd
+                out.cooldownIsDay = isDay and true or nil
+            end
+            if maxCharges and maxCharges > 0 then
+                out.charges, out.maxCharges = charges or 0, maxCharges
+            end
+        end
+    end
+    if type(TS.GetRecipeOutputItemData) == "function" then
+        local ok, info = pcall(TS.GetRecipeOutputItemData, recipeID)
+        if ok and type(info) == "table" then
+            out.outputLink = SafeString(info.hyperlink)
+            out.outputItemID = tonumber(info.itemID)
+            out.outputIcon = tonumber(info.icon)
+        end
+    end
+    if type(TS.GetRecipeLink) == "function" then
+        local ok, link = pcall(TS.GetRecipeLink, recipeID)
+        out.recipeLink = ok and SafeString(link) or nil
+    end
+    if learned and nextRecipeID and type(TS.GetRecipeSourceText) == "function" then
+        local ok, t = pcall(TS.GetRecipeSourceText, nextRecipeID)
+        out.nextSource = ok and SafeString(t) or nil
+    end
+    return out
+end
+
+--- Profession tiers (retail expansions: "Classic Mining", "Khaz Algar Mining", ...). Each has its
+--- own rank, which the retail rank bar switches between. Empty where a client has no children.
+local function ReadProfessionTiers()
+    local TS = C_TradeSkillUI
+    if type(TS.GetChildProfessionInfos) ~= "function" then return nil end
+    local ok, infos = pcall(TS.GetChildProfessionInfos)
+    if not ok or type(infos) ~= "table" or #infos == 0 then return nil end
+    local tiers = {}
+    for i = 1, math.min(#infos, 16) do
+        local t = infos[i]
+        if type(t) == "table" and tonumber(t.professionID) then
+            tiers[#tiers + 1] = {
+                professionID = tonumber(t.professionID),
+                name = SafeString(t.expansionName) or SafeString(t.professionName),
+                skillLevel = tonumber(t.skillLevel) or 0,
+                maxSkillLevel = tonumber(t.maxSkillLevel) or 0,
+                skillModifier = tonumber(t.skillModifier),
+            }
+        end
+    end
+    return #tiers > 0 and tiers or nil
+end
+
+--- true -> true, anything else -> nil: flags are stored only when set, to keep the row small.
+local function Flag(v)
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v == true or nil
+end
+
+--[[
+    Merge a fresh read into what was stored, by recipe id.
+
+    A read can come back short without anything having changed: GetRecipeInfo answers nil for a
+    recipe whose data is not cached yet, and the list is still filling while the window opens. A
+    plain replace turned every such moment into lost recipes. So a recipe the new read could not
+    see keeps its stored row, and a field the new read could not fill keeps its stored value.
+]]
+local MERGE_CARRY = {
+    categoryID = true, reagents = true, outputItemID = true, outputLink = true, outputIcon = true,
+    quantityMin = true, quantityMax = true, description = true, requires = true, source = true,
+    link = true, recipeLink = true, icon = true, order = true, difficulty = true, skillUps = true,
+    itemLevel = true, maxQuality = true, supportsQualities = true,
+}
+
+local function MergeRecipeRows(fresh, previous)
+    if type(previous) ~= "table" or type(previous.recipes) ~= "table" then return fresh end
+    local seen = {}
+    for i = 1, #fresh.recipes do seen[fresh.recipes[i].id] = fresh.recipes[i] end
+    for i = 1, #previous.recipes do
+        local old = previous.recipes[i]
+        if type(old) == "table" and old.id then
+            local cur = seen[old.id]
+            if not cur then
+                fresh.recipes[#fresh.recipes + 1] = old
+            else
+                for k, v in pairs(old) do
+                    -- Only what a short read can miss is carried over. State that changes on its
+                    -- own (first craft, cooldowns, favourites) must take the fresh read's nil.
+                    if cur[k] == nil and MERGE_CARRY[k] and not (k == "source" and cur.learned) then
+                        cur[k] = v
+                    end
+                end
+            end
+        end
+    end
+    if type(previous.categories) == "table" then
+        fresh.categories = fresh.categories or {}
+        for id, c in pairs(previous.categories) do
+            if fresh.categories[id] == nil then fresh.categories[id] = c end
+        end
+    end
+    -- A transient 0 (window still coming up) must not overwrite a real rank.
+    if (fresh.skillLevel or 0) <= 0 and (tonumber(previous.skillLevel) or 0) > 0 then
+        fresh.skillLevel = previous.skillLevel
+        fresh.maxSkillLevel = previous.maxSkillLevel
+    end
+    return fresh
+end
+
+--- Returns entry, or nil plus a reason ("dead", "foreign", "notReady", "empty", "noRow").
 function WarbandNexus:ScanProfessionRecipes()
-    if type(C_TradeSkillUI) ~= "table" then return nil end
-    if type(C_TradeSkillUI.GetBaseProfessionInfo) ~= "function" then return nil end
+    if type(C_TradeSkillUI) ~= "table" then return nil, "noApi" end
+    if type(C_TradeSkillUI.GetBaseProfessionInfo) ~= "function" then return nil, "noApi" end
+    local blocker = RecipeScanBlocker()
+    if blocker then return nil, blocker end
     local okBase, base = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
-    if not okBase or type(base) ~= "table" then return nil end
+    if not okBase or type(base) ~= "table" then return nil, "notReady" end
     -- `not base.professionID` was not enough: the id is 0 while the window is still coming up,
     -- and 0 is TRUE in Lua. That stored a nameless entry under key 0 carrying whichever recipe
     -- list happened to be loaded -- and the profession it really belonged to never got one.
     local professionID = tonumber(base.professionID)
-    local professionName = base.professionName
-    if not professionID or professionID <= 0 then return nil end
-    if type(professionName) ~= "string" or professionName == "" then return nil end
-    if type(C_TradeSkillUI.GetAllRecipeIDs) ~= "function" then return nil end
+    local professionName = SafeString(base.professionName)
+    if not professionID or professionID <= 0 then return nil, "notReady" end
+    if not professionName then return nil, "notReady" end
+    if type(C_TradeSkillUI.GetAllRecipeIDs) ~= "function" then return nil, "noApi" end
     local okIDs, ids = pcall(C_TradeSkillUI.GetAllRecipeIDs)
-    if not okIDs or type(ids) ~= "table" or #ids == 0 then return nil end
+    if not okIDs or type(ids) ~= "table" or #ids == 0 then return nil, "empty" end
 
+    local now = time()
     local entry = {
         professionID = professionID,
-        name = tostring(professionName),
+        name = professionName,
         skillLevel = tonumber(base.skillLevel) or 0,
         maxSkillLevel = tonumber(base.maxSkillLevel) or 0,
-        scannedAt = time(),
+        -- Racial / gear bonus the retail rank bar shows as "(+15)".
+        skillModifier = (tonumber(base.skillModifier) or 0) > 0 and tonumber(base.skillModifier) or nil,
+        expansionName = SafeString(base.expansionName),
+        tiers = ReadProfessionTiers(),
+        scannedAt = now,
         recipes = {},
     }
-    local known = 0
+    -- How many recipes each api answered for. Zero on a client means that api is empty there,
+    -- which is the difference between "nothing to show" and "we never asked".
+    local hits = {
+        category = 0, reagents = 0, description = 0, source = 0, requires = 0, output = 0,
+        cooldown = 0, link = 0, unlearned = 0,
+    }
+    entry.apiHits = hits
+    local categoryIDs = {}
     for i = 1, math.min(#ids, MAX_RECIPES) do
-        local okR, info = pcall(C_TradeSkillUI.GetRecipeInfo, ids[i])
-        if okR and type(info) == "table" and info.name then
+        local recipeID = ids[i]
+        local okR, info = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
+        local name = okR and type(info) == "table" and SafeString(info.name)
+        if name then
+            local categoryID = tonumber(info.categoryID)
+            if categoryID and categoryID > 0 then categoryIDs[categoryID] = true else categoryID = nil end
+            local reagents, outputItemID, qMin, qMax = ReadRecipeSchematic(recipeID)
             local learned = info.learned and true or false
-            if learned then known = known + 1 end
+            local description, source, requires = ReadRecipeExtras(recipeID, learned)
+            local nextRecipeID = tonumber(info.nextRecipeID)
+            local live = ReadRecipeLive(recipeID, learned, nextRecipeID, now)
+            if categoryID then hits.category = hits.category + 1 end
+            if reagents then hits.reagents = hits.reagents + 1 end
+            if description then hits.description = hits.description + 1 end
+            if source then hits.source = hits.source + 1 end
+            if requires then hits.requires = hits.requires + 1 end
+            if live.outputItemID or outputItemID then hits.output = hits.output + 1 end
+            if live.cooldownEndsAt or live.maxCharges then hits.cooldown = hits.cooldown + 1 end
+            if live.recipeLink or SafeString(info.hyperlink) then hits.link = hits.link + 1 end
+            if not learned then hits.unlearned = hits.unlearned + 1 end
             entry.recipes[#entry.recipes + 1] = {
-                id = ids[i],
-                name = tostring(info.name),
+                id = recipeID,
+                -- The api's own list order is the order the profession window draws them in.
+                order = i,
+                name = name,
                 icon = info.icon,
                 learned = learned,
+                categoryID = categoryID,
+                -- Enum.TradeskillRelativeDifficulty: 0 optimal, 1 medium, 2 easy, 3 trivial.
+                difficulty = tonumber(info.relativeDifficulty),
+                skillUps = tonumber(info.numSkillUps),
+                canSkillUp = info.canSkillUp and true or false,
+                link = SafeString(info.hyperlink) or live.recipeLink,
+                reagents = reagents,
+                outputItemID = live.outputItemID or outputItemID,
+                outputLink = live.outputLink,
+                outputIcon = live.outputIcon,
+                quantityMin = qMin,
+                quantityMax = qMax,
+                description = description,
+                source = source,
+                requires = requires,
+                nextSource = live.nextSource,
+                cooldownEndsAt = live.cooldownEndsAt,
+                cooldownIsDay = live.cooldownIsDay,
+                charges = live.charges,
+                maxCharges = live.maxCharges,
+                -- TradeSkillRecipeInfo fields the retail list / schematic form draw.
+                itemLevel = (tonumber(info.itemLevel) or 0) > 0 and tonumber(info.itemLevel) or nil,
+                maxTrivialLevel = tonumber(info.maxTrivialLevel),
+                firstCraft = Flag(info.firstCraft),
+                favorite = Flag(info.favorite),
+                disabled = Flag(info.disabled),
+                disabledReason = SafeString(info.disabledReason),
+                nextRecipeID = nextRecipeID,
+                previousRecipeID = tonumber(info.previousRecipeID),
+                unlockedRecipeLevel = tonumber(info.unlockedRecipeLevel),
+                currentRecipeExperience = tonumber(info.currentRecipeExperience),
+                nextLevelRecipeExperience = tonumber(info.nextLevelRecipeExperience),
+                supportsQualities = Flag(info.supportsQualities),
+                maxQuality = tonumber(info.maxQuality),
+                isGathering = Flag(info.isGatheringRecipe),
+                isEnchanting = Flag(info.isEnchantingRecipe),
+                isSalvage = Flag(info.isSalvageRecipe),
+                sourceType = tonumber(info.sourceType),
             }
         end
     end
-    if #entry.recipes == 0 then return nil end
+    if #entry.recipes == 0 then return nil, "empty" end
+    entry.categories = ReadRecipeCategories(categoryIDs)
+
+    if not self.db or not self.db.global then return nil, "noRow" end
+    local key = ns.Utilities and ns.Utilities:GetCharacterStorageKey(self)
+    local row = key and self.db.global.characters and self.db.global.characters[key]
+    if not row then return nil, "noRow" end
+    row.systems = row.systems or { version = SYSTEMS_SCAN_VERSION, scannedAt = time() }
+    row.systems.recipes = row.systems.recipes or {}
+    -- Sweep out anything an earlier build filed under a non-id: those rows can never be looked
+    -- up, and they take the place of the profession whose window was actually open.
+    for pid in pairs(row.systems.recipes) do
+        if type(pid) ~= "number" or pid <= 0 then row.systems.recipes[pid] = nil end
+    end
+    entry = MergeRecipeRows(entry, row.systems.recipes[professionID])
+
+    local known = 0
+    for i = 1, #entry.recipes do
+        if entry.recipes[i].learned then known = known + 1 end
+    end
     entry.known = known
     -- Known first, then by name: a player scanning the window looks for what is missing, and an
     -- alphabetical block of each is easier to read than the api's own order.
@@ -487,17 +819,6 @@ function WarbandNexus:ScanProfessionRecipes()
         return a.name < b.name
     end)
 
-    if not self.db or not self.db.global then return nil end
-    local key = ns.Utilities and ns.Utilities:GetCharacterStorageKey(self)
-    local row = key and self.db.global.characters and self.db.global.characters[key]
-    if not row then return nil end
-    row.systems = row.systems or { version = SYSTEMS_SCAN_VERSION, scannedAt = time() }
-    row.systems.recipes = row.systems.recipes or {}
-    -- Sweep out anything an earlier build filed under a non-id: those rows can never be looked
-    -- up, and they take the place of the profession whose window was actually open.
-    for pid in pairs(row.systems.recipes) do
-        if type(pid) ~= "number" or pid <= 0 then row.systems.recipes[pid] = nil end
-    end
     row.systems.recipes[professionID] = entry
     self:SendMessage(MSG_SYSTEMS_UPDATED, { charKey = key, professionID = entry.professionID })
     return entry
@@ -505,9 +826,16 @@ end
 
 --- Recipes captured for one profession of one character; nil until its window has been opened.
 function WarbandNexus:GetProfessionRecipes(charKey, professionID)
-    local systems = self:GetCharacterSystems(charKey)
-    local all = systems and systems.recipes
-    return all and professionID and all[professionID] or nil
+    -- Read past the version gate on purpose: recipes have one shape and survive a scan-version
+    -- bump (see ScanCharacterSystems), but GetCharacterSystems hides the whole table until the
+    -- character logs in again -- which left an offline alt's recipes unreachable.
+    if not professionID or not self.db or not self.db.global then return nil end
+    local chars = self.db.global.characters
+    local row = charKey and chars and chars[charKey]
+    local all = row and type(row.systems) == "table" and row.systems.recipes
+    local entry = type(all) == "table" and all[professionID] or nil
+    if type(entry) ~= "table" or type(entry.recipes) ~= "table" or #entry.recipes == 0 then return nil end
+    return entry
 end
 
 --- Scan both systems for the current character and persist them on its row.
@@ -519,10 +847,32 @@ function WarbandNexus:ScanCharacterSystems()
     local row = chars and chars[key]
     if not row then return nil end
 
-    local talents = self:ScanTalentTree()
-    local spells = self:ScanSpellBook()
-    -- Needs both halves: the names come from the spellbook, the bands from the tree.
-    NameTalentTabs(talents, spells)
+    local previous = row.systems
+    local carry = (type(previous) == "table")
+        and (tonumber(previous.version) or 0) >= SYSTEMS_SCAN_VERSION
+
+    -- Dead or a ghost: the spellbook and trait APIs answer short or nil, and a ghost's spellbook
+    -- is not the character's. Nothing read now is trustworthy, so the stored halves stay as they
+    -- are and the next save after resurrection reads them again.
+    local dead = false
+    if type(UnitIsDeadOrGhost) == "function" then
+        local okD, d = pcall(UnitIsDeadOrGhost, "player")
+        dead = okD and d == true
+    end
+    local talents, spells
+    if not dead then
+        talents = self:ScanTalentTree()
+        spells = self:ScanSpellBook()
+        -- A tree read short (some nodes not answering yet) is a partial read, not a smaller tree:
+        -- a class tree never loses nodes, so the fuller stored copy wins.
+        local prevTalents = carry and previous.talents
+        if talents and type(prevTalents) == "table"
+            and (tonumber(prevTalents.nodeCount) or 0) > (tonumber(talents.nodeCount) or 0) then
+            talents = nil
+        end
+        -- Needs both halves: the names come from the spellbook, the bands from the tree.
+        NameTalentTabs(talents, spells)
+    end
     --[[
         Merged, never replaced.
 
@@ -537,9 +887,6 @@ function WarbandNexus:ScanCharacterSystems()
         talents/spells are only carried forward when they were written by THIS scan version;
         older ones are let go rather than drawn with rules that have since changed.
     ]]
-    local previous = row.systems
-    local carry = (type(previous) == "table")
-        and (tonumber(previous.version) or 0) >= SYSTEMS_SCAN_VERSION
     local systems = {
         version = SYSTEMS_SCAN_VERSION,
         scannedAt = time(),

@@ -3202,6 +3202,7 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
         if bagCount > 0 or bankCount > 0 then
             result.personalBankTotal = result.personalBankTotal + bankCount
             result.characters[#result.characters + 1] = {
+                charKey = charKey,
                 charName = CountRows.CharacterName(charKey, charData),
                 classFile = charData.classFile or charData.class,
                 bagCount = bagCount,

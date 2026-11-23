@@ -156,7 +156,8 @@ end
 
     Returns the scroll frame, its child, and the width the child may use.
 ]]
-local function BuildScroll(content, width, topInset)
+local function BuildScroll(content, width, topInset, pad)
+    pad = pad or PAD
     if not Factory or not Factory.CreateScrollFrame or not Factory.CreateContainer then return nil end
     local barW = ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth() or 26
 
@@ -168,8 +169,8 @@ local function BuildScroll(content, width, topInset)
 
     -- Initial placement, lane reserved: the wire below replaces the bottom-right point on the
     -- first visibility pass, but the frame has to be somewhere until then.
-    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, -(PAD + (topInset or 0)))
-    scroll:SetPoint("BOTTOMRIGHT", column, "BOTTOMLEFT", -SCROLL_GAP, PAD)
+    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -(pad + (topInset or 0)))
+    scroll:SetPoint("BOTTOMRIGHT", column, "BOTTOMLEFT", -SCROLL_GAP, pad)
     if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
     if ns.UI_EnableStandardScrollWheel then ns.UI_EnableStandardScrollWheel(scroll) end
 
@@ -177,14 +178,14 @@ local function BuildScroll(content, width, topInset)
     -- above the grid in two of the three).
     if Factory.WireScrollLaneWithInsets then
         Factory:WireScrollLaneWithInsets(scroll, content, column, {
-            left = PAD, top = PAD + (topInset or 0), right = SCROLL_EDGE, bottom = PAD, gap = SCROLL_GAP,
+            left = pad, top = pad + (topInset or 0), right = SCROLL_EDGE, bottom = pad, gap = SCROLL_GAP,
         })
     elseif Factory.EnsureScrollBarColumnSync then
         Factory:EnsureScrollBarColumnSync(scroll, column, { width = barW, gap = SCROLL_GAP })
     end
 
     local lane = barW + SCROLL_GAP
-    local contentW = width - PAD - SCROLL_EDGE - lane
+    local contentW = width - pad - SCROLL_EDGE - lane
     local child = Factory:CreateContainer(scroll, contentW, 1, false)
     if not child then return nil end
     child:SetWidth(contentW)
@@ -965,114 +966,1019 @@ end
 -- ---------------------------------------------------------------------------
 
 --[[
-    Same shape as the Skills window: sections of five icons across, the real tooltip on hover.
+    Laid out like the retail Professions frame, because that is the window players already read:
+    a recipe tree on the left (category headers that collapse, recipes under them in the
+    profession's own order, a skill-up marker in front of each one that still gives points) and
+    the selected recipe on the right (product, reagents with counts, learned state).
 
-    Two differences, both forced by what the client publishes. There is no skill requirement on a
-    recipe, so nothing can sit under the icon the way "Lv. 20" does -- the caption is dropped
-    rather than filled with something invented. And there is no "can learn now" split for the same
-    reason: that lives on the profession trainer, not in the recipe record.
+    Everything comes from the character's saved row, so an offline alt reads exactly like the
+    character that is logged in. Learned recipes use the recipe ink, unlearned ones the dim ink,
+    the same split Blizzard's list makes; the difficulty is carried by the skill-up marker rather
+    than by recolouring the name, which keeps the list readable in the light theme too.
+
+    Data captured by an older build has no categories, difficulty or reagents: those recipes land
+    in one "Other" group and the detail pane simply leaves the missing parts out.
 ]]
-function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID)
-    local entry = self.GetProfessionRecipes and self:GetProfessionRecipes(charKey, professionID)
-    if not entry or not entry.recipes or #entry.recipes == 0 then return end
+local RECIPE_WIN_W = 860
+local RECIPE_WIN_H = 640
+local RECIPE_LIST_W = 360
+local RECIPE_PANE_GAP = 10
+local RECIPE_TOP_H = 46
+local RECIPE_ROW_H = 24
+local RECIPE_CAT_H = 26
+local RECIPE_INDENT = 14
+local RECIPE_ICON = 20
+local RECIPE_LIST_PAD = 6
+local DETAIL_ICON = 48
+local REAGENT_ICON = 38
+local REAGENT_ROW_H = 46
+local RECIPE_SEARCH_W = 220
+local RECIPE_RANK_W = 180
+local RECIPE_RANK_H = 12
+local OTHER_CATEGORY = 0
 
-    local learned, missing = {}, {}
-    for i = 1, #entry.recipes do
-        local recipe = entry.recipes[i]
-        if recipe.learned then
-            learned[#learned + 1] = recipe
+-- Blizzard_ProfessionsRecipeList.lua draws these markers; checked with C_Texture.GetAtlasInfo
+-- before use so a client without them falls back to a coloured dot.
+local SKILLUP_ATLAS = {
+    [0] = "Professions-Icon-Skill-High",
+    [1] = "Professions-Icon-Skill-Medium",
+    [2] = "Professions-Icon-Skill-Low",
+}
+local COLLAPSE_ATLAS = "Professions-recipe-header-collapse"
+local EXPAND_ATLAS = "Professions-recipe-header-expand"
+local DIFFICULTY_RGB = {
+    [0] = { 1.00, 0.50, 0.25 },
+    [1] = { 1.00, 1.00, 0.00 },
+    [2] = { 0.25, 0.75, 0.25 },
+}
+local DIFFICULTY_KEY = {
+    [0] = { "RECIPES_DIFFICULTY_OPTIMAL", "Optimal" },
+    [1] = { "RECIPES_DIFFICULTY_MEDIUM", "Medium" },
+    [2] = { "RECIPES_DIFFICULTY_EASY", "Easy" },
+    [3] = { "RECIPES_DIFFICULTY_TRIVIAL", "Trivial" },
+}
+
+-- Per profession, per window lifetime of the session: collapsed headers, the filter, the pick.
+local recipeViewState = {}
+
+local function AtlasExists(atlas)
+    if not atlas or type(C_Texture) ~= "table" or type(C_Texture.GetAtlasInfo) ~= "function" then
+        return false
+    end
+    local ok, info = pcall(C_Texture.GetAtlasInfo, atlas)
+    return ok and info ~= nil
+end
+
+local function SetAtlasOrHide(tex, atlas)
+    if atlas and AtlasExists(atlas) then
+        tex:SetAtlas(atlas)
+        tex:Show()
+        return true
+    end
+    tex:Hide()
+    return false
+end
+
+-- COLORS lives on ns at call time (theme swaps mutate it in place).
+local function AccentRGB()
+    local c = ns.UI_COLORS and ns.UI_COLORS.accent
+    return c or { 0.5, 0.4, 0.7 }
+end
+
+local function GoldHex()
+    local hex = ns.UI_HEX
+    return (hex and hex.gold) or "|cffffd100"
+end
+
+--- Recipe tooltip: the captured hyperlink first (it renders offline), then the recipe spell.
+local function RecipeTooltipOnEnter(self)
+    local recipe = self._wnRecipe
+    if not recipe or not ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then return end
+    if recipe.link and GameTooltip.SetHyperlink and pcall(GameTooltip.SetHyperlink, GameTooltip, recipe.link) then
+        GameTooltip:Show()
+        return
+    end
+    if recipe.id and GameTooltip.SetSpellByID and pcall(GameTooltip.SetSpellByID, GameTooltip, recipe.id) then
+        GameTooltip:Show()
+        return
+    end
+    GameTooltip:SetText(recipe.name or "")
+    GameTooltip:Show()
+end
+
+local function ItemTooltipOnEnter(self)
+    local itemID = self._wnItemID
+    if not itemID or not ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then return end
+    if GameTooltip.SetItemByID and pcall(GameTooltip.SetItemByID, GameTooltip, itemID) then
+        GameTooltip:Show()
+    else
+        ns.UI_SafeHideGameTooltip()
+    end
+end
+
+--[[
+    Category tree from the saved entry.
+
+    Each node: { id, name, parent, depth, children, recipes, order, learned, total }. A recipe's
+    category is a leaf; its parents come from the stored parent chain. Order follows the lowest
+    api index found under a node, which reproduces the profession window's own ordering without
+    having stored it separately.
+]]
+local function BuildRecipeTree(entry, query)
+    local cats = type(entry.categories) == "table" and entry.categories or {}
+    local nodes, roots = {}, {}
+
+    local function Node(id)
+        local n = nodes[id]
+        if n then return n end
+        local info = cats[id]
+        n = {
+            id = id,
+            name = (info and info.name) or L("RECIPES_UNCATEGORIZED", "Other"),
+            parent = info and info.parent or nil,
+            rank = info and info.rank, rankMax = info and info.rankMax, rankStart = info and info.rankStart,
+            children = {}, recipes = {}, order = math.huge, learned = 0, total = 0,
+        }
+        nodes[id] = n
+        -- Refuse a parent link that would loop back to this node: a malformed chain must not
+        -- hang the walks below.
+        local cyclic, up, guard = false, n.parent, 0
+        while up and guard < 8 do
+            if up == id then cyclic = true break end
+            up = cats[up] and cats[up].parent or nil
+            guard = guard + 1
+        end
+        if n.parent and not cyclic and cats[n.parent] then
+            local p = Node(n.parent)
+            p.children[#p.children + 1] = n
         else
-            missing[#missing + 1] = recipe
+            n.parent = nil
+            roots[#roots + 1] = n
+        end
+        return n
+    end
+
+    for i = 1, #entry.recipes do
+        local r = entry.recipes[i]
+        local name = r.name
+        local match = true
+        if query then
+            match = type(name) == "string" and name:lower():find(query, 1, true) ~= nil
+        end
+        if match then
+            local n = Node(r.categoryID or OTHER_CATEGORY)
+            n.recipes[#n.recipes + 1] = r
+            local order = tonumber(r.order) or (100000 + i)
+            -- Counts and order bubble up so a header shows its whole subtree.
+            local walk = n
+            while walk do
+                walk.total = walk.total + 1
+                if r.learned then walk.learned = walk.learned + 1 end
+                if order < walk.order then walk.order = order end
+                walk = walk.parent and nodes[walk.parent] or nil
+            end
         end
     end
 
-    local sections = {
-        { title = L("RECIPES_KNOWN", "Known recipes"), rows = learned, tone = "known",
-          emptyText = L("RECIPES_NONE_KNOWN", "None learned yet") },
-        { title = L("RECIPES_NOT_LEARNED", "Not learned"), rows = missing, tone = "locked",
-          emptyText = L("RECIPES_ALL_LEARNED", "Everything here is learned") },
-    }
-
-    local lane = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth() or 26)
-        + SCROLL_GAP
-    local width = PAD * 2 + SKILL_COLUMNS * SKILL_CELL_W + lane
-    local gridH = 28
-    for i = 1, #sections do
-        local rows = math.ceil(#sections[i].rows / SKILL_COLUMNS)
-        gridH = gridH + SECTION_HEAD_H + rows * SKILL_CELL_H
-        if #sections[i].rows == 0 then gridH = gridH + SECTION_HEAD_H end
+    local function ByOrder(a, b)
+        if a.order ~= b.order then return a.order < b.order end
+        return (a.name or "") < (b.name or "")
     end
-    local height = math.min(700, gridH + 70)
+    local function SortRecipes(a, b)
+        local oa, ob = tonumber(a.order) or math.huge, tonumber(b.order) or math.huge
+        if oa ~= ob then return oa < ob end
+        return (a.name or "") < (b.name or "")
+    end
+    local function SortNode(n, depth)
+        n.depth = depth
+        table.sort(n.children, ByOrder)
+        table.sort(n.recipes, SortRecipes)
+        for i = 1, #n.children do SortNode(n.children[i], depth + 1) end
+    end
+    table.sort(roots, ByOrder)
+    for i = 1, #roots do SortNode(roots[i], 0) end
+    return roots
+end
+
+--- Flatten the tree into the visible rows: headers always, recipes only under open headers.
+local function FlattenRecipeTree(roots, state, out)
+    local function Walk(n)
+        if n.total == 0 then return end
+        out[#out + 1] = { kind = "category", node = n, depth = n.depth }
+        if state.collapsed[n.id] then return end
+        for i = 1, #n.children do Walk(n.children[i]) end
+        for i = 1, #n.recipes do
+            local r = n.recipes[i]
+            if state.showUnlearned or r.learned then
+                out[#out + 1] = { kind = "recipe", recipe = r, depth = n.depth + 1 }
+            end
+        end
+    end
+    for i = 1, #roots do Walk(roots[i]) end
+    return out
+end
+
+-- Row geometry the list paints with; one table so the chunk's local budget is not spent on it.
+local RL = {
+    MARKER_W = 14,       -- fixed skill-up slot: every label starts at the same x per depth
+    ICON_GAP = 4,
+    LABEL_GAP = 6,
+    BAR_W = 70,          -- category rank bar (retail expansion headers)
+    BAR_H = 6,
+    WELL_ALPHA = 0.55,
+}
+
+local function QualityRGB(itemID)
+    if not itemID or not C_Item then return nil end
+    local quality
+    if C_Item.GetItemQualityByID then
+        local ok, q = pcall(C_Item.GetItemQualityByID, itemID)
+        if ok and type(q) == "number" then quality = q end
+    end
+    if not quality or not C_Item.GetItemQualityColor then return nil end
+    local ok, r, g, b = pcall(C_Item.GetItemQualityColor, quality)
+    if ok and type(r) == "number" then return r, g, b end
+    return nil
+end
+
+--- Bags + bank of one character for an item; nil when the count service is unavailable.
+--- Memoised per window open: the list asks for the same reagent on many rows.
+local function CharacterHaveCount(charKey, itemID, memo)
+    if not charKey or not itemID or not WarbandNexus.GetDetailedItemCountsFast then return nil end
+    if memo and memo[itemID] ~= nil then return memo[itemID] end
+    local ok, counts = pcall(WarbandNexus.GetDetailedItemCountsFast, WarbandNexus, itemID)
+    if not ok then return nil end
+    local total = 0
+    if type(counts) == "table" and type(counts.characters) == "table" then
+        local U = ns.Utilities
+        local want = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(charKey)) or charKey
+        for i = 1, #counts.characters do
+            local row = counts.characters[i]
+            local k = row.charKey
+            local canon = (k and U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(k)) or k
+            if k == charKey or canon == want then total = tonumber(row.total) or 0 break end
+        end
+    end
+    if memo then memo[itemID] = total end
+    return total
+end
+
+--- How many times the character could make a learned recipe from what it holds; the retail list
+--- shows this as " [n]" after the name (GetCraftableCount, live-only -- rebuilt from saved bags).
+local function CraftableCount(recipe, charKey, memo)
+    local reagents = recipe.learned and type(recipe.reagents) == "table" and recipe.reagents
+    if not reagents or #reagents == 0 then return nil end
+    local best
+    for i = 1, #reagents do
+        local need = tonumber(reagents[i].count) or 1
+        local have = CharacterHaveCount(charKey, reagents[i].itemID, memo)
+        if have == nil then return nil end
+        local n = math.floor(have / math.max(1, need))
+        if not best or n < best then best = n end
+    end
+    return best
+end
+
+local function AcquireRecipeRow(child, pool, index)
+    local row = pool[index]
+    if not row then
+        row = Factory:CreateButton(child, 10, RECIPE_ROW_H, true)
+        if not row then return nil end
+        if Factory.ApplyHighlight then Factory:ApplyHighlight(row) end
+        row.selected = row:CreateTexture(nil, "BACKGROUND")
+        row.selected:SetAllPoints()
+        row.arrow = row:CreateTexture(nil, "ARTWORK")
+        row.arrow:SetSize(13, 13)
+        row.skillUp = row:CreateTexture(nil, "ARTWORK")
+        row.skillUp:SetSize(RL.MARKER_W, RL.MARKER_W)
+        row.skillUpText = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.skillUpText:SetPoint("CENTER", row.skillUp, "CENTER", 0, 0)
+        -- Bordered icon well, the same chrome every other WN icon uses, instead of a bare texture.
+        row.iconWell = CreateIcon(row, nil, RECIPE_ICON, false,
+            { 0.35, 0.35, 0.40, RL.WELL_ALPHA }, false)
+        if row.iconWell and row.iconWell.texture then
+            row.iconWell.texture:SetTexCoord(SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM, SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM)
+        end
+        row.label = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.label:SetJustifyH("LEFT")
+        row.label:SetWordWrap(false)
+        row.count = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.count:SetJustifyH("RIGHT")
+        row.bar = Factory.CreateProgressBar and Factory:CreateProgressBar(row, RL.BAR_W, RL.BAR_H)
+        if row.bar then row.bar:Hide() end
+        row:SetScript("OnLeave", SpellTooltipOnLeave)
+        pool[index] = row
+    end
+    row:SetParent(child)
+    row:Show()
+    return row
+end
+
+local function PaintCategoryRow(row, item, state)
+    local n = item.node
+    local indent = item.depth * RECIPE_INDENT
+    row:SetHeight(RECIPE_CAT_H)
+    row.selected:Hide()
+    if row.iconWell then row.iconWell:Hide() end
+    row.skillUp:Hide()
+    row.skillUpText:Hide()
+    row._wnRecipe = nil
+    row:SetScript("OnEnter", nil)
+
+    local collapsed = state.collapsed[n.id] and true or false
+    row.arrow:ClearAllPoints()
+    row.arrow:SetPoint("LEFT", row, "LEFT", indent + 2, 0)
+    local hasArrow = SetAtlasOrHide(row.arrow, collapsed and EXPAND_ATLAS or COLLAPSE_ATLAS)
+
+    -- Right side: the expansion rank bar where the client has one (retail headers), else the
+    -- learned / total count.
+    row.count:ClearAllPoints()
+    row.count:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+    ns.UI_SetTextColorRole(row.count, "Muted")
+    row.count:Show()
+    local rightAnchor = row.count
+    if row.bar and n.rank and n.rankMax and n.rankMax > 0 then
+        row.count:SetText(string.format("%d/%d", n.rank, n.rankMax))
+        row.bar:ClearAllPoints()
+        row.bar:SetPoint("RIGHT", row.count, "LEFT", -6, 0)
+        if row.bar.SetMinMaxValues then
+            row.bar:SetMinMaxValues(n.rankStart or 0, n.rankMax)
+            row.bar:SetValue(math.min(n.rank, n.rankMax))
+        end
+        if row.bar.SetStatusBarColor then
+            local a = AccentRGB()
+            row.bar:SetStatusBarColor(a[1], a[2], a[3], 1)
+        end
+        row.bar:Show()
+        rightAnchor = row.bar
+    else
+        if row.bar then row.bar:Hide() end
+        row.count:SetText(string.format("%d/%d", n.learned, n.total))
+    end
+
+    row.label:ClearAllPoints()
+    row.label:SetPoint("LEFT", row, "LEFT", indent + (hasArrow and 18 or 4), 0)
+    row.label:SetPoint("RIGHT", rightAnchor, "LEFT", -6, 0)
+    -- Retail draws headers in the gold "normal" ink and a fully unlearned branch disabled.
+    local prefix = hasArrow and "" or (collapsed and "+ " or "- ")
+    if n.learned > 0 then
+        row.label:SetText(GoldHex() .. prefix .. n.name .. "|r")
+    else
+        row.label:SetText(prefix .. n.name)
+        ns.UI_SetTextColorRole(row.label, "Dim")
+    end
+end
+
+local function PaintRecipeRow(row, item, state)
+    local r = item.recipe
+    -- Recipes sit one marker slot right of their header's arrow, like the retail tree.
+    local x = item.depth * RECIPE_INDENT
+    row:SetHeight(RECIPE_ROW_H)
+    row.arrow:Hide()
+    if row.bar then row.bar:Hide() end
+    row._wnRecipe = r
+    row:SetScript("OnEnter", RecipeTooltipOnEnter)
+
+    if state.selectedID == r.id then
+        local a = AccentRGB()
+        row.selected:SetColorTexture(a[1], a[2], a[3], 0.28)
+        row.selected:Show()
+    else
+        row.selected:Hide()
+    end
+
+    -- Skill-up marker in its own fixed slot, only while the recipe still gives points.
+    row.skillUp:ClearAllPoints()
+    row.skillUp:SetPoint("CENTER", row, "LEFT", x + RL.MARKER_W / 2, 0)
+    row.skillUpText:Hide()
+    local diff = r.learned and r.canSkillUp ~= false and r.difficulty
+    local shown = false
+    if diff and SKILLUP_ATLAS[diff] then
+        row.skillUp:SetSize(RL.MARKER_W, RL.MARKER_W)
+        shown = SetAtlasOrHide(row.skillUp, SKILLUP_ATLAS[diff])
+        if not shown and DIFFICULTY_RGB[diff] then
+            local c = DIFFICULTY_RGB[diff]
+            row.skillUp:SetColorTexture(c[1], c[2], c[3], 1)
+            row.skillUp:SetSize(6, 6)
+            row.skillUp:Show()
+            shown = true
+        end
+        if shown and diff == 0 and (tonumber(r.skillUps) or 0) > 1 then
+            local c = DIFFICULTY_RGB[0]
+            row.skillUpText:SetText(tostring(r.skillUps))
+            row.skillUpText:SetTextColor(c[1], c[2], c[3])
+            row.skillUpText:Show()
+        end
+    else
+        row.skillUp:Hide()
+    end
+
+    local well = row.iconWell
+    if well then
+        well:ClearAllPoints()
+        well:SetPoint("LEFT", row, "LEFT", x + RL.MARKER_W + RL.ICON_GAP, 0)
+        if well.texture then
+            well.texture:SetTexture(r.outputIcon or r.icon or 134400)
+            well.texture:SetDesaturated(not r.learned)
+            well.texture:SetAlpha(r.learned and 1 or 0.7)
+        end
+        well:Show()
+    end
+
+    -- Craftable count, as the retail list prints it after the name.
+    local can = CraftableCount(r, state.charKey, state.haveMemo)
+    if can and can > 0 then
+        row.count:ClearAllPoints()
+        row.count:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        row.count:SetText("[" .. can .. "]")
+        ns.UI_SetTextColorRole(row.count, "Bright")
+        row.count:Show()
+    else
+        row.count:Hide()
+    end
+
+    row.label:ClearAllPoints()
+    row.label:SetPoint("LEFT", well or row, well and "RIGHT" or "LEFT", RL.LABEL_GAP, 0)
+    row.label:SetPoint("RIGHT", (can and can > 0) and row.count or row, (can and can > 0) and "LEFT" or "RIGHT", -4, 0)
+    row.label:SetText(r.name or "")
+    -- A disabled recipe reads as unavailable, like retail's locked rows; the reason is in the detail.
+    ns.UI_SetTextColorRole(row.label, (r.learned and not r.disabled) and "Bright" or "Dim")
+end
+
+--[[
+    Right pane: the selected recipe, laid out like the retail schematic form
+    (Blizzard_ProfessionsRecipeSchematicForm.lua): product icon with the made count, product name
+    in its quality colour, "Requires: <tool>" under it, the recipe description, then the reagent
+    slots -- each an icon with have/need on it (red when short) and the reagent name beside it.
+    An unlearned recipe shows where it is taught instead of the skill-up line.
+
+    "Have" is the character's own bags + bank from the saved item storage
+    (GetDetailedItemCountsFast), so an offline alt shows what IT holds, not the logged-in one.
+    Item names and icons load through Item:CreateFromItemID so an uncached reagent fills in when
+    the client has it instead of blocking on GetItemInfo.
+]]
+local DETAIL_WRAP_W_PAD = PAD * 2
+
+--- Quality-coloured icon border (retail reagent / product slots); the default chrome otherwise.
+local function SetQualityBorder(iconFrame, itemID)
+    if not iconFrame or not ns.UI_UpdateBorderColor then return end
+    local r, g, b = QualityRGB(itemID)
+    if r then
+        ns.UI_UpdateBorderColor(iconFrame, { r, g, b, 0.9 })
+    else
+        local a = AccentRGB()
+        ns.UI_UpdateBorderColor(iconFrame, { a[1], a[2], a[3], 0.6 })
+    end
+end
+
+local function PaintItemName(fs, itemID, name)
+    fs:SetText(name or "")
+    local r, g, b = QualityRGB(itemID)
+    if r then fs:SetTextColor(r, g, b) else ns.UI_SetTextColorRole(fs, "Bright") end
+end
+
+local function NewWrapText(pane, font)
+    local fs = FontManager:CreateFontString(pane, font, "OVERLAY")
+    fs:SetJustifyH("LEFT")
+    fs:SetJustifyV("TOP")
+    fs:SetWordWrap(true)
+    return fs
+end
+
+local function BuildRecipeDetail(pane)
+    local d = { pane = pane, reagents = {} }
+    d.icon = CreateIcon(pane, nil, DETAIL_ICON, false, nil, false)
+    if d.icon then
+        d.icon:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD, -PAD)
+        if d.icon.texture then
+            d.icon.texture:SetTexCoord(SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM, SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM)
+        end
+        d.icon:EnableMouse(true)
+        d.icon:SetScript("OnEnter", function(self)
+            local link = self._wnLink
+            if link and ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT")
+                and pcall(GameTooltip.SetHyperlink, GameTooltip, link) then
+                GameTooltip:Show()
+                return
+            end
+            if self._wnItemID then ItemTooltipOnEnter(self) else RecipeTooltipOnEnter(self) end
+        end)
+        d.icon:SetScript("OnLeave", SpellTooltipOnLeave)
+        d.made = FontManager:CreateFontString(d.icon, "body", "OVERLAY")
+        d.made:SetPoint("BOTTOMRIGHT", d.icon, "BOTTOMRIGHT", -2, 2)
+        d.made:SetTextColor(1, 1, 1)
+    end
+    d.name = FontManager:CreateFontString(pane, "title", "OVERLAY")
+    d.name:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD + DETAIL_ICON + 12, -PAD - 4)
+    d.name:SetPoint("RIGHT", pane, "RIGHT", -PAD, 0)
+    d.name:SetJustifyH("LEFT")
+    d.name:SetWordWrap(false)
+    d.requires = FontManager:CreateFontString(pane, "small", "OVERLAY")
+    d.requires:SetPoint("TOPLEFT", d.name, "BOTTOMLEFT", 0, -5)
+    d.requires:SetPoint("RIGHT", pane, "RIGHT", -PAD, 0)
+    d.requires:SetJustifyH("LEFT")
+    d.category = FontManager:CreateFontString(pane, "small", "OVERLAY")
+    d.category:SetJustifyH("LEFT")
+    d.description = NewWrapText(pane, "body")
+    d.statusHead = FontManager:CreateFontString(pane, "subtitle", "OVERLAY")
+    d.statusHead:SetJustifyH("LEFT")
+    d.statusBody = NewWrapText(pane, "body")
+    d.info = NewWrapText(pane, "body")
+    d.reagentHead = FontManager:CreateFontString(pane, "subtitle", "OVERLAY")
+    d.reagentHead:SetJustifyH("LEFT")
+    d.reagentHead:SetText(L("RECIPES_REAGENTS", "Reagents"))
+    ns.UI_SetTextColorRole(d.reagentHead, "Bright")
+    d.missing = NewWrapText(pane, "small")
+    d.empty = FontManager:CreateFontString(pane, "body", "OVERLAY")
+    d.empty:SetPoint("LEFT", pane, "LEFT", PAD, 0)
+    d.empty:SetPoint("RIGHT", pane, "RIGHT", -PAD, 0)
+    d.empty:SetJustifyH("CENTER")
+    d.empty:SetText(L("RECIPES_SELECT_HINT", "Select a recipe to see its details."))
+    ns.UI_SetTextColorRole(d.empty, "Muted")
+    return d
+end
+
+local function AcquireReagentRow(d, index)
+    local row = d.reagents[index]
+    if not row then
+        row = Factory:CreateContainer(d.pane, 10, REAGENT_ROW_H, false)
+        if not row then return nil end
+        row.icon = CreateIcon(row, nil, REAGENT_ICON, false, nil, false)
+        if row.icon then
+            row.icon:SetPoint("LEFT", row, "LEFT", 0, 0)
+            -- Clip the art's baked-in frame so only our quality border shows.
+            if row.icon.texture then
+                row.icon.texture:SetTexCoord(SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM, SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM)
+            end
+            row.icon:EnableMouse(true)
+            row.icon:SetScript("OnEnter", ItemTooltipOnEnter)
+            row.icon:SetScript("OnLeave", SpellTooltipOnLeave)
+            -- have/need sits on a dark pill so it reads over any icon art, as on retail slots.
+            row.countBg = row.icon:CreateTexture(nil, "OVERLAY", nil, 5)
+            row.countBg:SetColorTexture(0, 0, 0, 0.75)
+            row.count = FontManager:CreateFontString(row.icon, "small", "OVERLAY")
+            row.count:SetDrawLayer("OVERLAY", 7)
+            row.count:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", -3, 3)
+            row.countBg:SetPoint("TOPLEFT", row.count, "TOPLEFT", -2, 1)
+            row.countBg:SetPoint("BOTTOMRIGHT", row.count, "BOTTOMRIGHT", 2, -1)
+        end
+        row.label = FontManager:CreateFontString(row, "body", "OVERLAY")
+        row.label:SetPoint("LEFT", row, "LEFT", REAGENT_ICON + 12, 0)
+        row.label:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        row.label:SetJustifyH("LEFT")
+        row.label:SetWordWrap(false)
+        d.reagents[index] = row
+    end
+    row:Show()
+    return row
+end
+
+--- Stack the shown blocks top to bottom under the product header; heights come from the text.
+local function StackDetail(d, blocks)
+    local pane = d.pane
+    -- The pane's rect may not be resolved on the pass that builds it; the window's own geometry
+    -- gives the same width.
+    local paneW = pane:GetWidth() or 0
+    if paneW < 100 then
+        paneW = RECIPE_WIN_W - PAD * 4 - RECIPE_LIST_W - RECIPE_PANE_GAP
+    end
+    local width = math.max(60, paneW - DETAIL_WRAP_W_PAD)
+    local y = -(PAD + DETAIL_ICON + 14)
+    for i = 1, #blocks do
+        local b = blocks[i]
+        local region, gap = b[1], b[2] or 8
+        region:ClearAllPoints()
+        region:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD, y)
+        if region.SetWidth and region.GetObjectType and region:GetObjectType() == "FontString" then
+            region:SetWidth(width)
+        else
+            region:SetPoint("RIGHT", pane, "RIGHT", -PAD, 0)
+        end
+        region:Show()
+        local h = (region.GetStringHeight and region:GetStringHeight()) or region:GetHeight() or 0
+        y = y - h - gap
+    end
+    return y
+end
+
+local function PaintRecipeDetail(d, recipe, entry)
+    for i = 1, #d.reagents do d.reagents[i]:Hide() end
+    d.category:Hide()
+    d.description:Hide()
+    d.statusHead:Hide()
+    d.statusBody:Hide()
+    d.info:Hide()
+    d.reagentHead:Hide()
+    d.missing:Hide()
+    if not recipe then
+        if d.icon then d.icon:Hide() end
+        d.name:SetText("")
+        d.requires:SetText("")
+        d.empty:ClearAllPoints()
+        d.empty:SetPoint("CENTER", d.pane, "CENTER", 0, 0)
+        d.empty:Show()
+        return
+    end
+    d.empty:Hide()
+
+    -- Product header.
+    local outID = tonumber(recipe.outputItemID)
+    if d.icon then
+        d.icon._wnRecipe = recipe
+        d.icon._wnItemID = outID
+        d.icon._wnLink = recipe.outputLink
+        local tex = outID and C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(outID)
+        SetQualityBorder(d.icon, outID)
+        if d.icon.texture then
+            d.icon.texture:SetTexture(recipe.outputIcon or tex or recipe.icon or 134400)
+            d.icon.texture:SetDesaturated(not recipe.learned)
+        end
+        local qMin, qMax = tonumber(recipe.quantityMin), tonumber(recipe.quantityMax)
+        if qMin and qMax and qMax > 1 then
+            d.made:SetText(qMin == qMax and tostring(qMin) or (qMin .. "-" .. qMax))
+        else
+            d.made:SetText("")
+        end
+        d.icon:Show()
+    end
+    local outName = outID and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(outID)
+    if issecretvalue and issecretvalue(outName) then outName = nil end
+    PaintItemName(d.name, outID, outName or recipe.name)
+    if outID and not outName and Item and Item.CreateFromItemID then
+        local item = Item:CreateFromItemID(outID)
+        local token = d.token
+        if item and not item:IsItemEmpty() then
+            item:ContinueOnItemLoad(function()
+                if d.token ~= token then return end
+                local n = item:GetItemName()
+                if issecretvalue and issecretvalue(n) then return end
+                PaintItemName(d.name, outID, n)
+            end)
+        end
+    end
+    if type(recipe.requires) == "table" and #recipe.requires > 0 then
+        d.requires:SetText(string.format(L("RECIPES_REQUIRES", "Requires: %s"), table.concat(recipe.requires, ", ")))
+        ns.UI_SetTextColorRole(d.requires, "Normal")
+    else
+        d.requires:SetText("")
+    end
+
+    local blocks = {}
+    -- Category path, top header first.
+    local cats = type(entry.categories) == "table" and entry.categories or {}
+    local parts, id, guard = {}, recipe.categoryID, 0
+    while id and cats[id] and guard < 6 do
+        table.insert(parts, 1, cats[id].name)
+        id = cats[id].parent
+        guard = guard + 1
+    end
+    if #parts > 0 then
+        d.category:SetText(table.concat(parts, " > "))
+        ns.UI_SetTextColorRole(d.category, "Muted")
+        blocks[#blocks + 1] = { d.category, 10 }
+    end
+    if recipe.description then
+        d.description:SetText(recipe.description)
+        ns.UI_SetTextColorRole(d.description, "Normal")
+        blocks[#blocks + 1] = { d.description, 14 }
+    end
+
+    -- Learned: the skill-up line. Unlearned: where it is taught (retail "Unlearned Recipe").
+    local diff = tonumber(recipe.difficulty)
+    local dk = diff and DIFFICULTY_KEY[diff]
+    if recipe.learned then
+        if dk then
+            local text = L(dk[1], dk[2])
+            local ups = tonumber(recipe.skillUps) or 0
+            if diff ~= 3 and ups > 0 then
+                text = text .. "  " .. string.format(L("RECIPES_SKILL_UPS", "+%d skill"), ups)
+            end
+            d.statusHead:SetText(text)
+            local c = DIFFICULTY_RGB[diff]
+            if c then d.statusHead:SetTextColor(c[1], c[2], c[3]) else ns.UI_SetTextColorRole(d.statusHead, "Muted") end
+            blocks[#blocks + 1] = { d.statusHead, 14 }
+        end
+    else
+        d.statusHead:SetText(L("RECIPES_UNLEARNED_HEADER", "Unlearned Recipe"))
+        ns.UI_SetTextColorRole(d.statusHead, "Dim")
+        blocks[#blocks + 1] = { d.statusHead, recipe.source and 4 or 14 }
+        if recipe.source then
+            d.statusBody:SetText(recipe.source)
+            ns.UI_SetTextColorRole(d.statusBody, "Normal")
+            blocks[#blocks + 1] = { d.statusBody, 14 }
+        end
+    end
+
+    -- Everything else the schematic form prints: item level, cooldown / charges, first-craft
+    -- bonus, quality ceiling, recipe rank, why it is unavailable, where the next rank is taught.
+    local lines = {}
+    local ilvl = tonumber(recipe.itemLevel)
+    if ilvl and ilvl > 0 then
+        lines[#lines + 1] = string.format(L("RECIPES_ITEM_LEVEL", "Item Level %d"), ilvl)
+    end
+    if recipe.maxCharges then
+        lines[#lines + 1] = string.format(L("RECIPES_CHARGES", "Charges: %d/%d"),
+            tonumber(recipe.charges) or 0, recipe.maxCharges)
+    end
+    local ends = tonumber(recipe.cooldownEndsAt)
+    if ends then
+        local left = ends - time()
+        if left > 0 then
+            local txt = (SecondsToTime and SecondsToTime(left)) or (math.ceil(left / 60) .. " min")
+            lines[#lines + 1] = string.format(L("RECIPES_COOLDOWN", "Cooldown: %s"), txt)
+        else
+            lines[#lines + 1] = string.format(L("RECIPES_COOLDOWN", "Cooldown: %s"), L("RECIPES_READY", "Ready"))
+        end
+    end
+    if recipe.firstCraft and recipe.learned then
+        lines[#lines + 1] = L("RECIPES_FIRST_CRAFT", "First craft bonus available")
+    end
+    if recipe.supportsQualities and tonumber(recipe.maxQuality) then
+        lines[#lines + 1] = string.format(L("RECIPES_MAX_QUALITY", "Quality: up to %d"), recipe.maxQuality)
+    end
+    local lvl = tonumber(recipe.unlockedRecipeLevel)
+    if lvl and lvl > 0 then
+        local cur, nxt = tonumber(recipe.currentRecipeExperience), tonumber(recipe.nextLevelRecipeExperience)
+        local rankText = string.format(L("RECIPES_RANK", "Rank %d"), lvl)
+        if cur and nxt and nxt > 0 then rankText = rankText .. string.format("  (%d/%d)", cur, nxt) end
+        lines[#lines + 1] = rankText
+    end
+    if recipe.disabled then
+        lines[#lines + 1] = "|cffff4040" .. (recipe.disabledReason or L("RECIPES_DISABLED", "Unavailable")) .. "|r"
+    end
+    if recipe.learned and recipe.nextSource then
+        lines[#lines + 1] = L("RECIPES_NEXT_RANK", "Next rank") .. ":\n" .. recipe.nextSource
+    end
+    if #lines > 0 then
+        d.info:SetText(table.concat(lines, "\n"))
+        ns.UI_SetTextColorRole(d.info, "Normal")
+        blocks[#blocks + 1] = { d.info, 16 }
+    end
+
+    local reagents = type(recipe.reagents) == "table" and recipe.reagents or nil
+    if reagents and #reagents > 0 then
+        blocks[#blocks + 1] = { d.reagentHead, 10 }
+    elseif recipe.order == nil then
+        -- Captured by an older build: no reagents were recorded yet.
+        d.missing:SetText(L("RECIPES_RESCAN_HINT",
+            "Open this profession once more on this character to load its reagents and categories."))
+        ns.UI_SetTextColorRole(d.missing, "Muted")
+        blocks[#blocks + 1] = { d.missing, 8 }
+    end
+    local y = StackDetail(d, blocks)
+    if not reagents or #reagents == 0 then return end
+
+    local pane = d.pane
+    local token = d.token
+    for i = 1, #reagents do
+        local rg = reagents[i]
+        local row = AcquireReagentRow(d, i)
+        if row then
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD, y - (i - 1) * REAGENT_ROW_H)
+            row:SetPoint("RIGHT", pane, "RIGHT", -PAD, 0)
+            local need = tonumber(rg.count) or 1
+            local have = CharacterHaveCount(d.charKey, rg.itemID, d.haveMemo)
+            if row.icon then
+                row.icon._wnItemID = rg.itemID
+                SetQualityBorder(row.icon, rg.itemID)
+                local tex = (C_Item and C_Item.GetItemIconByID) and C_Item.GetItemIconByID(rg.itemID)
+                if row.icon.texture then
+                    row.icon.texture:SetTexture(tex or 134400)
+                    row.icon.texture:SetDesaturated(have ~= nil and have < need)
+                end
+                if have then
+                    row.count:SetText(string.format("%d/%d", have, need))
+                    if have < need then row.count:SetTextColor(1, 0.3, 0.3) else row.count:SetTextColor(1, 1, 1) end
+                else
+                    row.count:SetText(tostring(need))
+                    row.count:SetTextColor(1, 1, 1)
+                end
+                row.icon:Show()
+            end
+            local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rg.itemID)
+            if issecretvalue and issecretvalue(name) then name = nil end
+            PaintItemName(row.label, rg.itemID, name or ("item:" .. tostring(rg.itemID)))
+            if not name and Item and Item.CreateFromItemID then
+                local item = Item:CreateFromItemID(rg.itemID)
+                if item and not item:IsItemEmpty() then
+                    item:ContinueOnItemLoad(function()
+                        -- A later selection reuses the row; only the current one may write.
+                        if d.token ~= token then return end
+                        local loaded = item:GetItemName()
+                        if issecretvalue and issecretvalue(loaded) then return end
+                        PaintItemName(row.label, rg.itemID, loaded)
+                        if row.icon and row.icon.texture then
+                            row.icon.texture:SetTexture(item:GetItemIcon() or 134400)
+                        end
+                    end)
+                end
+            end
+        end
+    end
+end
+
+local function FindRecipe(entry, id)
+    if not id then return nil end
+    for i = 1, #entry.recipes do
+        if entry.recipes[i].id == id then return entry.recipes[i] end
+    end
+    return nil
+end
+
+function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID)
+    local entry = self.GetProfessionRecipes and self:GetProfessionRecipes(charKey, professionID)
+    if not entry or not Factory then return end
+
+    local stateKey = tostring(charKey) .. ":" .. tostring(professionID)
+    local state = recipeViewState[stateKey]
+    if not state then
+        state = { collapsed = {}, showUnlearned = true, query = nil, selectedID = nil }
+        recipeViewState[stateKey] = state
+    end
 
     local title = entry.name or L("TAB_PROFESSIONS", "Professions")
     local dialog, content = CreateExternalWindow({
         name = "CharacterProfessionRecipesPopup",
         title = charName and (charName .. " - " .. title) or title,
         icon = ns.UI_GetIconFile("anvil"),
-        width = width,
-        height = height,
+        width = RECIPE_WIN_W,
+        height = RECIPE_WIN_H,
         preventDuplicates = true,
     })
     if not dialog then return end
     ResetContent(content)
 
-    local head = FontManager:CreateFontString(content, "body", "OVERLAY")
-    head:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, -PAD)
-    head:SetJustifyH("LEFT")
-    head:SetText(string.format("%s  %d / %d", title, entry.skillLevel or 0, entry.maxSkillLevel or 0))
-    ns.UI_SetTextColorRole(head, "Bright")
+    -- Top strip: rank bar like the retail header, known count, search and the unlearned filter.
+    local rank = FontManager:CreateFontString(content, "subtitle", "OVERLAY")
+    rank:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, -PAD)
+    rank:SetJustifyH("LEFT")
+    rank:SetText(title)
+    ns.UI_SetTextColorRole(rank, "Bright")
 
-    local scroll, child, contentW = BuildScroll(content, width, 22)
+    local bar = Factory.CreateProgressBar and Factory:CreateProgressBar(content, RECIPE_RANK_W, RECIPE_RANK_H)
+    local skill, maxSkill = tonumber(entry.skillLevel) or 0, tonumber(entry.maxSkillLevel) or 0
+    if bar then
+        bar:SetPoint("LEFT", rank, "RIGHT", 12, 0)
+        if bar.SetMinMaxValues then
+            bar:SetMinMaxValues(0, math.max(1, maxSkill))
+            bar:SetValue(math.min(skill, math.max(1, maxSkill)))
+        end
+        -- The factory bar fills white; the retail rank bar is a coloured fill.
+        if bar.SetStatusBarColor then
+            local a = AccentRGB()
+            bar:SetStatusBarColor(a[1], a[2], a[3], 1)
+        end
+        bar:Show()
+    end
+    local rankText = FontManager:CreateFontString(content, "small", "OVERLAY")
+    rankText:SetPoint("LEFT", bar or rank, "RIGHT", 8, 0)
+    local bonus = tonumber(entry.skillModifier)
+    rankText:SetText((bonus and bonus > 0)
+        and string.format("%d |cff40ff40(+%d)|r / %d", skill, bonus, maxSkill)
+        or string.format("%d / %d", skill, maxSkill))
+    ns.UI_SetTextColorRole(rankText, "Bright")
+
+    local known = FontManager:CreateFontString(content, "small", "OVERLAY")
+    known:SetPoint("TOPLEFT", rank, "BOTTOMLEFT", 0, -4)
+    known:SetJustifyH("LEFT")
+    local captured = ""
+    if entry.scannedAt and date then
+        captured = "   " .. string.format(L("RECIPES_CAPTURED", "Saved %s"), date("%Y-%m-%d %H:%M", entry.scannedAt))
+    end
+    known:SetText(string.format("%s %d / %d", L("RECIPES_KNOWN", "Known recipes"),
+        tonumber(entry.known) or 0, #entry.recipes) .. captured)
+    ns.UI_SetTextColorRole(known, "Muted")
+
+    -- Panes.
+    local paneTop = PAD + RECIPE_TOP_H
+    local listPane = Factory:CreateContainer(content, RECIPE_LIST_W, 10, true)
+    listPane:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, -paneTop)
+    listPane:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", PAD, PAD)
+    listPane:SetWidth(RECIPE_LIST_W)
+    listPane:Show()
+    local detailPane = Factory:CreateContainer(content, 10, 10, true)
+    detailPane:SetPoint("TOPLEFT", listPane, "TOPRIGHT", RECIPE_PANE_GAP, 0)
+    detailPane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -PAD, PAD)
+    detailPane:Show()
+    local detail = BuildRecipeDetail(detailPane)
+
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    local filterBtn = Factory:CreateButton(listPane, 10, searchH)
+    local filterLabel
+    if filterBtn then
+        filterBtn:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -RECIPE_LIST_PAD, -RECIPE_LIST_PAD)
+        filterBtn:SetWidth(RECIPE_LIST_W - RECIPE_SEARCH_W - RECIPE_LIST_PAD * 3)
+        if Factory.ApplyHighlight then Factory:ApplyHighlight(filterBtn) end
+        filterLabel = FontManager:CreateFontString(filterBtn, "small", "OVERLAY")
+        filterLabel:SetPoint("LEFT", 4, 0)
+        filterLabel:SetPoint("RIGHT", -4, 0)
+        filterLabel:SetJustifyH("CENTER")
+        filterLabel:SetWordWrap(false)
+        ns.UI_SetTextColorRole(filterLabel, "Bright")
+        filterBtn:Show()
+    end
+
+    local scroll, child = BuildScroll(listPane, RECIPE_LIST_W, searchH + RECIPE_LIST_PAD, RECIPE_LIST_PAD)
     if not scroll then return end
 
-    dialog._wnRecipePool = dialog._wnRecipePool or {}
-    local pool = dialog._wnRecipePool
-    for i = 1, #pool do pool[i]:Hide() end
+    dialog._wnRecipeRows = dialog._wnRecipeRows or {}
+    local pool = dialog._wnRecipeRows
+    local visible = {}
+    local Redraw
 
-    local y, used = 0, 0
-    for s = 1, #sections do
-        local section = sections[s]
-        local label = FontManager:CreateFontString(child, "subtitle", "OVERLAY")
-        label:SetPoint("TOPLEFT", child, "TOPLEFT", 0, y)
-        label:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, y)
-        label:SetJustifyH("LEFT")
-        label:SetText(string.format("%s  (%d)", section.title, #section.rows))
-        ns.UI_SetTextColorRole(label, "Bright")
-        y = y - SECTION_HEAD_H
+    detail.charKey = charKey
+    -- Have-counts are read once per open and shared by the list's craftable counts and the detail.
+    state.charKey = charKey
+    state.haveMemo = {}
+    detail.haveMemo = state.haveMemo
+    local function Select(recipe)
+        state.selectedID = recipe and recipe.id or nil
+        -- New token per selection: item loads still in flight for the previous pick drop out.
+        detail.token = (detail.token or 0) + 1
+        PaintRecipeDetail(detail, recipe, entry)
+    end
 
-        if #section.rows == 0 then
-            local note = FontManager:CreateFontString(child, "small", "OVERLAY")
-            note:SetPoint("TOPLEFT", child, "TOPLEFT", 0, y)
-            note:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, y)
-            note:SetJustifyH("LEFT")
-            note:SetText(section.emptyText or "")
-            note:SetTextColor(Muted())
-            y = y - SECTION_HEAD_H
+    local function RowOnClick(row)
+        local item = row._wnItem
+        if not item then return end
+        if item.kind == "category" then
+            local id = item.node.id
+            state.collapsed[id] = not state.collapsed[id] or nil
+        else
+            Select(item.recipe)
         end
+        Redraw()
+    end
 
-        for r = 1, #section.rows do
-            local recipe = section.rows[r]
-            used = used + 1
-            local cell = AcquireIconCell(child, pool, used, SKILL_ICON)
-            if cell then
-                local col = (r - 1) % SKILL_COLUMNS
-                local gridRow = math.floor((r - 1) / SKILL_COLUMNS)
-                cell:ClearAllPoints()
-                cell:SetPoint("TOPLEFT", child, "TOPLEFT",
-                    col * SKILL_CELL_W + (SKILL_CELL_W - SKILL_ICON) / 2,
-                    y - gridRow * SKILL_CELL_H)
-                if cell.texture then
-                    cell.texture:SetTexture(recipe.icon or 134400)
-                    cell.texture:SetDesaturated(not recipe.learned)
+    Redraw = function()
+        for i = 1, #pool do pool[i]:Hide() end
+        wipe(visible)
+        local roots = BuildRecipeTree(entry, state.query)
+        FlattenRecipeTree(roots, state, visible)
+        local y, w = 0, child:GetWidth()
+        for i = 1, #visible do
+            local item = visible[i]
+            local row = AcquireRecipeRow(child, pool, i)
+            if row then
+                row._wnItem = item
+                row:SetScript("OnClick", RowOnClick)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, y)
+                row:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, y)
+                if item.kind == "category" then
+                    PaintCategoryRow(row, item, state)
+                    y = y - RECIPE_CAT_H
+                else
+                    PaintRecipeRow(row, item, state)
+                    y = y - RECIPE_ROW_H
                 end
-                cell.caption:SetText("")
-                cell._wnSpellID = recipe.id
-                cell._wnSpellName = recipe.name
-                cell._wnSpellSub = nil
             end
         end
-        y = y - math.ceil(#section.rows / SKILL_COLUMNS) * SKILL_CELL_H
+        if #visible == 0 then
+            child._wnEmpty = child._wnEmpty or FontManager:CreateFontString(child, "body", "OVERLAY")
+            child._wnEmpty:SetPoint("TOP", child, "TOP", 0, -12)
+            child._wnEmpty:SetText(L("NO_ITEMS_MATCH_GENERIC", "No items match your search"))
+            ns.UI_SetTextColorRole(child._wnEmpty, "Muted")
+            child._wnEmpty:Show()
+            y = -40
+        elseif child._wnEmpty then
+            child._wnEmpty:Hide()
+        end
+        if w and w > 1 then child:SetWidth(w) end
+        child:SetHeight(math.max(1, -y))
+        RefreshScrollBar(scroll)
+        if filterLabel then
+            filterLabel:SetText(state.showUnlearned and L("RECIPES_FILTER_ALL", "All recipes")
+                or L("RECIPES_FILTER_LEARNED", "Learned only"))
+        end
     end
-    child:SetHeight(math.max(1, -y))
-    RefreshScrollBar(scroll)
+
+    if filterBtn then
+        filterBtn:SetScript("OnClick", function()
+            state.showUnlearned = not state.showUnlearned
+            Redraw()
+        end)
+    end
+
+    local search = Factory:CreateSearchBox(listPane, RECIPE_SEARCH_W,
+        L("RECIPES_SEARCH", "Search recipes..."), function(text)
+            if issecretvalue and issecretvalue(text) then return end
+            local q = type(text) == "string" and text:lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
+            state.query = (q ~= "") and q or nil
+            Redraw()
+        end, state.query)
+    if search then
+        search:SetPoint("TOPLEFT", listPane, "TOPLEFT", RECIPE_LIST_PAD, -RECIPE_LIST_PAD)
+        search:Show()
+    end
+
+    -- First open: pick the first learned recipe so the right pane is never blank by accident.
+    if not state.selectedID then
+        for i = 1, #entry.recipes do
+            if entry.recipes[i].learned then state.selectedID = entry.recipes[i].id break end
+        end
+    end
+    Select(FindRecipe(entry, state.selectedID))
+    Redraw()
 end

@@ -380,19 +380,53 @@ function WarbandNexus:InitializeEventManager()
     -- the module gate on both events that signal an open window. Blizzard's own profession frame
     -- renders blank on that client (confirmed with every addon disabled), which makes our copy
     -- the only place the list can be read; all the more reason not to miss the capture.
-    local function ScanProfessionRecipes()
-        Debounce("PROFESSION_RECIPES", 0.5, function()
-            if not WarbandNexus.ScanProfessionRecipes then return end
+    -- One capture per open window, retried a few times: the list can still be empty (or the base
+    -- profession id still 0) when the first debounced read runs, and TRADE_SKILL_LIST_UPDATE is
+    -- not guaranteed to fire again afterwards. A single failed read left that character with no
+    -- recipes at all, so every other character saw "open this window" for it.
+    local RECIPE_SCAN_RETRY_SEC = 1.0
+    local RECIPE_SCAN_MAX_TRIES = 6
+    local recipeScanTries, recipeScanDone = 0, false
+    local function ScanProfessionRecipes(delay)
+        Debounce("PROFESSION_RECIPES", delay or 0.5, function()
+            if recipeScanDone or not WarbandNexus.ScanProfessionRecipes then return end
             if not (ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)) then
                 return
             end
             -- pcall: this runs in a timer alongside Blizzard's own frame, and an error escaping
             -- here would land on that frame rather than on us.
-            pcall(WarbandNexus.ScanProfessionRecipes, WarbandNexus)
+            local ok, entry, reason = pcall(WarbandNexus.ScanProfessionRecipes, WarbandNexus)
+            if ok and entry then
+                recipeScanDone = true
+                -- Per-api answer counts: shows at a glance which apis are empty on this client.
+                local h = entry.apiHits
+                if ns.DebugPrint and type(h) == "table" then
+                    ns.DebugPrint(string.format("|cff9370DB[Recipes]|r %s: %d recipes, category %d, reagents %d,"
+                        .. " description %d, source %d/%d unlearned, requires %d, output %d, cooldown %d, link %d",
+                        tostring(entry.name), #entry.recipes, h.category, h.reagents, h.description,
+                        h.source, h.unlearned, h.requires, h.output, h.cooldown, h.link))
+                end
+                return
+            end
+            if not ok then reason = entry end
+            -- Someone else's list (linked, guild, NPC crafter): never this character's recipes,
+            -- and waiting will not change that.
+            if reason == "foreign" then
+                recipeScanDone = true
+                return
+            end
+            recipeScanTries = recipeScanTries + 1
+            if recipeScanTries < RECIPE_SCAN_MAX_TRIES then
+                ScanProfessionRecipes(RECIPE_SCAN_RETRY_SEC)
+            elseif ns.DebugPrint then
+                ns.DebugPrint("|cff9370DB[Recipes]|r capture failed after " .. recipeScanTries
+                    .. " tries: " .. tostring(reason))
+            end
         end)
     end
 
     self:RegisterEvent("TRADE_SKILL_SHOW", function()
+        recipeScanTries, recipeScanDone = 0, false
         ScanProfessionRecipes()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillShow then
@@ -400,6 +434,9 @@ function WarbandNexus:InitializeEventManager()
         end
     end)
     self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", function()
+        -- Same window, different profession: capture that one too.
+        recipeScanTries, recipeScanDone = 0, false
+        ScanProfessionRecipes()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillDataSourceChanged then
             WarbandNexus:OnTradeSkillDataSourceChanged()
@@ -408,6 +445,8 @@ function WarbandNexus:InitializeEventManager()
         end
     end)
     self:RegisterEvent("TRADE_SKILL_CLOSE", function()
+        -- Nothing is readable once the window is gone; stop any pending retry.
+        recipeScanDone = true
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillClose then
             WarbandNexus:OnTradeSkillClose()
@@ -427,6 +466,9 @@ function WarbandNexus:InitializeEventManager()
         -- Recipes are only readable while this window is open, and the Character tab needs them
         -- on WoW Forever regardless of whether the Professions module is on -- so this runs
         -- before the module gate below. Debounced: the event fires repeatedly as the list fills.
+        -- A list update means the content changed (recipe learned, another profession shown),
+        -- so a capture already taken for this window is stale.
+        recipeScanDone = false
         ScanProfessionRecipes()
         if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus.OnTradeSkillListUpdate then
