@@ -66,7 +66,7 @@ local MOVED = {
         "GetConcentrationQueue", "GetRecipeCraftCountFromMaterials", "GetCraftersForRecipe",
         "GetProfessionConcentrationEntry", "GetEstimatedConcentration", "GetConcentrationTimeToFull",
         "GetConcentrationTimeToFullDetailed", "GetKnowledgeData", "GetAllKnowledgeDataForProfession",
-        "PrintProfessionVerify", "GetRecipeMissingReagents", "FormatShoppingList",
+        "PrintProfessionVerify", "GetReagentHoldings",
     },
 }
 

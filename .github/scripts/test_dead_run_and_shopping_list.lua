@@ -1,9 +1,8 @@
 #!/usr/bin/env lua5.1
 --[[
-    Warband Nexus - Unit Test: Dead Run Tracker & Shopping List
+    Warband Nexus - Unit Test: Dead Run Tracker
     Tests:
     1. GetVaultDeadRunAnalysis (Mythic+ and Delves/World)
-    2. GetRecipeMissingReagents & FormatShoppingList
 ]]
 
 local passed = 0
@@ -224,32 +223,6 @@ assert_eq(resWorld.world.slotTargets[1].currentTier, 8, "Slot 1 (2nd run) is Tie
 assert_eq(resWorld.world.slotTargets[2].currentTier, 8, "Slot 2 (4th run) is Tier 8")
 assert_eq(resWorld.world.slotTargets[3].currentTier, 4, "Slot 3 (8th run) is Tier 4")
 assert_eq(resWorld.world.slotTargets[3].nextTierNeeded, 5, "Slot 3 upgrade needs Tier 5")
-
-print("phase 3: Crafting Order Shopping List")
-
-function WarbandNexus:FormatShoppingList(missingData)
-    if not missingData or not missingData.missingReagents then return "" end
-    local lines = {}
-    local title = missingData.recipeName or "Shopping List"
-    lines[#lines + 1] = "Warband Nexus: " .. title
-    for i = 1, #missingData.missingReagents do
-        local r = missingData.missingReagents[i]
-        lines[#lines + 1] = string.format("- %dx %s", r.missing, r.name)
-    end
-    return table.concat(lines, "\n")
-end
-
-local mockMissing = {
-    recipeName = "Test Midnight Chest",
-    missingReagents = {
-        { itemID = 101, name = "Bismuth", needed = 20, have = 8, missing = 12 },
-        { itemID = 102, name = "Null Stone", needed = 4, have = 0, missing = 4 },
-    }
-}
-local formatted = WarbandNexus:FormatShoppingList(mockMissing)
-assert_true(formatted:find("Warband Nexus: Test Midnight Chest") ~= nil, "Header in formatted list")
-assert_true(formatted:find("- 12x Bismuth") ~= nil, "Bismuth in formatted list")
-assert_true(formatted:find("- 4x Null Stone") ~= nil, "Null Stone in formatted list")
 
 print(string.format("test_dead_run_and_shopping_list: %d checks passed, %d failed", passed, failed))
 if failed > 0 then

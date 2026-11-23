@@ -1228,17 +1228,11 @@ end
 
 
 --[[
-    Profession icon click.
-
-    Offline character: its saved recipe window, read from that character's row.
-    Logged-in character: the profession itself is opened (C_TradeSkillUI.OpenTradeSkill -- a
-    hardware-event api, which a mouse click satisfies). That is also what captures the recipe
-    list, so the saved window follows once the capture for that profession lands, already
-    fresh. When the profession has no window to open (Fishing, combat lockdown, a refused call),
-    the saved window is shown instead.
+    Profession icon click: the saved recipe window, read from that character's row -- for the
+    logged-in character too. Opening Blizzard's profession frame from here made the window wait
+    on a fresh capture and pulled up every addon hooked on TRADE_SKILL_SHOW alongside it; the
+    capture already runs whenever the player opens the profession themselves.
 ]]
-local PENDING_RECIPES_TTL = 10
-CharRowCb.recipeEvents = CharRowCb.recipeEvents or {}
 
 local function CharDisplayName(char)
     local who = (ns.Utilities and ns.Utilities.GetCharacterDisplayName
@@ -1262,44 +1256,11 @@ local function ShowSavedRecipes(char, profID)
     WarbandNexus:ShowProfessionRecipesPopup(key, CharDisplayName(char), profID)
 end
 
-local function OpenLiveProfession(profID)
-    if InCombatLockdown and InCombatLockdown() then return false end
-    if type(C_TradeSkillUI) ~= "table" or type(C_TradeSkillUI.OpenTradeSkill) ~= "function" then
-        return false
-    end
-    local ok, success = pcall(C_TradeSkillUI.OpenTradeSkill, profID)
-    return ok and success ~= false
-end
-
 function CharRowCb.ProfOnClick(self)
     local char, profID = self._wnProfChar, self._wnProfID
     if not char or not profID or not WarbandNexus.ShowProfessionRecipesPopup then return end
     CharRowCb.HideTip()
-    if IsCharLoggedInSession(char) and OpenLiveProfession(profID) then
-        CharRowCb.pendingRecipes = {
-            charKey = GetCharKey(char), profID = profID, char = char, at = GetTime(),
-        }
-        return
-    end
     ShowSavedRecipes(char, profID)
-end
-
---- Capture landed (WN_CHARACTER_SYSTEMS_UPDATED with a professionID): open the window the click
---- asked for. Only the logged-in character ever captures, so the test is simply whether the
---- clicked profession now has a saved list.
-if WarbandNexus.RegisterMessage then
-WarbandNexus.RegisterMessage(CharRowCb.recipeEvents, E.CHARACTER_SYSTEMS_UPDATED or "WN_CHARACTER_SYSTEMS_UPDATED",
-    function(_, payload)
-        local pending = CharRowCb.pendingRecipes
-        if not pending or type(payload) ~= "table" or not payload.professionID then return end
-        if GetTime() - (pending.at or 0) > PENDING_RECIPES_TTL then
-            CharRowCb.pendingRecipes = nil
-            return
-        end
-        if not WarbandNexus:GetProfessionRecipes(pending.charKey, pending.profID) then return end
-        CharRowCb.pendingRecipes = nil
-        ShowSavedRecipes(pending.char, pending.profID)
-    end)
 end
 
 function CharRowCb.TrackingOnClick(selfBtn)

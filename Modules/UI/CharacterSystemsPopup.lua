@@ -1011,12 +1011,6 @@ local DIFFICULTY_RGB = {
     [1] = { 1.00, 1.00, 0.00 },
     [2] = { 0.25, 0.75, 0.25 },
 }
-local DIFFICULTY_KEY = {
-    [0] = { "RECIPES_DIFFICULTY_OPTIMAL", "Optimal" },
-    [1] = { "RECIPES_DIFFICULTY_MEDIUM", "Medium" },
-    [2] = { "RECIPES_DIFFICULTY_EASY", "Easy" },
-    [3] = { "RECIPES_DIFFICULTY_TRIVIAL", "Trivial" },
-}
 
 -- Per profession, per window lifetime of the session: collapsed headers, the filter, the pick.
 local recipeViewState = {}
@@ -1051,26 +1045,54 @@ local function GoldHex()
 end
 
 --- Recipe tooltip: the captured hyperlink first (it renders offline), then the recipe spell.
+--[[
+    Recipe window tooltips open beside the window, never on top of it: anchored to the owner they
+    covered the reagent list they describe. The window is the tip host; the tooltip goes to its
+    right edge, or its left when the screen has no room there. Owners outside the recipe window
+    have no host and keep the plain owner anchor.
+]]
+local function TipHost(owner)
+    return owner and (owner._wnTipHost or (owner._wnDetail and owner._wnDetail.host)) or nil
+end
+
+local function TipAnchor(owner)
+    return TipHost(owner) and "ANCHOR_NONE" or "ANCHOR_RIGHT"
+end
+
+local function PlaceTipBeside(owner)
+    local host = TipHost(owner)
+    if not host or not GameTooltip:IsOwned(owner) then return end
+    local hl, hr = host:GetLeft(), host:GetRight()
+    local screenR = UIParent:GetRight()
+    if not hl or not hr or not screenR then return end
+    -- Compare in screen pixels: the window, the tooltip and UIParent can each carry their own scale.
+    local hs, ts, us = host:GetEffectiveScale(), GameTooltip:GetEffectiveScale(), UIParent:GetEffectiveScale()
+    local tipW = (GameTooltip:GetWidth() or 0) * ts
+    GameTooltip:ClearAllPoints()
+    if hr * hs + tipW + 8 <= screenR * us or hl * hs < tipW + 8 then
+        GameTooltip:SetPoint("TOPLEFT", host, "TOPRIGHT", 4, 0)
+    else
+        GameTooltip:SetPoint("TOPRIGHT", host, "TOPLEFT", -4, 0)
+    end
+end
+
 local function RecipeTooltipOnEnter(self)
     local recipe = self._wnRecipe
-    if not recipe or not ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then return end
-    if recipe.link and GameTooltip.SetHyperlink and pcall(GameTooltip.SetHyperlink, GameTooltip, recipe.link) then
-        GameTooltip:Show()
-        return
+    if not recipe or not ns.UI_SafeSetGameTooltipOwner(self, TipAnchor(self)) then return end
+    if not (recipe.link and GameTooltip.SetHyperlink and pcall(GameTooltip.SetHyperlink, GameTooltip, recipe.link))
+        and not (recipe.id and GameTooltip.SetSpellByID and pcall(GameTooltip.SetSpellByID, GameTooltip, recipe.id)) then
+        GameTooltip:SetText(recipe.name or "")
     end
-    if recipe.id and GameTooltip.SetSpellByID and pcall(GameTooltip.SetSpellByID, GameTooltip, recipe.id) then
-        GameTooltip:Show()
-        return
-    end
-    GameTooltip:SetText(recipe.name or "")
     GameTooltip:Show()
+    PlaceTipBeside(self)
 end
 
 local function ItemTooltipOnEnter(self)
     local itemID = self._wnItemID
-    if not itemID or not ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT") then return end
+    if not itemID or not ns.UI_SafeSetGameTooltipOwner(self, TipAnchor(self)) then return end
     if GameTooltip.SetItemByID and pcall(GameTooltip.SetItemByID, GameTooltip, itemID) then
         GameTooltip:Show()
+        PlaceTipBeside(self)
     else
         ns.UI_SafeHideGameTooltip()
     end
@@ -1219,7 +1241,21 @@ local function CharacterHaveCount(charKey, itemID, memo)
             if k == charKey or canon == want then total = tonumber(row.total) or 0 break end
         end
     end
+    -- Crafting draws from the Warband Bank too (ItemUtil.GetCraftingReagentCount: includeAccountBank).
+    if type(counts) == "table" then total = total + (tonumber(counts.warbandBank) or 0) end
     if memo then memo[itemID] = total end
+    return total
+end
+
+--- Held count for one reagent slot: every quality tier it accepts counts, as the retail slot does.
+local function ReagentHaveCount(charKey, rg, memo)
+    local tiers = type(rg.tiers) == "table" and rg.tiers or nil
+    if not tiers then return CharacterHaveCount(charKey, rg.itemID, memo) end
+    local total
+    for t = 1, #tiers do
+        local n = CharacterHaveCount(charKey, tiers[t].itemID, memo)
+        if n then total = (total or 0) + n end
+    end
     return total
 end
 
@@ -1231,7 +1267,7 @@ local function CraftableCount(recipe, charKey, memo)
     local best
     for i = 1, #reagents do
         local need = tonumber(reagents[i].count) or 1
-        local have = CharacterHaveCount(charKey, reagents[i].itemID, memo)
+        local have = ReagentHaveCount(charKey, reagents[i], memo)
         if have == nil then return nil end
         local n = math.floor(have / math.max(1, need))
         if not best or n < best then best = n end
@@ -1337,6 +1373,7 @@ local function PaintRecipeRow(row, item, state)
     row.arrow:Hide()
     if row.bar then row.bar:Hide() end
     row._wnRecipe = r
+    row._wnTipHost = state.tipHost
     row:SetScript("OnEnter", RecipeTooltipOnEnter)
 
     if state.selectedID == r.id then
@@ -1402,7 +1439,14 @@ local function PaintRecipeRow(row, item, state)
     row.label:SetPoint("RIGHT", (can and can > 0) and row.count or row, (can and can > 0) and "LEFT" or "RIGHT", -4, 0)
     row.label:SetText(r.name or "")
     -- A disabled recipe reads as unavailable, like retail's locked rows; the reason is in the detail.
-    ns.UI_SetTextColorRole(row.label, (r.learned and not r.disabled) and "Bright" or "Dim")
+    -- One the character holds every reagent for reads green (theme-aware semantic green).
+    local green = can and can > 0 and r.learned and not r.disabled
+        and ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completedRgb
+    if green then
+        row.label:SetTextColor(green[1], green[2], green[3])
+    else
+        ns.UI_SetTextColorRole(row.label, (r.learned and not r.disabled) and "Bright" or "Dim")
+    end
 end
 
 --[[
@@ -1412,8 +1456,9 @@ end
     slots -- each an icon with have/need on it (red when short) and the reagent name beside it.
     An unlearned recipe shows where it is taught instead of the skill-up line.
 
-    "Have" is the character's own bags + bank from the saved item storage
-    (GetDetailedItemCountsFast), so an offline alt shows what IT holds, not the logged-in one.
+    "Have" is the character's own bags + bank plus the shared Warband Bank from the saved item
+    storage (GetDetailedItemCountsFast), so an offline alt shows what IT can craft with, not the
+    logged-in one.
     Item names and icons load through Item:CreateFromItemID so an uncached reagent fills in when
     the client has it instead of blocking on GetItemInfo.
 ]]
@@ -1445,8 +1490,121 @@ local function NewWrapText(pane, font)
     return fs
 end
 
+--[[
+    Inline quality mark sized from the text it sits in, never a fixed pixel count: the font height
+    already follows the WN font setting and the UI scale, so the mark stays one text line tall on
+    any monitor, resolution or scale. The width keeps the atlas's own aspect.
+]]
+local function QualityMarkup(atlas, fontHeight, itemID, recipeID, qualityIndex)
+    -- Rows saved before iconChat was captured still hold the padded iconSmall; quality info is
+    -- static game data (not per character), so the chat atlas is read live when the api has it.
+    local TS = C_TradeSkillUI
+    local ok, qi
+    if TS and itemID and TS.GetItemReagentQualityInfo then
+        ok, qi = pcall(TS.GetItemReagentQualityInfo, itemID)
+    elseif TS and recipeID and qualityIndex and TS.GetRecipeItemQualityInfo then
+        ok, qi = pcall(TS.GetRecipeItemQualityInfo, recipeID, qualityIndex)
+    end
+    local chat = ok and type(qi) == "table" and qi.iconChat
+    if type(chat) == "string" and not (issecretvalue and issecretvalue(chat)) and chat ~= "" then atlas = chat end
+    -- One text line tall (+1): a taller mark grows only its own line in a multi-line string, which
+    -- breaks the block's rhythm and lifts the mark off the text.
+    local h = math.max(10, math.floor((tonumber(fontHeight) or 12) + 1.5))
+    local w = h
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
+    if info and tonumber(info.width) and tonumber(info.height) and info.height > 0 then
+        w = math.max(1, math.floor(h * info.width / info.height + 0.5))
+    end
+    return string.format("|A:%s:%d:%d|a", atlas, h, w)
+end
+
+--- Font height of a string, or of a FontManager category when the string does not exist yet.
+local function FontHeightOf(fs, category)
+    if fs and fs.GetFont then
+        local _, h = fs:GetFont()
+        if tonumber(h) then return h end
+    end
+    return FontManager.GetFontSize and FontManager:GetFontSize(category or "body") or 12
+end
+
+--- "|A:tier1|a 3  |A:tier2|a 0" -- per-tier holdings, the breakdown the retail slot tooltip lists.
+local function TierSummary(charKey, rg, memo, size)
+    local tiers = type(rg.tiers) == "table" and rg.tiers or nil
+    if not tiers then return nil end
+    local parts = {}
+    for t = 1, #tiers do
+        local tr = tiers[t]
+        local mark = tr.atlas and QualityMarkup(tr.atlas, size, tr.itemID)
+            or (tr.tier and ("T" .. tr.tier)) or ("#" .. t)
+        parts[#parts + 1] = mark .. " " .. tostring(CharacterHaveCount(charKey, tr.itemID, memo) or 0)
+    end
+    return table.concat(parts, "   ")
+end
+
+--- Reagent icon: the item tooltip, then one line per quality tier with what this character holds.
+local function ReagentOnEnter(self)
+    ItemTooltipOnEnter(self)
+    local rg, d = self._wnReagent, self._wnDetail
+    if not rg or not d or not GameTooltip:IsOwned(self) then return end
+    local line = TierSummary(d.charKey, rg, d.haveMemo, FontHeightOf(GameTooltipTextLeft1))
+    if line then
+        local r, g, b = ns.UI_GetTooltipBodyColor()
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(line, r, g, b)
+        GameTooltip:Show()
+        PlaceTipBeside(self)
+    end
+end
+
+--- Optional / finishing slot: slot name, required rank, then every item it takes and how many held.
+local function SlotOnEnter(self)
+    local slot, d = self._wnSlot, self._wnDetail
+    if not slot or not d or not ns.UI_SafeSetGameTooltipOwner(self, TipAnchor(self)) then return end
+    local tr, tg, tb = ns.UI_GetTooltipTitleColor()
+    local br, bg, bb = ns.UI_GetTooltipBodyColor()
+    local title = slot.label or (slot.kind == "finishing" and L("RECIPES_FINISHING", "Finishing Reagents")
+        or L("RECIPES_OPTIONAL", "Optional Reagents"))
+    GameTooltip:AddLine(title, tr, tg, tb)
+    if slot.required then GameTooltip:AddLine(L("RECIPES_SLOT_REQUIRED", "Required"), 1, 0.3, 0.3) end
+    if slot.rank then
+        GameTooltip:AddLine(string.format(L("RECIPES_SLOT_RANK", "Unlocks at skill %d"), slot.rank), br, bg, bb)
+    end
+    local ids = slot.itemIDs or {}
+    for i = 1, #ids do
+        local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(ids[i])
+        if issecretvalue and issecretvalue(name) then name = nil end
+        local qr, qg, qb = QualityRGB(ids[i])
+        GameTooltip:AddDoubleLine(name or ("item:" .. ids[i]),
+            tostring(CharacterHaveCount(d.charKey, ids[i], d.haveMemo) or 0),
+            qr or br, qg or bg, qb or bb, br, bg, bb)
+    end
+    GameTooltip:Show()
+    PlaceTipBeside(self)
+end
+
+local function AcquireSlotIcon(d, index)
+    local cell = d.slots[index]
+    if not cell then
+        cell = CreateIcon(d.pane, nil, REAGENT_ICON, false, nil, false)
+        if not cell then return nil end
+        if cell.texture then
+            cell.texture:SetTexCoord(SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM, SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM)
+        end
+        cell:EnableMouse(true)
+        cell:SetScript("OnEnter", SlotOnEnter)
+        cell:SetScript("OnLeave", SpellTooltipOnLeave)
+        cell.count = FontManager:CreateFontString(cell, "small", "OVERLAY")
+        cell.count:SetDrawLayer("OVERLAY", 7)
+        cell.count:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -3, 3)
+        cell.count:SetTextColor(1, 1, 1)
+        d.slots[index] = cell
+    end
+    cell:Show()
+    return cell
+end
+
 local function BuildRecipeDetail(pane)
-    local d = { pane = pane, reagents = {} }
+    local d = { pane = pane, reagents = {}, slots = {} }
     d.icon = CreateIcon(pane, nil, DETAIL_ICON, false, nil, false)
     if d.icon then
         d.icon:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD, -PAD)
@@ -1456,14 +1614,16 @@ local function BuildRecipeDetail(pane)
         d.icon:EnableMouse(true)
         d.icon:SetScript("OnEnter", function(self)
             local link = self._wnLink
-            if link and ns.UI_SafeSetGameTooltipOwner(self, "ANCHOR_RIGHT")
+            if link and ns.UI_SafeSetGameTooltipOwner(self, TipAnchor(self))
                 and pcall(GameTooltip.SetHyperlink, GameTooltip, link) then
                 GameTooltip:Show()
+                PlaceTipBeside(self)
                 return
             end
             if self._wnItemID then ItemTooltipOnEnter(self) else RecipeTooltipOnEnter(self) end
         end)
         d.icon:SetScript("OnLeave", SpellTooltipOnLeave)
+        d.icon._wnDetail = d
         d.made = FontManager:CreateFontString(d.icon, "body", "OVERLAY")
         d.made:SetPoint("BOTTOMRIGHT", d.icon, "BOTTOMRIGHT", -2, 2)
         d.made:SetTextColor(1, 1, 1)
@@ -1484,10 +1644,22 @@ local function BuildRecipeDetail(pane)
     d.statusHead:SetJustifyH("LEFT")
     d.statusBody = NewWrapText(pane, "body")
     d.info = NewWrapText(pane, "body")
+    d.crafters = NewWrapText(pane, "small")
+    -- Reagents whose warband holdings table is open (ProfessionRecipeHoldings), keyed by item id.
+    d.expanded = {}
+    d.padX = PAD
     d.reagentHead = FontManager:CreateFontString(pane, "subtitle", "OVERLAY")
     d.reagentHead:SetJustifyH("LEFT")
     d.reagentHead:SetText(L("RECIPES_REAGENTS", "Reagents"))
     ns.UI_SetTextColorRole(d.reagentHead, "Bright")
+    d.optHead = FontManager:CreateFontString(pane, "subtitle", "OVERLAY")
+    d.optHead:SetJustifyH("LEFT")
+    d.optHead:SetText(L("RECIPES_OPTIONAL", "Optional Reagents"))
+    ns.UI_SetTextColorRole(d.optHead, "Bright")
+    d.finHead = FontManager:CreateFontString(pane, "subtitle", "OVERLAY")
+    d.finHead:SetJustifyH("LEFT")
+    d.finHead:SetText(L("RECIPES_FINISHING", "Finishing Reagents"))
+    ns.UI_SetTextColorRole(d.finHead, "Bright")
     d.missing = NewWrapText(pane, "small")
     d.empty = FontManager:CreateFontString(pane, "body", "OVERLAY")
     d.empty:SetPoint("LEFT", pane, "LEFT", PAD, 0)
@@ -1511,7 +1683,7 @@ local function AcquireReagentRow(d, index)
                 row.icon.texture:SetTexCoord(SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM, SPELL_ICON_TRIM, 1 - SPELL_ICON_TRIM)
             end
             row.icon:EnableMouse(true)
-            row.icon:SetScript("OnEnter", ItemTooltipOnEnter)
+            row.icon:SetScript("OnEnter", ReagentOnEnter)
             row.icon:SetScript("OnLeave", SpellTooltipOnLeave)
             -- have/need sits on a dark pill so it reads over any icon art, as on retail slots.
             row.countBg = row.icon:CreateTexture(nil, "OVERLAY", nil, 5)
@@ -1527,10 +1699,32 @@ local function AcquireReagentRow(d, index)
         row.label:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         row.label:SetJustifyH("LEFT")
         row.label:SetWordWrap(false)
+        -- The row opens the reagent's warband holdings table; the chevron shows which way.
+        if ns.UI_CreateCollapseExpandControl then
+            row.chev = ns.UI_CreateCollapseExpandControl(row, false, { enableMouse = false, size = 14 })
+            row.chev:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+            row.label:SetPoint("RIGHT", row.chev, "LEFT", -4, 0)
+        end
+        row:EnableMouse(true)
+        row:SetScript("OnMouseUp", function(self)
+            local dd, key = self._wnDetail, self._wnKey
+            if not dd or not key or not dd.Repaint then return end
+            dd.expanded[key] = (not dd.expanded[key]) or nil
+            dd.Repaint(dd)
+        end)
         d.reagents[index] = row
     end
     row:Show()
     return row
+end
+
+--- Size the detail's scroll child to what was drawn and start the view at the top.
+local function FinishRecipeDetail(d, y)
+    if not d.scroll then return end
+    d.pane:SetHeight(math.max(1, -y + PAD))
+    -- A table opened or closed in place keeps the view where it was; a new recipe starts at the top.
+    if not d.keepScroll then d.scroll:SetVerticalScroll(0) end
+    RefreshScrollBar(d.scroll)
 end
 
 --- Stack the shown blocks top to bottom under the product header; heights come from the text.
@@ -1562,7 +1756,18 @@ local function StackDetail(d, blocks)
 end
 
 local function PaintRecipeDetail(d, recipe, entry)
+    -- Same recipe (by id: a rescan saves fresh row tables) repaints in place -- open holdings
+    -- tables stay open and the scroll position is kept; another recipe starts closed, at the top.
+    d.keepScroll = d.lastRecipe ~= nil and recipe ~= nil and d.lastRecipe.id == recipe.id
+    if not d.keepScroll then wipe(d.expanded) end
+    d.lastRecipe, d.lastEntry = recipe, entry
+    d.Repaint = d.Repaint or function(dd) PaintRecipeDetail(dd, dd.lastRecipe, dd.lastEntry) end
+    if ns.RecipeHoldingsUI then ns.RecipeHoldingsUI.Begin(d) end
+    d.crafters:Hide()
     for i = 1, #d.reagents do d.reagents[i]:Hide() end
+    for i = 1, #d.slots do d.slots[i]:Hide() end
+    d.optHead:Hide()
+    d.finHead:Hide()
     d.category:Hide()
     d.description:Hide()
     d.statusHead:Hide()
@@ -1575,8 +1780,9 @@ local function PaintRecipeDetail(d, recipe, entry)
         d.name:SetText("")
         d.requires:SetText("")
         d.empty:ClearAllPoints()
-        d.empty:SetPoint("CENTER", d.pane, "CENTER", 0, 0)
+        d.empty:SetPoint("CENTER", d.frame or d.pane, "CENTER", 0, 0)
         d.empty:Show()
+        FinishRecipeDetail(d, 0)
         return
     end
     d.empty:Hide()
@@ -1637,28 +1843,22 @@ local function PaintRecipeDetail(d, recipe, entry)
         ns.UI_SetTextColorRole(d.category, "Muted")
         blocks[#blocks + 1] = { d.category, 10 }
     end
+    -- Every saved character that knows this recipe (the old Recipe Companion "Crafters" list).
+    local knownBy = ns.RecipeHoldingsUI and ns.RecipeHoldingsUI.KnownByText(recipe.id)
+    if knownBy then
+        d.crafters:SetText(knownBy)
+        ns.UI_SetTextColorRole(d.crafters, "Normal")
+        blocks[#blocks + 1] = { d.crafters, 12 }
+    end
     if recipe.description then
         d.description:SetText(recipe.description)
         ns.UI_SetTextColorRole(d.description, "Normal")
         blocks[#blocks + 1] = { d.description, 14 }
     end
 
-    -- Learned: the skill-up line. Unlearned: where it is taught (retail "Unlearned Recipe").
-    local diff = tonumber(recipe.difficulty)
-    local dk = diff and DIFFICULTY_KEY[diff]
-    if recipe.learned then
-        if dk then
-            local text = L(dk[1], dk[2])
-            local ups = tonumber(recipe.skillUps) or 0
-            if diff ~= 3 and ups > 0 then
-                text = text .. "  " .. string.format(L("RECIPES_SKILL_UPS", "+%d skill"), ups)
-            end
-            d.statusHead:SetText(text)
-            local c = DIFFICULTY_RGB[diff]
-            if c then d.statusHead:SetTextColor(c[1], c[2], c[3]) else ns.UI_SetTextColorRole(d.statusHead, "Muted") end
-            blocks[#blocks + 1] = { d.statusHead, 14 }
-        end
-    else
+    -- Unlearned: where it is taught (retail "Unlearned Recipe"). A learned recipe's skill-up
+    -- colour is already the marker in the list, so the detail does not repeat it.
+    if not recipe.learned then
         d.statusHead:SetText(L("RECIPES_UNLEARNED_HEADER", "Unlearned Recipe"))
         ns.UI_SetTextColorRole(d.statusHead, "Dim")
         blocks[#blocks + 1] = { d.statusHead, recipe.source and 4 or 14 }
@@ -1669,37 +1869,49 @@ local function PaintRecipeDetail(d, recipe, entry)
         end
     end
 
-    -- Everything else the schematic form prints: item level, cooldown / charges, first-craft
-    -- bonus, quality ceiling, recipe rank, why it is unavailable, where the next rank is taught.
+    -- Facts block: muted labels, bright values (locale-safe -- only the %s value is coloured).
+    -- What the player acts on: crafts the held reagents allow, concentration, cooldown / charges,
+    -- first-craft bonus, recipe rank, why it is unavailable, where the next rank is taught.
+    local bright = "|cff" .. ((ns.UI_GetTextRoleHexRaw and ns.UI_GetTextRoleHexRaw("Bright")) or "ffffff")
+    local function V(v) return bright .. tostring(v) .. "|r" end
     local lines = {}
-    local ilvl = tonumber(recipe.itemLevel)
-    if ilvl and ilvl > 0 then
-        lines[#lines + 1] = string.format(L("RECIPES_ITEM_LEVEL", "Item Level %d"), ilvl)
+    if recipe.learned and not recipe.disabled and type(recipe.reagents) == "table" and #recipe.reagents > 0 then
+        local can = CraftableCount(recipe, d.charKey, d.haveMemo)
+        if can then
+            local green = ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completed or "|cff44ff44"
+            lines[#lines + 1] = string.format(L("RECIPES_CAN_CRAFT", "Can craft: %s"),
+                can > 0 and (green .. can .. "|r") or V(0))
+        end
+    end
+    local op = type(recipe.operation) == "table" and recipe.operation or nil
+    if op and op.concentration then
+        lines[#lines + 1] = string.format(L("RECIPES_CONCENTRATION", "Concentration: %s"), V(op.concentration))
     end
     if recipe.maxCharges then
-        lines[#lines + 1] = string.format(L("RECIPES_CHARGES", "Charges: %d/%d"),
-            tonumber(recipe.charges) or 0, recipe.maxCharges)
+        lines[#lines + 1] = string.format(L("RECIPES_CHARGES", "Charges: %s"),
+            V((tonumber(recipe.charges) or 0) .. "/" .. recipe.maxCharges))
     end
     local ends = tonumber(recipe.cooldownEndsAt)
     if ends then
         local left = ends - time()
         if left > 0 then
             local txt = (SecondsToTime and SecondsToTime(left)) or (math.ceil(left / 60) .. " min")
-            lines[#lines + 1] = string.format(L("RECIPES_COOLDOWN", "Cooldown: %s"), txt)
+            lines[#lines + 1] = string.format(L("RECIPES_COOLDOWN", "Cooldown: %s"), V(txt))
         else
-            lines[#lines + 1] = string.format(L("RECIPES_COOLDOWN", "Cooldown: %s"), L("RECIPES_READY", "Ready"))
+            lines[#lines + 1] = string.format(L("RECIPES_COOLDOWN", "Cooldown: %s"), V(L("RECIPES_READY", "Ready")))
         end
     end
     if recipe.firstCraft and recipe.learned then
-        lines[#lines + 1] = L("RECIPES_FIRST_CRAFT", "First craft bonus available")
+        lines[#lines + 1] = (ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completed or "|cff44ff44")
+            .. L("RECIPES_FIRST_CRAFT", "First craft bonus available") .. "|r"
     end
-    if recipe.supportsQualities and tonumber(recipe.maxQuality) then
-        lines[#lines + 1] = string.format(L("RECIPES_MAX_QUALITY", "Quality: up to %d"), recipe.maxQuality)
+    if recipe.alwaysLowestQuality then
+        lines[#lines + 1] = L("RECIPES_LOWEST_QUALITY", "Always uses lowest quality reagents")
     end
     local lvl = tonumber(recipe.unlockedRecipeLevel)
     if lvl and lvl > 0 then
         local cur, nxt = tonumber(recipe.currentRecipeExperience), tonumber(recipe.nextLevelRecipeExperience)
-        local rankText = string.format(L("RECIPES_RANK", "Rank %d"), lvl)
+        local rankText = string.format(L("RECIPES_RANK", "Rank %s"), V(lvl))
         if cur and nxt and nxt > 0 then rankText = rankText .. string.format("  (%d/%d)", cur, nxt) end
         lines[#lines + 1] = rankText
     end
@@ -1711,7 +1923,8 @@ local function PaintRecipeDetail(d, recipe, entry)
     end
     if #lines > 0 then
         d.info:SetText(table.concat(lines, "\n"))
-        ns.UI_SetTextColorRole(d.info, "Normal")
+        if d.info.SetSpacing then d.info:SetSpacing(3) end
+        ns.UI_SetTextColorRole(d.info, "Muted")
         blocks[#blocks + 1] = { d.info, 16 }
     end
 
@@ -1726,7 +1939,11 @@ local function PaintRecipeDetail(d, recipe, entry)
         blocks[#blocks + 1] = { d.missing, 8 }
     end
     local y = StackDetail(d, blocks)
-    if not reagents or #reagents == 0 then return end
+    reagents = reagents or {}
+    local HUI = ns.RecipeHoldingsUI
+    if HUI and #reagents > 0 then
+        HUI.PlaceExpandAll(d, d.reagentHead, reagents, function() d.Repaint(d) end)
+    end
 
     local pane = d.pane
     local token = d.token
@@ -1734,13 +1951,18 @@ local function PaintRecipeDetail(d, recipe, entry)
         local rg = reagents[i]
         local row = AcquireReagentRow(d, i)
         if row then
+            local key = rg.itemID or i
+            row._wnDetail, row._wnKey = d, key
+            if row.chev then ns.UI_CollapseExpandSetState(row.chev, d.expanded[key] == true) end
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD, y - (i - 1) * REAGENT_ROW_H)
+            row:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD, y)
             row:SetPoint("RIGHT", pane, "RIGHT", -PAD, 0)
             local need = tonumber(rg.count) or 1
-            local have = CharacterHaveCount(d.charKey, rg.itemID, d.haveMemo)
+            local have = ReagentHaveCount(d.charKey, rg, d.haveMemo)
             if row.icon then
                 row.icon._wnItemID = rg.itemID
+                row.icon._wnReagent = rg
+                row.icon._wnDetail = d
                 SetQualityBorder(row.icon, rg.itemID)
                 local tex = (C_Item and C_Item.GetItemIconByID) and C_Item.GetItemIconByID(rg.itemID)
                 if row.icon.texture then
@@ -1759,6 +1981,22 @@ local function PaintRecipeDetail(d, recipe, entry)
             local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rg.itemID)
             if issecretvalue and issecretvalue(name) then name = nil end
             PaintItemName(row.label, rg.itemID, name or ("item:" .. tostring(rg.itemID)))
+            -- Quality tiers held, under the name, like the retail slot's allocation readout.
+            -- Same pip size as the Qualities line above, so one tier mark reads the same everywhere.
+            local tierLine = TierSummary(d.charKey, rg, d.haveMemo, FontHeightOf(d.info))
+            row.label:SetPoint("LEFT", row, "LEFT", REAGENT_ICON + 12, tierLine and 8 or 0)
+            if tierLine then
+                if not row.tiers then
+                    row.tiers = FontManager:CreateFontString(row, "small", "OVERLAY")
+                    row.tiers:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -3)
+                    row.tiers:SetJustifyH("LEFT")
+                end
+                row.tiers:SetText(tierLine)
+                ns.UI_SetTextColorRole(row.tiers, "Normal")
+                row.tiers:Show()
+            elseif row.tiers then
+                row.tiers:Hide()
+            end
             if not name and Item and Item.CreateFromItemID then
                 local item = Item:CreateFromItemID(rg.itemID)
                 if item and not item:IsItemEmpty() then
@@ -1774,8 +2012,63 @@ local function PaintRecipeDetail(d, recipe, entry)
                     end)
                 end
             end
+            y = y - REAGENT_ROW_H
+            -- Open row: every character's bags / bank, the Warband Bank and the total, under it,
+            -- across the full content width (same left / right edges as the reagent rows).
+            if HUI and d.expanded[key] then
+                y = y - HUI.DrawHoldings(d, rg, y, PAD) - 8
+            end
         end
     end
+
+    -- Optional, then finishing slots: one row of slot icons each, as the schematic form lays them.
+    local optional = type(recipe.optional) == "table" and recipe.optional or {}
+    y = y - (#reagents > 0 and 10 or 0)
+    local used = 0
+    local groups = { { "modifying", d.optHead }, { "finishing", d.finHead } }
+    for gi = 1, #groups do
+        local kind, head = groups[gi][1], groups[gi][2]
+        local x, any = 0, false
+        for i = 1, #optional do
+            local slot = optional[i]
+            if slot.kind == kind then
+                if not any then
+                    head:ClearAllPoints()
+                    head:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD, y)
+                    head:Show()
+                    y = y - (head:GetStringHeight() or 14) - 8
+                    any = true
+                end
+                used = used + 1
+                local cell = AcquireSlotIcon(d, used)
+                if cell then
+                    cell._wnSlot = slot
+                    cell._wnDetail = d
+                    cell:ClearAllPoints()
+                    cell:SetPoint("TOPLEFT", pane, "TOPLEFT", PAD + x, y)
+                    local ids = slot.itemIDs or {}
+                    local first = ids[1]
+                    local tex = first and C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(first)
+                    if cell.texture then
+                        cell.texture:SetTexture(tex or 134400)
+                        -- An unfilled slot: shown dim, the way retail draws an empty optional slot.
+                        cell.texture:SetDesaturated(true)
+                        cell.texture:SetAlpha(0.6)
+                    end
+                    if slot.required then
+                        ns.UI_UpdateBorderColor(cell, { 1, 0.3, 0.3, 0.9 })
+                    else
+                        local a = AccentRGB()
+                        ns.UI_UpdateBorderColor(cell, { a[1], a[2], a[3], 0.6 })
+                    end
+                    cell.count:SetText(#ids > 1 and tostring(#ids) or "")
+                    x = x + REAGENT_ICON + 8
+                end
+            end
+        end
+        if any then y = y - REAGENT_ICON - 12 end
+    end
+    FinishRecipeDetail(d, y)
 end
 
 local function FindRecipe(entry, id)
@@ -1813,11 +2106,14 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
     local rank = FontManager:CreateFontString(content, "subtitle", "OVERLAY")
     rank:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, -PAD)
     rank:SetJustifyH("LEFT")
-    rank:SetText(title)
+    -- Retail draws the active expansion tier's rank, not the base skill line's.
+    local tier = type(entry.activeTier) == "table" and entry.activeTier or nil
+    rank:SetText((tier and tier.name) or title)
     ns.UI_SetTextColorRole(rank, "Bright")
 
     local bar = Factory.CreateProgressBar and Factory:CreateProgressBar(content, RECIPE_RANK_W, RECIPE_RANK_H)
-    local skill, maxSkill = tonumber(entry.skillLevel) or 0, tonumber(entry.maxSkillLevel) or 0
+    local src = tier or entry
+    local skill, maxSkill = tonumber(src.skillLevel) or 0, tonumber(src.maxSkillLevel) or 0
     if bar then
         bar:SetPoint("LEFT", rank, "RIGHT", 12, 0)
         if bar.SetMinMaxValues then
@@ -1833,7 +2129,7 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
     end
     local rankText = FontManager:CreateFontString(content, "small", "OVERLAY")
     rankText:SetPoint("LEFT", bar or rank, "RIGHT", 8, 0)
-    local bonus = tonumber(entry.skillModifier)
+    local bonus = tonumber(src.skillModifier)
     rankText:SetText((bonus and bonus > 0)
         and string.format("%d |cff40ff40(+%d)|r / %d", skill, bonus, maxSkill)
         or string.format("%d / %d", skill, maxSkill))
@@ -1861,7 +2157,10 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
     detailPane:SetPoint("TOPLEFT", listPane, "TOPRIGHT", RECIPE_PANE_GAP, 0)
     detailPane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -PAD, PAD)
     detailPane:Show()
-    local detail = BuildRecipeDetail(detailPane)
+    -- Long recipes (many reagents plus optional and finishing slots) outgrow the pane: the
+    -- detail draws into a scroll child, the same lane the other WN windows use.
+    local detail = ns.RecipeDetailUI.Create(detailPane,
+        RECIPE_WIN_W - PAD * 4 - RECIPE_LIST_W - RECIPE_PANE_GAP, dialog)
 
     local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
     local filterBtn = Factory:CreateButton(listPane, 10, searchH)
@@ -1890,6 +2189,7 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
     detail.charKey = charKey
     -- Have-counts are read once per open and shared by the list's craftable counts and the detail.
     state.charKey = charKey
+    state.tipHost = dialog
     state.haveMemo = {}
     detail.haveMemo = state.haveMemo
     local function Select(recipe)
@@ -1911,29 +2211,53 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
         Redraw()
     end
 
-    Redraw = function()
+    -- Virtual list: only the rows inside the viewport exist as frames. A retail profession lists
+    -- well over a thousand recipes, and a frame per recipe made every scroll step re-lay them all.
+    local tops = {}
+    local function Fill()
         for i = 1, #pool do pool[i]:Hide() end
-        wipe(visible)
-        local roots = BuildRecipeTree(entry, state.query)
-        FlattenRecipeTree(roots, state, visible)
-        local y, w = 0, child:GetWidth()
-        for i = 1, #visible do
+        local n = #visible
+        if n == 0 then return end
+        local offset = scroll:GetVerticalScroll() or 0
+        local viewH = scroll:GetHeight() or 0
+        if viewH < RECIPE_ROW_H then viewH = RECIPE_WIN_H end
+        -- First row whose bottom is below the top edge (binary search over the row tops).
+        local lo, hi = 1, n
+        while lo < hi do
+            local mid = math.floor((lo + hi) / 2)
+            if tops[mid + 1] and tops[mid + 1] <= offset then lo = mid + 1 else hi = mid end
+        end
+        local slot = 0
+        for i = lo, n do
+            if tops[i] > offset + viewH then break end
             local item = visible[i]
-            local row = AcquireRecipeRow(child, pool, i)
+            slot = slot + 1
+            local row = AcquireRecipeRow(child, pool, slot)
             if row then
                 row._wnItem = item
                 row:SetScript("OnClick", RowOnClick)
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, y)
-                row:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, y)
+                row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -tops[i])
+                row:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -tops[i])
                 if item.kind == "category" then
                     PaintCategoryRow(row, item, state)
-                    y = y - RECIPE_CAT_H
                 else
                     PaintRecipeRow(row, item, state)
-                    y = y - RECIPE_ROW_H
                 end
             end
+        end
+    end
+    scroll:HookScript("OnVerticalScroll", Fill)
+
+    Redraw = function()
+        wipe(visible)
+        wipe(tops)
+        local roots = BuildRecipeTree(entry, state.query)
+        FlattenRecipeTree(roots, state, visible)
+        local y, w = 0, child:GetWidth()
+        for i = 1, #visible do
+            tops[i] = -y
+            y = y - ((visible[i].kind == "category") and RECIPE_CAT_H or RECIPE_ROW_H)
         end
         if #visible == 0 then
             child._wnEmpty = child._wnEmpty or FontManager:CreateFontString(child, "body", "OVERLAY")
@@ -1948,6 +2272,10 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
         if w and w > 1 then child:SetWidth(w) end
         child:SetHeight(math.max(1, -y))
         RefreshScrollBar(scroll)
+        -- A collapse or filter can shrink the list under the current offset.
+        local maxOff = math.max(0, -y - (scroll:GetHeight() or 0))
+        if (scroll:GetVerticalScroll() or 0) > maxOff then scroll:SetVerticalScroll(maxOff) end
+        Fill()
         if filterLabel then
             filterLabel:SetText(state.showUnlearned and L("RECIPES_FILTER_ALL", "All recipes")
                 or L("RECIPES_FILTER_LEARNED", "Learned only"))
@@ -1982,3 +2310,40 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
     Select(FindRecipe(entry, state.selectedID))
     Redraw()
 end
+
+--[[
+    The recipe detail pane as a shared component: this file's recipe window and the live companion
+    beside Blizzard's profession frame (RecipeCompanionWindow) draw the same pane, so a recipe
+    reads the same everywhere and lives in one place.
+]]
+ns.RecipeDetailUI = {
+    --- Scrolling detail pane inside `pane`, `width` wide. `host` is the window tooltips open beside.
+    Create = function(pane, width, host)
+        local scroll, child = BuildScroll(pane, width, 0, 1)
+        local d = BuildRecipeDetail(child or pane)
+        d.frame, d.scroll, d.host = pane, scroll, host
+        return d
+    end,
+    --- Paint saved recipe row `recipe` (from profession entry `entry`) as character `charKey` sees it.
+    Paint = function(d, recipe, entry, charKey)
+        -- Lay out at the viewport's current width: the host may have been resized (or restored to
+        -- a saved size) since the pane was built, and wrapped text takes its width at paint time.
+        local sw = d.scroll and d.scroll:GetWidth()
+        if sw and sw > 1 then d.pane:SetWidth(sw) end
+        d.charKey = charKey
+        d.haveMemo = {}
+        d.token = (d.token or 0) + 1
+        PaintRecipeDetail(d, recipe, entry)
+    end,
+    --- Re-flow after the host window was resized (the scroll child follows the viewport width).
+    Relayout = function(d)
+        local sw = d.scroll and d.scroll:GetWidth()
+        if sw and sw > 1 then d.pane:SetWidth(sw) end
+        if d.lastRecipe ~= nil and d.Repaint then d.Repaint(d) end
+        if d.scroll then RefreshScrollBar(d.scroll) end
+    end,
+    --- Height of the painted content (the scroll child), for hosts that size themselves to it.
+    ContentHeight = function(d)
+        return d.pane and d.pane:GetHeight() or 0
+    end,
+}
