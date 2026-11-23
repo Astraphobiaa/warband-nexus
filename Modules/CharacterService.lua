@@ -111,6 +111,34 @@ end
 
 -- CHARACTER TRACKING
 
+--- WoW Forever game rules are per character (ruleset, Self-Found), but the client only answers
+--- for the one logged in -- so they are persisted on that character's row and every row reads
+--- its own. Called on tracking confirm and on every character save (DataService), so a row
+--- created before the ruleset could be read picks it up on the next login.
+--- C_PlayerInfo.IsSelfFoundActive() -> active:bool (client APIDocumentation, Forever build).
+---@param entry table characters row of the LOGGED-IN character
+function CharacterService:CaptureGameRules(entry)
+    if type(entry) ~= "table" then return end
+    if not (ns.Capabilities and ns.Capabilities.IsForeverClient and ns.Capabilities.IsForeverClient()) then
+        return
+    end
+    local rules = {}
+    -- Live ruleset (Hardcore / PvP / RP / PvE) first, else the type encoded in a stored realm
+    -- name (rows saved while Forever still returned realm names, e.g. "CAMWOWEU4Realm5PvE").
+    local U = ns.Utilities
+    local realmNow = GetNormalizedRealmName and GetNormalizedRealmName()
+    if issecretvalue and issecretvalue(realmNow) then realmNow = nil end
+    if realmNow == "" then realmNow = nil end
+    rules.ruleset = U and U.GetRealmTypeLabel and U:GetRealmTypeLabel(realmNow or entry.realm) or nil
+    if type(C_PlayerInfo) == "table" and type(C_PlayerInfo.IsSelfFoundActive) == "function" then
+        local okSF, sf = pcall(C_PlayerInfo.IsSelfFoundActive)
+        if okSF and not (issecretvalue and issecretvalue(sf)) then
+            rules.selfFound = sf and true or false
+        end
+    end
+    entry.gameRules = rules
+end
+
 ---Confirm character tracking status and update database
 ---@param addon table The WarbandNexus addon instance
 ---@param charKey string Character key ("Name-Realm")
@@ -190,24 +218,10 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         and type(uSecond) == "string" and uSecond ~= "" then
         entry.surname = uSecond
     end
-    -- WoW Forever game rules are per character (realm ruleset, Self-Found), but the client only
-    -- answers for the one logged in -- so they are persisted here and every row reads its own.
-    -- C_PlayerInfo.IsSelfFoundActive() -> active:bool (client APIDocumentation, Forever build).
-    if foreverNames then
-        local rules = {}
-        -- Realm tag as it applies to THIS character: live ruleset (Hardcore / PvP / RP), else the
-        -- type encoded in the realm id. Rows read this instead of asking the client.
-        local U = ns.Utilities
-        local realmNow = GetNormalizedRealmName and GetNormalizedRealmName()
-        if issecretvalue and issecretvalue(realmNow) then realmNow = nil end
-        rules.ruleset = U and U.GetRealmTypeLabel and U:GetRealmTypeLabel(realmNow or entry.realm) or nil
-        if type(C_PlayerInfo) == "table" and type(C_PlayerInfo.IsSelfFoundActive) == "function" then
-            local okSF, sf = pcall(C_PlayerInfo.IsSelfFoundActive)
-            if okSF and not (issecretvalue and issecretvalue(sf)) then
-                rules.selfFound = sf and true or false
-            end
-        end
-        entry.gameRules = rules
+    if foreverNames then self:CaptureGameRules(entry) end
+    local UID = ns.Utilities
+    if UID and UID.IsGuidKeySplitArtifact and UID:IsGuidKeySplitArtifact(persistKey, entry) then
+        entry.name, entry.realm = nil, nil
     end
     if not entry.name or not entry.realm then
         local un = uName
