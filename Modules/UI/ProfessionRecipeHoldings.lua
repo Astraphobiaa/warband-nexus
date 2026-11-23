@@ -7,7 +7,7 @@
 
       * a per-reagent table, opened from the reagent row: every character's bags and bank, the
         Warband Bank and the total (WarbandNexus:GetReagentHoldings);
-      * a "Known by" line with the characters that know the recipe (GetCraftersForRecipe).
+      * a "Known by" line with the characters that know the recipe (GetRecipeKnownBy).
 
     Pure view: every number comes from the profession service, read from saved data, so an offline
     alt's recipe shows that alt's view. Elements are pooled on the detail table `d`.
@@ -312,10 +312,14 @@ function H.DrawHoldings(d, rg, y, left)
                 ranked and RankTip(o.charName or "?", marks, o.bagTiers, o.bankTiers) or nil)
         end
     end
-    n = n + 1
-    ry = FillRow(card, n, ry, "warband", "|cff" .. GoldHex() .. L("ITEMS_WARBAND_BANK", "Warband Bank") .. "|r",
-        Vals(h.warband.tiers, 0, h.warband.total, h.warband.total))
-    bankSum = bankSum + h.warband.total
+    -- No Warband Bank on clients without one (WoW Forever): the row would only ever read "-".
+    local caps = ns.Capabilities
+    if not caps or not caps.Supports or caps:Supports("warbandBank") then
+        n = n + 1
+        ry = FillRow(card, n, ry, "warband", "|cff" .. GoldHex() .. L("ITEMS_WARBAND_BANK", "Warband Bank") .. "|r",
+            Vals(h.warband.tiers, 0, h.warband.total, h.warband.total))
+        bankSum = bankSum + h.warband.total
+    end
     n = n + 1
     ry = FillRow(card, n, ry, "total", bright .. L("RECIPES_HOLD_TOTAL", "Total") .. "|r",
         Vals(h.tierTotals, bagSum, bankSum, h.total, RoleHex("Bright")))
@@ -371,8 +375,8 @@ end
 
 --- "Known by: A, B, C +2" in class colours, or nil when no saved character knows the recipe.
 function H.KnownByText(recipeID)
-    if not recipeID or not WarbandNexus.GetCraftersForRecipe then return nil end
-    local ok, crafters = pcall(WarbandNexus.GetCraftersForRecipe, WarbandNexus, recipeID)
+    if not recipeID or not WarbandNexus.GetRecipeKnownBy then return nil end
+    local ok, crafters = pcall(WarbandNexus.GetRecipeKnownBy, WarbandNexus, recipeID)
     if not ok or type(crafters) ~= "table" or #crafters == 0 then return nil end
     local names = {}
     for i = 1, math.min(#crafters, MAX_KNOWN_NAMES) do
