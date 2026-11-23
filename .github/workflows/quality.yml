@@ -98,6 +98,7 @@ jobs:
             lua5.1 .github/scripts/test_try_counter_core_regressions.lua
             lua5.1 .github/scripts/test_try_counter_journal_difficulty.lua
             lua5.1 .github/scripts/test_season_rollover.lua
+            lua5.1 .github/scripts/test_collectible_sound_cue.lua
           else
             echo "lua5.1 unavailable - skipping behavioural gate"
           fi
