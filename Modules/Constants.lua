@@ -22,8 +22,8 @@ local Constants = {
     -- CHANGELOG_FOREVER_V<x><y><z> locale key. Written into WarbandNexus_Forever.toc by
     -- scripts/build_flavor_tocs.py. On a Forever client ADDON_VERSION / ADDON_RELEASE_DATE
     -- below are switched to these at load, so every reader shows the running build's version.
-    FOREVER_ADDON_VERSION = "1.0.2",
-    FOREVER_ADDON_RELEASE_DATE = "2026-11-16",
+    FOREVER_ADDON_VERSION = "1.1.0",
+    FOREVER_ADDON_RELEASE_DATE = "2026-11-24",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.

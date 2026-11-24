@@ -1242,16 +1242,20 @@ Fixed:
 - The "Achievement" collectible sound now plays the real achievement sound instead of the loot toast.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_FOREVER_V102"] = [=[v1.0.2 (2026-11-16)
+L["CHANGELOG_FOREVER_V110"] = [=[v1.1.0 (2026-11-24)
 
-Training at a class trainer no longer drops your frame rate.
+See any character's recipes from the Characters tab, even while they are offline.
+
+Added:
+- Click a profession icon on the Characters tab to see that character's saved recipes (Cooking, First Aid, Mining and more), even while they are offline.
+- Open any reagent to see how many each of your characters holds in bags and bank.
+- Recipe details show which of your characters know the recipe and how many times you can craft it.
 
 Fixed:
-- Training at a class trainer no longer drops the frame rate to 1-2 fps while the trainer window is open.
-- A deleted character no longer comes back in lists when it was saved twice.
-- Untracking a character now sticks, and the minimap gold total no longer counts a character twice.
-- Your manual character order is kept for characters saved under an older name.
-- Hovering a profession icon no longer causes a Lua error on some characters.
+- New characters now show their name, class, race, faction and gold in the roster.
+- Each character shows its own PvE / PvP / RP realm tag.
+- An unlearned Cooking slot now shows its icon.
+- The "Achievement" collectible sound now plays the real achievement sound.
 
 CurseForge: Warband Nexus]=]
 
