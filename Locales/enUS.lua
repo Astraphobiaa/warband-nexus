@@ -1208,13 +1208,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V3111"] = [=[v3.11.1 (2026-11-20)
+L["CHANGELOG_V3120"] = [=[v3.12.0 (2026-11-24)
 
-Hotfix for a Lua error that kept repeating during Mythic+ keystones.
+See any character's recipes from the Characters tab, even while they are offline.
+
+Added:
+- Click a profession icon on the Characters tab to see that character's saved recipes, even while they are offline: category tree, search, learned filter and full reagent details.
+- Open any reagent to see how many each character holds per quality rank, plus the Warband Bank.
+- Recipe details show which of your characters know the recipe and how many times you can craft it.
+
+Updated:
+- The Recipe Companion next to the profession window now shows the same recipe view.
+- Recipes you have every reagent for are listed in green.
+- The Recipe Companion's Shopping List has been removed.
 
 Fixed:
-- Fixed a Lua error that repeated during Mythic+ keystones until the addon was turned off.
-- The Gear tab keeps each character's last saved stats instead of losing them when they cannot be read inside a Mythic+ dungeon.
+- The "Achievement" collectible sound now plays the real achievement sound instead of the loot toast.
 
 CurseForge: Warband Nexus]=]
 L["CHANGELOG_FOREVER_V102"] = [=[v1.0.2 (2026-11-16)
