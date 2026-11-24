@@ -1040,8 +1040,7 @@ local function AccentRGB()
 end
 
 local function GoldHex()
-    local hex = ns.UI_HEX
-    return (hex and hex.gold) or "|cffffd100"
+    return ns.UI_HEX.gold
 end
 
 --- Recipe tooltip: the captured hyperlink first (it renders offline), then the recipe spell.
@@ -1872,13 +1871,13 @@ local function PaintRecipeDetail(d, recipe, entry)
     -- Facts block: muted labels, bright values (locale-safe -- only the %s value is coloured).
     -- What the player acts on: crafts the held reagents allow, concentration, cooldown / charges,
     -- first-craft bonus, recipe rank, why it is unavailable, where the next rank is taught.
-    local bright = "|cff" .. ((ns.UI_GetTextRoleHexRaw and ns.UI_GetTextRoleHexRaw("Bright")) or "ffffff")
+    local bright = ns.UI_HEX.bright
     local function V(v) return bright .. tostring(v) .. "|r" end
     local lines = {}
     if recipe.learned and not recipe.disabled and type(recipe.reagents) == "table" and #recipe.reagents > 0 then
         local can = CraftableCount(recipe, d.charKey, d.haveMemo)
         if can then
-            local green = ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completed or "|cff44ff44"
+            local green = ns.UI_HEX.green
             lines[#lines + 1] = string.format(L("RECIPES_CAN_CRAFT", "Can craft: %s"),
                 can > 0 and (green .. can .. "|r") or V(0))
         end
@@ -1902,7 +1901,7 @@ local function PaintRecipeDetail(d, recipe, entry)
         end
     end
     if recipe.firstCraft and recipe.learned then
-        lines[#lines + 1] = (ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completed or "|cff44ff44")
+        lines[#lines + 1] = ns.UI_HEX.green
             .. L("RECIPES_FIRST_CRAFT", "First craft bonus available") .. "|r"
     end
     if recipe.alwaysLowestQuality then
@@ -1916,7 +1915,7 @@ local function PaintRecipeDetail(d, recipe, entry)
         lines[#lines + 1] = rankText
     end
     if recipe.disabled then
-        lines[#lines + 1] = "|cffff4040" .. (recipe.disabledReason or L("RECIPES_DISABLED", "Unavailable")) .. "|r"
+        lines[#lines + 1] = ns.UI_HEX.red .. (recipe.disabledReason or L("RECIPES_DISABLED", "Unavailable")) .. "|r"
     end
     if recipe.learned and recipe.nextSource then
         lines[#lines + 1] = L("RECIPES_NEXT_RANK", "Next rank") .. ":\n" .. recipe.nextSource
@@ -2131,7 +2130,7 @@ function WarbandNexus:ShowProfessionRecipesPopup(charKey, charName, professionID
     rankText:SetPoint("LEFT", bar or rank, "RIGHT", 8, 0)
     local bonus = tonumber(src.skillModifier)
     rankText:SetText((bonus and bonus > 0)
-        and string.format("%d |cff40ff40(+%d)|r / %d", skill, bonus, maxSkill)
+        and string.format("%d %s(+%d)|r / %d", skill, ns.UI_HEX.green, bonus, maxSkill)
         or string.format("%d / %d", skill, maxSkill))
     ns.UI_SetTextColorRole(rankText, "Bright")
 
